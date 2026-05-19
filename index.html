@@ -2175,6 +2175,8 @@ async function syncToFirestore(overwrite=false){
           mergedSd={...s.scanData};
           for(const k in localSd){
             if(localSd[k].status==='pending'&&mergedSd[k]?.status!=='pending')continue;
+            // ถ้า cloud ไม่มี item นี้แล้ว และ local เป็น scanning/pending → ไม่ re-upload (startNewCount ลบออกแล้ว)
+            if(!mergedSd[k]&&(localSd[k].status==='scanning'||localSd[k].status==='pending'))continue;
             mergedSd[k]=localSd[k];
           }
         }
@@ -2212,6 +2214,16 @@ async function pullFromCloud(){
         merged++;
         if(cloudItem.status==='scanning')scanned++;
       }
+      // ลบ local item ที่เป็น scanning/pending แต่ cloud ลบออกไปแล้ว (เช่น startNewCount จากเครื่องอื่น)
+      let removed=0;
+      for(const[sku,sd]of state.scanData.entries()){
+        if(UNCONFIRMED.has(sd.status)&&!s.scanData[sku]){
+          state.scanData.delete(sku);
+          scanListMap.delete(sku);
+          removed++;
+        }
+      }
+      if(removed>0)scanned=Math.max(0,scanned-removed);
     }
     // merge unknownScans จาก cloud (เพิ่มเฉพาะที่ยังไม่มีใน local)
     if(Array.isArray(s.unknownScans)){
