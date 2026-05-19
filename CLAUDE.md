@@ -146,8 +146,20 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Selected employee is store
 - ดึงเฉพาะ cloud item ที่ `status === 'pending'` หรือ `'scanning'` เท่านั้น — item ที่ Confirm แล้ว (`pass`, `audit`, `stock_adjustment`) ใน cloud จะถูกข้าม
 - ถ้า local item นั้น Confirm แล้ว (`sd.auditor` set หรือ status เป็น `pass`/`audit`/`stock_adjustment`) → ไม่ overwrite
 - `unknownScans` จาก cloud merge เข้า local โดยเพิ่มเฉพาะ barcode ที่ยังไม่มี
+- **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud อีกต่อไป → ลบออกจาก local** (กรณี `startNewCount` จากเครื่องอื่น)
 
 ใช้สำหรับ: หลายเครื่องนับพร้อมกัน แต่ละเครื่อง sync ขึ้น cloud แล้วเครื่องอื่นกด Cloud เพื่อดึง pending/scanning ของทุกเครื่องมารวม
+
+**Workflow หลัง `startNewCount`:** กด startNewCount บนเครื่องหลัก → PDA ทุกเครื่องกดปุ่ม **Cloud 1 ครั้ง** → รายการเก่าถูกล้าง → สแกนได้เลย ไม่ต้องกด Cloud อีก
+
+### Cloud Sync — `syncToFirestore()`
+
+`syncToFirestore(overwrite=false)` ถูกเรียกอัตโนมัติ 3 วินาทีหลัง `saveSession()` ทุกครั้ง
+
+**Merge rules (overwrite=false):**
+- ดึง cloud state มา merge ก่อน แล้วค่อย overwrite ด้วย local
+- local item ที่เป็น `pending` จะไม่ overwrite cloud item ที่มี status อื่น (เพื่อไม่ reset สิ่งที่เครื่องอื่นสแกนแล้ว)
+- **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud → ไม่ re-upload** (ป้องกัน PDA เขียนข้อมูลเก่ากลับหลัง `startNewCount`)
 
 ### R16 Re-evaluation — `reEvaluateAuditItems()`
 
