@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#f5f5f5">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- ── Section: Intent Action ─────────────────────────────── -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Intent Action (จาก Scanner)"
+            android:textSize="13sp"
+            android:textColor="#666666"
+            android:textAllCaps="true"
+            android:letterSpacing="0.05"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etIntentAction"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="เช่น android.intent.ACTION_DECODE_DATA"
+            android:inputType="text"
+            android:singleLine="true"
+            android:background="@android:color/white"
+            android:padding="12dp"
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- ── Section: Extra Key ─────────────────────────────────── -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Extra Key (ชื่อ key ใน Intent extras)"
+            android:textSize="13sp"
+            android:textColor="#666666"
+            android:textAllCaps="true"
+            android:letterSpacing="0.05"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/etExtraKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="เช่น barcode_string"
+            android:inputType="text"
+            android:singleLine="true"
+            android:background="@android:color/white"
+            android:padding="12dp"
+            android:textSize="13sp"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Fallback switch -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/swFallback"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ลอง Extra Key สำรองอัตโนมัติ (ถ้า key หลักไม่มีข้อมูล)"
+                android:textSize="13sp"
+                android:textColor="#444444"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <!-- ── Section: Presets ───────────────────────────────────── -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Preset อุปกรณ์ (กดเพื่อใส่ค่า)"
+            android:textSize="13sp"
+            android:textColor="#666666"
+            android:textAllCaps="true"
+            android:letterSpacing="0.05"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Preset buttons injected dynamically (vertical list) -->
+        <LinearLayout
+            android:id="@+id/presetContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="20dp" />
+
+        <!-- ── Save + Test ────────────────────────────────────────── -->
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="💾  บันทึก"
+            android:backgroundTint="#2e7d32"
+            android:textColor="#ffffff"
+            android:textSize="15sp"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnTestBarcode"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="🔫  ทดสอบ — ส่ง Broadcast ทดสอบ"
+            android:backgroundTint="#1565c0"
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:layout_marginBottom="20dp" />
+
+        <!-- ── Debug log ──────────────────────────────────────────── -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Log"
+            android:textSize="11sp"
+            android:textColor="#888888"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDebugLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="80dp"
+            android:background="#e0e0e0"
+            android:padding="10dp"
+            android:textSize="11sp"
+            android:textColor="#333333"
+            android:fontFamily="monospace"
+            android:text="(ยังไม่มี log)" />
+
+    </LinearLayout>
+</ScrollView>
