@@ -267,13 +267,20 @@
       .container{height:100%;overflow:hidden;display:flex;flex-direction:column;padding:4px 5px;}
 
       /* Header: single compact row, title + branch only */
-      .header{flex-direction:row!important;align-items:center!important;justify-content:space-between;padding:5px 10px;margin-bottom:3px;gap:8px!important;flex-shrink:0;}
-      .header>div:last-child{display:flex!important;align-items:center;gap:0;overflow:hidden;}
+      .header{flex-direction:row!important;align-items:center!important;justify-content:space-between;padding:4px 8px;margin-bottom:3px;gap:5px!important;flex-shrink:0;}
+      .header-title{gap:5px!important;}
+      .header-icon{width:18px!important;height:18px!important;font-size:10px!important;border-radius:4px!important;}
+      .header h1{font-size:0.6rem!important;letter-spacing:0;}
+      .header>div:last-child{display:flex!important;align-items:center;gap:3px;overflow:hidden;}
       .header>div:last-child .btn{display:none!important;}
+      #pmStatusBadge{display:none!important;}
+      #branchLabel{padding:2px 6px!important;font-size:0.55rem!important;border-radius:5px!important;}
+      #userLabel{padding:2px 6px!important;font-size:0.55rem!important;border-radius:5px!important;}
+      .header>div:last-child>div:nth-child(1)>button{padding:2px 5px!important;font-size:0.55rem!important;border-radius:5px!important;}
       .header-title .db-status{display:flex!important;align-items:center;gap:0;flex-shrink:0;}
       .header-title .db-status .db-dot,
       .header-title .db-status #dbStatus{display:none!important;}
-      .header-title .db-status button{margin-left:0!important;padding:3px 8px!important;font-size:0.64rem!important;border-radius:6px!important;}
+      .header-title .db-status button{margin-left:0!important;padding:2px 6px!important;font-size:0.58rem!important;border-radius:5px!important;}
       .header>div:last-child>div:nth-child(2){display:flex!important;align-items:center;}
       .header>div:last-child>div:nth-child(2)>button{display:none;}
 
@@ -301,7 +308,7 @@
       #btnConfirm{display:none!important;}
 
       /* Scan columns: 4 cols — hide Barcode (col2) and Action (col6) */
-      .scan-list-header,.scan-row{grid-template-columns:68px 1fr 48px 82px!important;}
+      .scan-list-header,.scan-row{grid-template-columns:56px 1fr 62px 70px!important;}
       .scan-list-header>span:nth-child(2),
       .scan-list-header>span:nth-child(6),
       .scan-row>div:nth-child(2),
