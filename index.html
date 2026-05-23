@@ -126,6 +126,7 @@
     @keyframes pulseDot { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
     .scan-input-wrap { position:relative; }
     .scan-input { width:100%; padding:14px 16px; background:var(--surface2); border:2px solid var(--border); border-radius:10px; color:var(--text); font-family:'Inter',sans-serif; font-size:0.7rem; outline:none; transition:all 0.2s; }
+    .scan-input.pda-receiving { color:transparent; caret-color:transparent; }
     .scan-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,114,198,0.12); }
     .scan-dots { display:flex; align-items:center; gap:6px; position:absolute; left:calc(16px + 11ch); top:50%; transform:translateY(-50%); pointer-events:none; }
     #scanInput:not(:placeholder-shown) ~ .scan-dots { display:none; }
@@ -1428,6 +1429,7 @@ function resetScanRuntimeState(){
   _pendingPatches.clear();
   _scanGapHold=null;
   _lastKeystrokeTime=0;_pdaMode=false;
+  document.getElementById('scanInput')?.classList.remove('pda-receiving');
   const gapModal=document.getElementById('scanGapModal');
   if(gapModal)gapModal.style.display='none';
   const scanInput=document.getElementById('scanInput');
@@ -1472,6 +1474,7 @@ function handleScanInput(e){
   if(_lastKeystrokeTime && (now-_lastKeystrokeTime)<PDA_KEYSTROKE_THRESHOLD_MS) _pdaMode=true;
   _lastKeystrokeTime=now;
   clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;
+  if(_pdaMode){e.target.classList.add('pda-receiving');}
   if(_pdaMode){
     // PDA mode: debounce auto-submit 200ms หลังตัวอักษรสุดท้าย
     _scanDebounceTimer=setTimeout(()=>{_scanDebounceTimer=null;_lastKeystrokeTime=0;_pdaMode=false;processScan();},SCAN_DEBOUNCE_MS);
@@ -1580,7 +1583,7 @@ function processScan(){
   const _ph=new Date().getHours();if(_ph<8||_ph>=21){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
   const inp=document.getElementById('scanInput');
   const raw=inp.value.trim();if(!raw)return;
-  inp.value='';
+  inp.value='';inp.classList.remove('pda-receiving');
   raw.split(/[\n\r]+/).map(l=>l.trim()).filter(Boolean).forEach(l=>{const p=parseScanLine(l);if(p.barcode)scanQueue.push(p);});
   // defer heavy drainQueue เพื่อให้ browser flush input clear + รับ keystroke ถัดไปก่อน
   requestAnimationFrame(drainQueue);
