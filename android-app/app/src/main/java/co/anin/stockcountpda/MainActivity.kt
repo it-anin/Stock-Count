@@ -16,8 +16,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.webkit.*
 import android.widget.Button
@@ -77,6 +75,10 @@ class MainActivity : AppCompatActivity() {
 
         setupWebView()
         findViewById<Button>(R.id.btnRetry).setOnClickListener { loadWebApp() }
+        findViewById<Button>(R.id.fabReload).setOnClickListener { loadWebApp() }
+        findViewById<Button>(R.id.fabSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
         loadWebApp()
         checkForUpdate()
     }
@@ -376,19 +378,6 @@ class MainActivity : AppCompatActivity() {
             intent.getStringExtra(key)?.let { return it }
         }
         return intent.getByteArrayExtra("barcode_bytes")?.let { String(it).trim() }
-    }
-
-    // ---- Menu -------------------------------------------------------------
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
-        R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
-        R.id.action_reload   -> { loadWebApp(); true }
-        else                 -> super.onOptionsItemSelected(item)
     }
 
     // ---- Back navigation --------------------------------------------------
