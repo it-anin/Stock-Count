@@ -1382,6 +1382,37 @@ let renderDebounceTimer=null,statsDebounceTimer=null,scanListRenderTimer=null;
 function scheduleRender(){clearTimeout(renderDebounceTimer);renderDebounceTimer=setTimeout(renderTable,80);}
 function scheduleStats(){clearTimeout(statsDebounceTimer);statsDebounceTimer=setTimeout(updateStats,80);}
 function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,20);}
+// ─── Scan Sound System (Web Audio API — ไม่ต้องมีไฟล์เสียง) ──────────────────
+let _audioCtx=null;
+function _ac(){
+  if(!_audioCtx)try{_audioCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}
+  return _audioCtx;
+}
+function beepSuccess(){
+  const ac=_ac();if(!ac)return;
+  const o=ac.createOscillator(),g=ac.createGain();
+  o.connect(g);g.connect(ac.destination);
+  o.type='sine';
+  o.frequency.setValueAtTime(1400,ac.currentTime);
+  o.frequency.exponentialRampToValueAtTime(1800,ac.currentTime+0.05);
+  g.gain.setValueAtTime(0.35,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.12);
+  o.start(ac.currentTime);o.stop(ac.currentTime+0.12);
+}
+function beepError(){
+  const ac=_ac();if(!ac)return;
+  [0,0.18].forEach(d=>{
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.type='square';
+    o.frequency.setValueAtTime(200,ac.currentTime+d);
+    g.gain.setValueAtTime(0.25,ac.currentTime+d);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d+0.13);
+    o.start(ac.currentTime+d);o.stop(ac.currentTime+d+0.13);
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 let _scanDebounceTimer=null;
 const SCAN_DEBOUNCE_MS=200; // PDA ส่ง barcode ทั้งหมดใน ~20-50ms; 200ms ปลอดภัยและสั้นกว่าการสแกน 2 ชิ้นติดกัน (~500ms+)
 const PDA_KEYSTROKE_THRESHOLD_MS=150; // gap ระหว่าง keystroke < 150ms = PDA scanner; >= 150ms = manual typing (ขยายจาก 50ms รองรับ scanner ช้า)
@@ -1546,7 +1577,7 @@ function confirmScanGap(){
 
 function processScan(){
   if(_scanGapHold)return;
-  const _ph=new Date().getHours();if(_ph<8||_ph>=21){toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
+  const _ph=new Date().getHours();if(_ph<8||_ph>=21){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
   const inp=document.getElementById('scanInput');
   const raw=inp.value.trim();if(!raw)return;
   inp.value='';
@@ -1598,6 +1629,7 @@ function handleBarcode(parsed,immediateRender=true){
     if(ex){ex.count+=aq;if(location)ex.location=location;}else state.unknownScans.push({barcode,count:aq,location:location||'',timestamp:now,scannedBy});
     appendScanRow('❓ Unknown',barcode,ex?ex.count:aq,'','unknown',location);
     _pendingPatches.add('unknown:'+barcode);
+    beepError();
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}return;
   }
 
@@ -1636,6 +1668,7 @@ function handleBarcode(parsed,immediateRender=true){
   if(!['pass','audit'].includes(sd.status))sd.status='scanning';
   appendScanRow(sku,resolvedBarcode,sd.countedQty,unitName,'scanning',location);
   _pendingPatches.add(sku);
+  beepSuccess();
   scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}
 }
 
