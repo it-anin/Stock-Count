@@ -267,7 +267,9 @@ When both Product Master and R01 are loaded, SKUs present in R01 but absent from
 
 ### Column Resizing
 
-The scan list header columns are drag-resizable via `initColResize()`. Widths are stored in `_colWidths[6]` and applied via `applyColWidths()` which sets `grid-template-columns` on every `.scan-list-header` and `.scan-row` element. The name column (index 2) is computed as the remaining space.
+The scan list header columns are drag-resizable via `initColResize()`. Widths are stored in `_colWidths` (5 elements: `[98, 120, 0, 88, 128]`) and applied via `applyColWidths()` which sets `grid-template-columns` on every `.scan-list-header` and `.scan-row` element. The name column (index 2) is computed as the remaining space (`1fr`).
+
+Scan list columns (5 total): **SKU** / **Barcode** / **Product Name** / **Qty** / **Status**. There is no separate remove-button column — the ✕ button (`btn-remove-sku`) is embedded inside the SKU cell as a flex child, visible only when `status === 'scanning'`.
 
 ### History Feature (📅 ประวัติ)
 
@@ -325,9 +327,17 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 
 ### Scan List QTY Masking
 
-The QTY column in the live scan list is intentionally masked to prevent counter bias:
-- **countedQty ≤ 100** → displays `—` (hidden)
-- **countedQty > 100** → displays actual number (as a warning to re-check)
+QTY column behavior in the live scan list depends on status and `systemQty`:
+
+| Status | Condition | Displays |
+|---|---|---|
+| `scanning` | `systemQty > 100` | Inline editable `<input>` (calls `updateInlineQty`) |
+| `scanning` | `systemQty ≤ 100` | Actual `countedQty` (bold) |
+| `unknown` | — | Actual `countedQty` (bold) — always shown |
+| other (`pass`, `audit`, etc.) | `countedQty > 100` | Number (re-check warning) |
+| other | `countedQty ≤ 100` | Empty — intentionally hidden to prevent counter bias |
+
+The inline input threshold changed from `countedQty > 100` → `systemQty > 100` (commit `b7cd9e7`).
 
 This applies to both `renderScanList()` (full re-render) and `patchScanRow()` (in-place patch).
 
@@ -371,6 +381,15 @@ Toasts appear center-screen with spring bounce animation (`@keyframes popIn`). D
 - ≤600 px (PDA/phone): single column, left panel hidden, Confirm button hidden. Page height is locked (`overflow:hidden`) and scan list body fills remaining height.
 - Portrait orientation lock via `screen.orientation.lock('portrait')`.
 - Scan input auto-refocuses on `visibilitychange` and on any click outside interactive elements — but skips refocus when any popup overlay is open (`stockPopupOverlay`, `historyStatsPopupOverlay`, `auditVerifyPopupOverlay`, `historyPopupOverlay`).
+
+**PDA-specific UI (`@media(max-width:600px)`):**
+- `.scan-header-bar` (SCAN title bar + help button) hidden (`display:none`)
+- `#btnBranchChange` (Branch selector button) hidden
+- `#pmStatusBadge` hidden
+- Header buttons (Cloud ☁, ⚙ Settings, `#branchLabel`, `#userLabel`) shrunk to `padding:2px 7px`, `font-size:0.6rem`, `border-radius:5px`
+- `#branchLabel` uses `inline-flex` + `align-items:center;justify-content:center` to keep text centered
+- Scan list grid: `85px 1fr 52px 60px` (Barcode column hidden via `display:none`, Name col fills remaining space)
+- Status label "⏳ รอยืนยัน" shortened to "⏳ รอ" on PDA (`window.innerWidth<=600` check in `getScanRowStyle()`)
 
 ## Firebase Config
 
