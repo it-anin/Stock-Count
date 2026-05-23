@@ -10,6 +10,9 @@ on:
       - 'v*'           # สร้าง Release เมื่อ push tag เช่น v1.1, v1.2
   workflow_dispatch:   # กด Run ด้วยมือจาก GitHub UI ได้เลย
 
+permissions:
+  contents: write      # จำเป็นสำหรับสร้าง GitHub Release
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,14 +27,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.6'
-
       - name: Generate Gradle Wrapper
         working-directory: android-app
-        run: gradle wrapper --gradle-version=8.6
+        run: gradle wrapper --gradle-version=8.6 --no-daemon
 
       - name: Build Debug APK
         working-directory: android-app
