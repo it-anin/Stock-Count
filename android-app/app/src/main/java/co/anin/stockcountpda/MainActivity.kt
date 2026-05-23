@@ -213,8 +213,8 @@ class MainActivity : AppCompatActivity() {
                 conn.connect()
                 if (conn.responseCode != 200) return@Thread
                 val json        = JSONObject(conn.inputStream.bufferedReader().readText())
-                val remoteCode  = json.getInt("versionCode")
-                val localCode   = BuildConfig.VERSION_CODE
+                val remoteCode: Int = json.getInt("versionCode")
+                val localCode: Int  = BuildConfig.VERSION_CODE
                 if (remoteCode <= localCode) return@Thread
                 val dlUrl   = json.getString("downloadUrl")
                 val vName   = json.optString("versionName", "ใหม่")
