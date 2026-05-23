@@ -1977,7 +1977,7 @@ function removeScanItem(sku){
 // ─────────────────────────────────────────────────────────────────────────────
 function getScanRowStyle(s){
   const m={
-    scanning:          {cls:'var(--accent)',  label:'⏳ รอยืนยัน'},
+    scanning:          {cls:'var(--accent)',  label: window.innerWidth<=600?'⏳ รอ':'⏳ รอยืนยัน'},
     pass:              {cls:'var(--green)',   label:'✅ Pass'},
     audit:             {cls:'var(--red)',     label:'⚠️ Audit'},
     audit_check:       {cls:'var(--green)',   label:'✅ Audit Check'},
