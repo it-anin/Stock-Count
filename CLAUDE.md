@@ -436,6 +436,73 @@ Fallback extra keys ลองตามลำดับ: `barcode_string`, `data`,
 - **ปุ่มทดสอบ:** ส่ง broadcast ทดสอบ barcode `8851111000429` เพื่อยืนยันว่า MainActivity รับได้
 - บันทึกใน `SharedPreferences` key `ScannerPrefs`
 
+### การแก้ปัญหาสแกน Barcode
+
+#### ปัญหา 1 — barcode ต่อกัน (concatenation)
+**อาการ:** สแกน 2 ครั้งติดกัน ได้ barcode เดียวที่ยาวผิดปกติ เช่น `49871760034854987176003485`
+
+**สาเหตุ:** Keyboard Wedge ส่งตัวอักษรทีละตัว ถ้า `PDA_KEYSTROKE_THRESHOLD_MS` ต่ำเกินไป แอปจะมองว่าอักขระแรกของ barcode ที่ 2 ยังเป็นส่วนของ barcode แรก
+
+**แก้:** เพิ่ม threshold จาก 50ms → 150ms และเพิ่ม fallback debounce 350ms สำหรับ input ≥ 6 ตัวอักษรในกรณี non-PDA mode
+
+```javascript
+const PDA_KEYSTROKE_THRESHOLD_MS = 150;  // ช่วงเวลา keystroke ที่ถือว่าเป็น PDA scan
+const SCAN_DEBOUNCE_MS = 80;             // debounce หลัง keystroke สุดท้าย
+// fallback debounce ใน handleScanInput:
+} else if (e.target.value.trim().length >= 6) {
+  _scanDebounceTimer = setTimeout(() => { processScan(); }, 350);
+}
+```
+
+**วิธีที่ดีกว่า (ไม่มีปัญหานี้เลย):** เปลี่ยนไปใช้ **Intent Broadcast Mode** — barcode ส่งมาทั้งก้อนในครั้งเดียว ไม่มีการพิมพ์ทีละตัว
+
+---
+
+#### ปัญหา 2 — barcode แสดงทีละตัว (digits appear one by one)
+**อาการ:** ระหว่างที่ Scanner กำลังส่งตัวอักษร เห็น `4`, `49`, `498`... ขึ้นในช่อง input ทีละตัว
+
+**แก้:** CSS class `pda-receiving` ซ่อน text ให้โปร่งใสระหว่างที่รับ barcode
+
+```css
+.scan-input.pda-receiving { color: transparent; caret-color: transparent; }
+```
+```javascript
+// handleScanInput: ใส่ class เมื่อ PDA mode
+if (_pdaMode) { e.target.classList.add('pda-receiving'); }
+// processScan / resetScanRuntimeState: เอา class ออก
+inp.classList.remove('pda-receiving');
+```
+
+**หมายเหตุ:** ปัญหานี้ไม่เกิดใน Intent Broadcast Mode (barcode ไม่ผ่าน input field)
+
+---
+
+#### ปัญหา 3 — scan list กระตุก / แสดงช้า (jank)
+**อาการ:** หลังสแกน รายการใหม่ขึ้นช้า หรือหน้าจอกระตุกทุกครั้งที่สแกน
+
+**แก้ 3 จุด:**
+
+1. **ลด animation** — เดิม animate ทุก `.scan-row` → เปลี่ยนเป็น animate เฉพาะ `:first-child` (แถวล่าสุด)
+```css
+.scan-row { contain: layout style; }          /* ไม่ animate ทุกแถว */
+.scan-row:first-child { animation: rowSlide 0.15s ease; } /* เฉพาะแถวใหม่ */
+```
+
+2. **ลดจำนวนแถวใน scan list** — `SCAN_LIST_MAX` 100 → 30 (render น้อยลง)
+
+3. **GPU acceleration ใน WebView** — เพิ่มใน `MainActivity.setupWebView()`:
+```kotlin
+webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+```
+
+---
+
+#### สรุป: วิธีที่แก้ได้ทุกปัญหาพร้อมกัน
+เปลี่ยน Scanner Output Mode เป็น **Broadcast Mode** (ไม่ใช่ Keyboard Simulate):
+- barcode ส่งมาทั้งก้อนเป็น Intent → ไม่มี concatenation, ไม่มีตัวอักษรทีละตัว
+- ความเร็วเทียบเท่า native scanner app (~60ms)
+- ตั้งค่าบน iTCAN IT68: Scanner Settings → Data Output Mode → Broadcast Mode
+
 ### WakeLock
 
 `MainActivity` acquire `SCREEN_BRIGHT_WAKE_LOCK` ใน `onResume` / release ใน `onPause`
