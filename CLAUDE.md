@@ -216,7 +216,14 @@ R01.102 is uploaded once at 21:00 (time-gated in normal mode). SystemQty represe
 Column mappings (zero-indexed, skip row 0 header):
 - **R01.102**: Col E (index 4)=SKU, F (5)=ProductName, G (6)=SystemQty; rows with qty≤0 are skipped. Re-uploading clears previous data (`state.r01Data = []` first) and resets all scanData to pending.
 - **R05.106**: Col A (0)=Barcode, E (4)=SKU, G (6)=unitName, H (7)=unitMultiplier.
-- **R16.104**: Col C (2) must start with `ORCM` or `OCTM`; Col O (14)=Barcode; Col R (17)=BASEQUANTITY (already converted to smallest unit); Col X (23)=SKU; TRANDATE column auto-detected from header row (row 0).
+- **R16.104**: Col C (2) กำหนดประเภทเอกสาร — กรองเฉพาะ 5 ประเภทนี้ ที่เหลือข้ามทั้งหมด:
+
+  | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
+  |---|---|---|
+  | `ORCM`, `OCTM` | ยอดขาย (Sales) | หักออก → บวกกลับเข้า countedQty (`r16SalesMap`) |
+  | `OTFB`, `ORTS`, `OTFI` | รับเข้าคลัง (Inbound) | บวกเพิ่ม → หักออกจาก countedQty (`r16InboundMap`) |
+
+  Col O (14)=Barcode; Col R (17)=BASEQUANTITY (แปลงเป็นหน่วยเล็กสุดแล้ว); Col X (23)=SKU; TRANDATE column auto-detected from header row (row 0).
 
 ### Scan Input Formats
 
