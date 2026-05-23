@@ -75,10 +75,6 @@ class MainActivity : AppCompatActivity() {
 
         setupWebView()
         findViewById<Button>(R.id.btnRetry).setOnClickListener { loadWebApp() }
-        findViewById<Button>(R.id.fabReload).setOnClickListener { loadWebApp() }
-        findViewById<Button>(R.id.fabSettings).setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
         loadWebApp()
         checkForUpdate()
     }
@@ -144,6 +140,8 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             userAgentString          = "$userAgentString StockCountPDA/1.0"
         }
+
+        webView.addJavascriptInterface(AndroidBridge(), "Android")
 
         // ให้ WebView ใช้ GPU render แทน CPU — ลด jank บน PDA ที่ CPU ช้า
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -406,5 +404,16 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Deprecated in API 33")
     override fun onBackPressed() {
         if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+    }
+
+    // ---- JavaScript Bridge ------------------------------------------------
+
+    inner class AndroidBridge {
+        @android.webkit.JavascriptInterface
+        fun openSettings() {
+            runOnUiThread {
+                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+            }
+        }
     }
 }

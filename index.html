@@ -337,6 +337,7 @@
         <div class="db-dot active" id="dbDot"></div>
         <span id="dbStatus" style="color:var(--text2)">Ready</span>
         <button onclick="pullFromCloud()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
+        <button id="btnPdaSettings" onclick="if(typeof Android!=='undefined')Android.openSettings()" style="display:none;border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;" title="ตั้งค่า Scanner">⚙</button>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">
@@ -1321,6 +1322,11 @@ function loadSession() {
   } catch(e){console.warn(e);}
 }
 window.addEventListener('DOMContentLoaded',async()=>{
+  // แสดงปุ่ม ⚙ Settings เฉพาะเมื่อรันใน PDA app (WebView)
+  if(navigator.userAgent.includes('StockCountPDA')){
+    const btn=document.getElementById('btnPdaSettings');
+    if(btn)btn.style.display='inline-block';
+  }
   initFirebase();
   initColResize();
   const _isAutoUpdate=sessionStorage.getItem('_autoUpdate')==='1';
