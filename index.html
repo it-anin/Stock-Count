@@ -156,7 +156,8 @@
     .scan-list-body::-webkit-scrollbar-thumb { background:var(--text3); border-radius:5px; min-height:40px; }
     .scan-list-body::-webkit-scrollbar-thumb:hover { background:var(--text2); }
     .scan-list-body::-webkit-scrollbar-track { background:var(--surface3); border-radius:5px; }
-    .scan-row { display:grid; grid-template-columns:98px 120px 1fr 88px 128px 105px; gap:0; border-bottom:1px solid var(--border); align-items:center; animation:rowSlide 0.18s ease; transition:background 0.1s; }
+    .scan-row { display:grid; grid-template-columns:98px 120px 1fr 88px 128px 105px; gap:0; border-bottom:1px solid var(--border); align-items:center; transition:background 0.1s; contain:layout style; }
+    .scan-row:first-child { animation:rowSlide 0.15s ease; }
     .scan-row:last-child { border-bottom:none; }
     .scan-row > div { padding:8px 10px; border-right:1px solid rgba(220,228,239,0.5); overflow:hidden; }
     .scan-row > div:last-child { border-right:none; }
@@ -1389,7 +1390,7 @@ let _popupOverlay=null;
 let renderDebounceTimer=null,statsDebounceTimer=null,scanListRenderTimer=null;
 function scheduleRender(){clearTimeout(renderDebounceTimer);renderDebounceTimer=setTimeout(renderTable,80);}
 function scheduleStats(){clearTimeout(statsDebounceTimer);statsDebounceTimer=setTimeout(updateStats,80);}
-function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,60);}
+function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,20);}
 let _scanDebounceTimer=null;
 const SCAN_DEBOUNCE_MS=200; // PDA ส่ง barcode ทั้งหมดใน ~20-50ms; 200ms ปลอดภัยและสั้นกว่าการสแกน 2 ชิ้นติดกัน (~500ms+)
 const PDA_KEYSTROKE_THRESHOLD_MS=50; // gap ระหว่าง keystroke < 50ms = PDA scanner; >= 50ms = manual typing
@@ -1827,7 +1828,7 @@ function initColResize(){
   });
 }
 
-const SCAN_LIST_MAX=100;
+const SCAN_LIST_MAX=30;
 function renderScanList(){
   const body=document.getElementById('scanListBody');
   if(!scanListMap.size){body.innerHTML='<div class="scan-list-empty">รอการสแกน...</div>';return;}

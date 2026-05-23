@@ -121,6 +121,9 @@ class MainActivity : AppCompatActivity() {
             userAgentString          = "$userAgentString StockCountPDA/1.0"
         }
 
+        // ให้ WebView ใช้ GPU render แทน CPU — ลด jank บน PDA ที่ CPU ช้า
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 progressBar.visibility = View.VISIBLE
