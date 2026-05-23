@@ -6,6 +6,8 @@ on:
     paths:
       - 'android-app/**'
       - '.github/workflows/build-apk.yml'
+    tags:
+      - 'v*'           # สร้าง Release เมื่อ push tag เช่น v1.1, v1.2
   workflow_dispatch:   # กด Run ด้วยมือจาก GitHub UI ได้เลย
 
 jobs:
@@ -22,13 +24,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ติดตั้ง Gradle 8.6 + cache — ไม่ต้องมี gradlew ในโปรเจกต์
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.6'
 
-      # สร้าง gradlew wrapper ในเครื่อง CI แทนที่จะ commit JAR ลง repo
       - name: Generate Gradle Wrapper
         working-directory: android-app
         run: gradle wrapper --gradle-version=8.6
@@ -37,27 +37,30 @@ jobs:
         working-directory: android-app
         run: ./gradlew assembleDebug --no-daemon
 
-      # อัพโหลด APK เป็น Artifact (เก็บ 60 วัน, โหลดได้จาก Actions tab)
+      # เปลี่ยนชื่อไฟล์เป็น StockCountPDA.apk (ตรงกับ downloadUrl ใน version.json)
+      - name: Rename APK
+        run: mv android-app/app/build/outputs/apk/debug/app-debug.apk android-app/app/build/outputs/apk/debug/StockCountPDA.apk
+
+      # อัปโหลดเป็น Artifact (ทุก build)
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StockCountPDA-debug-${{ github.run_number }}
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          name: StockCountPDA-${{ github.run_number }}
+          path: android-app/app/build/outputs/apk/debug/StockCountPDA.apk
           retention-days: 60
 
-      # สร้าง GitHub Release พร้อมแนบ APK เมื่อ push tag เช่น v1.0, v1.1
-      - name: Create Release
+      # สร้าง GitHub Release พร้อมแนบ APK เมื่อ push tag v*
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: android-app/app/build/outputs/apk/debug/app-debug.apk
+          files: android-app/app/build/outputs/apk/debug/StockCountPDA.apk
           name: "Stock Count PDA ${{ github.ref_name }}"
           body: |
-            ## APK สำหรับ iTCAN IT68
+            ## Stock Count PDA ${{ github.ref_name }}
 
-            ดาวน์โหลด `app-debug.apk` แล้วติดตั้งบน PDA
+            ดาวน์โหลด `StockCountPDA.apk` แล้วติดตั้งบน PDA
 
-            ### วิธีติดตั้ง
-            1. โอนไฟล์ไปที่ PDA ผ่าน USB หรือ Wi-Fi
-            2. เปิด File Manager แล้ว tap ไฟล์ .apk
-            3. กด ติดตั้ง
+            ### วิธีอัปเดต
+            1. เปิดแอป → จะมี popup แจ้งเตือนอัตโนมัติ → กด อัปเดต
+            2. หรือโอนไฟล์ไปที่ PDA ผ่าน USB แล้วติดตั้งเอง
