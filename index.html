@@ -1393,7 +1393,7 @@ function scheduleStats(){clearTimeout(statsDebounceTimer);statsDebounceTimer=set
 function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,20);}
 let _scanDebounceTimer=null;
 const SCAN_DEBOUNCE_MS=200; // PDA ส่ง barcode ทั้งหมดใน ~20-50ms; 200ms ปลอดภัยและสั้นกว่าการสแกน 2 ชิ้นติดกัน (~500ms+)
-const PDA_KEYSTROKE_THRESHOLD_MS=50; // gap ระหว่าง keystroke < 50ms = PDA scanner; >= 50ms = manual typing
+const PDA_KEYSTROKE_THRESHOLD_MS=150; // gap ระหว่าง keystroke < 150ms = PDA scanner; >= 150ms = manual typing (ขยายจาก 50ms รองรับ scanner ช้า)
 let _lastKeystrokeTime=0; // ใช้ตรวจจับ PDA vs manual
 let _pdaMode=false;       // true = PDA scanner กำลัง inject → ใช้ debounce; false = manual → ต้องกด Enter
 function resetScanRuntimeState(){
@@ -1453,8 +1453,12 @@ function handleScanInput(e){
   if(_pdaMode){
     // PDA mode: debounce auto-submit 200ms หลังตัวอักษรสุดท้าย
     _scanDebounceTimer=setTimeout(()=>{_scanDebounceTimer=null;_lastKeystrokeTime=0;_pdaMode=false;processScan();},SCAN_DEBOUNCE_MS);
+  } else if(e.target.value.trim().length>=6){
+    // Fallback: scanner ช้ามาก (> 150ms/char) แต่ input ยาวพอเป็น barcode
+    // auto-submit หลัง 600ms ที่ไม่มี keystroke ใหม่
+    _scanDebounceTimer=setTimeout(()=>{_scanDebounceTimer=null;_lastKeystrokeTime=0;processScan();},600);
   }
-  // Manual mode: ไม่ auto-submit — ต้องกด Enter เอง
+  // Manual mode (< 6 ตัว): ไม่ auto-submit — ต้องกด Enter เอง
 }
 
 // ===================== SKU Direct Scan Map =====================
