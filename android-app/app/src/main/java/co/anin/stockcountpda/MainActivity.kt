@@ -257,7 +257,7 @@ class MainActivity : AppCompatActivity() {
             append("\n\nกด อัปเดต เพื่อดาวน์โหลดและติดตั้งอัตโนมัติ")
         }
         AlertDialog.Builder(this)
-            .setTitle("🔄 มีอัปเดตใหม่")
+            .setTitle("มีอัปเดตใหม่")
             .setMessage(msg)
             .setPositiveButton("อัปเดต") { _, _ -> startDownload(downloadUrl) }
             .setNegativeButton("ภายหลัง", null)
@@ -266,41 +266,62 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startDownload(url: String) {
-        // ลบไฟล์เก่าถ้ามี
-        File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_FILE_NAME)
-            .takeIf { it.exists() }?.delete()
+        try {
+            // ลบไฟล์เก่าถ้ามี
+            File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_FILE_NAME)
+                .takeIf { it.exists() }?.delete()
 
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("Stock Count PDA — กำลังดาวน์โหลดอัปเดต")
-            .setDescription("กรุณารอสักครู่...")
-            .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, APK_FILE_NAME)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setAllowedNetworkTypes(
-                DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE
-            )
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle("Stock Count PDA — กำลังดาวน์โหลดอัปเดต")
+                .setDescription("กรุณารอสักครู่...")
+                .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, APK_FILE_NAME)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedNetworkTypes(
+                    DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE
+                )
 
-        val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        downloadId = dm.enqueue(request)
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            downloadId = dm.enqueue(request)
 
-        Toast.makeText(this, "กำลังดาวน์โหลด... ดูความคืบหน้าที่แถบแจ้งเตือน", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "กำลังดาวน์โหลด... รอสักครู่", Toast.LENGTH_LONG).show()
 
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id != downloadId) return
-                try { unregisterReceiver(this) } catch (_: Exception) {}
-                val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_FILE_NAME)
-                if (file.exists()) installApk(file)
-                else Toast.makeText(this@MainActivity, "ดาวน์โหลดล้มเหลว กรุณาลองใหม่", Toast.LENGTH_LONG).show()
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                    if (id != downloadId) return
+                    try { unregisterReceiver(this) } catch (_: Exception) {}
+                    val file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_FILE_NAME)
+                    if (file.exists() && file.length() > 0) {
+                        installApk(file)
+                    } else {
+                        runOnUiThread { showDownloadFallback(url) }
+                    }
+                }
             }
-        }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_EXPORTED)
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+            }
+        } catch (e: Exception) {
+            // DownloadManager ล้มเหลว → เปิด browser ให้ดาวน์โหลดเอง
+            showDownloadFallback(url)
         }
+    }
+
+    private fun showDownloadFallback(url: String) {
+        AlertDialog.Builder(this)
+            .setTitle("ดาวน์โหลดไม่สำเร็จ")
+            .setMessage("ระบบดาวน์โหลดอัตโนมัติไม่ทำงาน\n\nกด เปิด Browser เพื่อดาวน์โหลด APK แล้วติดตั้งเอง")
+            .setPositiveButton("เปิด Browser") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
+            .setNegativeButton("ยกเลิก", null)
+            .show()
     }
 
     private fun installApk(file: File) {
