@@ -401,6 +401,20 @@ The Firebase project credentials (`FIREBASE_CONFIG`) are hardcoded in `index.htm
 
 WebView wrapper สำหรับ iTCAN IT68 PDA โหลด `https://anin-stock-count.vercel.app/` อยู่ใน `android-app/`
 
+**ชื่อแอป:** `Anin Stock Count` — กำหนดใน `android-app/app/src/main/res/values/strings.xml` (`app_name`)
+
+**App Icon:** PNG pre-composed (ไม่ใช่ vector/adaptive) — เปลี่ยนโดย replace ไฟล์ต่อไปนี้พร้อมกัน:
+- `mipmap-mdpi/ic_launcher.png` (48px), `mipmap-hdpi` (72px), `mipmap-xhdpi` (96px), `mipmap-xxhdpi` (144px), `mipmap-xxxhdpi` (192px)
+- `mipmap-*/ic_launcher_round.png` — ใช้รูปเดียวกัน
+- `drawable/ic_launcher.png` (432px) — ใช้โดย adaptive icon XML สำหรับ Android 8+
+
+เตรียมรูปต้นฉบับขนาด **1024×1024 px PNG** แล้ว resize ด้วย Python/Pillow:
+```python
+from PIL import Image
+img = Image.open("icon.png").convert("RGBA")
+img.resize((px, px), Image.LANCZOS).save(out, "PNG")
+```
+
 ### Build
 
 GitHub Actions build อัตโนมัติทุกครั้งที่ push ไปที่ `main` (path `android-app/**`):
