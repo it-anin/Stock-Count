@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Stock Count PDA</string>
+    <string name="app_name">Anin Stock Count</string>
     <string name="title_settings">ตั้งค่า Scanner</string>
     <string name="action_settings">ตั้งค่า</string>
     <string name="action_reload">โหลดใหม่</string>
