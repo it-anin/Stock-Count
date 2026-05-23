@@ -368,3 +368,86 @@ Toasts appear center-screen with spring bounce animation (`@keyframes popIn`). D
 ## Firebase Config
 
 The Firebase project credentials (`FIREBASE_CONFIG`) are hardcoded in `index.html`. The project is `stock-count-1d6e7`. Firestore is the only Firebase service used.
+
+---
+
+## Android App (PDA)
+
+WebView wrapper สำหรับ iTCAN IT68 PDA โหลด `https://anin-stock-count.vercel.app/` อยู่ใน `android-app/`
+
+### Build
+
+GitHub Actions build อัตโนมัติทุกครั้งที่ push ไปที่ `main` (path `android-app/**`):
+- ดาวน์โหลด APK ได้จาก Actions → Artifacts → `StockCountPDA-N.apk`
+- push tag `v*` (เช่น `v1.2`) → สร้าง GitHub Release พร้อม APK แนบ
+
+**Workflow:** `.github/workflows/build-apk.yml`
+- ใช้ `gradle/actions/setup-gradle@v3` + `gradle wrapper` (ไม่ commit gradlew JAR)
+- rename APK เป็น `StockCountPDA.apk` (ตรงกับ `downloadUrl` ใน `version.json`)
+
+### Signing Keystore
+
+`android-app/app/stockcount.keystore` — committed ใน repo เพื่อให้ทุก build ใช้ signature เดิม
+
+- storePassword / keyPassword: `stockcount123`
+- keyAlias: `stockcount`
+- ทั้ง debug และ release build ใช้ keystore นี้ผ่าน `signingConfig` ใน `app/build.gradle`
+
+**สำคัญ:** ห้ามลบหรือสร้าง keystore ใหม่ — จะทำให้ PDA ที่ติดตั้งอยู่อัปเดตไม่ได้ (signature mismatch)
+
+### Self-Update System
+
+1. `version.json` (root, served by Vercel) เก็บ `versionCode`, `versionName`, `downloadUrl`, `releaseNotes`
+2. `MainActivity.checkForUpdate()` fetch `version.json` เมื่อเปิดแอป เปรียบเทียบกับ `BuildConfig.VERSION_CODE`
+3. ถ้า remote > local → แสดง dialog → ดาวน์โหลดผ่าน `DownloadManager` → ติดตั้งผ่าน `FileProvider`
+
+**เมื่อ release APK ใหม่:**
+1. bump `versionCode` ใน `android-app/app/build.gradle`
+2. อัปเดต `version.json` ให้ตรงกัน
+3. push tag `v*` → GitHub Release → PDA จะ popup อัปเดตอัตโนมัติ
+
+### Scanner Integration — Intent Broadcast Mode
+
+**วิธีที่ใช้งาน (เร็วที่สุด):** Intent Broadcast — scanner ส่ง barcode ทั้งก้อนเป็น Intent ครั้งเดียว
+
+**ค่า default (iTCAN IT68 / KTE scanner):**
+- Intent Action: `com.kte.scan.result`
+- Extra Key: `code`
+
+**ตั้งค่าบน PDA:** Scanner Settings → Data Output Mode → **Broadcast Mode** → Broadcast Action: `com.kte.scan.result`
+
+**Flow:** Scanner → `BroadcastReceiver` (MainActivity) → `injectBarcode()` → `evaluateJavascript("receiveBarcode('...')")` → Web App
+
+`BroadcastReceiver` ลงทะเบียนใน `onResume` / unregister ใน `onPause` รองรับ fallback actions หลายยี่ห้อ:
+- `com.kte.scan.result` (KTE / iTCAN IT68) ← **ค่า default**
+- `com.android.server.scannerservice.broadcast`
+- `nlscan.action.SCANNER_RESULT` (Newland)
+- `com.urovo.i9000s.action` (Urovo)
+- `scan.rcv.message` (Chainway)
+- `android.intent.action.DECODE_DATA`
+
+Fallback extra keys ลองตามลำดับ: `barcode_string`, `data`, `SCAN_BARCODE_1`, `scanResult`, `scannerdata`, `com.symbol.datawedge.data_string`, `decode_data`, `barcodeData`, `code`
+
+### Settings Activity
+
+เข้าได้จาก ⚙ (มุมขวาบน) — ตั้งค่า Intent Action / Extra Key โดยไม่ต้อง rebuild APK
+
+- **Preset buttons:** KTE (iTCAN IT68), iTCAN/Generic, Newland, Honeywell, Zebra DataWedge ฯลฯ
+- **ปุ่มทดสอบ:** ส่ง broadcast ทดสอบ barcode `8851111000429` เพื่อยืนยันว่า MainActivity รับได้
+- บันทึกใน `SharedPreferences` key `ScannerPrefs`
+
+### WakeLock
+
+`MainActivity` acquire `SCREEN_BRIGHT_WAKE_LOCK` ใน `onResume` / release ใน `onPause`
+— หน้าจอไม่หรี่หรือล็อคระหว่างนับสินค้า (สูงสุด 4 ชั่วโมง)
+
+### Key Files
+
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `android-app/app/src/main/java/.../MainActivity.kt` | WebView, BroadcastReceiver, WakeLock, self-update |
+| `android-app/app/src/main/java/.../SettingsActivity.kt` | ตั้งค่า Intent Action/Key, preset buttons |
+| `android-app/app/build.gradle` | versionCode, signingConfig |
+| `android-app/app/stockcount.keystore` | signing key (ห้ามลบ) |
+| `version.json` | update manifest (served by Vercel) |
+| `.github/workflows/build-apk.yml` | CI build + GitHub Release |
