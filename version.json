@@ -1,6 +1,6 @@
 {
-  "versionCode": 1,
-  "versionName": "1.0",
+  "versionCode": 2,
+  "versionName": "1.1",
   "downloadUrl": "https://github.com/it-anin/Stock-Count/releases/latest/download/StockCountPDA.apk",
-  "releaseNotes": "เวอร์ชันแรก"
+  "releaseNotes": "- หน้าจอไม่ดับระหว่างนับสินค้า (WakeLock)\n- เร็วขึ้น: GPU render + scan debounce 80ms\n- เสียงสแกนถูก/ผิด\n- แก้เลข barcode แสดงทีละตัว"
 }

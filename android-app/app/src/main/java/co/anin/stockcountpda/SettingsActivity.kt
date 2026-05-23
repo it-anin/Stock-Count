@@ -14,6 +14,7 @@ class SettingsActivity : AppCompatActivity() {
     data class Preset(val label: String, val action: String, val extraKey: String)
 
     private val presets = listOf(
+        Preset("KTE (iTCAN IT68)",       "com.kte.scan.result",                            "code"),
         Preset("iTCAN / Generic",        "android.intent.ACTION_DECODE_DATA",              "barcode_string"),
         Preset("iTCAN (alt action)",     "com.android.server.scannerservice.broadcast",    "barcode_string"),
         Preset("Urovo / iData",          "android.intent.ACTION_DECODE_DATA",              "data"),

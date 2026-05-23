@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.Menu
 import android.view.MenuItem
@@ -42,12 +43,13 @@ class MainActivity : AppCompatActivity() {
         const val KEY_INTENT_ACTION      = "intent_action"
         const val KEY_EXTRA_KEY          = "extra_key"
         const val KEY_EXTRA_FALLBACKS    = "extra_fallbacks_enabled"
-        const val DEFAULT_ACTION         = "android.intent.ACTION_DECODE_DATA"
-        const val DEFAULT_EXTRA_KEY      = "barcode_string"
+        const val DEFAULT_ACTION         = "com.kte.scan.result"
+        const val DEFAULT_EXTRA_KEY      = "code"
 
         val FALLBACK_EXTRA_KEYS = listOf(
             "barcode_string", "data", "SCAN_BARCODE_1", "scanResult",
-            "scannerdata", "com.symbol.datawedge.data_string", "decode_data", "barcodeData"
+            "scannerdata", "com.symbol.datawedge.data_string", "decode_data", "barcodeData",
+            "code"
         )
     }
 
@@ -59,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private var scanReceiver: BroadcastReceiver? = null
     private var downloadId: Long = -1
     private var pendingInstallFile: File? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // ---- Lifecycle --------------------------------------------------------
 
@@ -80,6 +83,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        acquireWakeLock()
         registerScanReceiver()
         // กลับมาจากหน้า "อนุญาตติดตั้งแอป" → ลองติดตั้งอีกครั้ง
         pendingInstallFile?.let { file ->
@@ -95,11 +99,29 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterScanReceiver()
+        releaseWakeLock()
     }
 
     override fun onDestroy() {
         webView.destroy()
         super.onDestroy()
+    }
+
+    // ---- WakeLock (keep screen on during scanning) ------------------------
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        @Suppress("DEPRECATION")
+        wakeLock = pm.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
+            "StockCountPDA:ScanWakeLock"
+        ).also { it.acquire(4 * 60 * 60 * 1000L) } // max 4 hours
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.release()
+        wakeLock = null
     }
 
     // ---- WebView ----------------------------------------------------------
@@ -321,6 +343,7 @@ class MainActivity : AppCompatActivity() {
 
         val filter = IntentFilter(action)
         listOf(
+            "com.kte.scan.result",
             "com.android.server.scannerservice.broadcast",
             "nlscan.action.SCANNER_RESULT",
             "com.urovo.i9000s.action",
