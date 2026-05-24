@@ -913,7 +913,8 @@ function startScanSessionListener(){
         if(!s)return;
         _applyCloudScanData(s);
         rebuildScanListMap(true);
-        renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
+        invalidatePopupRowsCache();
+        renderScanList();updateStats();renderTable();updateConfirmBtn();
         document.getElementById('dbStatus').textContent='Synced ☁️';
       }catch(e){console.warn('[snapshot]',e.message);}
     },3000);
@@ -2338,7 +2339,8 @@ async function pullFromCloud(){
     if(!s){document.getElementById('dbStatus').textContent='Ready';toast('ไม่มีข้อมูลใน Cloud','warn');return;}
     const scanned=_applyCloudScanData(s);
     rebuildScanListMap(true);
-    saveSession();renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
+    invalidatePopupRowsCache();
+    saveSession();renderScanList();updateStats();renderTable();updateConfirmBtn();
     document.getElementById('dbStatus').textContent='Synced ☁️';
     toast(`ดึงข้อมูลจาก Cloud สำเร็จ — สแกนแล้ว ${scanned} SKU`,'success');
   }catch(e){document.getElementById('dbStatus').textContent='Ready';console.warn('pullFromCloud:',e.message);toast('เกิดข้อผิดพลาดในการดึงข้อมูล','error');}
