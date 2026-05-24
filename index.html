@@ -862,6 +862,8 @@ let _firestoreSyncTimer = null;
 let _pinVerified = false;
 let _pmUnsubscribe = null;
 let _pmListenerReady = false;
+let _scanSessionUnsubscribe = null;
+let _snapshotMergeTimer = null;
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
 function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
@@ -892,6 +894,30 @@ function showBranchSelector(){document.getElementById('branchModal').style.displ
 function stopProductMasterListener(){
   if(_pmUnsubscribe){_pmUnsubscribe();_pmUnsubscribe=null;}
   _pmListenerReady=false;
+}
+function stopScanSessionListener(){
+  if(_scanSessionUnsubscribe){_scanSessionUnsubscribe();_scanSessionUnsubscribe=null;}
+  clearTimeout(_snapshotMergeTimer);_snapshotMergeTimer=null;
+}
+function startScanSessionListener(){
+  if(!_db||!currentBranch||_adminMode)return;
+  stopScanSessionListener();
+  const ref=_db.collection('stock_sessions').doc(getSessionId());
+  _scanSessionUnsubscribe=ref.onSnapshot(doc=>{
+    if(!doc.exists)return;
+    clearTimeout(_snapshotMergeTimer);
+    _snapshotMergeTimer=setTimeout(()=>{
+      try{
+        const raw=doc.data();
+        const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
+        if(!s)return;
+        _applyCloudScanData(s);
+        rebuildScanListMap(true);
+        renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
+        document.getElementById('dbStatus').textContent='Synced ☁️';
+      }catch(e){console.warn('[snapshot]',e.message);}
+    },3000);
+  });
 }
 function applyProductMasterMeta(pmMeta){
   if(!pmMeta)return;
@@ -971,6 +997,7 @@ async function initAfterLogin(){
   updateBranchDisplay();
   await restoreFromFirestore();
   startProductMasterListener();
+  startScanSessionListener();
   rebuildScanListMap();
   renderScanList();updateStats();renderTable();
   if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
@@ -1003,6 +1030,7 @@ function requestBranchChange(){
 }
 async function selectBranch(branch){
   stopProductMasterListener();
+  stopScanSessionListener();
   if(_pinVerified){
     // สลับสาขาระหว่างใช้งาน — save สาขาเดิมก่อน
     clearTimeout(_firestoreSyncTimer);
@@ -1836,8 +1864,11 @@ const scanListMap=new Map();
 function rebuildScanListMap(force=false){
   if(force)scanListMap.clear();
   if(scanListMap.size>0||!state.scanData.size)return;
+  // assistant: แสดงเฉพาะของตัวเอง | pharmacist/ไม่ได้ login: แสดงทั้งหมด
+  const filterUser=currentUser&&currentRole!=='pharmacist';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
+    if(filterUser&&sd.scannedBy&&sd.scannedBy!==currentUser)continue;
     const si=state.skuMap.get(sku);
     const barcodes=si&&si.barcodes.length
       ?si.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName}))
@@ -2270,6 +2301,32 @@ async function syncToFirestore(overwrite=false){
   }catch(e){document.getElementById('dbStatus').textContent='Sync Error';console.warn('Firestore:',e.message);}
 }
 
+function _applyCloudScanData(s){
+  const UNCONFIRMED=new Set(['pending','scanning']);
+  const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
+  let scanned=0;
+  if(s.scanData){
+    for(const[sku,cloudItem]of Object.entries(s.scanData)){
+      if(!UNCONFIRMED.has(cloudItem.status))continue;
+      const local=state.scanData.get(sku);
+      if(local&&CONFIRMED.has(local.status))continue;
+      state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
+      if(cloudItem.status==='scanning')scanned++;
+    }
+    // ลบ local item ที่ cloud ลบออกไปแล้ว (เช่น startNewCount จากเครื่องอื่น)
+    for(const[sku,sd]of state.scanData.entries()){
+      if(UNCONFIRMED.has(sd.status)&&!s.scanData[sku]){
+        state.scanData.delete(sku);scanListMap.delete(sku);scanned=Math.max(0,scanned-1);
+      }
+    }
+  }
+  if(Array.isArray(s.unknownScans)){
+    const existBc=new Set(state.unknownScans.map(u=>u.barcode));
+    for(const u of s.unknownScans){if(!existBc.has(u.barcode)){state.unknownScans.push(u);existBc.add(u.barcode);}}
+  }
+  return scanned;
+}
+
 async function pullFromCloud(){
   if(!_db||!currentBranch){toast('ไม่สามารถเชื่อมต่อ Firestore','warn');return;}
   document.getElementById('dbStatus').textContent='Loading...';
@@ -2279,36 +2336,7 @@ async function pullFromCloud(){
     const raw=doc.data();
     const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
     if(!s){document.getElementById('dbStatus').textContent='Ready';toast('ไม่มีข้อมูลใน Cloud','warn');return;}
-    const UNCONFIRMED=new Set(['pending','scanning']);
-    const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
-    let merged=0,scanned=0;
-    if(s.scanData){
-      for(const[sku,cloudItem]of Object.entries(s.scanData)){
-        // ดึงเฉพาะ cloud item ที่ยังไม่ผ่าน Confirm
-        if(!UNCONFIRMED.has(cloudItem.status))continue;
-        const local=state.scanData.get(sku);
-        // ไม่ overwrite รายการที่ Confirm แล้วในเครื่องตัวเอง
-        if(local&&CONFIRMED.has(local.status))continue;
-        state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
-        merged++;
-        if(cloudItem.status==='scanning')scanned++;
-      }
-      // ลบ local item ที่เป็น scanning/pending แต่ cloud ลบออกไปแล้ว (เช่น startNewCount จากเครื่องอื่น)
-      let removed=0;
-      for(const[sku,sd]of state.scanData.entries()){
-        if(UNCONFIRMED.has(sd.status)&&!s.scanData[sku]){
-          state.scanData.delete(sku);
-          scanListMap.delete(sku);
-          removed++;
-        }
-      }
-      if(removed>0)scanned=Math.max(0,scanned-removed);
-    }
-    // merge unknownScans จาก cloud (เพิ่มเฉพาะที่ยังไม่มีใน local)
-    if(Array.isArray(s.unknownScans)){
-      const existBc=new Set(state.unknownScans.map(u=>u.barcode));
-      for(const u of s.unknownScans){if(!existBc.has(u.barcode)){state.unknownScans.push(u);existBc.add(u.barcode);}}
-    }
+    const scanned=_applyCloudScanData(s);
     rebuildScanListMap(true);
     saveSession();renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
     document.getElementById('dbStatus').textContent='Synced ☁️';
