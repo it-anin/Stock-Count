@@ -816,23 +816,6 @@
   </div>
 </div>
 
-<div id="reauditModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10002;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border-radius:16px;padding:32px 40px;min-width:320px;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,0.3);text-align:center;">
-    <div style="font-size:1rem;font-weight:700;color:var(--accent);margin-bottom:14px;">ตรวจซ้ำ (เภสัช)</div>
-    <div id="reauditSku" style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:2px;"></div>
-    <div id="reauditName" style="font-size:0.82rem;color:var(--text);margin-bottom:4px;min-height:18px;"></div>
-    <div style="font-size:0.78rem;color:var(--text3);margin-bottom:18px;">System Qty: <span id="reauditSysQty" style="font-weight:700;color:var(--text);">—</span></div>
-    <input id="reauditInput" type="text" placeholder="สแกนบาร์โค้ด" autocomplete="off"
-      style="width:100%;padding:11px;border:2px solid var(--border);border-radius:10px;font-size:1rem;text-align:center;margin-bottom:12px;outline:none;box-sizing:border-box;"
-      onkeydown="if(event.key==='Enter'){handleReauditScan();}" />
-    <div style="font-size:0.82rem;color:var(--text2);margin-bottom:18px;">จำนวนที่นับซ้ำ: <span id="reauditQtyDisplay" style="font-size:1.1rem;font-weight:700;color:var(--accent);">0</span></div>
-    <div style="display:flex;gap:10px;justify-content:center;">
-      <button onclick="confirmReaudit()" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">ยืนยันผลตรวจซ้ำ</button>
-      <button onclick="closeReauditModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:700;cursor:pointer;">ยกเลิก</button>
-    </div>
-  </div>
-</div>
-
 <!-- Branch Selector Modal -->
 <div id="branchModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.65);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
@@ -1720,6 +1703,7 @@ function handleBarcode(parsed,immediateRender=true){
   if(sd.status && !['pending','scanning'].includes(sd.status)){
     appendScanRow(sku,resolvedBarcode,sd.countedQty,unitName,sd.status,location);
     _pendingPatches.add(sku);
+    toast('สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','warn');
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}return;
   }
 
@@ -2111,7 +2095,6 @@ function renderPopupTable(){
     const{sku,info,sd,barcodes}=r;const sp=getStatusPill(sd.status);
     let ap;
     if(sd.status==='stock_adjustment'){ap='<span class="pill pill-audit" style="font-size:0.65rem;">⚠️ Stock Adj</span>';}
-    else if(sd.status==='audit'&&currentRole==='pharmacist'){ap=`<button class="btn-audit-inline" onclick="openReauditModal('${sku.replace(/'/g,"\\'")}')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--accent);background:rgba(0,114,198,0.1);color:var(--accent);font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap;">ตรวจซ้ำ</button>`;}
     else if(sd.auditStatus==='approved'){ap='<span class="pill pill-pass">✅</span>';}
     else if(sd.auditStatus==='pending'&&sd.status!=='pending'){ap='<span class="pill pill-audit">⏳</span>';}
     else{ap='—';}
@@ -2383,67 +2366,7 @@ async function restoreFromFirestore(force=false){
 
 applyAdminUI();
 
-// ===================== Re-audit (เภสัช) =====================
-let _reauditSku='';
-let _reauditQty=0;
 
-function openReauditModal(sku){
-  const sd=state.scanData.get(sku);
-  const si=state.skuMap.get(sku);
-  if(!sd||!si||sd.status!=='audit')return;
-  _reauditSku=sku;
-  _reauditQty=0;
-  document.getElementById('reauditSku').textContent='SKU: '+sku;
-  document.getElementById('reauditName').textContent=si.productName||'';
-  document.getElementById('reauditSysQty').textContent=si.systemQty;
-  document.getElementById('reauditQtyDisplay').textContent='0';
-  document.getElementById('reauditInput').value='';
-  document.getElementById('reauditModal').style.display='flex';
-  setTimeout(()=>document.getElementById('reauditInput').focus(),80);
-}
-function handleReauditScan(){
-  const raw=document.getElementById('reauditInput').value.trim();
-  if(!raw)return;
-  document.getElementById('reauditInput').value='';
-  // parse: barcode[,qty] or SKU[,qty]
-  const parts=raw.split(',');
-  const bc=parts[0].trim();
-  const qty=parts[1]?parseFloat(parts[1]):null;
-  // look up mult via barcodeMap
-  const sku=state.barcodeMap.get(bc)||(_reauditSku===bc?_reauditSku:null);
-  if(sku&&sku!==_reauditSku){toast('บาร์โค้ดไม่ตรงกับสินค้าที่ตรวจซ้ำ','warn');return;}
-  const si=state.skuMap.get(_reauditSku);
-  let mult=1;
-  if(si){const bi=si.barcodes.find(b=>b.barcode===bc);if(bi&&bi.unitMultiplier)mult=bi.unitMultiplier;}
-  const addQty=qty!==null?qty*mult:mult;
-  _reauditQty+=addQty;
-  document.getElementById('reauditQtyDisplay').textContent=_reauditQty;
-  document.getElementById('reauditInput').focus();
-}
-function confirmReaudit(){
-  if(!_reauditSku)return;
-  const sd=state.scanData.get(_reauditSku);
-  const si=state.skuMap.get(_reauditSku);
-  if(!sd||!si){closeReauditModal();return;}
-  if(_reauditQty===si.systemQty){
-    sd.status='pass';
-    sd.auditStatus='approved';
-    toast('ตรวจซ้ำผ่าน → Pass','success');
-  }else{
-    sd.status='stock_adjustment';
-    sd.auditStatus='stock_adjustment';
-    toast('ตรวจซ้ำไม่ผ่าน → Stock Adjustment','warn');
-  }
-  sd.auditor=currentUser;
-  if(scanListMap.has(_reauditSku))scanListMap.get(_reauditSku).status=sd.status;
-  closeReauditModal();
-  invalidatePopupRowsCache();
-  saveSession();syncToFirestore();renderScanList();updateStats();renderTable();
-}
-function closeReauditModal(){
-  document.getElementById('reauditModal').style.display='none';
-  _reauditSku='';_reauditQty=0;
-}
 
 // ===================== Audit Verify (เภสัชเท่านั้น) =====================
 const _avMap=new Map();
