@@ -1435,6 +1435,19 @@ function beepError(){
     o.start(ac.currentTime+d);o.stop(ac.currentTime+d+0.13);
   });
 }
+function beepWarn(){
+  const ac=_ac();if(!ac)return;
+  [440,330,220].forEach((freq,i)=>{
+    const d=i*0.16;
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(freq,ac.currentTime+d);
+    g.gain.setValueAtTime(0.3,ac.currentTime+d);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d+0.14);
+    o.start(ac.currentTime+d);o.stop(ac.currentTime+d+0.14);
+  });
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _scanDebounceTimer=null;
@@ -1575,7 +1588,7 @@ function showScanGapModal(sku,oldQty,addQty){
   document.getElementById('scanGapNewQty').textContent=0;
   document.getElementById('scanGapModal').style.display='flex';
   document.getElementById('scanInput').blur();
-  // beep / vibrate ถ้ารองรับ
+  beepWarn();
   if(navigator.vibrate)navigator.vibrate([200,100,200]);
 }
 
