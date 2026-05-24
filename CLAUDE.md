@@ -45,11 +45,13 @@ state = {
 
 `scanListMap` is a separate `Map` used only for rendering the live scan list UI (last 100 entries). It is rebuilt from `state.scanData` via `rebuildScanListMap()`.
 
+**Scan list filter by `scannedBy`:** `rebuildScanListMap(force=false)` applies a per-user filter when `currentRole !== 'pharmacist'` — assistant roles see only rows where `sd.scannedBy === currentUser`. Pharmacist sees all rows. Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) is unfiltered for all roles and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
+
 ### Data Flow
 
 1. **Upload files** → `loadR01()` / `loadR05()` / `loadProductMaster()` → `rebuildMaps()` builds `skuMap`, `barcodeMap`, `skuDirectMap` and initialises `scanData` with `pending` entries for every known SKU.
 
-2. **Scan** → `handleBarcode()` → looks up in `barcodeMap` first, then `skuDirectMap` (for SKU direct scan) → accumulates `countedQty` in `state.scanData`; status set to `scanning`. Sets `sd.scannedBy = currentUser`.
+2. **Scan** → `handleBarcode()` → looks up in `barcodeMap` first, then `skuDirectMap` (for SKU direct scan) → accumulates `countedQty` in `state.scanData`; status set to `scanning`. Sets `sd.scannedBy = currentUser`. If item is already confirmed (`pass`, `audit`, `stock_adjustment`), scanning is blocked — `countedQty` and status remain unchanged, and a warn toast "สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป" is shown.
 
 3. **Upload R16.104** → `loadR16()` → builds `r16SalesMap` + `r16RawMap` (sales: ORCM/OCTM) and `r16InboundMap` + `r16InboundRawMap` (inbound: OTFB/ORTS/OTFI) for time-filtered adjustment. After loading, automatically calls `reEvaluateAuditItems()` if matched > 0, and shows a date-mismatch warning if R16 TRANDATE dates don't overlap with scan dates.
 
@@ -138,19 +140,30 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Selected employee is store
 
 **Persisted fields in scanData:** `scannedBy`, `auditor`, `recheckQty`, `initialStatus` are all persisted (not stripped). Only `retries` and `scans` are stripped on save.
 
-### Cloud Sync — `pullFromCloud()`
+### Cloud Sync — `pullFromCloud()` และ `_applyCloudScanData()`
 
-ปุ่ม **Cloud** ในหัว (บรรทัด 336) เรียก `pullFromCloud()` เพื่อดึงข้อมูลจาก Firestore มา merge กับ local
+ปุ่ม **Cloud** ในหัว เรียก `pullFromCloud()` เพื่อดึงข้อมูลจาก Firestore มา merge กับ local
+
+Merge logic ถูกแยกออกเป็น `_applyCloudScanData(s)` (shared function) เพื่อใช้ร่วมกับ `startScanSessionListener()`:
 
 **Merge rules:**
 - ดึงเฉพาะ cloud item ที่ `status === 'pending'` หรือ `'scanning'` เท่านั้น — item ที่ Confirm แล้ว (`pass`, `audit`, `stock_adjustment`) ใน cloud จะถูกข้าม
-- ถ้า local item นั้น Confirm แล้ว (`sd.auditor` set หรือ status เป็น `pass`/`audit`/`stock_adjustment`) → ไม่ overwrite
+- ถ้า local item นั้น Confirm แล้ว → ไม่ overwrite
 - `unknownScans` จาก cloud merge เข้า local โดยเพิ่มเฉพาะ barcode ที่ยังไม่มี
 - **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud อีกต่อไป → ลบออกจาก local** (กรณี `startNewCount` จากเครื่องอื่น)
+- หลัง merge ต้องเรียก `invalidatePopupRowsCache()` **ก่อน** `renderTable()` เสมอ — มิฉะนั้น popup จะ render ด้วย cache เก่า
 
-ใช้สำหรับ: หลายเครื่องนับพร้อมกัน แต่ละเครื่อง sync ขึ้น cloud แล้วเครื่องอื่นกด Cloud เพื่อดึง pending/scanning ของทุกเครื่องมารวม
+**Workflow หลัง `startNewCount`:** กด startNewCount บนเครื่องหลัก → PDA ทุกเครื่องจะรับข้อมูลผ่าน `onSnapshot` อัตโนมัติ (ไม่ต้องกด Cloud)
 
-**Workflow หลัง `startNewCount`:** กด startNewCount บนเครื่องหลัก → PDA ทุกเครื่องกดปุ่ม **Cloud 1 ครั้ง** → รายการเก่าถูกล้าง → สแกนได้เลย ไม่ต้องกด Cloud อีก
+### Cloud Sync — `startScanSessionListener()` (onSnapshot)
+
+เริ่มทำงานอัตโนมัติหลัง login (`initAfterLogin`) — ฟัง real-time changes บน `stock_sessions/${branch}`:
+- เมื่อเครื่องอื่น sync ขึ้น cloud → `onSnapshot` fires → debounce 3s → `_applyCloudScanData()` → `rebuildScanListMap(true)` → render
+- **ไม่เรียก `saveSession()`** ใน handler เพื่อป้องกัน sync loop
+- ปิด listener อัตโนมัติเมื่อ switch branch (`stopScanSessionListener()`)
+- ไม่ทำงานใน admin mode (`_adminMode`)
+
+**ข้อจำกัด debounce:** ถ้า 4 เครื่อง sync ต่อเนื่องทุก ~0.75s debounce 3s อาจถูก reset ซ้ำ (starvation) — จะ execute ได้เมื่อมีช่วงหยุดสแกน
 
 ### Cloud Sync — `syncToFirestore()`
 
@@ -345,7 +358,13 @@ This applies to both `renderScanList()` (full re-render) and `patchScanRow()` (i
 
 In `handleBarcode()`, if the same SKU is scanned again after more than 2 minutes since its last `timestamp`, a `scanGapModal` is shown requiring confirmation before continuing.
 
+`showScanGapModal()` triggers two alerts simultaneously:
+- **`beepWarn()`** — siren sound: 880 Hz → 440 Hz → 880 Hz → 440 Hz, 4 cycles, `square` wave, 0.22s per pulse (Web Audio API)
+- **`navigator.vibrate([200,100,200,100,200])`** — haptic pattern (ignored on desktop)
+
 On confirm (`confirmScanGap()`): `countedQty` is reset to **0** and `sd.scans` is cleared. The barcode that triggered the gap is **not** counted — the user is expected to rescan from scratch. The modal displays "นับเดิม → 0" to make this clear.
+
+`beepWarn()` uses a shared `_ac()` helper that lazily creates a single `AudioContext` (reused across calls). Requires a prior user gesture to unlock audio on mobile/WebView.
 
 ### Inline QTY Edit in Popup Table
 
@@ -373,6 +392,12 @@ After `removeScanItem`, the SKU is fully clean — re-scanning starts `countedQt
 Toasts appear center-screen with spring bounce animation (`@keyframes popIn`). Default duration: 2.5 s. Types: `info`, `success`, `warn`, `error`.
 
 `toast(msg, type, ms)` — optional third parameter `ms` overrides the display duration (e.g. `toast('...', 'warn', 7000)` for a 7-second warning). Used for R16 date-mismatch warnings which need longer visibility.
+
+**PDA toast override (`@media(max-width:600px)`):** Spring bounce is replaced with a lighter fade-slide animation to avoid jank on low-spec hardware:
+```css
+@keyframes toastFadePda { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.toast { animation: toastFadePda 0.2s ease-out !important; box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important; border-radius: 10px !important; padding: 12px 20px !important; font-size: 0.85rem !important; }
+```
 
 ### Responsive / Device Behaviour
 
