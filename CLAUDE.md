@@ -45,7 +45,14 @@ state = {
 
 `scanListMap` is a separate `Map` used only for rendering the live scan list UI (last 100 entries). It is rebuilt from `state.scanData` via `rebuildScanListMap()`.
 
-**Scan list filter by `scannedBy`:** `rebuildScanListMap(force=false)` applies a per-user filter when `currentRole !== 'pharmacist'` — assistant roles see only rows where `sd.scannedBy === currentUser`. Pharmacist sees all rows. Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) is unfiltered for all roles and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
+**Scan list filter by role:** `rebuildScanListMap(force=false)` applies role-based filtering:
+- **assistant** — แสดงเฉพาะแถวที่ `sd.scannedBy === currentUser`
+- **pharmacist** — แสดงเฉพาะ `sd.status === 'audit'` (รายการที่รอเภสัชตรวจ)
+- **ไม่ได้ login** — แสดงทั้งหมด
+
+Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) is unfiltered for all roles and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
+
+**Pharmacist PDA workflow:** เภสัช login บน PDA → scan list แสดงเฉพาะ Audit items ทันที (ไม่มี popup) → สแกน barcode ผ่านช่อง scanInput → `processPharmacistAuditScan()` สะสมใน `_avMap` → กด "✓ ยืนยัน Audit" เพื่อ confirm ทั้งหมด. Popup "รายการสต็อกสินค้า" เมื่อเภสัชเปิด จะ default filter เป็น `audit` อัตโนมัติ
 
 ### Data Flow
 
