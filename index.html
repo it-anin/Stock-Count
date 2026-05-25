@@ -2049,7 +2049,24 @@ function removeScanItem(sku){
   const row=document.querySelector(`.scan-row[data-sku="${CSS.escape(sku)}"]`);
   if(row)row.remove();
   scheduleSave();scheduleStats();scheduleRender();invalidatePopupRowsCache();scheduleScanListRender();
+  // ลบออกจาก Firestore โดยตรง — syncToFirestore(overwrite=false) จะไม่ push pending→scanning
+  _removeSkuFromFirestore(sku);
   toast('ลบแล้ว — สแกนใหม่เพื่อเริ่มนับ','info');
+}
+
+function _removeSkuFromFirestore(sku){
+  if(_adminMode||!_db||!currentBranch)return;
+  const ref=_db.collection('stock_sessions').doc(getSessionId());
+  ref.get().then(doc=>{
+    if(!doc.exists)return;
+    const raw=doc.data();
+    const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
+    if(!s)return;
+    let changed=false;
+    if(s.scanData&&s.scanData[sku]){delete s.scanData[sku];changed=true;}
+    if(s.scanListMap&&s.scanListMap[sku]){delete s.scanListMap[sku];changed=true;}
+    if(changed)ref.set({session_data_json:JSON.stringify(s),updated_at:firebase.firestore.FieldValue.serverTimestamp()});
+  }).catch(e=>console.warn('[_removeSkuFromFirestore]',e.message));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
