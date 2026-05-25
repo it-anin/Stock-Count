@@ -1675,6 +1675,8 @@ function processPharmacistAuditScan(){
   if(existing){scanListMap.delete(sku);scanListMap.set(sku,existing);}
   else{const barcodes=si?si.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:bc,unit:''}];scanListMap.set(sku,{sku,barcodes,totalQty:sd.countedQty,status:'audit',location:'',catLabel:''});}
   renderScanList();
+  // refresh popup ถ้าเปิดอยู่
+  if(document.getElementById('stockPopupOverlay').style.display==='flex')schedulePopupRender();
   document.getElementById('scanInput').focus();
 }
 
@@ -2146,7 +2148,7 @@ function openStockPopup(){
     if(auditBtn)auditBtn.classList.add('active');
   }
   schedulePopupRender();
-  setTimeout(()=>document.getElementById('popupSearch').focus(),100);
+  if(currentRole!=='pharmacist')setTimeout(()=>document.getElementById('popupSearch').focus(),100);
 }
 function closeStockPopup(){document.getElementById('stockPopupOverlay').style.display='none';document.getElementById('scanInput').focus();}
 function handleOverlayClick(e){if(e.target===document.getElementById('stockPopupOverlay'))closeStockPopup();}
@@ -2633,6 +2635,7 @@ function updateScanInputMode(){
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=isPharm?'none':'flex';
   if(!isPharm){_avMap.clear();updatePharmacistAuditConfirmBtn();}
+  if(isPharm)openStockPopup();
 }
 
 // ─── History Stats ───────────────────────────────────────────────────────────
