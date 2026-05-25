@@ -52,7 +52,9 @@ state = {
 
 Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) is unfiltered for all roles and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
 
-**Pharmacist PDA workflow:** เภสัช login บน PDA → scan list แสดงเฉพาะ Audit items ทันที (ไม่มี popup) → สแกน barcode ผ่านช่อง scanInput → `processPharmacistAuditScan()` สะสมใน `_avMap` → กด "✓ ยืนยัน Audit" เพื่อ confirm ทั้งหมด. Popup "รายการสต็อกสินค้า" เมื่อเภสัชเปิด จะ default filter เป็น `audit` อัตโนมัติ
+**Pharmacist PDA workflow:** เภสัช login บน PDA → scan list แสดงเฉพาะ Audit items ทันที (ไม่มี popup) → สแกน barcode ผ่านช่อง scanInput → `processPharmacistAuditScan()` สะสมใน `_avMap` → ช่อง QTY ในแถวอัปเดตเป็นจำนวนที่สะสม (bold, ไม่มี toast) → กด "✓ ยืนยัน Audit" เพื่อ confirm ทั้งหมด. Popup "รายการสต็อกสินค้า" เมื่อเภสัชเปิด จะ default filter เป็น `audit` อัตโนมัติ
+
+**Scan list QTY — pharmacist audit exception:** สำหรับแถวที่ `status === 'audit'` และ `currentRole === 'pharmacist'` จะแสดง `entry.totalQty` เสมอ (bold) โดยไม่ใช้ threshold `> 100` — `entry.totalQty` ในกรณีนี้คือจำนวนที่เภสัชสแกนสะสมจาก `_avMap` ไม่ใช่ `sd.countedQty` ของผู้ช่วย ทั้ง `renderScanList()` และ `patchScanRow()` ต้องตรวจสอบเงื่อนไขนี้
 
 ### Data Flow
 
