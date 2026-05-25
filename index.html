@@ -2199,7 +2199,8 @@ function toggleAdmin(){
   if(_adminMode){
     _adminMode=false;
     applyAdminUI();
-    toast('ออกจากโหมด Administrator','info');
+    toast('ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','info');
+    syncToFirestore(true).then(()=>startScanSessionListener());
     return;
   }
   const pin=prompt('🔒 กรุณาใส่รหัส PIN เพื่อเข้าโหมด Administrator:');
