@@ -2415,7 +2415,14 @@ async function restoreFromFirestore(force=false){
       state.r16InboundMap.clear();
       if(s.r16InboundMap){for(const k in s.r16InboundMap)state.r16InboundMap.set(k,s.r16InboundMap[k]);}
     }
-    if(!force&&hasLocalSessionData&&hasLocalMasterData){document.getElementById('dbStatus').textContent='Synced';return;}
+    if(!force&&hasLocalSessionData&&hasLocalMasterData){
+      // merge confirmed items from Firestore even when local data exists
+      const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
+      let merged=false;
+      if(s.scanData){for(const k in s.scanData){const ci=s.scanData[k];if(CONFIRMED.has(ci.status)){const local=state.scanData.get(k);if(!local||!CONFIRMED.has(local.status)){state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...ci});merged=true;}}}}
+      if(merged){invalidatePopupRowsCache();rebuildScanListMap(true);renderScanList();updateStats();renderTable();updateConfirmBtn();}
+      document.getElementById('dbStatus').textContent='Synced';return;
+    }
     if(s.r01UploadedAt)_setR01Ts(s.r01UploadedAt);
     state.r16Loaded=!!s.r16Loaded;
     document.getElementById('badgeR16').textContent=state.r16Loaded?'Ready':'ยังไม่โหลด';
