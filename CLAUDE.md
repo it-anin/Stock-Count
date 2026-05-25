@@ -91,6 +91,8 @@ Three branches: **SRC**, **KKL**, **SSS**. Each has its own localStorage key (`s
 - Branch PINs are hardcoded in `BRANCH_PINS` object.
 - Admin PIN `22190` / `CLEAR_PIN` enables admin mode: bypasses time gates for R01.102 and R16.104, shows hidden upload panels (Product Master, R05), **disables Firestore sync** (local only), and shows the **🗑️ ล้างข้อมูลทั้งหมด** button.
 
+> ⚠️ **Admin Mode + Firestore:** ทุกอย่างที่ทำใน Admin Mode (อัพ R16, Confirm, Audit) จะ**ไม่ถูก sync ขึ้น Firestore เลย** — ข้อมูลอยู่ใน localStorage เครื่องนั้นเท่านั้น เครื่องอื่นจะไม่เห็น ออก Admin Mode ด้วยการคลิกปุ่มอีกครั้ง → ระบบจะ `syncToFirestore(true)` อัตโนมัติทันที
+
 ### Time Gates
 
 | Feature | Allowed window | Admin bypass |
@@ -173,6 +175,29 @@ Merge logic ถูกแยกออกเป็น `_applyCloudScanData(s)` (sh
 - ดึง cloud state มา merge ก่อน แล้วค่อย overwrite ด้วย local
 - local item ที่เป็น `pending` จะไม่ overwrite cloud item ที่มี status อื่น (เพื่อไม่ reset สิ่งที่เครื่องอื่นสแกนแล้ว)
 - **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud → ไม่ re-upload** (ป้องกัน PDA เขียนข้อมูลเก่ากลับหลัง `startNewCount`)
+
+### Known Pitfalls — Cloud Sync
+
+#### ปัญหา: เครื่องอื่นไม่เห็นข้อมูล PASS/AUDIT หลัง F5
+
+**อาการ:** เครื่อง A มี PASS=11, AUDIT=8 แต่เครื่อง B หลัง F5 เห็น COUNTED=0, PASS=0, AUDIT=0
+
+**สาเหตุที่พบบ่อย:**
+
+1. **Admin Mode ค้างอยู่บนเครื่อง A** — `syncToFirestore()` มี guard `if(_adminMode)return` ทุก operation ที่ทำใน Admin Mode จะไม่ถึง Firestore เลย
+   - ตรวจ: ปุ่มบนเครื่อง A เป็น "🔓 Administrator ON" (สีเหลือง) ไหม?
+   - แก้: คลิกปุ่มออก Admin Mode → ระบบ `syncToFirestore(true)` อัตโนมัติ
+
+2. **`restoreFromFirestore()` early return** — ถ้าเครื่อง B มี R01+R05 ใน localStorage อยู่แล้ว (`state.scanData.size > 0 && r01Data.length > 0 && r05Data.length > 0`) จะ return ก่อนโหลด scanData จาก Firestore
+   - อาการ: เครื่อง B เห็นแค่ pending ทั้งหมด ไม่เห็น PASS/AUDIT
+   - **แก้ถาวรแล้ว (commit 3baa421):** ตอนนี้ early return จะ merge confirmed items จาก Firestore เข้ามาก่อน return เสมอ
+   - แก้ทันที (กรณีใช้โค้ดเก่า): เปิด Console บนเครื่อง B พิมพ์ `restoreFromFirestore(true)`
+
+3. **มีใครกด "🔄 เริ่มนับใหม่" บนเครื่อง B** — เรียก `syncToFirestore(true)` overwrite=true ล้าง Firestore ด้วย state ว่าง
+
+**`_applyCloudScanData()` และ `pullFromCloud()` ไม่ช่วยกรณีนี้** — ฟังก์ชันเหล่านี้ merge เฉพาะ item ที่เป็น `pending`/`scanning` จาก cloud เท่านั้น (`UNCONFIRMED` set) — item ที่ Confirm แล้ว (`pass`, `audit`, `stock_adjustment`) จะถูกข้าม ดังนั้นกด Cloud ☁️ ไม่ช่วยให้เห็น PASS/AUDIT จากเครื่องอื่น
+
+---
 
 ### R16 Re-evaluation — `reEvaluateAuditItems()`
 
