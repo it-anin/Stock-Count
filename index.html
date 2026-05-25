@@ -529,9 +529,12 @@
           </div>
         </div>
 
-        <div style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);">
+        <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);">
           <button id="btnConfirm" class="btn btn-confirm" style="flex:1;" onclick="validateAndProcess()" disabled>✓ Confirm</button>
           <button class="btn btn-clear" style="flex:1;" onclick="clearScanList()">✕ Clear</button>
+        </div>
+        <div id="pharmacistAuditBar" style="display:none;padding:0 16px 14px;">
+          <button onclick="confirmAllAuditVerify()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">✓ ยืนยัน Audit (<span id="pharmacistAuditCount">0</span>)</button>
         </div>
       </div>
     </div>
@@ -973,6 +976,7 @@ function selectEmployee(name,role){
   updateUserDisplay();
   updateAuditVerifyPanel();
   updateHistoryStatsPanel();
+  updateScanInputMode();
   if(_employeeCallback)_employeeCallback();
   _employeeCallback=null;
 }
@@ -985,6 +989,7 @@ async function initAfterLogin(){
   rebuildScanListMap();
   renderScanList();updateStats();renderTable();
   if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
+  updateScanInputMode();
 }
 function updateUserDisplay(){
   const el=document.getElementById('userLabel');
@@ -1024,7 +1029,7 @@ async function selectBranch(branch){
   }
   currentBranch=branch;localStorage.setItem('selectedBranch',branch);
   document.getElementById('branchModal').style.display='none';
-  currentUser='';currentRole='';updateUserDisplay();updateAuditVerifyPanel();updateHistoryStatsPanel();
+  currentUser='';currentRole='';updateUserDisplay();updateAuditVerifyPanel();updateHistoryStatsPanel();updateScanInputMode();
   if(!_pinVerified){
     // ยังไม่ได้ใส่ PIN → แสดง PIN modal
     updateBranchDisplay();
@@ -1628,6 +1633,7 @@ function confirmScanGap(){
 
 function processScan(){
   if(_scanGapHold)return;
+  if(currentRole==='pharmacist'){processPharmacistAuditScan();return;}
   const _ph=new Date().getHours();if(_ph<8||_ph>=21){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
   const inp=document.getElementById('scanInput');
   const raw=inp.value.trim();if(!raw)return;
@@ -1635,6 +1641,41 @@ function processScan(){
   raw.split(/[\n\r]+/).map(l=>l.trim()).filter(Boolean).forEach(l=>{const p=parseScanLine(l);if(p.barcode)scanQueue.push(p);});
   // defer heavy drainQueue เพื่อให้ browser flush input clear + รับ keystroke ถัดไปก่อน
   requestAnimationFrame(drainQueue);
+}
+
+function processPharmacistAuditScan(){
+  const inp=document.getElementById('scanInput');
+  const raw=inp.value.trim();if(!raw)return;
+  inp.value='';inp.classList.remove('pda-receiving');
+  const parts=raw.split(',');
+  const bc=parts[0].trim();
+  const manualQty=parts[1]?parseFloat(parts[1]):null;
+  // resolve SKU จาก barcode หรือ SKU ตรง
+  let sku=state.barcodeMap.get(bc);
+  if(!sku&&state.skuDirectMap&&state.skuDirectMap.has(bc))sku=bc;
+  if(!sku){beepError();toast(`ไม่พบ barcode: ${bc}`,'warn');document.getElementById('scanInput').focus();return;}
+  const sd=state.scanData.get(sku);
+  if(!sd||sd.status!=='audit'){
+    beepError();
+    const sl=sd?sd.status:'ไม่พบ';
+    toast(`${sku}: สถานะ "${sl}" — ไม่ใช่ Audit`,'warn');
+    document.getElementById('scanInput').focus();return;
+  }
+  const si=state.skuMap.get(sku);
+  let mult=1;
+  if(si){const bi=si.barcodes.find(b=>b.barcode===bc);if(bi)mult=bi.unitMultiplier||1;}
+  const addQty=manualQty!==null?manualQty*mult:mult;
+  const newTotal=(_avMap.get(sku)||0)+addQty;
+  _avMap.set(sku,newTotal);
+  beepSuccess();
+  toast(`🔍 ${si?si.productName:sku}  ${newTotal} / ระบบ ${si?si.systemQty:'?'}`,'info',2000);
+  updatePharmacistAuditConfirmBtn();
+  // ย้ายขึ้นบนสุดใน RESULT
+  const existing=scanListMap.get(sku);
+  if(existing){scanListMap.delete(sku);scanListMap.set(sku,existing);}
+  else{const barcodes=si?si.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:bc,unit:''}];scanListMap.set(sku,{sku,barcodes,totalQty:sd.countedQty,status:'audit',location:'',catLabel:''});}
+  renderScanList();
+  document.getElementById('scanInput').focus();
 }
 
 function drainQueue(){
@@ -1647,7 +1688,7 @@ function drainQueue(){
     const i=scanQueue.shift();
     handleBarcode(typeof i==='string'?parseScanLine(i):i,false);
   }
-  if(scanListMap.size>prevSize){renderScanList();}else{_pendingPatches.forEach(patchScanRow);}
+  if(scanListMap.size>prevSize||_pendingPatches.size>0){renderScanList();}else{_pendingPatches.forEach(patchScanRow);}
   scheduleStats();scheduleRender();scanProcessing=false;
 }
 
@@ -1868,6 +1909,8 @@ function appendScanRow(sku,barcode,totalQty,unit,status,location='',catLabel='')
   const e=scanListMap.get(key);
   if(!e.barcodes.find(b=>b.barcode===barcode))e.barcodes.push({barcode,unit});
   e.totalQty=totalQty;e.status=status;if(location)e.location=location;if(catLabel)e.catLabel=catLabel;
+  // ย้ายไปท้าย Map เสมอ เพื่อให้ขึ้นบนสุดหลัง .reverse() ใน renderScanList
+  scanListMap.delete(key);scanListMap.set(key,e);
 }
 
 function clearScanList(){
@@ -2420,6 +2463,7 @@ function handleAuditVerifyScan(){
 function confirmAllAuditVerify(){
   if(!_avMap.size){toast('ยังไม่มีรายการที่สแกน','warn');return;}
   for(const sku of [..._avMap.keys()])confirmAuditVerifyItem(sku);
+  updatePharmacistAuditConfirmBtn();
 }
 
 function confirmAuditVerifyItem(sku){
@@ -2527,6 +2571,21 @@ function updateAuditVerifyPanel(){
   }
   if(lock)lock.style.display=isPharm?'none':'block';
   updateAuditVerifyCount();
+}
+
+function updatePharmacistAuditConfirmBtn(){
+  const el=document.getElementById('pharmacistAuditCount');
+  if(el)el.textContent=_avMap.size;
+}
+function updateScanInputMode(){
+  const isPharm=currentRole==='pharmacist';
+  const inp=document.getElementById('scanInput');
+  if(inp)inp.placeholder=isPharm?'🔍 สแกน Barcode เพื่อ Audit Verify...':'Scan Barcode';
+  const bar=document.getElementById('pharmacistAuditBar');
+  if(bar)bar.style.display=isPharm?'block':'none';
+  const ccRow=document.getElementById('confirmClearRow');
+  if(ccRow)ccRow.style.display=isPharm?'none':'flex';
+  if(!isPharm){_avMap.clear();updatePharmacistAuditConfirmBtn();}
 }
 
 // ─── History Stats ───────────────────────────────────────────────────────────
