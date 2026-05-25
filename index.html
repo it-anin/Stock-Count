@@ -2398,12 +2398,23 @@ async function restoreFromFirestore(force=false){
     // ถ้า localStorage มี scanData+master อยู่แล้ว ใช้ข้อมูลนั้น (ใหม่กว่า Firestore) เว้นแต่ force=true
     const hasLocalSessionData=state.scanData.size>0;
     const hasLocalMasterData=state.r01Data.length>0&&state.r05Data.length>0;
-    if(!force&&hasLocalSessionData&&hasLocalMasterData){document.getElementById('dbStatus').textContent='Synced';return;}
     const doc=await _db.collection('stock_sessions').doc(getSessionId()).get();
     if(!doc.exists){document.getElementById('dbStatus').textContent='Ready';return;}
     const raw=doc.data();
     const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
     if(!s){document.getElementById('dbStatus').textContent='Ready';return;}
+    // อัปเดต r16Loaded จาก Firestore ก่อน early return เสมอ
+    // เพื่อให้ badge R16 ถูกต้องแม้ PDA จะมี local scan data อยู่แล้ว
+    if(!state.r16Loaded&&s.r16Loaded){
+      state.r16Loaded=true;
+      document.getElementById('badgeR16').textContent='Ready';
+      _setR16Ts(s.r16UploadedAt||'');
+      state.r16SalesMap.clear();
+      if(s.r16SalesMap){for(const k in s.r16SalesMap)state.r16SalesMap.set(k,s.r16SalesMap[k]);}
+      state.r16InboundMap.clear();
+      if(s.r16InboundMap){for(const k in s.r16InboundMap)state.r16InboundMap.set(k,s.r16InboundMap[k]);}
+    }
+    if(!force&&hasLocalSessionData&&hasLocalMasterData){document.getElementById('dbStatus').textContent='Synced';return;}
     if(s.r01UploadedAt)_setR01Ts(s.r01UploadedAt);
     state.r16Loaded=!!s.r16Loaded;
     document.getElementById('badgeR16').textContent=state.r16Loaded?'Ready':'ยังไม่โหลด';
