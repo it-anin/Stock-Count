@@ -1892,10 +1892,12 @@ const scanListMap=new Map();
 function rebuildScanListMap(force=false){
   if(force)scanListMap.clear();
   if(scanListMap.size>0||!state.scanData.size)return;
-  // assistant: แสดงเฉพาะของตัวเอง | pharmacist/ไม่ได้ login: แสดงทั้งหมด
+  // assistant: แสดงเฉพาะของตัวเอง | pharmacist: แสดงเฉพาะ audit | ไม่ได้ login: แสดงทั้งหมด
   const filterUser=currentUser&&currentRole!=='pharmacist';
+  const filterAudit=currentRole==='pharmacist';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
+    if(filterAudit&&sd.status!=='audit')continue;
     if(filterUser&&sd.scannedBy&&sd.scannedBy!==currentUser)continue;
     const si=state.skuMap.get(sku);
     const barcodes=si&&si.barcodes.length
@@ -2635,7 +2637,6 @@ function updateScanInputMode(){
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=isPharm?'none':'flex';
   if(!isPharm){_avMap.clear();updatePharmacistAuditConfirmBtn();}
-  if(isPharm)openStockPopup();
 }
 
 // ─── History Stats ───────────────────────────────────────────────────────────
