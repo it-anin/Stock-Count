@@ -2597,7 +2597,7 @@ function updatePharmacistAuditConfirmBtn(){
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
   const inp=document.getElementById('scanInput');
-  if(inp)inp.placeholder=isPharm?'🔍 สแกน Barcode เพื่อ Audit Verify...':'Scan Barcode';
+  if(inp)inp.placeholder='Scan Barcode';
   const bar=document.getElementById('pharmacistAuditBar');
   if(bar)bar.style.display=isPharm?'block':'none';
   const ccRow=document.getElementById('confirmClearRow');
