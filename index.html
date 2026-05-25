@@ -2136,7 +2136,18 @@ function buildPopupBaseRows(){
   return base;
 }
 
-function openStockPopup(){document.getElementById('stockPopupOverlay').style.display='flex';document.getElementById('popupSearch').value='';schedulePopupRender();setTimeout(()=>document.getElementById('popupSearch').focus(),100);}
+function openStockPopup(){
+  document.getElementById('stockPopupOverlay').style.display='flex';
+  document.getElementById('popupSearch').value='';
+  if(currentRole==='pharmacist'){
+    popupFilterState='audit';
+    document.querySelectorAll('#stockPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));
+    const auditBtn=document.querySelector('#stockPopupOverlay .popup-filter[onclick*="\'audit\'"]');
+    if(auditBtn)auditBtn.classList.add('active');
+  }
+  schedulePopupRender();
+  setTimeout(()=>document.getElementById('popupSearch').focus(),100);
+}
 function closeStockPopup(){document.getElementById('stockPopupOverlay').style.display='none';document.getElementById('scanInput').focus();}
 function handleOverlayClick(e){if(e.target===document.getElementById('stockPopupOverlay'))closeStockPopup();}
 
