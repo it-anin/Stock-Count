@@ -467,11 +467,29 @@ WebView wrapper สำหรับ iTCAN IT68 PDA โหลด `https://anin-sto
 - `mipmap-*/ic_launcher_round.png` — ใช้รูปเดียวกัน
 - `drawable/ic_launcher.png` (432px) — ใช้โดย adaptive icon XML สำหรับ Android 8+
 
+Icon ปัจจุบัน: `Icon_StockCount.png` (อยู่ใน `C:\Users\Arm\Pictures\`)
+
 เตรียมรูปต้นฉบับขนาด **1024×1024 px PNG** แล้ว resize ด้วย Python/Pillow:
 ```python
 from PIL import Image
-img = Image.open("icon.png").convert("RGBA")
-img.resize((px, px), Image.LANCZOS).save(out, "PNG")
+import os
+
+src = r'C:\Users\Arm\Pictures\Icon_StockCount.png'
+img = Image.open(src).convert("RGBA")
+
+base = r'android-app\app\src\main\res'
+sizes = [
+    (os.path.join(base, 'mipmap-mdpi'),    48),
+    (os.path.join(base, 'mipmap-hdpi'),    72),
+    (os.path.join(base, 'mipmap-xhdpi'),   96),
+    (os.path.join(base, 'mipmap-xxhdpi'),  144),
+    (os.path.join(base, 'mipmap-xxxhdpi'), 192),
+    (os.path.join(base, 'drawable'),       432),
+]
+for folder, px in sizes:
+    resized = img.resize((px, px), Image.LANCZOS)
+    for name in ['ic_launcher.png', 'ic_launcher_round.png']:
+        resized.save(os.path.join(folder, name), 'PNG')
 ```
 
 ### Build
