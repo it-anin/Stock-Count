@@ -1,6 +1,6 @@
 {
-  "versionCode": 7,
-  "versionName": "1.6",
+  "versionCode": 8,
+  "versionName": "1.7",
   "downloadUrl": "https://github.com/it-anin/Stock-Count/releases/latest/download/StockCountPDA.apk",
-  "releaseNotes": "- เพิ่มสาขา WH (คลังกลาง) ในหน้า Dashboard\n- ปรับ label dashboard เป็นกลาง (ผู้สแกน / ผู้ตรวจ Audit) ครอบคลุมทั้งร้านยาและคลัง"
+  "releaseNotes": "- คลังกลาง (WH): เปลี่ยน tab ใน 📊 ประวัติการนับ\n  • ผู้ช่วยนับครั้งแรก → นับครั้งแรก\n  • เภสัชตรวจ → รีเช็คสินค้า"
 }

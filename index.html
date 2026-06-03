@@ -3024,6 +3024,12 @@ function openHistoryStatsPopup(){
   _hsFilter='assistant';_hsAssistantSel='';_hsFirestoreItems=null;
   const btn=document.getElementById('hsBtnAssistant');
   if(btn){document.querySelectorAll('#historyStatsPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+  // WH branch: shorten tab labels for warehouse context
+  const isWh=currentBranch==='WH';
+  const aLbl=document.querySelector('#hsBtnAssistant span:last-child');
+  const pLbl=document.querySelector('#hsBtnPharmacist span:last-child');
+  if(aLbl)aLbl.textContent=isWh?'นับครั้งแรก':'ผู้ช่วยนับครั้งแรก';
+  if(pLbl)pLbl.textContent=isWh?'รีเช็คสินค้า':'เภสัชตรวจ';
   document.getElementById('historyStatsPopupOverlay').style.display='flex';
   renderHistoryStatsTable();
 }
