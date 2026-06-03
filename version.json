@@ -1,6 +1,6 @@
 {
-  "versionCode": 9,
-  "versionName": "1.8",
+  "versionCode": 10,
+  "versionName": "1.9",
   "downloadUrl": "https://github.com/it-anin/Stock-Count/releases/latest/download/StockCountPDA.apk",
-  "releaseNotes": "- คลังกลาง (WH): หัวข้อ Audit Verify popup เปลี่ยนเป็น 🔍 Audit Verify — รีเช็คสินค้า"
+  "releaseNotes": "- เพิ่ม Export Excel ใน popup 📊 ประวัติการนับ สำหรับ tab นับครั้งแรก และ รีเช็คสินค้า\n- คอลัมน์: Location, SKU, Barcode, NAME, Unit, CountQty, SystemQty, Diff"
 }

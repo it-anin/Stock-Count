@@ -756,6 +756,7 @@
     <div class="stock-popup-footer">
       <span class="popup-row-count" id="historyStatsRowCount">0 รายการ</span>
       <div style="display:flex;gap:8px;align-items:center;">
+        <button id="btnExportHsCount" onclick="exportHsCountExcel()" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Excel</button>
         <button id="btnExportStockAdj" onclick="exportStockAdjExcel()" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Excel</button>
         <button onclick="closeHistoryStatsPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
@@ -3008,6 +3009,8 @@ function setHsFilter(f,btn){
   btn.classList.add('active');
   const exportBtn=document.getElementById('btnExportStockAdj');
   if(exportBtn)exportBtn.style.display=f==='stockadj'?'':'none';
+  const exportCountBtn=document.getElementById('btnExportHsCount');
+  if(exportCountBtn)exportCountBtn.style.display=(f==='assistant'||f==='pharmacist')?'':'none';
   renderHistoryStatsTable();
 }
 function onHsAssistantChange(){
@@ -3033,6 +3036,11 @@ function openHistoryStatsPopup(){
   const pLbl=document.querySelector('#hsBtnPharmacist span:last-child');
   if(aLbl)aLbl.textContent=isWh?'นับครั้งแรก':'ผู้ช่วยนับครั้งแรก';
   if(pLbl)pLbl.textContent=isWh?'รีเช็คสินค้า':'เภสัชตรวจ';
+  // Export button visibility — default tab is 'assistant'
+  const exportCountBtn=document.getElementById('btnExportHsCount');
+  if(exportCountBtn)exportCountBtn.style.display='';
+  const exportAdjBtn=document.getElementById('btnExportStockAdj');
+  if(exportAdjBtn)exportAdjBtn.style.display='none';
   document.getElementById('historyStatsPopupOverlay').style.display='flex';
   renderHistoryStatsTable();
 }
@@ -3200,6 +3208,63 @@ function handleHsUploadFile(e){
     toast(`โหลดไฟล์สำเร็จ ${_hsUploadData.length} รายการ`,'info');
     renderHistoryStatsTable();
   });
+}
+
+function exportHsCountExcel(){
+  // Export "นับครั้งแรก" (assistant) or "รีเช็คสินค้า" (pharmacist) tab from History Stats popup
+  const isAssistant=_hsFilter==='assistant';
+  const isPharm=_hsFilter==='pharmacist';
+  if(!isAssistant&&!isPharm){toast('เลือก tab นับครั้งแรก หรือ รีเช็คสินค้า ก่อน','warn');return;}
+  const header=['Location','SKU','Barcode','NAME','Unit','CountQty','SystemQty','Diff'];
+  const rows=[header];
+  const collected=[];
+  if(isAssistant){
+    // First-count items: initialStatus='audit' from local; fallback to Firestore audit log
+    let foundLocal=false;
+    for(const[sku,sd] of state.scanData.entries()){
+      if(sd.initialStatus!=='audit')continue;
+      const si=state.skuMap.get(sku);if(!si)continue;
+      if(_hsAssistantSel&&sd.scannedBy!==_hsAssistantSel)continue;
+      const cnt=sd.rawCountedQty!==undefined?sd.rawCountedQty:sd.countedQty;
+      collected.push({sku,sd,si,countQty:cnt});
+      foundLocal=true;
+    }
+    if(!foundLocal&&Array.isArray(_hsFirestoreItems)){
+      _hsFirestoreItems.filter(it=>!_hsAssistantSel||it.scannedBy===_hsAssistantSel).forEach(it=>{
+        const si=state.skuMap.get(it.sku);
+        collected.push({sku:it.sku,sd:null,si,countQty:it.countedQty,fsItem:it});
+      });
+    }
+  } else {
+    // Pharmacist verify items: sd.auditor set
+    for(const[sku,sd] of state.scanData.entries()){
+      if(!sd.auditor)continue;
+      const si=state.skuMap.get(sku);if(!si)continue;
+      const cnt=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
+      collected.push({sku,sd,si,countQty:cnt});
+    }
+  }
+  if(!collected.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
+  collected.forEach(({sku,sd,si,countQty,fsItem})=>{
+    const location=sd?.location||'';
+    const barcode=(si&&si.barcodes[0]&&si.barcodes[0].barcode)||sd?.barcode||fsItem?.barcode||'';
+    const name=si?.productName||fsItem?.productName||'';
+    const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
+    const unitName=unitInfo?.unitName||'';
+    const sysQty=Number(si?.systemQty||0);
+    const cnt=Number(countQty)||0;
+    const diff=cnt-sysQty;
+    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
+  const wb=XLSX.utils.book_new();
+  const sheetName=isAssistant?'นับครั้งแรก':'รีเช็คสินค้า';
+  XLSX.utils.book_append_sheet(wb,ws,sheetName);
+  const dateStr=new Date().toISOString().slice(0,10);
+  const tag=isAssistant?'count':'recheck';
+  XLSX.writeFile(wb,`${tag}_${currentBranch||'all'}_${dateStr}.xlsx`);
+  toast(`Export ${sheetName} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
 function exportStockAdjExcel(){
