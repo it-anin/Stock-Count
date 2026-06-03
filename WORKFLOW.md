@@ -1,290 +1,431 @@
-# ขั้นตอนการทำงานของระบบนับสต็อก (Stock Count System)
+# คู่มือใช้งานระบบนับสต็อก (Stock Count System)
+
+> เอกสารนี้เป็น **Guide การใช้งานตั้งแต่เริ่มต้น** — เขียนให้พนักงานเปิดอ่านแล้วทำตามได้ทันที
+> ถ้าต้องการข้อมูลสถาปัตยกรรม / โค้ด ไปที่ [CLAUDE.md](CLAUDE.md) แทน
 
 ---
 
-## ภาพรวม
+## สารบัญ
 
-ระบบนับสต็อกเป็น PWA (Progressive Web App) ไฟล์เดียว (`index.html`) ไม่มี build step  
-ทำงานร่วมกัน 3 สาขา: **SRC / KKL / SSS** ผ่าน Firebase Firestore
+1. [ภาพรวมระบบ](#1-ภาพรวมระบบ)
+2. [การติดตั้งและเปิดใช้งานครั้งแรก](#2-การติดตั้งและเปิดใช้งานครั้งแรก)
+3. [Login — เลือกสาขา / PIN / ผู้ใช้งาน](#3-login--เลือกสาขา--pin--ผู้ใช้งาน)
+4. [การเตรียมข้อมูลก่อนเริ่มนับ](#4-การเตรียมข้อมูลก่อนเริ่มนับ)
+5. [Workflow ผู้ช่วยเภสัช (สแกนนับ)](#5-workflow-ผู้ช่วยเภสัช-สแกนนับ)
+6. [Workflow เภสัช (ตรวจซ้ำ Audit)](#6-workflow-เภสัช-ตรวจซ้ำ-audit)
+7. [Workflow คลังกลาง (WH)](#7-workflow-คลังกลาง-wh)
+8. [การใช้งานพร้อมกันหลายเครื่อง (Multi-device)](#8-การใช้งานพร้อมกันหลายเครื่อง-multi-device)
+9. [การ Confirm และจัดการผล](#9-การ-confirm-และจัดการผล)
+10. [การดูประวัติและ Export Excel](#10-การดูประวัติและ-export-excel)
+11. [การเริ่มนับใหม่ (รอบใหม่)](#11-การเริ่มนับใหม่-รอบใหม่)
+12. [Admin Mode](#12-admin-mode)
+13. [PDA — การใช้งานบนเครื่องสแกน](#13-pda--การใช้งานบนเครื่องสแกน)
+14. [Auto-Update](#14-auto-update)
+15. [การแก้ปัญหาเบื้องต้น (Troubleshooting)](#15-การแก้ปัญหาเบื้องต้น-troubleshooting)
 
 ---
 
-## 1. เริ่มต้นใช้งาน (Login Flow)
+## 1. ภาพรวมระบบ
+
+ระบบนับสต็อกเป็น **PWA** ไฟล์เดียว ใช้งานได้ทั้งบนคอมพิวเตอร์ มือถือ และ PDA scanner
+
+**สาขา (Branch) ที่รองรับ:**
+
+| Branch | ประเภท | PIN | Role / พนักงาน |
+|---|---|---|---|
+| **SRC** | ร้านขายยา | `1234` | เภสัช: เภอ๊อฟ / ผู้ช่วย: ก้า, กิฟ, สุ่ย, นิกกี้ |
+| **KKL** | ร้านขายยา | `4567` | เภสัช: เภออด / ผู้ช่วย: แตงโม, ทราย |
+| **SSS** | ร้านขายยา | `9999` | เภสัช: เภเบส / ผู้ช่วย: ออย, ฟ้าใส |
+| **WH** | คลังกลาง | `0000` | คลัง: มุก, ตั๋ง, แล็ค |
+
+**ข้อมูลของแต่ละ branch แยกขาดจากกันใน Firestore** — ไฟล์ R01/R05/R16 ของสาขายาและคลังเป็นคนละชุด อัพโหลดแยกกัน
+
+---
+
+## 2. การติดตั้งและเปิดใช้งานครั้งแรก
+
+### บนคอมพิวเตอร์ / เบราว์เซอร์
+1. เปิด URL ที่ deploy ไว้ (เช่น `https://anin-stock-count.vercel.app/`)
+2. ไม่ต้องติดตั้งอะไร — ใช้งานในเบราว์เซอร์ได้เลย
+3. (ทางเลือก) ติดตั้งเป็น PWA: เบราว์เซอร์จะถาม "Install" → กดเพื่อเพิ่มเป็นแอป
+
+### บน PDA (iTCAN IT68)
+1. ดาวน์โหลด APK จาก GitHub Release (`StockCountPDA.apk`)
+2. ติดตั้งทับเวอร์ชันเดิมได้เลย — signature เดียวกัน
+3. ตั้งค่า Scanner: **Settings → Data Output Mode → Broadcast Mode → Broadcast Action: `com.kte.scan.result`**
+4. เปิดแอป → ระบบจะเช็คอัพเดทอัตโนมัติทุกครั้งที่เปิด (ดู [Auto-Update](#14-auto-update))
+
+---
+
+## 3. Login — เลือกสาขา / PIN / ผู้ใช้งาน
 
 ```
-เปิดเบราว์เซอร์
-    ↓
-เลือกสาขา (SRC / KKL / SSS)
-    ↓
+เปิดแอป
+   ↓
+เลือกสาขา (SRC / KKL / SSS / WH)
+   ↓
 ใส่ PIN สาขา
-    ↓
-เลือกผู้ใช้งาน (เภสัช / ผู้ช่วยเภสัช)
-    ↓
-โหลดข้อมูลจาก localStorage + Firestore อัตโนมัติ
+   ↓
+เลือกผู้ใช้งาน (role ของตัวเอง)
+   ↓
+หน้าสแกนพร้อมใช้
 ```
 
-**หมายเหตุ:**
-- PIN แต่ละสาขาถูก hardcode ใน `BRANCH_PINS`
-- สิทธิ์การทำงานขึ้นกับ role: เภสัชสามารถกด **ตรวจซ้ำ** ได้ ผู้ช่วยทำไม่ได้
-- เมื่อสลับสาขา ต้องใส่ PIN ใหม่และเลือกผู้ใช้ใหม่เสมอ
+**สิ่งที่ระบบทำให้อัตโนมัติหลัง login:**
+- ดึงข้อมูลล่าสุดจาก Firestore (R01, R05, scanData, Product Master)
+- เปิด real-time listener → รับข้อมูลที่เครื่องอื่นสแกนภายใน 3 วินาที
+- แสดง header label เช่น `WH | คลัง: มุก`
+
+**การสลับสาขา:**
+- กดปุ่ม **branchLabel** ที่ header (เช่นปุ่ม `WH`)
+- ถ้ายังมีข้อมูลสแกนค้างอยู่ — ระบบขอ PIN สาขาเดิมก่อนยอมให้สลับ
 
 ---
 
-## 2. อัพโหลดไฟล์ข้อมูล
+## 4. การเตรียมข้อมูลก่อนเริ่มนับ
 
-ต้องอัพโหลดตามลำดับ **ก่อนเริ่มนับ**:
+ก่อนสแกนได้ ต้องอัพโหลดไฟล์ตามลำดับนี้ (ทำครั้งเดียวต่อรอบนับ):
 
-### 2.1 R01.102 — จำนวนสินค้า (System Qty)
-- อัพโหลดได้หลัง **21:00** เท่านั้น (ปกติ) หรือเข้า Admin Mode เพื่อข้ามเงื่อนไขเวลา
-- อ่าน: Col E = SKU, Col F = ชื่อสินค้า, Col G = SystemQty
-- ข้ามแถวที่ qty ≤ 0
-- sync ขึ้น Firestore อัตโนมัติหลังโหลด (`stock_sessions/${branch}_r01`)
+### ขั้นที่ 1: Product Master (แชร์ทุกสาขา)
 
-### 2.2 R05.106 — Barcode สินค้า
-- ซ่อนอยู่ในโหมดปกติ — แสดงเฉพาะเมื่อเข้า **Admin Mode**
-- อ่าน: Col A = Barcode, Col E = SKU, Col G = unitName, Col H = unitMultiplier
-- sync ขึ้น Firestore อัตโนมัติ (`stock_sessions/${branch}_r05`)
+- เปิด **Admin Mode** (ปุ่ม 🔒 ที่ header → ใส่ PIN `22190`)
+- อัพ Product Master 1 ครั้ง → ใช้ได้ทั้ง 4 สาขา (SRC/KKL/SSS/WH)
+- แชร์ผ่าน Firestore `stock_sessions/global_pm` → ทุกเครื่องได้รับอัตโนมัติ
+- **สำคัญสำหรับ WH:** Product Master ต้องครอบคลุม SKU ของคลังด้วย ไม่งั้นสินค้าคลังจะขึ้น badge **DEL** สีแดง
+- ออก Admin Mode หลังอัพเสร็จ (กดปุ่ม 🔓 อีกครั้ง)
 
-### 2.3 Product Master (ตัวเลือก — Admin เท่านั้น)
-- แหล่งชื่อสินค้าหลัก ใช้แทนชื่อจาก R01
-- อ่าน: Col A = SKU, Col B = ชื่อสินค้า, Col D = สถานะ (ข้ามถ้าเป็น `P` หรือ `REVIEW`)
-- shared ทุกสาขา — sync ผ่าน `stock_sessions/global_pm` พร้อม real-time listener
-- SKU ที่อยู่ใน R01 แต่ไม่อยู่ใน PM จะถูก flag เป็น **DEL**
+### ขั้นที่ 2: R05.106 (Barcode สินค้า) — Admin เท่านั้น
 
-### 2.4 R16.104 — ยอดขาย/รับเข้าระหว่างนับ
-- อัพโหลดก่อนกด Confirm เสมอ (ปุ่ม Confirm จะ disabled จนกว่าจะโหลด R16)
-- อ่าน Col C เพื่อแยกประเภท:
-  - `ORCM` / `OCTM` → **ยอดขาย** → บวกกลับเข้า countedQty ตอน Confirm
-  - `OTFB` / `ORTS` / `OTFI` → **ยอดรับเข้า** → หักออกจาก countedQty ตอน Confirm
-- ตรวจจับ TRANDATE column อัตโนมัติจาก header row เพื่อ filter ตามเวลาสแกน
+- ในโหมดปกติ panel ของ R05 ถูกซ่อน — เข้า Admin Mode ก่อน
+- อัพ R05 ของสาขาตัวเอง (สาขายา = ไฟล์ของยา / WH = ไฟล์ของคลัง)
+- sync ขึ้น Firestore `stock_sessions/${branch}_r05` อัตโนมัติ
+- เครื่อง PDA อื่น login สาขาเดียวกัน → ดึงผ่าน Cloud ได้เลย ไม่ต้องอัพซ้ำ
+
+### ขั้นที่ 3: R01.102 (จำนวนคงเหลือในระบบ)
+
+- ⏰ **เปิดให้อัพหลัง 21:00** เท่านั้น (ถ้าจำเป็นอัพก่อนเวลา → เข้า Admin Mode)
+- เลือกไฟล์ R01.102 ของวันที่จะนับ
+- ระบบอ่าน Col E=SKU, F=ชื่อ, G=SystemQty (ข้ามแถวที่ qty ≤ 0)
+- หลังโหลด: ทุก SKU ใน R01 จะถูกเตรียมไว้พร้อมสแกน (status = `pending`)
+- sync ขึ้น Firestore `stock_sessions/${branch}_r01` อัตโนมัติ
+
+### ขั้นที่ 4: เริ่มสแกนได้
+
+ตอนนี้ตรวจดู badge ทั้ง 3 ต้องเป็นสีเขียว **Ready**:
+- 🟢 Product Master Ready
+- 🟢 R05.106 Ready
+- 🟢 R01.102 Ready
+
+R16.104 ยังไม่ต้องอัพ — อัพช่วงเย็นก่อนกด Confirm
 
 ---
 
-## 3. สร้าง Map ภายใน (rebuildMaps)
+## 5. Workflow ผู้ช่วยเภสัช (สแกนนับ)
 
-หลังโหลด R01 + R05 ระบบสร้าง:
+**ใครใช้:** ก้า, กิฟ, สุ่ย, นิกกี้, แตงโม, ทราย, ออย, ฟ้าใส (role = `assistant`)
 
-| Map | คีย์ | ค่า |
+### ขั้นตอน
+
+1. **Login เลือกชื่อตัวเอง** — ระบบจะกรอง scan list ให้เห็นเฉพาะของตัวเอง
+2. **ช่วงเวลาที่สแกนได้: 08:00 – 20:59** (นอกเวลานี้สแกนไม่ได้ ระบบจะเตือน)
+3. **สแกน barcode** ทีละชิ้น/ทีละกล่อง:
+   - PDA: ยิง barcode → ระบบรับและบันทึกอัตโนมัติ
+   - มือ: พิมพ์ barcode + กด **Enter** หรือคลิกปุ่ม **⏎**
+4. **รูปแบบที่รองรับ:**
+   ```
+   barcode              → qty = 1
+   barcode,5            → qty = 5
+   A1,barcode,5         → location=A1, qty=5
+   SKU                  → ระบบหา barcode หน่วยเล็กสุดให้
+   ```
+5. **ดู scan list:** รายการล่าสุดอยู่ด้านบน — เห็นเฉพาะของตัวเอง
+6. **ถ้าสแกนผิด:** กดปุ่ม **✕** ข้างแถวนั้น → reset SKU กลับเป็น `pending` → สแกนใหม่ได้
+7. **ถ้าหยุดไป > 2 นาที** แล้วสแกน SKU เดิมซ้ำ → modal เตือน "หยุดเกิน 2 นาที" → กดยืนยัน → `countedQty` reset เป็น 0, ต้องสแกนใหม่ตั้งแต่ต้น
+
+### กฎสำคัญ
+- 🚫 SKU ที่ Confirm ผ่านไปแล้ว (`pass`, `audit`, `stock_adjustment`) **สแกนซ้ำไม่ได้** — toast เตือน "สแกนและ Confirm ไปแล้ว"
+- ✅ ถ้า systemQty > 100 → ช่อง QTY ในแถวกลายเป็น **input number** กดแก้ตัวเลขตรงๆ ได้
+
+---
+
+## 6. Workflow เภสัช (ตรวจซ้ำ Audit)
+
+**ใครใช้:** เภอ๊อฟ, เภออด, เภเบส (role = `pharmacist`)
+
+### Workflow บน Desktop / Browser
+
+1. **Login เลือกตัวเอง** → scan list จะกรองให้เห็นเฉพาะ **รายการที่ต้องตรวจ (audit)**
+2. หลังผู้ช่วยทุกคนสแกนเสร็จและ Confirm แล้ว → รายการที่ตัวเลขไม่ตรงระบบจะอยู่ใน status `audit`
+3. กดปุ่ม **Audit Verify** ที่ panel
+4. หน้าต่าง popup เปิด — เภสัชสแกน barcode ในช่อง scan ของ popup
+5. ระบบสะสมจำนวนใน `_avMap`
+6. กด **ยืนยันทั้งหมด**:
+   - ถ้าจำนวนเภสัชสแกน **ตรงกับ systemQty** → status = `pass` ✅
+   - ถ้า **ไม่ตรง** → status = `stock_adjustment` 🔴 (ต้องปรับสต็อก)
+7. ระบบบันทึก: `auditor = ชื่อเภสัช`, `recheckQty = จำนวนที่สแกน`, timestamp ปัจจุบัน
+8. แจ้งเตือน OS (Web Notification) เมื่อ Confirm สำเร็จ
+
+### Workflow บน PDA (เภสัช)
+
+1. login บน PDA → ระบบจะแสดงเฉพาะ audit items ใน scan list อัตโนมัติ
+2. ยิง barcode เลย — ระบบสะสมจำนวนใน `_avMap` (ไม่ต้องเปิด popup)
+3. ช่อง QTY ในแถวจะแสดงจำนวนที่สะสม (**bold**, ไม่มี toast)
+4. กดปุ่ม **✓ ยืนยัน Audit** → confirm ทั้งหมดในรอบเดียว
+
+---
+
+## 7. Workflow คลังกลาง (WH)
+
+**ใครใช้:** มุก, ตั๋ง, แล็ค (role = `warehouse`) — สาขา **WH**
+
+> 💡 Role นี้ **flat** — 3 คนทำได้ทุกอย่าง (สแกนนับ + ตรวจซ้ำ) ในคนเดียวกัน
+
+### ขั้นตอน
+
+1. **Login สาขา WH** (PIN `0000`) → เลือกชื่อตัวเอง
+2. ทุกคน **ทำงานเหมือนผู้ช่วยเภสัช** — สแกนนับสินค้าในคลัง
+3. scan list แสดง **เฉพาะของตัวเอง** (เหมือนผู้ช่วย ไม่เห็นของเพื่อน)
+4. กด **Confirm** ตามปกติเมื่อสแกนเสร็จ
+5. หลัง Confirm — รายการที่ไม่ตรงจะกลายเป็น `audit`
+6. **ทุกคนใน role คลัง** กดปุ่ม **Audit Verify** ได้ (ไม่ได้จำกัดแค่หัวหน้า)
+7. ตรวจซ้ำ → กด **ยืนยันทั้งหมด** → pass / stock_adjustment ตามผล
+
+### ข้อแตกต่างจากสาขายา
+
+| รายการ | สาขายา (SRC/KKL/SSS) | คลัง (WH) |
 |---|---|---|
-| `skuMap` | SKU | `{ productName, systemQty, barcodes[], isDel }` |
-| `barcodeMap` | barcode | SKU |
-| `skuDirectMap` | SKU | `{ barcode, unitName }` (barcode หน่วยเล็กสุด) |
-| `scanData` | SKU | `{ countedQty:0, status:'pending', ... }` |
-
-ทุก SKU เริ่มต้นด้วย status `pending`
+| Product Master | global (ใช้ร่วมกัน) | global (ต้องมี SKU คลังด้วย) |
+| R01 / R05 / R16 | ของยา | ของคลัง (คนละไฟล์) |
+| Role ตรวจซ้ำ | เภสัช (1 คน) | คลังทุกคน (3 คน) |
+| Confirm ใช้ R16 doc types | `ORCM`, `OCTM`, `OTFB`, `ORTS`, `OTFI` | เหมือนกัน + `OXXX` เพิ่มได้ทีหลัง |
+| ช่วงเวลาสแกน | 08:00 – 20:59 | เหมือนกัน |
 
 ---
 
-## 4. การสแกนสินค้า
+## 8. การใช้งานพร้อมกันหลายเครื่อง (Multi-device)
 
-### รูปแบบที่รองรับ
-```
-barcode                  → qty = 1
-barcode,qty
-location,barcode,qty
-SKU                      → ระบบหา barcode หน่วยเล็กสุดให้
-SKU,qty
-location,SKU,qty
-```
+ระบบ sync ผ่าน Firestore real-time — ใช้พร้อมกันได้หลายเครื่องในสาขาเดียวกัน
 
-### ลำดับการทำงาน (handleBarcode)
-```
-รับ input → parseScanLine()
-    ↓
-ค้นใน barcodeMap → พบ SKU?
-    ├─ ไม่พบ → ค้นใน skuDirectMap (scan SKU โดยตรง)?
-    │       ├─ ไม่พบ → บันทึกเป็น unknownScans (status: unknown)
-    │       └─ พบ → แปลง SKU → barcode หน่วยเล็กสุด
-    └─ พบ → ตรวจสอบ status ปัจจุบัน
-            ├─ pass/audit/stock_adjustment → แสดงใน scan list แต่ไม่เปลี่ยน qty
-            └─ pending/scanning → สะสม countedQty += qty × unitMultiplier
-                                  status → 'scanning'
-```
+### พฤติกรรมอัตโนมัติ
+- เครื่อง A สแกน → 3 วินาทีต่อมา เครื่อง B/C/D ที่ login สาขาเดียวกัน รับข้อมูลอัตโนมัติ
+- ไม่ต้องกดปุ่มอะไร — `onSnapshot` listener ทำงานเบื้องหลัง
 
-**กฎพิเศษ — Scan Gap 2 นาที:**  
-ถ้าสแกน SKU เดิมห่างกันเกิน 2 นาที → modal เตือน "หยุดสแกนเกิน 2 นาที" แสดง `นับเดิม → 0`  
-กด **ยืนยัน — เริ่มนับใหม่** → `countedQty` รีเซ็ตเป็น **0** และ `scans` ถูกล้าง  
-barcode ที่ trigger modal **ไม่ถูกนับ** — ต้องสแกนใหม่ตั้งแต่ต้น
+### กรณีที่ต้องกดปุ่ม **Cloud ☁️** ด้วยมือ
+- เปิดแอปครั้งแรกหลัง F5 / โหลดใหม่
+- เริ่มกะใหม่ ต้องการเช็คว่ามีคนสแกนค้างไว้ไหม
 
-**PDA vs Manual Detection (ตรวจจับโหมดสแกน):**  
-`handleScanInput` ตรวจจับโหมดจากความเร็วระหว่าง keystroke (`PDA_KEYSTROKE_THRESHOLD_MS = 50ms`):
+### ⚠️ ข้อจำกัดของปุ่ม Cloud ☁️
+- ดึงเฉพาะ item ที่ **ยังไม่ Confirm** (`pending`, `scanning`)
+- รายการที่ Confirm ไปแล้ว (`pass`, `audit`, `stock_adjustment`) **ไม่ดึง** — เพื่อไม่ให้ทับข้อมูลเครื่องตัวเอง
+- ถ้าต้องการเห็น PASS/AUDIT จากเครื่องอื่น → เปิด Console พิมพ์ `restoreFromFirestore(true)`
 
-| โหมด | เงื่อนไข | พฤติกรรม |
+### ⚠️ Admin Mode = ปิด Sync
+- ใครก็ตามที่ทำงานใน **Admin Mode (🔓 สีเหลือง)** จะ**ไม่ sync** ขึ้น Firestore เลย
+- เครื่องอื่นจะไม่เห็นว่าทำอะไร
+- ออก Admin Mode → ระบบ sync ทุกอย่างขึ้น cloud ทันที
+
+---
+
+## 9. การ Confirm และจัดการผล
+
+### ขั้นตอน Confirm
+
+1. หลังสแกนเสร็จ — รออัพ **R16.104** (ยอดขาย + รับเข้าระหว่างนับ) ของวันนั้น
+   - อัพได้ช่วง **08:00 – 21:29** (ถ้านอกเวลา → Admin Mode)
+   - ตรวจ badge เป็นสีเขียว **Ready**
+2. กดปุ่ม **✓ Confirm**
+3. ระบบประเมินทุก SKU ที่ status = `scanning`:
+
+   ```
+   effectiveCnt = countedQty
+                + ยอดขาย (R16 ORCM/OCTM ก่อนเวลาสแกน)
+                − ยอดรับเข้า (R16 OTFB/ORTS/OTFI ก่อนเวลาสแกน)
+
+   ตรงกับ systemQty  → status: pass  ✅
+   ไม่ตรง           → status: audit  ⚠️
+   ```
+
+### หลัง Confirm
+- รายการ `pass` → ปิดงานแล้ว
+- รายการ `audit` → รอเภสัช (หรือ role คลัง สำหรับ WH) ตรวจซ้ำตาม [section 6](#6-workflow-เภสัช-ตรวจซ้ำ-audit)
+
+### ⚠️ R16 Date Mismatch
+ถ้าวันที่ใน R16 ไม่ตรงกับวันที่สแกน (เช่น อัพ R16 ของเมื่อวาน) → ระบบเตือน:
+- Toast 7 วินาที: `⚠️ วันที่ R16 ไม่ตรงกับวันที่สแกน`
+- Badge R16 เปลี่ยนเป็น **⚠️ ตรวจสอบวันที่** (สีเหลือง)
+- ตอนกด Confirm จะมี modal ขึ้นถาม: **ยกเลิก (อัพใหม่)** หรือ **ยืนยันต่อไป**
+
+### R16 Re-upload
+อัพ R16 ใหม่ได้ตลอด — ระบบจะ re-evaluate audit items อัตโนมัติ (เฉพาะรายการที่ยังไม่ได้เภสัชยืนยัน)
+
+---
+
+## 10. การดูประวัติและ Export Excel
+
+### 📅 ประวัติการนับ
+1. กดปุ่ม **📅 ประวัติ** ที่ panel
+2. เลือกวันที่จาก dropdown
+3. ดูตาราง / กด **⬇️ Export Excel** → `history_${branch}_${date}.xlsx`
+
+### 📊 ประวัติการนับ (History Stats)
+panel แยกที่แสดงทุก role — 4 tabs:
+
+| Tab | เนื้อหา |
+|---|---|
+| 👥 ผู้ช่วยนับครั้งแรก | SKU ที่ `initialStatus === 'audit'` (ผู้ช่วยนับครั้งแรกแล้วไม่ตรง) |
+| 🧑‍⚕️ เภสัชตรวจ | SKU ที่มี `auditor` (ใครก็ตามที่ตรวจซ้ำแล้ว) |
+| 🔴 Stock Adj ทั้งหมด | SKU ที่ปรับสต็อก พร้อม Export Excel |
+| 📂 อัพโหลดใบนับสินค้า | เปรียบเทียบกับใบนับมือ |
+
+### ⬇️ Export ปุ่มต่างๆ
+
+| ปุ่ม | ผลลัพธ์ | ไฟล์ |
 |---|---|---|
-| **PDA** | keystroke ติดกัน < 50ms | `_pdaMode=true` → debounce 200ms auto-submit หลังตัวอักษรสุดท้าย |
-| **Manual** | keystroke ห่างกัน ≥ 50ms | `_pdaMode=false` → **ไม่ auto-submit** ต้องกด **Enter** หรือคลิกปุ่ม **⏎** |
+| Export Excel (popup สต็อก) | audit + stock_adj | `audit_${date}.xlsx` |
+| Export Excel (ประวัติ) | ประวัติวันที่เลือก | `history_${branch}_${date}.xlsx` |
+| Export Excel (Stock Adj) | stock_adj ปัจจุบัน + Diff | `stockadj_${branch}_${date}.xlsx` |
 
-- ตัวอักษรแรกตรวจไม่ได้ (ไม่มี timestamp ก่อนหน้า) → ตัดสินจากตัวที่ 2
-- ปุ่ม **⏎** ข้างช่อง scan: คลิกแทนการกด Enter — ใช้กรณี keyboard event ไม่ทำงาน (Android/PDA browser บางรุ่น)
-- รองรับ Enter หลายรูปแบบ: `e.key==='Enter'`, `e.keyCode===13`, `e.which===13`
-- 200ms ปลอดภัย: กว้างกว่า 1 PDA scan (~20-50ms) แต่สั้นกว่า gap ระหว่าง 2 PDA scan ติดกัน (~500ms+)
+### 💾 Backup เป็น JSON
+กดปุ่ม **💾 Backup** → ดาวน์โหลด JSON ครอบคลุมทุกอย่าง (R01, R05, R16, scanData, unknown)
 
-### การ render scan list
-- ใช้ `scanListMap` แสดงผล (แยกจาก `scanData`)
-- แสดงสูงสุด **100** รายการล่าสุด
-- QTY ถูกซ่อน (`—`) ถ้า countedQty ≤ 100 เพื่อป้องกัน bias
-- ปุ่ม **✕** บนแถว `scanning` → `removeScanItem()` รีเซ็ต SKU กลับเป็น `pending` แบบสมบูรณ์:
-  - reset `sd` ทั้งหมด (countedQty=0, status='pending', scans=[], etc.)
-  - ยกเลิก debounce + ล้าง scanInput → ป้องกัน barcode ที่ค้างใน input จาก PDA ถูก submit หลัง remove
-  - ลบ scanQueue entries ที่ resolve เป็น SKU เดียวกัน
-  - ลบ DOM row ทันที (ไม่รอ debounce 60ms) → ป้องกัน `patchScanRow()` อัปเดตแถวเก่า
-  - toast: `"ลบแล้ว — สแกนใหม่เพื่อเริ่มนับ"`
-- ปุ่ม **✕ Clear** ล้างแค่ scan list UI (`scanListMap`) — ข้อมูล `scanData` ยังอยู่
+### 📂 Restore จาก JSON
+กดปุ่ม **📂 Restore** → upload JSON → ระบบ overwrite local + sync ขึ้น Firestore
 
 ---
 
-## 5. Confirm — ประเมินผล (evaluatePendingScans)
+## 11. การเริ่มนับใหม่ (รอบใหม่)
 
-กดปุ่ม **✓ Confirm** → ระบบประเมินทุก SKU ที่ status = `scanning`:
+เมื่อจะเริ่มนับสต็อกรอบใหม่ (เช่น เดือนถัดไป):
 
-```
-effectiveCnt = countedQty
-             + getSoldQtyBefore(sku, scanTimestamp)   ← ยอดขายก่อน/ระหว่างสแกน
-             - getInboundQtyBefore(sku, scanTimestamp) ← ยอดรับเข้าก่อน/ระหว่างสแกน
-
-effectiveCnt == systemQty → status: 'pass'
-effectiveCnt != systemQty → status: 'audit'
-```
-
-**TRANDATE filter:** ใช้เฉพาะ transaction ที่ `TRANDATE ≤ scanTimestamp` (เวลาสแกน)  
-ถ้าไม่มี TRANDATE → ไม่นับรายการนั้น (conservative — ป้องกัน audit ผิดพลาด)
+1. ตรวจให้แน่ใจว่า **ข้อมูลรอบปัจจุบันถูก Confirm + ตรวจซ้ำเสร็จหมด** (ทุกอย่างเป็น `pass` / `stock_adjustment`)
+2. กดปุ่ม **🔄 เริ่มนับใหม่**
+3. ระบบขอ PIN — ใส่ **`22190`**
+4. ระบบจะ:
+   - บันทึกประวัติรอบนี้ลง `stock_history/${branch}_${date}`
+   - reset `scanData` ทั้งหมดกลับเป็น `pending`
+   - sync ขึ้น Firestore (overwrite cloud)
+5. PDA เครื่องอื่นรับข้อมูลใหม่ผ่าน `onSnapshot` อัตโนมัติ (ไม่ต้องกด Cloud)
 
 ---
 
-## 6. วงจรสถานะ (Status Lifecycle)
+## 12. Admin Mode
 
-```
-pending
-  └─→ scanning  (มีการสแกน)
-        └─→ pass           (effectiveCnt == systemQty)
-        └─→ audit          (effectiveCnt != systemQty)
-                └─→ pass              (เภสัชตรวจซ้ำ → ตรงกับ systemQty)
-                └─→ stock_adjustment  (เภสัชตรวจซ้ำ → ไม่ตรง)
+ใช้สำหรับ setup, fix data, อัพไฟล์นอกเวลา
 
-unknown  (barcode ไม่พบในระบบ — track แยกต่างหาก)
-```
+### วิธีเข้า
+- กดปุ่ม **🔒 Administrator** ที่ Settings panel → ใส่ PIN `22190`
+- ปุ่มจะเปลี่ยนเป็น **🔓 Administrator ON** (สีเหลือง)
 
-`audit_check` มีในโค้ดเพื่อ compatibility แต่ไม่ถูกสร้างใหม่แล้ว
+### สิ่งที่ทำได้เพิ่ม
+- อัพ R01.102 / R16.104 นอกเวลา (ข้าม time gate)
+- อัพ Product Master + R05.106 (panel ที่ปกติซ่อน)
+- เห็นปุ่ม **🗑️ ล้างข้อมูลทั้งหมด**
 
----
-
-## 7. Pharmacist Re-audit Flow
-
-เฉพาะ role `pharmacist` เท่านั้น:
-
-1. เปิด popup รายการสต็อก → กรอง **Audit**
-2. กดปุ่ม **ตรวจซ้ำ** บนแถวที่ status = `audit`
-3. Modal เปิด → เภสัชสแกน barcode ซ้ำ → `_reauditQty` สะสม
-4. กด **ยืนยันผลตรวจซ้ำ**:
-   - `_reauditQty == systemQty` → status: `pass`
-   - `_reauditQty != systemQty` → status: `stock_adjustment`
-5. บันทึก `sd.auditor = currentUser`
+### ⚠️ คำเตือนสำคัญ
+- **ขณะ Admin Mode = ไม่ sync Firestore** — ทุกอย่างที่ทำอยู่ใน localStorage เท่านั้น
+- เครื่องอื่นจะไม่เห็นการเปลี่ยนแปลง
+- **ออก Admin Mode** โดยกดปุ่ม 🔓 อีกครั้ง → ระบบ sync ทุกอย่างขึ้น cloud อัตโนมัติ
 
 ---
 
-## 8. Popup รายการสต็อก
+## 13. PDA — การใช้งานบนเครื่องสแกน
 
-เปิดด้วยปุ่ม **Check Product List** แสดงสูงสุด **500** แถว
+### ตั้งค่า Scanner (ทำครั้งเดียว)
+1. Scanner Settings → **Data Output Mode → Broadcast Mode**
+2. Broadcast Action: `com.kte.scan.result`
+3. Extra Key: `code`
+4. ทดสอบ: ⚙ Settings → ปุ่ม "ทดสอบ" → ยิงทดสอบ barcode
 
-| Filter | เนื้อหา |
+### Tips การใช้งาน
+- **หน้าจอจะไม่ดับ** ตลอดที่ใช้งาน (WakeLock — สูงสุด 4 ชั่วโมง)
+- **Lock แนวตั้ง** อัตโนมัติ
+- **กลับจาก background** → scan input refocus ให้เอง
+- **แตะพื้นที่ว่าง** → scan input refocus ให้เอง
+
+### Layout บน PDA (≤ 600px)
+- ซ่อน left panel (upload)
+- ซ่อนปุ่ม Confirm (ทำบน Desktop)
+- scan list เต็มความสูง
+- header buttons ย่อ
+- column "Barcode" ใน scan list ซ่อน (เพื่อใส่ Name)
+
+---
+
+## 14. Auto-Update
+
+เมื่อมีเวอร์ชันใหม่ deploy:
+
+### Web (เบราว์เซอร์)
+1. Service Worker ใหม่ install อัตโนมัติ
+2. แสดง banner สีน้ำเงิน **"🔄 กำลังอัพเดทเวอร์ชันใหม่..."** 1.5 วินาที
+3. reload หน้าเอง — รักษา login state ไว้ (ไม่ต้องเลือกสาขา/PIN ใหม่)
+
+### PDA (Android)
+1. เปิดแอป → fetch `version.json` จาก server
+2. ถ้าเวอร์ชันใหม่ → popup ถาม: **อัพเดทไหม?**
+3. กด OK → ดาวน์โหลด APK → ติดตั้งทับ (signature เดียวกัน ไม่ต้อง uninstall เดิม)
+4. เปิดแอปใหม่ → ใช้งานต่อได้เลย
+
+---
+
+## 15. การแก้ปัญหาเบื้องต้น (Troubleshooting)
+
+### 🔴 สแกนแล้วระบบไม่นับ
+- เช็คว่าโหลด R01 + R05 ครบหรือยัง (badge ทั้ง 2 ต้องเขียว)
+- เช็คเวลา — ต้องอยู่ในช่วง 08:00 – 20:59
+- เช็ค barcode ว่ามีใน R05 หรือไม่ — ถ้าไม่มี จะขึ้นเป็น **unknown** สีม่วง
+
+### 🔴 สแกนแล้ว qty รวมกับของเดิมที่ Confirm ไปแล้ว
+- ไม่ได้ — ถ้า SKU นั้น Confirm ไปแล้ว ระบบจะไม่นับเพิ่ม (toast เตือน)
+- ถ้าต้องการนับใหม่จริงๆ → ต้องเปิด Admin Mode หรือใช้ "เริ่มนับใหม่"
+
+### 🔴 เครื่องอื่นไม่เห็นข้อมูลที่เราสแกน
+- เช็คว่าตัวเองอยู่ใน **Admin Mode** ไหม (ปุ่มสีเหลือง?) → ออก Admin Mode ก่อน
+- เครื่องอื่นกดปุ่ม **Cloud ☁️** เพื่อ refresh
+- ถ้าอยากเห็น PASS/AUDIT จากเครื่องอื่น → Console พิมพ์ `restoreFromFirestore(true)`
+
+### 🔴 R16 ขึ้น ⚠️ ตรวจสอบวันที่
+- วันที่ใน R16 (column TRANDATE) ไม่ตรงกับวันที่สแกน
+- อัพ R16 ใหม่ของวันที่ตรงกับการนับ
+- ถ้าแน่ใจว่าใช้ไฟล์ถูกแล้ว → ตอน Confirm กด "ยืนยันต่อไป"
+
+### 🔴 สินค้าคลังขึ้น badge DEL สีแดง
+- Product Master ไม่ครอบคลุม SKU คลัง
+- ทางแก้: อัพ Product Master ใหม่ที่มี SKU ของทั้งยาและคลัง
+- ระหว่างยังไม่แก้ — สแกน + Confirm ได้ปกติ DEL เป็นแค่ flag
+
+### 🔴 PDA สแกนแล้ว barcode ต่อกัน (concatenation)
+- เกิดเมื่อใช้ Keyboard Wedge mode
+- แก้: เปลี่ยนเป็น **Broadcast Mode** ตาม [section 13](#13-pda--การใช้งานบนเครื่องสแกน)
+
+### 🔴 ลืม PIN สาขา
+- PIN อยู่ใน table [section 1](#1-ภาพรวมระบบ)
+- PIN Admin: `22190`
+- PIN เริ่มนับใหม่: `22190` (เหมือนกัน)
+
+### 🔴 อยากดูเวอร์ชันที่ใช้อยู่
+- PDA: เปิด ⚙ Settings ที่หัวมุม → จะแสดง versionName + versionCode
+- Web: ดู source หรือเช็คใน Service Worker DevTools
+
+---
+
+## ภาคผนวก: คำศัพท์เทคนิค
+
+| คำ | ความหมาย |
 |---|---|
-| ทั้งหมด | ทุก SKU |
-| Pass | status = pass / audit_check |
-| Audit | status = audit / stock_adjustment |
-| Unknown | barcode ไม่พบในระบบ |
-| DEL | SKU ใน R01 แต่ไม่อยู่ใน Product Master |
-| รอนับ | status = pending |
-
-**การค้นหา:**
-- ตัวอักษร → ค้นชื่อสินค้า / SKU / barcode / location
-- ตัวเลข → ค้นด้วย prefix ย่อลงทีละตัวถ้าไม่พบ
-
-**แก้ไข qty inline:** ทำได้เมื่อ `systemQty > 100` และ status เป็น `pending` หรือ `scanning`
-
----
-
-## 9. Export Excel
-
-| ปุ่ม | ผลลัพธ์ |
-|---|---|
-| ⬇️ Export (header) | export เฉพาะ status `audit` + `stock_adjustment` → `audit_${date}.xlsx` |
-| ⬇️ Export Excel (popup) | เหมือนกัน |
-| ⬇️ Export Excel (ประวัติ) | export ข้อมูลประวัติวันที่เลือก → `history_${branch}_${date}.xlsx` |
+| **SKU** | รหัสสินค้าหลัก ใช้ใน R01 |
+| **Barcode** | เลข barcode บนแพ็คเกจ ใช้ scan |
+| **systemQty** | จำนวนคงเหลือในระบบ (จาก R01) |
+| **countedQty** | จำนวนที่นับได้จากการสแกน |
+| **effectiveCnt** | countedQty + ยอดขาย − ยอดรับเข้า ใช้เปรียบเทียบ systemQty |
+| **status: pending** | ยังไม่สแกน |
+| **status: scanning** | กำลังสแกน ยังไม่ Confirm |
+| **status: pass** | นับตรงระบบ ✅ |
+| **status: audit** | นับไม่ตรง รอตรวจซ้ำ ⚠️ |
+| **status: stock_adjustment** | ตรวจซ้ำแล้วไม่ตรง ต้องปรับสต็อก 🔴 |
+| **status: unknown** | barcode ไม่พบในระบบ |
+| **DEL** | SKU อยู่ใน R01 แต่ไม่อยู่ใน Product Master |
 
 ---
 
-## 10. ประวัติการนับ (History)
-
-ปุ่ม **📅 ประวัติ** → เลือกวันที่ → ดูผลการนับย้อนหลัง
-
-- สร้างเมื่อกด **🔄 เริ่มนับใหม่** (ต้องใส่ PIN `22190`)
-- บันทึกใน localStorage: `stockCountHistory_${branch}` (สูงสุด 60 entries)
-- sync ขึ้น Firestore: `stock_history/${branch}_${date}`
-
----
-
-## 11. การ Sync ข้อมูล
-
-```
-สแกน/แก้ไข
-    ↓
-saveSession() — debounce 400ms → localStorage
-    ↓
-syncToFirestore() — delay 3 วินาที → Firestore stock_sessions/${branch}
-```
-
-**Multi-device:** เครื่องอื่นกดปุ่ม **Cloud** เพื่อดึงข้อมูลล่าสุด  
-**Admin Mode:** ปิดการ sync Firestore (local only)
-
-### Persistence ทั้งหมด
-
-| ที่เก็บ | ข้อมูล |
-|---|---|
-| localStorage `stockCountSession_${branch}` | scanData, r16SalesMap, r16InboundMap, scanListMap |
-| Firestore `stock_sessions/${branch}` | scanData + r16 maps |
-| Firestore `stock_sessions/${branch}_r01/r05` | master data R01/R05 |
-| Firestore `stock_sessions/global_pm` | Product Master (ทุกสาขาร่วมกัน) |
-| Firestore `stock_history/${branch}_${date}` | ประวัติการนับ |
-| JSON download | backup ไฟล์ |
-
----
-
-## 12. Backup / Restore
-
-- **💾 Backup** → download JSON ครอบคลุม r01Data, r05Data, r16Maps, scanData, unknownScans
-- **📂 Restore** → upload JSON → ระบบ overwrite ข้อมูลปัจจุบันและ sync ขึ้น Firestore
-
----
-
-## 13. Admin Mode
-
-ใส่ PIN `22190` ที่ปุ่ม **🔒 Administrator**:
-
-- แสดง upload panel สำหรับ Product Master และ R05
-- ปิด time-gate (อัพโหลด R01 ได้ทุกเวลา)
-- **ปิดการ sync Firestore** ทั้งหมด (local only)
-- ออกจาก Admin Mode โดยกดปุ่มเดิมอีกครั้ง
-
----
-
-## 14. Auto-Update (Service Worker)
-
-เมื่อมีเวอร์ชันใหม่:
-
-1. SW ใหม่ install และ `skipWaiting()` ทันที
-2. `controllerchange` → บันทึก `currentUser` + `currentRole` ใน sessionStorage
-3. แสดง banner "🔄 กำลังอัพเดทเวอร์ชันใหม่..." 1.5 วินาที → `reload()`
-4. หลัง reload: ถ้ามี flag `_autoUpdate` → ข้าม branch/PIN/employee selector → เข้า `initAfterLogin()` ตรงเลย
-
----
-
-## 15. Responsive / Device
-
-| ขนาดหน้าจอ | พฤติกรรม |
-|---|---|
-| ≥ 820px | 2 column (upload panel ซ้าย + scan panel ขวา) |
-| ≤ 820px | ปรับ padding/font ลด |
-| ≤ 600px (PDA/phone) | 1 column, ซ่อน left panel, ซ่อนปุ่ม Confirm, lock scroll, scan list เต็มหน้าจอ |
-
-- ล็อค orientation แนวตั้งด้วย `screen.orientation.lock('portrait')`
-- scan input refocus อัตโนมัติเมื่อกลับมา foreground หรือแตะพื้นที่ว่าง
+> 📞 มีปัญหา / ติดขัด → ติดต่อทีม IT (it1@anin.co.th)
