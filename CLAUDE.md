@@ -95,7 +95,7 @@ When a new version is deployed, the Service Worker (`sw.js`) installs immediatel
 
 ### Branch / Auth System
 
-Three branches: **SRC**, **KKL**, **SSS**. Each has its own localStorage key (`stockCountSession_${branch}`) and separate Firestore namespace.
+Four branches: **SRC**, **KKL**, **SSS** (ร้านขายยา), **WH** (คลังกลาง). Each has its own localStorage key (`stockCountSession_${branch}`) and separate Firestore namespace. **WH** uses a different product master / R01 / R05 / R16 set — files are uploaded independently from the pharmacy branches.
 
 - Branch PINs are hardcoded in `BRANCH_PINS` object.
 - Admin PIN `22190` / `CLEAR_PIN` enables admin mode: bypasses time gates for R01.102 and R16.104, shows hidden upload panels (Product Master, R05), **disables Firestore sync** (local only), and shows the **🗑️ ล้างข้อมูลทั้งหมด** button.
@@ -117,14 +117,17 @@ Three branches: **SRC**, **KKL**, **SSS**. Each has its own localStorage key (`s
 
 ### Employee Profile System
 
-After branch PIN is verified, an employee selector modal appears. Two roles:
+After branch PIN is verified, an employee selector modal appears. Three roles:
 
 | Role | Branches / Names |
 |---|---|
 | **เภสัช** (pharmacist) | SRC: เภอ๊อฟ / KKL: เภออด / SSS: เภเบส |
 | **ผู้ช่วยเภสัช** (assistant) | SRC: ก้า, กิฟ, สุ่ย, นิกกี้ / KKL: แตงโม, ทราย / SSS: ออย, ฟ้าใส |
+| **คลัง** (warehouse) | WH: มุก, ตั๋ง, แล็ค |
 
-Profiles are defined in `EMPLOYEE_PROFILES` constant. Selected employee is stored in `currentUser` (string) and `currentRole` (`'pharmacist'` | `'assistant'`). The header displays the active user. On branch switch, `currentUser`/`currentRole` are cleared and the selector re-appears.
+Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only the roles it uses (SRC/KKL/SSS = `pharmacist`+`assistant`; WH = `warehouse` only). `showEmployeeSelector` renders sections conditionally (`profiles.pharmacist`, `profiles.assistant`, `profiles.warehouse`) and hides missing ones. Selected employee is stored in `currentUser` (string) and `currentRole` (`'pharmacist'` | `'assistant'` | `'warehouse'`). The header displays the active user. On branch switch, `currentUser`/`currentRole` are cleared and the selector re-appears.
+
+**Warehouse role (`'warehouse'`)** — flat role: 3 staff (มุก, ตั๋ง, แล็ค) can scan **and** verify. Behaves like `assistant` for the main scan input (normal count, scan list filtered to own scans only) and like `pharmacist` for the Audit Verify panel (button enabled, can open popup and confirm). Does **NOT** get the pharmacist-only PDA UI (no `pharmacistAuditBar`, Confirm button remains visible, popup does not auto-filter to `audit`). QTY column in scan list shows accumulated `entry.totalQty` for `status==='audit'` rows (same exception applied to `pharmacist`) — covers `renderScanList()` and `patchScanRow()`.
 
 **Pharmacist re-audit flow** (`openAuditVerifyPopup`, `handleAuditVerifyScan`, `confirmAllAuditVerify`):
 1. Pharmacist opens **Audit Verify** panel (visible to all roles; button disabled for non-pharmacist with 🔒 message).

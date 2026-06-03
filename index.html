@@ -787,6 +787,10 @@
       <div style="font-size:0.7rem;font-weight:700;color:var(--text2);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">ผู้ช่วยเภสัช</div>
       <div id="employeeAssistantBtns" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;"></div>
     </div>
+    <div id="employeeModalWarehouse" style="display:none;">
+      <div style="font-size:0.7rem;font-weight:700;color:#d97706;letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">คลังกลาง</div>
+      <div id="employeeWarehouseBtns" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;"></div>
+    </div>
   </div>
 </div>
 
@@ -828,6 +832,7 @@
       <button onclick="selectBranch('SRC')" style="padding:14px;border-radius:10px;border:2px solid #0072c6;background:rgba(0,114,198,0.08);color:#0072c6;font-size:1.1rem;font-weight:700;cursor:pointer;">SRC</button>
       <button onclick="selectBranch('KKL')" style="padding:14px;border-radius:10px;border:2px solid #0072c6;background:rgba(0,114,198,0.08);color:#0072c6;font-size:1.1rem;font-weight:700;cursor:pointer;">KKL</button>
       <button onclick="selectBranch('SSS')" style="padding:14px;border-radius:10px;border:2px solid #0072c6;background:rgba(0,114,198,0.08);color:#0072c6;font-size:1.1rem;font-weight:700;cursor:pointer;">SSS</button>
+      <button onclick="selectBranch('WH')" style="padding:14px;border-radius:10px;border:2px solid #d97706;background:rgba(217,119,6,0.08);color:#d97706;font-size:1.1rem;font-weight:700;cursor:pointer;">WH — คลังกลาง</button>
     </div>
   </div>
 </div>
@@ -854,13 +859,18 @@ function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE
 function getSessionId(){return currentBranch;}
 function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
 function getProductMasterMetaRef(){return _db.collection('stock_sessions').doc('global_pm');}
-const BRANCH_COLORS={SRC:'#0072c6',KKL:'#0072c6',SSS:'#0072c6'};
-const BRANCH_PINS={SRC:'1234',KKL:'4567',SSS:'9999'};
+const BRANCH_COLORS={SRC:'#0072c6',KKL:'#0072c6',SSS:'#0072c6',WH:'#d97706'};
+const BRANCH_PINS={SRC:'1234',KKL:'4567',SSS:'9999',WH:'0000'};
 const EMPLOYEE_PROFILES={
   SRC:{pharmacist:['เภอ๊อฟ'],assistant:['ก้า','กิฟ','สุ่ย','นิกกี้']},
   KKL:{pharmacist:['เภออด'],assistant:['แตงโม','ทราย']},
-  SSS:{pharmacist:['เภเบส'],assistant:['ออย','ฟ้าใส']}
+  SSS:{pharmacist:['เภเบส'],assistant:['ออย','ฟ้าใส']},
+  WH:{warehouse:['มุก','ตั๋ง','แล็ค']}
 };
+// R16 document type prefixes (Col C). Add new OXXX codes to the appropriate array.
+const R16_SALES_PREFIXES=['ORCM','OCTM'];          // ยอดขาย → บวกกลับเข้า countedQty
+const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้าคลัง → หักออกจาก countedQty
+function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
 let currentUser='';
 let currentRole='';
 function updateBranchDisplay(){
@@ -953,20 +963,34 @@ function showEmployeeSelector(callback){
   if(el)el.textContent='สาขา '+currentBranch;
   const phBtns=document.getElementById('employeePharmacistBtns');
   const asBtns=document.getElementById('employeeAssistantBtns');
-  phBtns.innerHTML='';asBtns.innerHTML='';
-  profiles.pharmacist.forEach(name=>{
+  const whBtns=document.getElementById('employeeWarehouseBtns');
+  const phSec=document.getElementById('employeeModalPharmacist');
+  const asSec=document.getElementById('employeeModalAssistant');
+  const whSec=document.getElementById('employeeModalWarehouse');
+  phBtns.innerHTML='';asBtns.innerHTML='';whBtns.innerHTML='';
+  phSec.style.display=profiles.pharmacist?'':'none';
+  asSec.style.display=profiles.assistant?'':'none';
+  whSec.style.display=profiles.warehouse?'':'none';
+  (profiles.pharmacist||[]).forEach(name=>{
     const b=document.createElement('button');
     b.textContent=name;
     b.style='padding:10px 18px;border-radius:10px;border:2px solid var(--accent);background:rgba(0,114,198,0.1);color:var(--accent);font-size:0.9rem;font-weight:700;cursor:pointer;';
     b.onclick=()=>selectEmployee(name,'pharmacist');
     phBtns.appendChild(b);
   });
-  profiles.assistant.forEach(name=>{
+  (profiles.assistant||[]).forEach(name=>{
     const b=document.createElement('button');
     b.textContent=name;
     b.style='padding:10px 18px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.9rem;font-weight:700;cursor:pointer;';
     b.onclick=()=>selectEmployee(name,'assistant');
     asBtns.appendChild(b);
+  });
+  (profiles.warehouse||[]).forEach(name=>{
+    const b=document.createElement('button');
+    b.textContent=name;
+    b.style='padding:10px 18px;border-radius:10px;border:2px solid #d97706;background:rgba(217,119,6,0.1);color:#d97706;font-size:0.9rem;font-weight:700;cursor:pointer;';
+    b.onclick=()=>selectEmployee(name,'warehouse');
+    whBtns.appendChild(b);
   });
   document.getElementById('employeeModal').style.display='flex';
 }
@@ -996,11 +1020,12 @@ function updateUserDisplay(){
   if(!el)return;
   if(currentUser){
     const isPharm=currentRole==='pharmacist';
+    const isWh=currentRole==='warehouse';
     el.style.display='inline-flex';
-    el.style.background=isPharm?'rgba(0,114,198,0.12)':'var(--surface2)';
-    el.style.border=isPharm?'1px solid rgba(0,114,198,0.4)':'1px solid var(--border)';
-    el.style.color=isPharm?'var(--accent)':'var(--text2)';
-    el.textContent=(isPharm?'เภสัช: ':'ผู้ช่วย: ')+currentUser;
+    el.style.background=isPharm?'rgba(0,114,198,0.12)':isWh?'rgba(217,119,6,0.12)':'var(--surface2)';
+    el.style.border=isPharm?'1px solid rgba(0,114,198,0.4)':isWh?'1px solid rgba(217,119,6,0.4)':'1px solid var(--border)';
+    el.style.color=isPharm?'var(--accent)':isWh?'#d97706':'var(--text2)';
+    el.textContent=(isPharm?'เภสัช: ':isWh?'คลัง: ':'ผู้ช่วย: ')+currentUser;
   }else{
     el.style.display='none';
     el.textContent='';
@@ -1140,8 +1165,8 @@ function loadR16(event) {
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
-      const isSale=colC.startsWith('ORCM')||colC.startsWith('OCTM');
-      const isInbound=colC.startsWith('OTFB')||colC.startsWith('ORTS')||colC.startsWith('OTFI');
+      const isSale=_matchR16Prefix(colC,R16_SALES_PREFIXES);
+      const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES);
       if(!isSale&&!isInbound){sk++;continue;}
       const barcode=(r[14]??'').toString().trim();   // Col O (index 14)
       const rawBaseQty=(r[17]??'').toString().replace(/,|\s/g,'').trim(); // Col R (index 17) = BASEQUANTITY (จำนวนแปลงเป็นหน่วยเล็กสุดแล้ว)
@@ -1976,7 +2001,7 @@ function renderScanList(){
       <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
-      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((si?.systemQty||0)>100?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&currentRole==='pharmacist')?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
+      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((si?.systemQty||0)>100?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='warehouse'))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
       <div class="scan-row-status"><span class="pill ${getPillClass(entry.status)}">${label}</span></div>
     </div>`;
   }).join('');
@@ -1997,7 +2022,7 @@ function patchScanRow(key){
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`;}
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
-    if(entry.status==='audit'&&currentRole==='pharmacist')qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
+    if(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='warehouse'))qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
     else if(entry.totalQty>100)qtyCell.textContent=entry.totalQty;
     else qtyCell.innerHTML='';
   }
@@ -2474,7 +2499,7 @@ function setAvFilter(f,btn){
 }
 
 function openAuditVerifyPopup(){
-  if(currentRole!=='pharmacist'){toast('เฉพาะเภสัชเท่านั้น','warn');return;}
+  if(currentRole!=='pharmacist'&&currentRole!=='warehouse'){toast('เฉพาะเภสัช / คลังเท่านั้น','warn');return;}
   _avMap.clear();
   _avFilter='audit';
   const btn=document.getElementById('avBtnAudit');
@@ -2611,16 +2636,16 @@ function updateAuditVerifyCount(){
 function updateAuditVerifyPanel(){
   const p=document.getElementById('auditVerifyPanel');if(!p)return;
   p.style.display=currentRole?'':'none';
-  const isPharm=currentRole==='pharmacist';
+  const canVerify=currentRole==='pharmacist'||currentRole==='warehouse';
   const btn=document.getElementById('auditVerifyBtn');
   const lock=document.getElementById('auditVerifyLock');
   if(btn){
-    btn.disabled=!isPharm;
-    btn.style.opacity=isPharm?'1':'0.45';
-    btn.style.cursor=isPharm?'pointer':'not-allowed';
-    btn.style.filter=isPharm?'':'grayscale(0.5)';
+    btn.disabled=!canVerify;
+    btn.style.opacity=canVerify?'1':'0.45';
+    btn.style.cursor=canVerify?'pointer':'not-allowed';
+    btn.style.filter=canVerify?'':'grayscale(0.5)';
   }
-  if(lock)lock.style.display=isPharm?'none':'block';
+  if(lock)lock.style.display=canVerify?'none':'block';
   updateAuditVerifyCount();
 }
 
@@ -2990,7 +3015,7 @@ function onHsAssistantChange(){
 function _buildAssistantDropdown(){
   const sel=document.getElementById('hsAssistantSelect');if(!sel)return;
   const profiles=EMPLOYEE_PROFILES[currentBranch];
-  const assistants=profiles?profiles.assistant:[];
+  const assistants=profiles?(profiles.assistant||profiles.warehouse||[]):[];
   sel.innerHTML='<option value="">ทั้งหมด</option>'+assistants.map(n=>`<option value="${n}"${_hsAssistantSel===n?' selected':''}>${n}</option>`).join('');
 }
 
