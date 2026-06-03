@@ -669,7 +669,7 @@
 <div class="stock-popup-overlay" id="auditVerifyPopupOverlay" style="display:none" onclick="handleAuditVerifyOverlayClick(event)">
   <div class="stock-popup" style="max-width:1100px;">
     <div class="stock-popup-header">
-      <h2>🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)</h2>
+      <h2 id="auditVerifyTitle">🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)</h2>
       <button class="stock-popup-close" onclick="closeAuditVerifyPopup()">✕</button>
     </div>
     <div style="padding:12px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
@@ -2504,6 +2504,9 @@ function openAuditVerifyPopup(){
   _avFilter='audit';
   const btn=document.getElementById('avBtnAudit');
   if(btn){document.querySelectorAll('#auditVerifyPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+  // WH branch: change title to warehouse context
+  const title=document.getElementById('auditVerifyTitle');
+  if(title)title.textContent=currentBranch==='WH'?'🔍 Audit Verify — รีเช็คสินค้า':'🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)';
   document.getElementById('auditVerifyPopupOverlay').style.display='flex';
   renderAuditVerifyTable();
   setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
