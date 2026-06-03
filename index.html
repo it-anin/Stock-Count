@@ -1918,7 +1918,9 @@ function rebuildScanListMap(force=false){
   if(force)scanListMap.clear();
   if(scanListMap.size>0||!state.scanData.size)return;
   // assistant: แสดงเฉพาะของตัวเอง | pharmacist: แสดงเฉพาะ audit | ไม่ได้ login: แสดงทั้งหมด
-  const filterUser=currentUser&&currentRole!=='pharmacist';
+  // WH + Desktop (หัวหน้างานตรวจสอบ): แสดงทุกการสแกนของพนักงานคลังทั้งหมด
+  const isWhDesktopSupervisor=currentBranch==='WH'&&currentRole==='warehouse'&&window.innerWidth>600;
+  const filterUser=currentUser&&currentRole!=='pharmacist'&&!isWhDesktopSupervisor;
   const filterAudit=currentRole==='pharmacist';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
