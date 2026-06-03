@@ -348,6 +348,7 @@
         <div class="db-dot active" id="dbDot"></div>
         <span id="dbStatus" style="color:var(--text2)">Ready</span>
         <button onclick="pullFromCloud()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
+        <button id="btnPdaAuditVerify" onclick="openAuditVerifyPopup()" style="display:none;border:1px solid rgba(224,140,0,0.45);background:rgba(224,140,0,0.12);color:var(--yellow);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;font-weight:700;align-items:center;gap:4px;" title="Audit Verify">🔍 <span id="btnPdaAuditCount" style="background:rgba(224,140,0,0.25);padding:0 5px;border-radius:8px;font-size:0.6rem;">0</span></button>
         <button id="btnPdaSettings" onclick="if(typeof Android!=='undefined')Android.openSettings()" style="display:none;border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;" title="ตั้งค่า Scanner">⚙</button>
       </div>
     </div>
@@ -2662,6 +2663,7 @@ function renderAuditVerifyTable(){
 function updateAuditVerifyCount(){
   let n=0;for(const[,sd] of state.scanData.entries()){if(sd.status==='audit'||sd.status==='stock_adjustment')n++;}
   const el=document.getElementById('auditVerifyCount');if(el)el.textContent=n;
+  const el2=document.getElementById('btnPdaAuditCount');if(el2)el2.textContent=n;
 }
 function updateAuditVerifyPanel(){
   const p=document.getElementById('auditVerifyPanel');if(!p)return;
@@ -2676,6 +2678,12 @@ function updateAuditVerifyPanel(){
     btn.style.filter=canVerify?'':'grayscale(0.5)';
   }
   if(lock)lock.style.display=canVerify?'none':'block';
+  // PDA header button: แสดงเฉพาะตอน screen ≤600px และมีสิทธิ์ verify (panel เดิมถูก CSS ซ่อนบน PDA)
+  const pdaBtn=document.getElementById('btnPdaAuditVerify');
+  if(pdaBtn){
+    const isPda=window.innerWidth<=600;
+    pdaBtn.style.display=(isPda&&canVerify)?'inline-flex':'none';
+  }
   updateAuditVerifyCount();
 }
 
