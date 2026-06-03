@@ -2387,9 +2387,11 @@ async function syncToFirestore(overwrite=false){
         if(s?.scanData){
           mergedSd={...s.scanData};
           for(const k in localSd){
-            if(localSd[k].status==='pending'&&mergedSd[k]?.status!=='pending')continue;
-            // ถ้า cloud ไม่มี item นี้แล้ว และ local เป็น scanning/pending → ไม่ re-upload (startNewCount ลบออกแล้ว)
-            if(!mergedSd[k]&&(localSd[k].status==='scanning'||localSd[k].status==='pending'))continue;
+            // ไม่ทับ status ของ cloud (pass/audit/stock_adj) ด้วย local pending
+            if(localSd[k].status==='pending'&&mergedSd[k]?.status&&mergedSd[k].status!=='pending')continue;
+            // ไม่ re-upload local pending ที่ cloud ลบออกไปแล้ว (startNewCount จากเครื่องอื่น)
+            // — แต่ allow scanning เสมอ (เป็น user input สดใหม่)
+            if(!mergedSd[k]&&localSd[k].status==='pending')continue;
             mergedSd[k]=localSd[k];
           }
         }
