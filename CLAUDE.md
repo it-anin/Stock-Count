@@ -146,9 +146,11 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
 | Firestore `stock_sessions/${branch}` | Scan data | 3 s after localStorage write |
 | Firestore `stock_sessions/${branch}_r01/r05` | R01/R05 master data | After file upload |
 | Firestore `stock_sessions/global_pm` | Product Master | After PM upload; real-time listener on all devices |
-| Firestore `stock_history/${branch}_${date}` | Historical count records | On "เริ่มนับใหม่" |
 | Firestore `stock_audit_log/${branch}_${date}` | Audit items log | After `evaluatePendingScans()` + after pharmacist verify |
-| JSON file (download) | backup | On "Backup" button |
+
+> ⚠️ **ไม่มี history snapshot ที่ Firestore** — `startNewCount()` ลบ `scanData` + R01 ออกจาก localStorage และ overwrite Firestore (`syncToFirestore(true)`) โดย**ไม่บันทึก** snapshot ของรอบเก่าไปไหน ต้อง Export Excel เก็บเองก่อนกด เริ่มนับใหม่ (โค้ดเก่าเคยเขียน `stock_history/${branch}_${date}` แต่ถูกถอดออกแล้ว) `stock_audit_log` เป็น log สะสมต่อวัน ไม่ใช่ snapshot รอบนับ
+>
+> **ไม่มีปุ่ม Backup/Restore JSON** — ฟังก์ชัน `backup` / `restore` / `exportHistoryExcel` และ popup 📅 ประวัติ (`openHistoryPopup` + `stockCountHistory_${branch}` localStorage) ถูกถอดออกจากโค้ดทั้งหมดแล้ว เหลือเฉพาะ 📊 ประวัติการนับ (History Stats) ที่ดึงจาก `stock_audit_log` แบบ live
 
 `global_pm` is **shared across all branches** with an `onSnapshot` real-time listener (`startProductMasterListener()`). All other data is per-branch.
 
@@ -321,10 +323,6 @@ The scan list header columns are drag-resizable via `initColResize()`. Widths ar
 
 Scan list columns (5 total): **SKU** / **Barcode** / **Product Name** / **Qty** / **Status**. There is no separate remove-button column — the ✕ button (`btn-remove-sku`) is embedded inside the SKU cell as a flex child, visible only when `status === 'scanning'`.
 
-### History Feature (📅 ประวัติ)
-
-"📅 ประวัติ" button opens a history popup (`openHistoryPopup`). It reads `stockCountHistory_${branch}` from localStorage (up to 60 entries). Each entry is created by "เริ่มนับใหม่" and saved to `stock_history/${branch}_${date}` in Firestore. The popup has a date selector, renders the historical scan table, and supports Export Excel (`exportHistoryExcel`) — output: `history_${branch}_${date}.xlsx`.
-
 ### History Stats Panel (📊 ประวัติการนับ)
 
 Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`. Has 4 tabs:
@@ -369,11 +367,12 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 
 ### Export Excel
 
+ระบบมี **2 ปุ่ม Export** (ไม่มี Backup/Restore JSON และไม่มี History export):
+
 | ปุ่ม | ฟังก์ชัน | เนื้อหา | ไฟล์ |
 |---|---|---|---|
-| ⬇️ Export Excel (popup รายการสต็อก) | `exportExcel()` | audit + stock_adj เท่านั้น | `audit_${date}.xlsx` |
-| ⬇️ Export Excel (popup ประวัติ) | `exportHistoryExcel()` | ประวัติวันที่เลือก | `history_${branch}_${date}.xlsx` |
-| ⬇️ Export Excel (History Stats > Stock Adj) | `exportStockAdjExcel()` | stock_adj ปัจจุบัน พร้อม Diff | `stockadj_${branch}_${date}.xlsx` |
+| ⬇️ Export Excel (popup รายการสต็อก toolbar) | `exportExcel()` | audit + stock_adj เท่านั้น — SKU, Barcode, ProductName, SystemQty, CountedQty, Status, Timestamp, Audit Status | `audit_${date}.xlsx` |
+| ⬇️ Export Excel (History Stats → tab 🔴 Stock Adj) | `exportStockAdjExcel()` | stock_adj ปัจจุบัน — #, SKU, Barcode, Product Name, หน่วย, จำนวนคงเหลือ, จำนวนปรับปรุง, Diff (`sysQty − recheckQty`; บวก=ขาด, ลบ=เกิน) | `stockadj_${branch}_${date}.xlsx` |
 
 ### Scan List QTY Masking
 
