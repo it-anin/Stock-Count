@@ -324,6 +324,13 @@
       /* Toast PDA — lightweight fade+slide (no spring bounce, no heavy shadow) */
       @keyframes toastFadePda{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
       .toast{animation:toastFadePda 0.2s ease-out!important;box-shadow:0 2px 8px rgba(0,0,0,0.15)!important;border-radius:10px!important;padding:12px 20px!important;font-size:0.85rem!important;}
+
+      /* Audit Verify popup PDA — ขยายให้เห็นรายการมากขึ้น (Option B) */
+      #auditVerifyPopupOverlay{padding:8px 4px!important;}
+      #auditVerifyPopupOverlay .stock-popup{max-height:calc(100vh - 16px)!important;}
+      #auditVerifyPopupOverlay .stock-popup-header{padding:10px 14px!important;}
+      #auditVerifyPopupOverlay .stock-popup-header h2{font-size:0.85rem!important;}
+      #auditVerifyPopupOverlay .stock-popup-footer{padding:8px 14px!important;}
     }
   </style>
 </head>
