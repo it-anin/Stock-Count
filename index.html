@@ -2672,7 +2672,7 @@ let _hsFirestoreItems=null; // null=ยังไม่โหลด, []=โหล
 let _hsFirestoreLoading=false;
 
 // ===================== Dashboard =====================
-const DASHBOARD_BRANCHES=['SRC','KKL','SSS'];
+const DASHBOARD_BRANCHES=['SRC','KKL','SSS','WH'];
 let _dashLoading=false;
 let _dashAssistantData=null;
 let _dashAssistantFilter='all';
@@ -2788,13 +2788,13 @@ function renderDashAssistantTable(){
   wrap.innerHTML=`<table class="ptable" style="width:100%;">
     <thead><tr>
       <th style="width:70px;">สาขา</th>
-      <th>ผู้ช่วย</th>
+      <th>ผู้สแกน</th>
       <th style="text-align:right;">SKU สแกน</th>
       <th style="text-align:right;">Pass</th>
       <th style="text-align:right;">Audit</th>
       <th style="text-align:right;">Audit %</th>
     </tr></thead>
-    <tbody>${rows.length?rows.join(''):'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);">ไม่มีข้อมูลผู้ช่วย</td></tr>'}</tbody>
+    <tbody>${rows.length?rows.join(''):'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);">ไม่มีข้อมูลผู้สแกน</td></tr>'}</tbody>
   </table>`;
 }
 
@@ -2841,7 +2841,7 @@ function renderDashboard(branches){
       return `<div style="background:linear-gradient(135deg,rgba(0,114,198,0.08),rgba(0,114,198,0.02));border:1px solid rgba(0,114,198,0.25);border-radius:12px;padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <div style="font-size:1.1rem;font-weight:700;color:var(--accent);">${b}</div>
-          <div style="font-size:0.7rem;color:var(--text3);">ผู้ช่วย ${Object.keys(d.assistants).length} คน</div>
+          <div style="font-size:0.7rem;color:var(--text3);">ผู้สแกน ${Object.keys(d.assistants).length} คน</div>
         </div>
         <div style="display:flex;align-items:center;gap:14px;">
           ${renderDoughnut(d)}
@@ -2861,7 +2861,7 @@ function renderDashboard(branches){
   _dashAssistantData=branches;
   sections.push(`<div style="margin-bottom:24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-      <h3 style="font-size:0.95rem;">👥 ผู้ช่วยเภสัช — สรุปการสแกน</h3>
+      <h3 style="font-size:0.95rem;">👥 ผู้สแกน (ผู้ช่วยเภสัช / คลัง) — สรุปการสแกน</h3>
       <div id="dashAssistantFilter" style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="dash-filter-btn active" data-branch="all" onclick="setDashAssistantFilter('all',this)">ทุกสาขา</button>
         ${DASHBOARD_BRANCHES.map(b=>`<button class="dash-filter-btn" data-branch="${b}" onclick="setDashAssistantFilter('${b}',this)">${b}</button>`).join('')}
@@ -2892,7 +2892,7 @@ function renderDashboard(branches){
     </tr>`;
   }).join('');
   sections.push(`<div style="margin-bottom:24px;">
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">🧑‍⚕️ เภสัช — ความคืบหน้าตรวจสอบ Audit</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า</h3>
     <table class="ptable" style="width:100%;">
       <thead><tr>
         <th style="width:80px;">สาขา</th>
@@ -2941,7 +2941,7 @@ function renderDashboard(branches){
   }));
   allAssist.sort((a,b)=>b.pct-a.pct);
   sections.push(`<div>
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">⚠️ Audit % ต่อผู้ช่วย</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">⚠️ Audit % ต่อผู้สแกน</h3>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
       ${allAssist.length?allAssist.map(a=>{
         const w=Math.min(100,a.pct);

@@ -1,6 +1,6 @@
 {
-  "versionCode": 6,
-  "versionName": "1.5",
+  "versionCode": 7,
+  "versionName": "1.6",
   "downloadUrl": "https://github.com/it-anin/Stock-Count/releases/latest/download/StockCountPDA.apk",
-  "releaseNotes": "- เพิ่มสาขา WH (คลังกลาง) แยกข้อมูลจากสาขายา\n- เพิ่ม role คลัง (มุก, ตั๋ง, แล็ค) — สแกนนับและ verify ได้ในคนเดียวกัน\n- รองรับการเพิ่ม R16 doc type ใหม่ (OXXX) ผ่าน config array"
+  "releaseNotes": "- เพิ่มสาขา WH (คลังกลาง) ในหน้า Dashboard\n- ปรับ label dashboard เป็นกลาง (ผู้สแกน / ผู้ตรวจ Audit) ครอบคลุมทั้งร้านยาและคลัง"
 }
