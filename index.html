@@ -678,7 +678,7 @@
         style="flex:1;padding:10px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.85rem;outline:none;transition:border-color 0.15s;"
         onkeydown="if(event.key==='Enter')handleAuditVerifyScan()"
         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
-      <button onclick="handleAuditVerifyScan()" style="padding:10px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">สแกน</button>
+      <button id="avScanBtn" onclick="handleAuditVerifyScan()" style="padding:10px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">สแกน</button>
     </div>
     <div id="avTabRow" style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;">
       <button id="avBtnAudit" class="popup-filter active" onclick="setAvFilter('audit',this)"><span>⚠️</span><span>Audit <span id="avCountAudit" style="background:rgba(224,140,0,0.2);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
@@ -1536,6 +1536,16 @@ function resetScanRuntimeState(){
 // Android app เรียก: webView.evaluateJavascript("receiveBarcode('VALUE')", null)
 function receiveBarcode(barcode){
   if(!barcode||!barcode.trim())return;
+  // ถ้า Audit Verify popup เปิดอยู่ → route ไป audit verify input แทน main scan
+  const avOverlay=document.getElementById('auditVerifyPopupOverlay');
+  if(avOverlay&&avOverlay.style.display==='flex'){
+    const avEl=document.getElementById('auditVerifyScanInput');
+    if(avEl){
+      avEl.value=barcode.trim();
+      avEl.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true}));
+      return;
+    }
+  }
   const el=document.getElementById('scanInput');
   if(!el)return;
   el.value=barcode.trim();
@@ -2535,9 +2545,12 @@ function openAuditVerifyPopup(){
   // WH branch: change title to warehouse context
   const title=document.getElementById('auditVerifyTitle');
   if(title)title.textContent=currentBranch==='WH'?'🔍 Audit Verify — รีเช็คสินค้า':'🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)';
-  // PDA: ซ่อน tab filter row (ประหยัดพื้นที่) บังคับใช้ tab Audit เท่านั้น
+  // PDA: ซ่อน tab filter row (ประหยัดพื้นที่) + ซ่อนปุ่มสแกน (ใช้ scanner broadcast/keyboard wedge แทน)
+  const isPda=window.innerWidth<=600;
   const tabRow=document.getElementById('avTabRow');
-  if(tabRow)tabRow.style.display=window.innerWidth<=600?'none':'flex';
+  if(tabRow)tabRow.style.display=isPda?'none':'flex';
+  const scanBtn=document.getElementById('avScanBtn');
+  if(scanBtn)scanBtn.style.display=isPda?'none':'';
   document.getElementById('auditVerifyPopupOverlay').style.display='flex';
   renderAuditVerifyTable();
   setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
