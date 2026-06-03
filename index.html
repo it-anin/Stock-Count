@@ -1797,9 +1797,13 @@ function handleBarcode(parsed,immediateRender=true){
   const sd=state.scanData.get(sku);if(!sd)return;
 
   if(sd.status && !['pending','scanning'].includes(sd.status)){
-    appendScanRow(sku,resolvedBarcode,sd.countedQty,unitName,sd.status,location);
-    _pendingPatches.add(sku);
-    toast('สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','warn');
+    // PDA + WH + audit: ไม่ใส่ใน RESULT (ไปดูที่ Audit Verify popup แทน)
+    const _hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH'&&sd.status==='audit';
+    if(!_hideAuditPdaWh){
+      appendScanRow(sku,resolvedBarcode,sd.countedQty,unitName,sd.status,location);
+      _pendingPatches.add(sku);
+    }
+    toast(_hideAuditPdaWh?'สินค้านี้อยู่ใน Audit — เปิด Audit Verify popup เพื่อรีเช็ค':'สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','warn');
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}return;
   }
 
@@ -1911,7 +1915,11 @@ function evaluatePendingScans(){
     if(!sd.initialStatus) sd.initialStatus = st;
 
     // อัพเดท scan list
-    if(scanListMap.has(sku)){
+    // PDA + WH: ลบ audit ออกจาก RESULT (ให้ดูใน Audit Verify popup แทน)
+    const _hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH';
+    if(_hideAuditPdaWh&&st==='audit'){
+      scanListMap.delete(sku);
+    } else if(scanListMap.has(sku)){
       const e = scanListMap.get(sku);
       e.status = st;
       e.totalQty = cnt;
@@ -1950,10 +1958,13 @@ function rebuildScanListMap(force=false){
   const isSupervisor=currentRole==='supervisor';
   const filterUser=currentUser&&currentRole!=='pharmacist'&&!isSupervisor;
   const filterAudit=currentRole==='pharmacist';
+  // PDA + WH: ซ่อน audit items จาก RESULT (ให้ดูใน Audit Verify popup แทน)
+  const hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
     if(filterAudit&&sd.status!=='audit')continue;
     if(filterUser&&sd.scannedBy&&sd.scannedBy!==currentUser)continue;
+    if(hideAuditPdaWh&&sd.status==='audit')continue;
     const si=state.skuMap.get(sku);
     const barcodes=si&&si.barcodes.length
       ?si.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName}))
