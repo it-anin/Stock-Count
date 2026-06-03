@@ -680,7 +680,7 @@
         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
       <button onclick="handleAuditVerifyScan()" style="padding:10px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">สแกน</button>
     </div>
-    <div style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;">
+    <div id="avTabRow" style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;">
       <button id="avBtnAudit" class="popup-filter active" onclick="setAvFilter('audit',this)"><span>⚠️</span><span>Audit <span id="avCountAudit" style="background:rgba(224,140,0,0.2);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
       <button id="avBtnStockAdj" class="popup-filter" onclick="setAvFilter('stock_adj',this)"><span>🔴</span><span>Stock Adj <span id="avCountStockAdj" style="background:rgba(217,48,37,0.15);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
     </div>
@@ -2535,6 +2535,9 @@ function openAuditVerifyPopup(){
   // WH branch: change title to warehouse context
   const title=document.getElementById('auditVerifyTitle');
   if(title)title.textContent=currentBranch==='WH'?'🔍 Audit Verify — รีเช็คสินค้า':'🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)';
+  // PDA: ซ่อน tab filter row (ประหยัดพื้นที่) บังคับใช้ tab Audit เท่านั้น
+  const tabRow=document.getElementById('avTabRow');
+  if(tabRow)tabRow.style.display=window.innerWidth<=600?'none':'flex';
   document.getElementById('auditVerifyPopupOverlay').style.display='flex';
   renderAuditVerifyTable();
   setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
@@ -2631,14 +2634,18 @@ function renderAuditVerifyTable(){
         +`</tr>`;
     }).join('');
   } else {
-    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Recheck</th><th>เวลาที่เช็คล่าสุด</th></tr>';
+    const isPda=window.innerWidth<=600;
+    if(thead)thead.innerHTML=isPda
+      ?'<tr><th>SKU</th><th>Barcode</th><th>Name</th><th style="text-align:center;">Recheck</th></tr>'
+      :'<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Recheck</th><th>เวลาที่เช็คล่าสุด</th></tr>';
     const rows=[];
     for(const[sku,sd] of state.scanData.entries()){if(sd.status!=='audit')continue;const si=state.skuMap.get(sku);if(!si)continue;rows.push({sku,sd,si});}
     if(rc)rc.textContent=rows.length+' รายการ Audit';
     const hasAny=_avMap.size>0;
     const confirmAllBtn=document.getElementById('avConfirmAllBtn');
     if(confirmAllBtn)confirmAllBtn.style.display=hasAny?'':'none';
-    if(!rows.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ Audit</td></tr>';return;}
+    const colspan=isPda?4:7;
+    if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ Audit</td></tr>`;return;}
     tbody.innerHTML=rows.map((r,i)=>{
       const{sku,sd,si}=r;
       const bc=si.barcodes.map(b=>b.barcode).join(', ');
@@ -2647,6 +2654,14 @@ function renderAuditVerifyTable(){
       const qtyCell=hasScanned
         ?`<span style="font-weight:700;color:var(--accent);">${avQty}</span>`
         :`<span style="color:var(--text3);">รอสแกน</span>`;
+      if(isPda){
+        return`<tr style="${hasScanned?'background:rgba(0,114,198,0.06);':''}">`
+          +`<td class="ptd-sku">${sku}</td>`
+          +`<td class="ptd-bc" title="${bc}">${bcShort}</td>`
+          +`<td class="ptd-name">${si.productName}</td>`
+          +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${qtyCell}</td>`
+          +`</tr>`;
+      }
       return`<tr style="${hasScanned?'background:rgba(0,114,198,0.06);':''}">`
         +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
         +`<td class="ptd-sku">${sku}</td>`
