@@ -1241,18 +1241,20 @@ function loadR16(event) {
     updateConfirmBtn();
     const totalSold=[...state.r16SalesMap.values()].reduce((a,b)=>a+b,0);
     const totalInbound=[...state.r16InboundMap.values()].reduce((a,b)=>a+b,0);
-    let msg=`R16.104: match ${matched} SKU / ขาย ${totalSold} ชิ้น`;
-    if(totalInbound>0)msg+=` / รับเข้า ${totalInbound} ชิ้น`;
-    if(missing>0)msg+=` | ไม่พบใน R05: ${missing}`;
-    if(mismatch>0)msg+=` | SKU ไม่ตรง: ${mismatch}`;
-    if(matched===0&&state.r16Data.length>0){
-      const r16s=state.r16Data[0]?.barcode||'';
-      const r05s=[...state.barcodeMap.keys()][0]||'';
-      msg+=` — ⚠️ ตัวอย่าง R16:"${r16s}" vs R05:"${r05s}" (เปิด Console เพื่อดูรายละเอียด)`;
-    } else if(matched===0){
-      msg+=` — ไม่มี row ที่ผ่าน filter ORCM/OCTM/OTFB/ORTS/OTFI`;
+    if(matched>0){
+      toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
+      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch}`);
+    } else {
+      let msg=`R16.104: ไม่สามารถจับคู่ข้อมูลได้`;
+      if(state.r16Data.length>0){
+        const r16s=state.r16Data[0]?.barcode||'';
+        const r05s=[...state.barcodeMap.keys()][0]||'';
+        msg+=` — ⚠️ ตัวอย่าง R16:"${r16s}" vs R05:"${r05s}" (เปิด Console เพื่อดูรายละเอียด)`;
+      } else {
+        msg+=` — ไม่มี row ที่ผ่าน filter ORCM/OCTM/OTFB/ORTS/OTFI`;
+      }
+      toast(msg,'warn');
     }
-    toast(msg,matched>0?'success':'warn');
     // ตรวจสอบวันที่ R16 vs วันที่สแกนสินค้า
     if(matched>0&&state.scanData.size){
       const r16Dates=new Set();
