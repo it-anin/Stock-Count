@@ -488,7 +488,8 @@ Toasts appear center-screen with spring bounce animation (`@keyframes popIn`). D
 - Status label "⏳ รอยืนยัน" shortened to "⏳ รอ" on PDA (`window.innerWidth<=600` check in `getScanRowStyle()`)
 - `#btnPdaAuditVerify` (🔍 icon + count badge) shown in header beside Cloud button — toggled by `updateAuditVerifyPanel` based on `window.innerWidth<=600 && canVerify` (replaces the `.left-panel` button hidden on PDA).
 - **Audit Verify popup** (`#auditVerifyPopupOverlay`) PDA overrides:
-  - `padding: 8px 4px !important` on the overlay (replaces 40px/16px) — popup height grows to `calc(100vh - 16px)`
+  - `padding: 8px 4px !important` on the overlay (replaces 40px/16px)
+  - `height: calc(100vh - 16px) !important` **and** `max-height: calc(100vh - 16px) !important` on `.stock-popup` — `height` forces full screen even when the table is empty (max-height alone only limits, so an empty popup would shrink to content and leave the bottom half of the overlay blank). Body section already uses `flex:1 + overflow-y:auto` to fill the remaining space.
   - Header padding compact `10px 14px`, h2 font 0.85rem
   - Footer padding compact `8px 14px`
   - Net: table scroll area ~503 px on a 360×640 PDA (vs ~395 px before), about 13 rows visible
