@@ -2424,14 +2424,11 @@ function _applyCloudScanData(s){
       state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
       if(cloudItem.status==='scanning')scanned++;
     }
-    // ลบ local item ที่ cloud ลบออกไปแล้ว (เช่น startNewCount จากเครื่องอื่น)
-    for(const[sku,sd]of state.scanData.entries()){
-      if(!UNCONFIRMED.has(sd.status))continue;
-      if(s.scanData[sku])continue;
-      // ไม่ลบ local scanning แม้ cloud ยังไม่มี — รอ sync เครื่องนี้ขึ้น cloud ก่อน
-      if(sd.status==='scanning')continue;
-      state.scanData.delete(sku);scanListMap.delete(sku);scanned=Math.max(0,scanned-1);
-    }
+    // หมายเหตุ: หลังแก้ syncToFirestore ให้ไม่ upload pending ขึ้น cloud (90f4bb8)
+    // cloud จะมีแค่ scanning + confirmed items — pending ของ local ไม่อยู่ใน cloud เป็นเรื่องปกติ
+    // ห้ามลบ local pending/scanning จาก scanData เพราะจะทำให้สแกนต่อไม่ได้
+    // (handleBarcode ต้องการ scanData.get(sku) ไม่ undefined)
+    // startNewCount จากเครื่องอื่นใช้ overwrite=true → cloud มี SKU เป็น pending ครบ — case นี้ไม่ trigger delete
   }
   if(Array.isArray(s.unknownScans)){
     const existBc=new Set(state.unknownScans.map(u=>u.barcode));
