@@ -2,6 +2,33 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ กฎสำคัญ — ห้ามแก้โค้ดสแกนโดยไม่แจ้งก่อน
+
+**ก่อนแก้ฟังก์ชัน / logic ที่เกี่ยวกับการสแกนทุกครั้ง ต้องแจ้ง user และรอ approve ก่อน**
+
+ฟังก์ชัน / logic ที่ถือว่าเป็น "scan-related":
+- `handleScanInput`, `handleScanKey`, `processScan`, `processPharmacistAuditScan`, `submitScanManual`
+- `handleBarcode`, `parseScanLine`, `drainQueue`, `scanQueue`
+- `evaluatePendingScans`, `validateAndProcess`
+- `appendScanRow`, `removeScanItem`, `clearScanList`, `rebuildScanListMap`, `renderScanList`, `patchScanRow`
+- `_applyCloudScanData`, `syncToFirestore` (scan data), `pullFromCloud`, `startScanSessionListener`, `restoreFromFirestore` (scan parts)
+- `confirmScanGap`, `showScanGapModal`, `_scanGapHold`
+- `handleAuditVerifyScan`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`
+- PDA keystroke detection: `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`
+- Time gates สำหรับ scan
+- Role check ใน scan list filter (`rebuildScanListMap` filterUser/filterAudit)
+
+**เหตุผล:** การสแกนเป็น critical path — มี state, debounce, sync, listener หลายชั้นที่ interact กัน การแก้ผิดทำให้ "สแกนไม่ติด" หรือข้อมูลหาย ซึ่งกระทบ workflow จริงของพนักงานทันที และ debug ยาก (ต้องใช้ Console บน Desktop + PDA — PDA ไม่มี console native)
+
+**ที่เคยเกิด cascade bug** (commit 58d9d2f → 90f4bb8 → 6fefac9 — June 2026):
+1. แก้ `_applyCloudScanData` ป้องกัน scanning ถูก clobber → scanning items หายจาก RESULT 1-2 วิ
+2. แก้ `syncToFirestore` ให้ upload scanning เมื่อ cloud empty → cloud มีแค่ scanning, ไม่มี pending
+3. ผลพวง: listener delete loop wipe local pending → `state.scanData.get(sku)` undefined → สแกน "ไม่ติด" silent
+
+**How to apply:** ก่อนแก้ฟังก์ชัน scan-related ใดก็ตาม → อธิบาย change + impact ให้ user → รอ approval → ทำ และเตือนให้ทดสอบทั้ง PDA + Desktop
+
+---
+
 ## Running the App
 
 No build step. Open `index.html` directly in a browser, or serve via any static HTTP server:
