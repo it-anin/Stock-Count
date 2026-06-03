@@ -1,6 +1,6 @@
 {
-  "versionCode": 5,
-  "versionName": "1.4",
+  "versionCode": 6,
+  "versionName": "1.5",
   "downloadUrl": "https://github.com/it-anin/Stock-Count/releases/latest/download/StockCountPDA.apk",
-  "releaseNotes": "- ย้ายปุ่ม ⚙ Settings เข้า header ข้างปุ่ม Cloud\n- ลบ floating buttons ออก"
+  "releaseNotes": "- เพิ่มสาขา WH (คลังกลาง) แยกข้อมูลจากสาขายา\n- เพิ่ม role คลัง (มุก, ตั๋ง, แล็ค) — สแกนนับและ verify ได้ในคนเดียวกัน\n- รองรับการเพิ่ม R16 doc type ใหม่ (OXXX) ผ่าน config array"
 }
