@@ -1428,16 +1428,23 @@ window.addEventListener('DOMContentLoaded',async()=>{
     showBranchSelector();
   }
   // PDA: refocus scan input เมื่อกลับจาก background
+  // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
+  function _loginModalOpen(){
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','dashboardPopupOverlay'];
+    return ids.some(id=>document.getElementById(id)?.style.display==='flex');
+  }
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden)setTimeout(()=>document.getElementById('scanInput').focus(),200);
+    if(document.hidden)return;
+    if(_loginModalOpen())return;
+    if(!currentUser)return;
+    setTimeout(()=>{const el=document.getElementById('scanInput');if(el&&!_loginModalOpen())el.focus();},200);
   });
   // PDA: refocus scan input เมื่อแตะพื้นที่ที่ไม่ใช่ interactive element
   document.addEventListener('click',(e)=>{
     const tag=e.target.tagName.toLowerCase();
     if(['input','button','select','textarea','a'].includes(tag))return;
-    const overlayIds=['stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','dashboardPopupOverlay'];
-    if(overlayIds.some(id=>document.getElementById(id)?.style.display==='flex'))return;
-    if(document.getElementById('scanGapModal')?.style.display==='flex')return;
+    if(_loginModalOpen())return;
+    if(!currentUser)return;
     document.getElementById('scanInput').focus();
   });
 });
@@ -2440,11 +2447,21 @@ async function syncToFirestore(overwrite=false){
 function _applyCloudScanData(s){
   const UNCONFIRMED=new Set(['pending','scanning']);
   const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
+  // WH only: propagate cloud confirmed items (audit/pass/stock_adjustment) ลง local
+  // เพื่อให้ PDA WH รับสถานะ audit จาก Desktop Confirm และโยกไป Audit Verify popup ตาม WH filter
+  const _whPropagateConfirmed=(currentBranch==='WH');
   let scanned=0;
   if(s.scanData){
     for(const[sku,cloudItem]of Object.entries(s.scanData)){
-      if(!UNCONFIRMED.has(cloudItem.status))continue;
       const local=state.scanData.get(sku);
+      // WH only: cloud confirmed → apply ถ้า local ยังไม่ confirm และเภสัชยังไม่ verify
+      if(_whPropagateConfirmed&&CONFIRMED.has(cloudItem.status)){
+        if(local&&CONFIRMED.has(local.status))continue;
+        if(local&&local.auditor)continue;
+        state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
+        continue;
+      }
+      if(!UNCONFIRMED.has(cloudItem.status))continue;
       if(local&&CONFIRMED.has(local.status))continue;
       // ป้องกัน cloud pending ทับ local scanning (local เพิ่งสแกน, cloud ยังไม่ได้ sync)
       if(local&&local.status==='scanning'){
