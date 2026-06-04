@@ -2075,7 +2075,7 @@ function renderScanList(){
     const pn=si?si.productName:'';
     const rowKey=entry.status==='unknown'?'unknown:'+(entry.barcodes[0]?.barcode||''):entry.sku;
     return`<div class="scan-row" data-sku="${rowKey.replace(/"/g,'&quot;')}" style="grid-template-columns:${tpl}">
-      <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:''}</div>
+      <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&currentRole==='warehouse'&&currentBranch==='WH')?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
       <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((si?.systemQty||0)>100?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='warehouse'||currentRole==='supervisor'))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
@@ -2158,6 +2158,24 @@ function removeScanItem(sku){
   // ลบออกจาก Firestore โดยตรง — syncToFirestore(overwrite=false) จะไม่ push pending→scanning
   _removeSkuFromFirestore(sku);
   toast('ลบแล้ว — สแกนใหม่เพื่อเริ่มนับ','info');
+}
+
+// warehouse: รีเซ็ตจำนวนรีเช็คของ audit item กลับเป็นว่าง → สแกนนับใหม่ (status คงเป็น audit)
+function resetRecheckItem(sku){
+  const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
+  delete sd.recheckQty;delete sd.recheckBy;
+  const e=scanListMap.get(sku);if(e)e.totalQty=0;
+  // ยกเลิก debounce + ล้าง scanInput กัน barcode ที่ PDA เพิ่งยิงก่อนกด ✕ ถูก auto-submit หลังรีเซ็ต
+  clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;_lastKeystrokeTime=0;_pdaMode=false;
+  const si=document.getElementById('scanInput');if(si){si.value='';si.classList.remove('pda-receiving');}
+  // ลบ scanQueue entries ที่ resolve เป็น SKU เดียวกัน (กรณี debounce ยิงไปแล้วก่อนกด ✕)
+  for(let i=scanQueue.length-1;i>=0;i--){
+    const p=scanQueue[i];const bc=typeof p==='string'?p:(p.barcode||'');
+    const rs=state.barcodeMap.get(bc)||(state.skuDirectMap?.has(bc)?bc:null);
+    if(rs===sku)scanQueue.splice(i,1);
+  }
+  scheduleSave();scheduleStats();scheduleScanListRender();invalidatePopupRowsCache();
+  toast('รีเซ็ตรีเช็คแล้ว — สแกนนับใหม่','info');
 }
 
 function _removeSkuFromFirestore(sku){
@@ -2482,8 +2500,9 @@ function _applyCloudScanData(s){
         if(local&&local.auditor)continue;                                  // local verify ที่เครื่องนี้แล้ว → เก็บไว้
         if(local&&CONFIRMED.has(local.status)&&!cloudItem.auditor){
           // local confirmed แต่ cloud ยังไม่ verify → ไม่ทับ status
-          // แต่ sync recheckQty/recheckBy ที่ warehouse สแกนรีเช็คมาจาก PDA (เอาค่าสูงกว่า กันเขียนทับด้วยค่าเก่าจากการ race)
-          if(local.status==='audit'&&cloudItem.status==='audit'&&(cloudItem.recheckQty||0)>(local.recheckQty||0)){
+          // mirror recheckQty/recheckBy จาก cloud เสมอ (warehouse เป็นเจ้าของค่านี้บน PDA)
+          // — ต้อง mirror ตรงๆ (ไม่ใช่ max) เพื่อให้การรีเซ็ตรีเช็ค (recheckQty หาย/ลดลง) sync มาที่ Desktop ด้วย
+          if(local.status==='audit'&&cloudItem.status==='audit'){
             local.recheckQty=cloudItem.recheckQty;local.recheckBy=cloudItem.recheckBy||'';
           }
           continue;
