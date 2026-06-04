@@ -1412,6 +1412,7 @@ async function startNewCount(){
   const _ts103n=document.getElementById('r16_103Timestamp');if(_ts103n)_ts103n.style.display='none';
   _setR01Ts('');_setR16Ts('');
   rebuildMaps();saveSession();
+  clearTimeout(_firestoreSyncTimer); // ยกเลิก timer จาก saveSession — sync ด้วย overwrite=true แทน
   await syncToFirestore(true);
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
