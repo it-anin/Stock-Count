@@ -385,7 +385,7 @@
     <div class="stat-card"><div class="stat-label">SKU BRANCH</div><div class="stat-value orange" id="statBranchSku">—</div></div>
     <div class="stat-card"><div class="stat-label">Counted</div><div class="stat-value blue" id="statCounted">0</div></div>
     <div class="stat-card"><div class="stat-label">Pass</div><div class="stat-value green" id="statPass">0</div></div>
-    <div class="stat-card"><div class="stat-label">Audit</div><div class="stat-value red" id="statFail">0</div><div id="statAuditSub" style="font-size:0.62rem;color:var(--text3);margin-top:1px;display:none;"></div><div id="auditProgressWrap" style="display:none;margin-top:5px;width:100%;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span style="font-size:0.58rem;color:var(--text3);">เภสัชตรวจแล้ว</span><span id="auditProgressPct" style="font-size:0.58rem;color:var(--text3);">0%</span></div><div style="width:100%;height:5px;background:rgba(217,48,37,0.15);border-radius:3px;overflow:hidden;"><div id="auditProgressFill" style="height:100%;border-radius:3px;transition:width 0.4s,background 0.4s;width:0%;background:var(--red);"></div></div></div></div>
+    <div class="stat-card"><div class="stat-label">Audit</div><div class="stat-value red" id="statFail">0</div><div id="statAuditSub" style="font-size:0.62rem;color:var(--text3);margin-top:1px;display:none;"></div><div id="auditProgressWrap" style="display:none;margin-top:5px;width:100%;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span id="auditProgressLabel" style="font-size:0.58rem;color:var(--text3);">เภสัชตรวจแล้ว</span><span id="auditProgressPct" style="font-size:0.58rem;color:var(--text3);">0%</span></div><div style="width:100%;height:5px;background:rgba(217,48,37,0.15);border-radius:3px;overflow:hidden;"><div id="auditProgressFill" style="height:100%;border-radius:3px;transition:width 0.4s,background 0.4s;width:0%;background:var(--red);"></div></div></div></div>
 
     <div class="stat-card"><div class="stat-label">Not in System</div><div class="stat-value purple" id="statUnknown">0</div></div>
     <div class="stat-card">
@@ -542,7 +542,7 @@
           <button class="btn btn-clear" style="flex:1;" onclick="clearScanList()">✕ Clear</button>
         </div>
         <div id="pharmacistAuditBar" style="display:none;padding:0 16px 14px;">
-          <button onclick="confirmAllAuditVerify()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">✓ ยืนยัน Audit (<span id="pharmacistAuditCount">0</span>)</button>
+          <button id="pharmacistAuditBtn" onclick="confirmAllAuditVerify()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"><span id="pharmacistAuditBtnLabel">✓ ยืนยัน Audit</span> (<span id="pharmacistAuditCount">0</span>)</button>
         </div>
       </div>
     </div>
@@ -1810,6 +1810,22 @@ function handleBarcode(parsed,immediateRender=true){
 
   const sd=state.scanData.get(sku);if(!sd)return;
 
+  // WH Desktop: รีเช็ค audit ผ่านช่อง scan หลัก (ไม่ต้องเปิด popup) — สะสมเข้า _avMap แล้วกดปุ่ม "ยืนยันรีเช็ค"
+  // PDA WH (<=600) ข้าม branch นี้ → ตกไปที่ confirmed-block เดิม (ซ่อน audit + เด้ง toast ให้เปิด popup)
+  if(currentRole==='warehouse'&&window.innerWidth>600&&sd.status==='audit'){
+    const addQty=qty!==null?qty*mult:mult;
+    const newTotal=(_avMap.get(sku)||0)+addQty;
+    _avMap.set(sku,newTotal);
+    let e=scanListMap.get(sku);
+    if(e){e.totalQty=newTotal;e.recheckQty=newTotal;e.status='audit';}
+    else{const barcodes=skuInfo.barcodes.length?skuInfo.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:resolvedBarcode,unit:unitName}];e={sku,barcodes,totalQty:newTotal,status:'audit',location:'',catLabel:'',recheckQty:newTotal};scanListMap.set(sku,e);}
+    _pendingPatches.add(sku);
+    beepSuccess();
+    updatePharmacistAuditConfirmBtn();
+    if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}
+    return;
+  }
+
   if(sd.status && !['pending','scanning'].includes(sd.status)){
     // PDA + WH + audit: ไม่ใส่ใน RESULT (ไปดูที่ Audit Verify popup แทน)
     const _hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH'&&sd.status==='audit';
@@ -2203,6 +2219,7 @@ function updateStats(){
   const _apWrap=document.getElementById('auditProgressWrap');
   const _apFill=document.getElementById('auditProgressFill');
   const _apPct=document.getElementById('auditProgressPct');
+  const _apLabel=document.getElementById('auditProgressLabel');if(_apLabel)_apLabel.textContent=(currentBranch==='WH'?'รีเช็คแล้ว':'เภสัชตรวจแล้ว');
   if(_apWrap){if(auditTotal>0){_apWrap.style.display='block';if(_apFill){_apFill.style.width=_apct+'%';_apFill.style.background=_apct>=100?'var(--green)':'var(--red)';}if(_apPct)_apPct.textContent=_apct+'%';}else{_apWrap.style.display='none';}}
   updateAuditVerifyCount();
   updateHistoryStatsCount();
@@ -2770,13 +2787,17 @@ function updatePharmacistAuditConfirmBtn(){
 }
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
+  // WH บน Desktop: รีเช็ค audit ผ่านช่อง scan หลักได้ → โชว์ทั้งปุ่ม Confirm (นับ) และปุ่มยืนยันรีเช็ค
+  const isWhDesktop=currentRole==='warehouse'&&window.innerWidth>600;
   const inp=document.getElementById('scanInput');
   if(inp)inp.placeholder='Scan Barcode';
   const bar=document.getElementById('pharmacistAuditBar');
-  if(bar)bar.style.display=isPharm?'block':'none';
+  if(bar)bar.style.display=(isPharm||isWhDesktop)?'block':'none';
+  const lbl=document.getElementById('pharmacistAuditBtnLabel');
+  if(lbl)lbl.textContent=isWhDesktop?'✓ ยืนยันรีเช็ค':'✓ ยืนยัน Audit';
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=isPharm?'none':'flex';
-  if(!isPharm){_avMap.clear();updatePharmacistAuditConfirmBtn();}
+  if(!isPharm&&!isWhDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
 }
 
 // ─── History Stats ───────────────────────────────────────────────────────────
@@ -3221,7 +3242,7 @@ function renderHistoryStatsTable(){
     }
   }
   else if(_hsFilter==='pharmacist'){
-    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>ชื่อเภสัช</th></tr>';
+    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>'+(currentBranch==='WH'?'ชื่อผู้รีเช็ค':'ชื่อเภสัช')+'</th></tr>';
     const items=[];
     for(const[sku,sd] of state.scanData.entries()){
       if(!sd.auditor)continue;
