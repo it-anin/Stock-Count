@@ -2456,8 +2456,9 @@ function _applyCloudScanData(s){
       const local=state.scanData.get(sku);
       // WH only: cloud confirmed → apply ถ้า local ยังไม่ confirm และเภสัชยังไม่ verify
       if(_whPropagateConfirmed&&CONFIRMED.has(cloudItem.status)){
-        if(local&&CONFIRMED.has(local.status))continue;
-        if(local&&local.auditor)continue;
+        if(local&&local.auditor)continue;                                  // local verify ที่เครื่องนี้แล้ว → เก็บไว้
+        if(local&&CONFIRMED.has(local.status)&&!cloudItem.auditor)continue; // local confirmed แต่ cloud ยังไม่ verify → เก็บ local (เช่น audit ยังไม่ทับกัน)
+        // cloud มี auditor (verify แล้ว เช่น stock_adjustment/pass จาก PDA) → ทับ local audit ที่ยังรอ verify ได้
         state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
         continue;
       }
