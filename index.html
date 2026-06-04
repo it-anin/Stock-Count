@@ -1051,6 +1051,10 @@ async function initAfterLogin(){
   renderScanList();updateStats();renderTable();
   if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
   updateScanInputMode();
+  // WH PDA: เริ่ม session ด้วย RESULT ว่าง — พนักงานเห็นเฉพาะสิ่งที่สแกนใหม่
+  if(currentBranch==='WH'&&window.innerWidth<=600){
+    scanListMap.clear();_listCleared=true;renderScanList();
+  }
 }
 function updateUserDisplay(){
   const el=document.getElementById('userLabel');
@@ -2103,7 +2107,7 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
 }
 
 function appendScanRow(sku,barcode,totalQty,unit,status,location='',catLabel=''){
-  _listCleared=false;
+  if(!(currentBranch==='WH'&&window.innerWidth<=600))_listCleared=false;
   const key=status==='unknown'?'unknown:'+barcode:sku;
   if(!scanListMap.has(key))scanListMap.set(key,{sku,barcodes:[],totalQty:0,status,location,catLabel});
   const e=scanListMap.get(key);
