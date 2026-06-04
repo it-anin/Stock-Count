@@ -1810,9 +1810,9 @@ function handleBarcode(parsed,immediateRender=true){
 
   const sd=state.scanData.get(sku);if(!sd)return;
 
-  // WH Desktop: รีเช็ค audit ผ่านช่อง scan หลัก (ไม่ต้องเปิด popup) — สะสมเข้า _avMap แล้วกดปุ่ม "ยืนยันรีเช็ค"
-  // PDA WH (<=600) ข้าม branch นี้ → ตกไปที่ confirmed-block เดิม (ซ่อน audit + เด้ง toast ให้เปิด popup)
-  if(currentRole==='warehouse'&&window.innerWidth>600&&sd.status==='audit'){
+  // หัวหน้างาน (supervisor) บน Desktop: รีเช็ค audit ผ่านช่อง scan หลัก (ไม่ต้องเปิด popup) — สะสมเข้า _avMap แล้วกดปุ่ม "ยืนยันรีเช็ค"
+  // warehouse/PDA/ผู้อื่น ข้าม branch นี้ → ตกไปที่ confirmed-block เดิม (PDA WH ซ่อน audit + เด้ง toast ให้เปิด popup)
+  if(currentRole==='supervisor'&&window.innerWidth>600&&sd.status==='audit'){
     const addQty=qty!==null?qty*mult:mult;
     const newTotal=(_avMap.get(sku)||0)+addQty;
     _avMap.set(sku,newTotal);
@@ -2787,17 +2787,17 @@ function updatePharmacistAuditConfirmBtn(){
 }
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
-  // WH บน Desktop: รีเช็ค audit ผ่านช่อง scan หลักได้ → โชว์ทั้งปุ่ม Confirm (นับ) และปุ่มยืนยันรีเช็ค
-  const isWhDesktop=currentRole==='warehouse'&&window.innerWidth>600;
+  // หัวหน้างาน (supervisor) บน Desktop: รีเช็ค audit ผ่านช่อง scan หลักได้ → โชว์ทั้งปุ่ม Confirm (นับ) และปุ่มยืนยันรีเช็ค
+  const isSvDesktop=currentRole==='supervisor'&&window.innerWidth>600;
   const inp=document.getElementById('scanInput');
   if(inp)inp.placeholder='Scan Barcode';
   const bar=document.getElementById('pharmacistAuditBar');
-  if(bar)bar.style.display=(isPharm||isWhDesktop)?'block':'none';
+  if(bar)bar.style.display=(isPharm||isSvDesktop)?'block':'none';
   const lbl=document.getElementById('pharmacistAuditBtnLabel');
-  if(lbl)lbl.textContent=isWhDesktop?'✓ ยืนยันรีเช็ค':'✓ ยืนยัน Audit';
+  if(lbl)lbl.textContent=isSvDesktop?'✓ ยืนยันรีเช็ค':'✓ ยืนยัน Audit';
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=isPharm?'none':'flex';
-  if(!isPharm&&!isWhDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
+  if(!isPharm&&!isSvDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
 }
 
 // ─── History Stats ───────────────────────────────────────────────────────────
