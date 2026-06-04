@@ -62,6 +62,8 @@ state = {
   r16Data, r16SalesMap, r16RawMap,                             // Sales-during-count (ORCM/OCTM) from R16.104
   r16InboundMap, r16InboundRawMap,                             // Inbound-during-count (OTFB/ORTS/OTFI) from R16.104
   r16DateMismatch,                                             // true when R16 TRANDATE dates don't overlap scan dates
+  r16_103Map, r16_103RawMap,                                   // WH only: รับเข้าที่ยังไม่ขึ้นชั้น (IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN) from R16.103
+  r16_103Loaded, r16_103UploadedAt,                            // WH R16.103 badge state
   skuMap,      // SKU → { productName, systemQty, barcodes[], isDel }
   barcodeMap,  // barcode → SKU
   skuDirectMap,// SKU → { barcode, unitName } (smallest-unit barcode)
@@ -69,6 +71,8 @@ state = {
   unknownScans // items scanned but not in system
 }
 ```
+
+`_countResetAt` (module-level `let`, ไม่ใช่ใน state object) — ISO timestamp ที่ตั้งทุกครั้งที่ `startNewCount()` ถูกเรียก persisted ใน localStorage + Firestore ใช้โดย `_applyCloudScanData` เพื่อ detect reset จากเครื่องอื่นและ clear local confirmed items
 
 `scanListMap` is a separate `Map` used only for rendering the live scan list UI (last 100 entries). It is rebuilt from `state.scanData` via `rebuildScanListMap()`.
 
@@ -93,9 +97,13 @@ Stats cards (Scanned/Audit totals) always count all employees regardless of filt
 
 3. **Upload R16.104** → `loadR16()` → builds `r16SalesMap` + `r16RawMap` (sales: ORCM/OCTM) and `r16InboundMap` + `r16InboundRawMap` (inbound: OTFB/ORTS/OTFI) for time-filtered adjustment. After loading, automatically calls `reEvaluateAuditItems()` if matched > 0, and shows a date-mismatch warning if R16 TRANDATE dates don't overlap with scan dates.
 
-4. **Confirm** → `evaluatePendingScans()` → for each `scanning` item: `effectiveCnt = countedQty + getSoldQtyBefore(sku, timestamp) - getInboundQtyBefore(sku, timestamp)`, compare with `systemQty` → set `pass` or `audit`. Sets `sd.initialStatus` on first evaluation (never overwritten).
+4. **Upload R16.103** (WH only) → `loadR16_103()` → builds `r16_103Map` + `r16_103RawMap` (รับเข้าที่ยังไม่ขึ้นชั้น: IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN) สำหรับ WH branch เท่านั้น ปุ่มแสดงเฉพาะ Desktop WH (`window.innerWidth > 600 && currentBranch === 'WH'`)
 
-5. **Audit resolution** → pharmacist opens Audit Verify panel → scans in dedicated input → clicks **ยืนยันทั้งหมด** → status changes to `pass` or `stock_adjustment`.
+5. **Confirm** → `evaluatePendingScans()` → for each `scanning` item: `effectiveCnt = countedQty + getSoldQtyBefore(sku, timestamp) + getR16103QtyBefore(sku, timestamp) - getInboundQtyBefore(sku, timestamp)`, compare with `systemQty` → set `pass` or `audit`. Sets `sd.initialStatus` on first evaluation (never overwritten).
+
+   **WH formula:** r16103Qty = สินค้าที่รับเข้าคลังแต่ยังไม่ขึ้นชั้น → อยู่ใน systemQty แต่พนักงานไม่ได้นับ → ต้องบวกกลับเข้า effectiveCnt
+
+6. **Audit resolution** → pharmacist opens Audit Verify panel → scans in dedicated input → clicks **ยืนยันทั้งหมด** → status changes to `pass` or `stock_adjustment`.
 
 ### Status Lifecycle
 
@@ -113,6 +121,20 @@ pending → scanning → pass
 - Progress bar: pharmacist-checked items / total audit items ever flagged.
 - `auditGot` counts: `audit_check` + `stock_adjustment` + items where `sd.auditor && sd.status === 'pass'`
 - `auditTotal` counts: all items that ever had `initialStatus === 'audit'` plus `audit_check`/`stock_adjustment`
+
+**WH branch — stat cards (Desktop vs PDA):**
+
+| Card | Desktop WH | PDA WH (≤600px) |
+|---|---|---|
+| Total SKU | ซ่อน (JS) | ซ่อน (JS) |
+| SKU BRANCH | ซ่อน (JS) | ซ่อน (CSS nth-child(2)) |
+| Counted → **Audit ทั้งหมด** | แสดง `auditTotal` | ซ่อน (JS — PDA ไม่ต้องการ) |
+| Pass | แสดง | แสดง |
+| Audit | แสดง | แสดง (2×2 grid กับ Pass) |
+| Not in System | แสดง | ซ่อน (CSS nth-child(6)) |
+| Progress | แสดง | ซ่อน (CSS nth-child(7)) |
+
+Logic อยู่ใน `updateStats()` ท้ายฟังก์ชัน — ตรวจ `currentBranch === 'WH'` และ `window.innerWidth <= 600`
 
 ### Auto-Update (Service Worker)
 
@@ -135,12 +157,13 @@ Four branches: **SRC**, **KKL**, **SSS** (ร้านขายยา), **WH** (
 
 | Feature | Allowed window | Admin bypass | WH bypass |
 |---|---|---|---|
-| R01.102 upload | After 21:00 | ✓ | ✗ |
+| R01.102 upload | After 21:00 | ✓ | ✓ |
 | R16.104 upload | 08:00 – 21:29 | ✓ | ✓ |
+| R16.103 upload | ไม่มี gate | — | WH only |
 | Scan (all roles) | 08:00 – 20:59 | ✗ | ✗ |
 
-- R01.102 gate: `getHours() < 21` → blocked.
-- R16.104 gate: `getHours() < 8 \|\| getHours() > 21 \|\| (getHours() === 21 && getMinutes() >= 30)` → blocked. **WH branch bypasses this** — `currentBranch !== 'WH'` check in the R16 upload button onclick handler — warehouse needs to confirm stock at any time.
+- R01.102 gate: `getHours() < 21` → blocked. **WH branch bypasses this** (`currentBranch !== 'WH'` check) — คลังกลางควบคุมสินค้าเข้าออกได้ตลอดเวลา
+- R16.104 gate: `getHours() < 8 \|\| getHours() > 21 \|\| (getHours() === 21 && getMinutes() >= 30)` → blocked. **WH branch bypasses this** — warehouse needs to confirm stock at any time.
 - Scan gate: checked in `processScan()` — `getHours() < 8 \|\| getHours() >= 21` → blocked, clears input and shows toast.
 - **🗑️ ล้างข้อมูลทั้งหมด** is only accessible in Admin mode (button hidden otherwise, function guarded by `_adminMode` check).
 
@@ -221,7 +244,7 @@ Merge logic ถูกแยกออกเป็น `_applyCloudScanData(s)` (sh
 - **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud อีกต่อไป → ลบออกจาก local** (กรณี `startNewCount` จากเครื่องอื่น)
 - หลัง merge ต้องเรียก `invalidatePopupRowsCache()` **ก่อน** `renderTable()` เสมอ — มิฉะนั้น popup จะ render ด้วย cache เก่า
 
-**Workflow หลัง `startNewCount`:** กด startNewCount บนเครื่องหลัก → PDA ทุกเครื่องจะรับข้อมูลผ่าน `onSnapshot` อัตโนมัติ (ไม่ต้องกด Cloud)
+**Workflow หลัง `startNewCount`:** กด startNewCount บนเครื่องหลัก → `_countResetAt` ถูก set เป็น ISO timestamp ใหม่ → sync ขึ้น Firestore → PDA ทุกเครื่องรับ `onSnapshot` → `_applyCloudScanData` เห็น `countResetAt` ต่างกัน → clear local confirmed items → `updateStats()` → stats reset เป็น 0
 
 ### Cloud Sync — `startScanSessionListener()` (onSnapshot)
 
@@ -241,6 +264,7 @@ Merge logic ถูกแยกออกเป็น `_applyCloudScanData(s)` (sh
 - ดึง cloud state มา merge ก่อน แล้วค่อย overwrite ด้วย local
 - local item ที่เป็น `pending` จะไม่ overwrite cloud item ที่มี status อื่น (เพื่อไม่ reset สิ่งที่เครื่องอื่นสแกนแล้ว)
 - **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud → ไม่ re-upload** (ป้องกัน PDA เขียนข้อมูลเก่ากลับหลัง `startNewCount`)
+- **local item ที่เป็น `pass`/`audit`/`stock_adjustment` แต่ไม่มีใน cloud → ไม่ re-upload** (ป้องกัน data resurrection หลัง `startNewCount`)
 
 ### Known Pitfalls — Cloud Sync
 
@@ -328,6 +352,14 @@ Column mappings (zero-indexed, skip row 0 header):
   | `OTFB`, `ORTS`, `OTFI` | รับเข้าคลัง (Inbound) | บวกเพิ่ม → หักออกจาก countedQty (`r16InboundMap`) |
 
   Col O (14)=Barcode; Col R (17)=BASEQUANTITY (แปลงเป็นหน่วยเล็กสุดแล้ว); Col X (23)=SKU; TRANDATE column auto-detected from header row (row 0).
+
+- **R16.103** (WH only): คอลัมน์เหมือน R16.104 ทุกอย่าง กรองเฉพาะ:
+
+  | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
+  |---|---|---|
+  | `IRNC`, `IRVC`, `IRNM`, `ICSM`, `ITFB`, `ITFW`, `IPOS`, `IRCN` | รับเข้าที่ยังไม่ขึ้นชั้น | อยู่ใน systemQty แต่พนักงานไม่ได้นับ → บวกกลับเข้า countedQty (`r16_103Map`) |
+
+  ใช้ TRANDATE filtering เหมือนกัน (`getR16103QtyBefore`). ไม่มี time gate. แสดงปุ่มเฉพาะ Desktop WH.
 
 ### Scan Input Formats
 
@@ -474,7 +506,16 @@ In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (cas
 
 ### Clear Scan List vs Clear Data
 
-The **✕ Clear** button calls `clearScanList()` which only clears `scanListMap` (the live scan list UI). It does NOT reset `state.scanData`. To fully reset a scanned item, use the **✕** button on individual rows (`removeScanItem`), which resets that SKU's `scanData` entry back to `pending`.
+The **✕ Clear** button calls `clearScanList()` which clears `scanListMap` + sets `_listCleared = true`. It does NOT reset `state.scanData`. To see data again, press **Cloud ☁️** (shows only `scanning`/`audit` items, excludes `pass`/`stock_adjustment`).
+
+**`_listCleared` flag behavior:**
+- `clearScanList()` → sets `_listCleared = true` → `onSnapshot` skips `rebuildScanListMap`/`renderScanList` (prevents list from reappearing)
+- `appendScanRow()` → resets `_listCleared = false` (except WH PDA — see below)
+- `pullFromCloud()` → resets `_listCleared = false` + rebuilds with `excludeStatuses = {pass, stock_adjustment}`
+
+**WH PDA — RESULT starts empty:** `initAfterLogin()` sets `_listCleared = true` and clears `scanListMap` after restore. `appendScanRow` on WH PDA does NOT reset `_listCleared` — so `onSnapshot` never floods old items back. ผลลัพธ์: พนักงานเห็นเฉพาะสินค้าที่สแกนในรอบนี้ ไม่เห็น history
+
+To fully reset a scanned item, use the **✕** button on individual rows (`removeScanItem`), which resets that SKU's `scanData` entry back to `pending`.
 
 **`removeScanItem(sku)` — full reset for re-scan:**
 1. Resets `sd` fields: `countedQty=0`, `status='pending'`, `timestamp=''`, `barcode=''`, `scans=[]`, `scannedBy=''`, `auditor=''`, `auditStatus='pending'`. Deletes `soldQty`, `rawCountedQty`, `initialStatus`, `recheckQty`.
