@@ -2352,10 +2352,15 @@ function updateStats(){
     if(_c2)_c2.style.display='none';
     if(_cl)_cl.textContent='Audit ทั้งหมด';
     document.getElementById('statCounted').textContent=auditTotal;
+    // PDA WH: ซ่อน card "Audit ทั้งหมด" (card 3) — แสดงเฉพาะ PASS + AUDIT
+    const _c3=document.getElementById('statCounted').closest('.stat-card');
+    if(_c3)_c3.style.display=window.innerWidth<=600?'none':'';
   }else{
     if(_c1)_c1.style.display='';
     if(_c2)_c2.style.display='';
     if(_cl)_cl.textContent='Counted';
+    const _c3=document.getElementById('statCounted').closest('.stat-card');
+    if(_c3)_c3.style.display='';
   }
 }
 function getActiveSkus(){return[...state.skuMap.keys()];}
