@@ -2587,12 +2587,16 @@ async function syncToFirestore(overwrite=false){
         const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
         if(s?.scanData){
           mergedSd={...s.scanData};
+          const _confirmedSet=new Set(['pass','audit','audit_check','stock_adjustment']);
           for(const k in localSd){
             // ไม่ทับ status ของ cloud (pass/audit/stock_adj) ด้วย local pending
             if(localSd[k].status==='pending'&&mergedSd[k]?.status&&mergedSd[k].status!=='pending')continue;
             // ไม่ re-upload local pending ที่ cloud ลบออกไปแล้ว (startNewCount จากเครื่องอื่น)
             // — แต่ allow scanning เสมอ (เป็น user input สดใหม่)
             if(!mergedSd[k]&&localSd[k].status==='pending')continue;
+            // ป้องกัน local confirmed (pass/audit/stock_adj) resurrection หลัง startNewCount
+            // — ถ้า cloud ไม่มี SKU นี้แล้ว แสดงว่าถูกลบโดย startNewCount → ไม่ re-upload
+            if(!mergedSd[k]&&_confirmedSet.has(localSd[k].status))continue;
             mergedSd[k]=localSd[k];
           }
         }
@@ -2610,6 +2614,13 @@ async function syncToFirestore(overwrite=false){
 function _applyCloudScanData(s){
   const UNCONFIRMED=new Set(['pending','scanning']);
   const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
+  // cloud ว่างเปล่า = startNewCount จากเครื่องอื่น → clear local confirmed items ทิ้ง
+  // ป้องกัน PDA ค้าง confirmed items แล้ว sync กลับขึ้น Firestore ภายหลัง
+  if(s.scanData&&Object.keys(s.scanData).length===0){
+    for(const[sku,local]of state.scanData.entries()){
+      if(CONFIRMED.has(local.status))state.scanData.delete(sku);
+    }
+  }
   // WH only: propagate cloud confirmed items (audit/pass/stock_adjustment) ลง local
   // เพื่อให้ PDA WH รับสถานะ audit จาก Desktop Confirm และโยกไป Audit Verify popup ตาม WH filter
   const _whPropagateConfirmed=(currentBranch==='WH');
