@@ -868,6 +868,7 @@ let _pmUnsubscribe = null;
 let _pmListenerReady = false;
 let _scanSessionUnsubscribe = null;
 let _snapshotMergeTimer = null;
+let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
 function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
@@ -921,9 +922,12 @@ function startScanSessionListener(){
         const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
         if(!s)return;
         _applyCloudScanData(s);
-        rebuildScanListMap(true);
-        invalidatePopupRowsCache();
-        renderScanList();updateStats();renderTable();updateConfirmBtn();
+        if(!_listCleared){
+          rebuildScanListMap(true);
+          invalidatePopupRowsCache();
+          renderScanList();
+        }
+        updateStats();renderTable();updateConfirmBtn();
         document.getElementById('dbStatus').textContent='Synced ☁️';
       }catch(e){console.warn('[snapshot]',e.message);}
     },3000);
@@ -1979,7 +1983,7 @@ function evaluatePendingScans(){
 
 const scanListMap=new Map();
 
-function rebuildScanListMap(force=false){
+function rebuildScanListMap(force=false, excludeStatuses=null){
   if(force)scanListMap.clear();
   if(scanListMap.size>0||!state.scanData.size)return;
   // assistant/warehouse: แสดงเฉพาะของตัวเอง | pharmacist: แสดงเฉพาะ audit
@@ -1992,6 +1996,7 @@ function rebuildScanListMap(force=false){
   const isWh=currentBranch==='WH';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
+    if(excludeStatuses&&excludeStatuses.has(sd.status))continue;
     if(filterAudit&&sd.status!=='audit')continue;
     // warehouse WH: เห็น audit ของทุกคน (worklist รีเช็ค) → ข้าม filterUser สำหรับ audit
     const whWorklist=isWh&&sd.status==='audit'&&currentRole==='warehouse';
@@ -2009,6 +2014,7 @@ function rebuildScanListMap(force=false){
 }
 
 function appendScanRow(sku,barcode,totalQty,unit,status,location='',catLabel=''){
+  _listCleared=false;
   const key=status==='unknown'?'unknown:'+barcode:sku;
   if(!scanListMap.has(key))scanListMap.set(key,{sku,barcodes:[],totalQty:0,status,location,catLabel});
   const e=scanListMap.get(key);
@@ -2020,7 +2026,8 @@ function appendScanRow(sku,barcode,totalQty,unit,status,location='',catLabel='')
 
 function clearScanList(){
   scanListMap.clear();
-  saveSession();updateStats();invalidatePopupRowsCache();renderScanList();
+  _listCleared=true;
+  updateStats();invalidatePopupRowsCache();renderScanList();
 }
 
 // ── Column resize ─────────────────────────────────────────────────────────────
@@ -2545,7 +2552,8 @@ async function pullFromCloud(){
     const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
     if(!s){document.getElementById('dbStatus').textContent='Ready';toast('ไม่มีข้อมูลใน Cloud','warn');return;}
     const scanned=_applyCloudScanData(s);
-    rebuildScanListMap(true);
+    _listCleared=false;
+    rebuildScanListMap(true,new Set(['pass','stock_adjustment']));
     invalidatePopupRowsCache();
     saveSession();renderScanList();updateStats();renderTable();updateConfirmBtn();
     document.getElementById('dbStatus').textContent='Synced ☁️';
