@@ -165,7 +165,9 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
    - `pharmacistQty === systemQty` → `status: 'pass'`
    - `pharmacistQty !== systemQty` → `status: 'stock_adjustment'`
 4. Saves `sd.recheckQty`, `sd.auditor = currentUser`, `sd.timestamp` = pharmacist's verification time.
-5. OS Web Notification fires on confirm.
+5. Toast feedback after confirm:
+   - **Pharmacy (SRC/KKL/SSS):** toast per item — `✅ <SKU> ผ่าน → Pass` หรือ `⚠️ <SKU> ไม่ตรง (สแกน N / ระบบ M) → Stock Adjustment`
+   - **WH:** summary toast เดียวตอนกด **ยืนยันทั้งหมด** — `✅ ผ่าน N รายการ, ⚠️ ปรับสต็อก M รายการ` (ฝั่งที่ 0 ตัดทิ้ง) — `confirmAuditVerifyItem(sku, silent=true)` ใน loop เพื่อนับ pass/adj แล้ว toast ครั้งเดียว type=`warn` ถ้ามี adj else `success`. ปุ่ม `✓ ยืนยัน` รายตัวในแถวยัง toast per-item ปกติ (silent=default false)
 
 ### Persistence Layers
 
@@ -387,11 +389,15 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 **⚠️ Audit tab** — shows items with `status === 'audit'`:
 - Columns: `#` / `SKU` / `Barcode` / `Product Name` / `Count Qty` (assistant's count) / `Recheck` (pharmacist's accumulated scan) / `Status` / `Timestamp` / ปุ่ม `✓ ยืนยัน` per row
 - Pharmacist scans barcode in the scan input (`handleAuditVerifyScan`) → accumulates qty in `_avMap: Map<SKU, number>`
-- Footer: **ยืนยันทั้งหมด** button (`confirmAllAuditVerify`) — confirms all items in `_avMap` at once, fires OS Web Notification
-- On confirm per item (`confirmAuditVerifyItem`):
-  - `pharmacistQty === systemQty` → `status: 'pass'`
-  - `pharmacistQty !== systemQty` → `status: 'stock_adjustment'`
+- Footer: **ยืนยันทั้งหมด** button (`confirmAllAuditVerify`) — confirms all items in `_avMap` at once
+- On confirm per item (`confirmAuditVerifyItem(sku, silent=false)`):
+  - `pharmacistQty === systemQty` → `status: 'pass'`, returns `'pass'`
+  - `pharmacistQty !== systemQty` → `status: 'stock_adjustment'`, returns `'stock_adjustment'`
   - Saves `sd.recheckQty`, `sd.auditor = currentUser`, `sd.timestamp` = pharmacist's time
+  - `silent=true` → suppresses per-item toast (used by WH summary flow)
+- Toast feedback differs by branch:
+  - **Pharmacy (SRC/KKL/SSS)** — toast per item: `✅ <SKU> ผ่าน → Pass` / `⚠️ <SKU> ไม่ตรง (สแกน N / ระบบ M) → Stock Adjustment`
+  - **WH** — `ยืนยันทั้งหมด` ยิง summary toast เดียว: `✅ ผ่าน N รายการ, ⚠️ ปรับสต็อก M รายการ` (ฝั่งที่ 0 ตัดทิ้ง, type `warn` ถ้ามี adj else `success`). ปุ่ม `✓ ยืนยัน` รายตัวในแถวยัง toast per-item ปกติ
 
 **🔴 Stock Adj tab** — shows items with `status === 'stock_adjustment'`:
 - Columns: `#` / `SKU` / `Barcode` / `Product Name` / `Sys Qty` / `Recheck Qty` / `Diff` / `เวลาที่เช็คล่าสุด`
