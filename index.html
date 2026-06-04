@@ -973,6 +973,7 @@ function startProductMasterListener(){
   },err=>console.warn('Firestore product master listen:',err.message));
 }
 async function verifyPin(){
+  if(document.getElementById('pinModal').style.display==='none')return;
   const pin=document.getElementById('pinInput').value.trim();
   const branchPin=BRANCH_PINS[currentBranch];
   if(pin!==branchPin){toast('PIN ไม่ถูกต้อง','error');document.getElementById('pinInput').value='';return;}
