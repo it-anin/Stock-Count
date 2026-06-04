@@ -876,6 +876,7 @@ let _pmListenerReady = false;
 let _scanSessionUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
+let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
 function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
@@ -1411,6 +1412,7 @@ async function startNewCount(){
   const _b103n=document.getElementById('badgeR16_103');if(_b103n)_b103n.textContent='ยังไม่โหลด';
   const _ts103n=document.getElementById('r16_103Timestamp');if(_ts103n)_ts103n.style.display='none';
   _setR01Ts('');_setR16Ts('');
+  _countResetAt=new Date().toISOString();
   rebuildMaps();saveSession();
   clearTimeout(_firestoreSyncTimer); // ยกเลิก timer จาก saveSession — sync ด้วย overwrite=true แทน
   await syncToFirestore(true);
@@ -1431,6 +1433,7 @@ async function clearAllData() {
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r05Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
+  _countResetAt='';
   ['R01','R05','R16'].forEach(k=>{document.getElementById('badge'+k).textContent='ยังไม่โหลด';});document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
   const _b103c=document.getElementById('badgeR16_103');if(_b103c)_b103c.textContent='ยังไม่โหลด';
   const _ts103c=document.getElementById('r16_103Timestamp');if(_ts103c)_ts103c.style.display='none';
@@ -1452,7 +1455,7 @@ function saveSession() {
     const r16Obj={};for(const[k,v]of state.r16SalesMap.entries())r16Obj[k]=v;
     const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
     const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
-    localStorage.setItem(lsKey(),JSON.stringify({r01UploadedAt:state.r01UploadedAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj}));
+    localStorage.setItem(lsKey(),JSON.stringify({r01UploadedAt:state.r01UploadedAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj}));
   } catch(e){toast('แบ็คอัพล้มเหลว','warn');}
   if(!_adminMode){
     clearTimeout(_firestoreSyncTimer);
@@ -1472,6 +1475,7 @@ function loadSession() {
     if(s.r16_103Loaded){state.r16_103Loaded=true;const b=document.getElementById('badgeR16_103');if(b)b.textContent='Ready';}
     if(s.r16_103UploadedAt){state.r16_103UploadedAt=s.r16_103UploadedAt;const tsEl=document.getElementById('r16_103Timestamp');if(tsEl){tsEl.textContent=s.r16_103UploadedAt;tsEl.style.display='block';}}
     if(s.r16_103Map){state.r16_103Map.clear();for(const k in s.r16_103Map)state.r16_103Map.set(k,s.r16_103Map[k]);}
+    if(s.countResetAt)_countResetAt=s.countResetAt;
     if(state.r05Data.length&&(state.productMasterData.length||state.r01Data.length))rebuildMaps();
     if(s.scanData){state.scanData.clear();for(const k in s.scanData)state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...s.scanData[k]});}
     if(s.unknownScans)state.unknownScans=s.unknownScans;
@@ -2604,7 +2608,7 @@ async function syncToFirestore(overwrite=false){
       }
     }catch(e){}
   }
-  const data={r01UploadedAt:state.r01UploadedAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
+  const data={r01UploadedAt:state.r01UploadedAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
   try{
     await ref.set({session_data_json:JSON.stringify(data),updated_at:firebase.firestore.FieldValue.serverTimestamp()});
     document.getElementById('dbStatus').textContent='Synced';
@@ -2614,9 +2618,10 @@ async function syncToFirestore(overwrite=false){
 function _applyCloudScanData(s){
   const UNCONFIRMED=new Set(['pending','scanning']);
   const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
-  // cloud ว่างเปล่า = startNewCount จากเครื่องอื่น → clear local confirmed items ทิ้ง
-  // ป้องกัน PDA ค้าง confirmed items แล้ว sync กลับขึ้น Firestore ภายหลัง
-  if(s.scanData&&Object.keys(s.scanData).length===0){
+  // ตรวจ countResetAt — ถ้า cloud มี timestamp ใหม่กว่า local = startNewCount จากเครื่องอื่น
+  // → clear local confirmed items ทันที ป้องกัน data resurrection
+  if(s.countResetAt&&s.countResetAt!==_countResetAt){
+    _countResetAt=s.countResetAt;
     for(const[sku,local]of state.scanData.entries()){
       if(CONFIRMED.has(local.status))state.scanData.delete(sku);
     }
@@ -2740,6 +2745,7 @@ async function restoreFromFirestore(force=false){
     if(s.r16_103UploadedAt){state.r16_103UploadedAt=s.r16_103UploadedAt;const tsEl=document.getElementById('r16_103Timestamp');if(tsEl){tsEl.textContent=s.r16_103UploadedAt;tsEl.style.display='block';}}
     state.r16_103Map.clear();
     if(s.r16_103Map){for(const k in s.r16_103Map)state.r16_103Map.set(k,s.r16_103Map[k]);}
+    if(s.countResetAt)_countResetAt=s.countResetAt;
     state.scanData.clear();
     if(s.scanData){for(const k in s.scanData)state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...s.scanData[k]});}
     state.unknownScans=Array.isArray(s.unknownScans)?s.unknownScans:[];
