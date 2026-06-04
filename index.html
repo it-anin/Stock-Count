@@ -381,9 +381,9 @@
 
   <!-- Stats -->
   <div class="stats-bar">
-    <div class="stat-card"><div class="stat-label">Total SKU</div><div class="stat-value blue" id="statTotal">0</div></div>
-    <div class="stat-card"><div class="stat-label">SKU BRANCH</div><div class="stat-value orange" id="statBranchSku">—</div></div>
-    <div class="stat-card"><div class="stat-label">Counted</div><div class="stat-value blue" id="statCounted">0</div></div>
+    <div class="stat-card" id="statCardTotal"><div class="stat-label">Total SKU</div><div class="stat-value blue" id="statTotal">0</div></div>
+    <div class="stat-card" id="statCardBranch"><div class="stat-label">SKU BRANCH</div><div class="stat-value orange" id="statBranchSku">—</div></div>
+    <div class="stat-card"><div class="stat-label" id="statCountedLabel">Counted</div><div class="stat-value blue" id="statCounted">0</div></div>
     <div class="stat-card"><div class="stat-label">Pass</div><div class="stat-value green" id="statPass">0</div></div>
     <div class="stat-card"><div class="stat-label">Audit</div><div class="stat-value red" id="statFail">0</div><div id="statAuditSub" style="font-size:0.62rem;color:var(--text3);margin-top:1px;display:none;"></div><div id="auditProgressWrap" style="display:none;margin-top:5px;width:100%;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span id="auditProgressLabel" style="font-size:0.58rem;color:var(--text3);">เภสัชตรวจแล้ว</span><span id="auditProgressPct" style="font-size:0.58rem;color:var(--text3);">0%</span></div><div style="width:100%;height:5px;background:rgba(217,48,37,0.15);border-radius:3px;overflow:hidden;"><div id="auditProgressFill" style="height:100%;border-radius:3px;transition:width 0.4s,background 0.4s;width:0%;background:var(--red);"></div></div></div></div>
 
@@ -2254,6 +2254,20 @@ function updateStats(){
   updateAuditVerifyCount();
   updateHistoryStatsCount();
   updatePharmacistAuditConfirmBtn();
+  // WH: ซ่อน Total SKU + SKU BRANCH, เปลี่ยน Counted → Audit ทั้งหมด (auditTotal)
+  const _c1=document.getElementById('statCardTotal');
+  const _c2=document.getElementById('statCardBranch');
+  const _cl=document.getElementById('statCountedLabel');
+  if(currentBranch==='WH'){
+    if(_c1)_c1.style.display='none';
+    if(_c2)_c2.style.display='none';
+    if(_cl)_cl.textContent='Audit ทั้งหมด';
+    document.getElementById('statCounted').textContent=auditTotal;
+  }else{
+    if(_c1)_c1.style.display='';
+    if(_c2)_c2.style.display='';
+    if(_cl)_cl.textContent='Counted';
+  }
 }
 function getActiveSkus(){return[...state.skuMap.keys()];}
 
