@@ -2684,7 +2684,7 @@ function renderAuditVerifyTable(){
   } else {
     const isPda=window.innerWidth<=600;
     if(thead)thead.innerHTML=isPda
-      ?'<tr><th>SKU</th><th>Barcode</th><th>Name</th><th style="text-align:center;">Recheck</th></tr>'
+      ?'<tr><th>SKU</th><th>Name</th><th style="text-align:center;">Recheck</th></tr>'
       :'<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Recheck</th><th>เวลาที่เช็คล่าสุด</th></tr>';
     const rows=[];
     for(const[sku,sd] of state.scanData.entries()){if(sd.status!=='audit')continue;const si=state.skuMap.get(sku);if(!si)continue;rows.push({sku,sd,si});}
@@ -2692,7 +2692,7 @@ function renderAuditVerifyTable(){
     const hasAny=_avMap.size>0;
     const confirmAllBtn=document.getElementById('avConfirmAllBtn');
     if(confirmAllBtn)confirmAllBtn.style.display=hasAny?'':'none';
-    const colspan=isPda?4:7;
+    const colspan=isPda?3:7;
     if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ Audit</td></tr>`;return;}
     tbody.innerHTML=rows.map((r,i)=>{
       const{sku,sd,si}=r;
@@ -2705,7 +2705,6 @@ function renderAuditVerifyTable(){
       if(isPda){
         return`<tr style="${hasScanned?'background:rgba(0,114,198,0.06);':''}">`
           +`<td class="ptd-sku">${sku}</td>`
-          +`<td class="ptd-bc" title="${bc}">${bcShort}</td>`
           +`<td class="ptd-name">${si.productName}</td>`
           +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${qtyCell}</td>`
           +`</tr>`;

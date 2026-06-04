@@ -496,8 +496,8 @@ Toasts appear center-screen with spring bounce animation (`@keyframes popIn`). D
 - **Audit Verify popup** JS-controlled PDA changes (in `openAuditVerifyPopup` + `renderAuditVerifyTable`):
   - Tab row `#avTabRow` hidden (force Audit tab only — Stock Adj tab inaccessible from PDA)
   - Manual "สแกน" button `#avScanBtn` hidden (Broadcast Mode + Enter key handle it)
-  - Table renders 4 columns only: `SKU` / `Barcode` / `Name` / `Recheck` (vs 7 cols on Desktop)
-  - Empty-state cell uses `colspan="4"` on PDA / `7` on Desktop
+  - Table renders 3 columns only: `SKU` / `Name` / `Recheck` (vs 7 cols on Desktop) — Barcode column hidden on PDA เพื่อประหยัดพื้นที่
+  - Empty-state cell uses `colspan="3"` on PDA / `7` on Desktop
 
 **PDA WH — RESULT scan list hides audit items:** `rebuildScanListMap` filter `if(window.innerWidth<=600 && currentBranch==='WH' && sd.status==='audit') continue`. Also `evaluatePendingScans` deletes from `scanListMap` (instead of upserting) when an item evaluates to audit under PDA WH. And `handleBarcode` (re-scan path of a confirmed SKU) skips `appendScanRow` for audit on PDA WH, showing a contextual toast `"สินค้านี้อยู่ใน Audit — เปิด Audit Verify popup เพื่อรีเช็ค"`. Audit items move to the Audit Verify popup for recheck. Pharmacy branches and Desktop WH unchanged.
 
