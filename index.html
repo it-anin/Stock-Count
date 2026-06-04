@@ -542,7 +542,7 @@
           <button class="btn btn-clear" style="flex:1;" onclick="clearScanList()">✕ Clear</button>
         </div>
         <div id="pharmacistAuditBar" style="display:none;padding:0 16px 14px;">
-          <button id="pharmacistAuditBtn" onclick="confirmAllAuditVerify()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"><span id="pharmacistAuditBtnLabel">✓ ยืนยัน Audit</span> (<span id="pharmacistAuditCount">0</span>)</button>
+          <button id="pharmacistAuditBtn" onclick="confirmRecheckBtn()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"><span id="pharmacistAuditBtnLabel">✓ ยืนยัน Audit</span> (<span id="pharmacistAuditCount">0</span>)</button>
         </div>
       </div>
     </div>
@@ -1810,19 +1810,18 @@ function handleBarcode(parsed,immediateRender=true){
 
   const sd=state.scanData.get(sku);if(!sd)return;
 
-  // หัวหน้างาน (supervisor) บน Desktop: รีเช็ค audit ผ่านช่อง scan หลัก (ไม่ต้องเปิด popup) — สะสมเข้า _avMap แล้วกดปุ่ม "ยืนยันรีเช็ค"
-  // warehouse/PDA/ผู้อื่น ข้าม branch นี้ → ตกไปที่ confirmed-block เดิม (PDA WH ซ่อน audit + เด้ง toast ให้เปิด popup)
-  if(currentRole==='supervisor'&&window.innerWidth>600&&sd.status==='audit'){
+  // warehouse (WH): รีเช็ค audit ผ่านช่อง scan หลัก — สะสมใน sd.recheckQty (persist + sync ขึ้น cloud)
+  // status คงเป็น 'audit' จนกว่า supervisor (มายด์) จะกด "ยืนยันรีเช็ค" บน Desktop — warehouse ยืนยันเองไม่ได้
+  if(currentRole==='warehouse'&&currentBranch==='WH'&&sd.status==='audit'){
     const addQty=qty!==null?qty*mult:mult;
-    const newTotal=(_avMap.get(sku)||0)+addQty;
-    _avMap.set(sku,newTotal);
+    sd.recheckQty=(sd.recheckQty||0)+addQty;
+    sd.recheckBy=currentUser;
     let e=scanListMap.get(sku);
-    if(e){e.totalQty=newTotal;e.recheckQty=newTotal;e.status='audit';}
-    else{const barcodes=skuInfo.barcodes.length?skuInfo.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:resolvedBarcode,unit:unitName}];e={sku,barcodes,totalQty:newTotal,status:'audit',location:'',catLabel:'',recheckQty:newTotal};scanListMap.set(sku,e);}
+    if(e){e.totalQty=sd.recheckQty;e.status='audit';}
+    else{const barcodes=skuInfo.barcodes.length?skuInfo.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:resolvedBarcode,unit:unitName}];e={sku,barcodes,totalQty:sd.recheckQty,status:'audit',location:'',catLabel:''};scanListMap.set(sku,e);}
     _pendingPatches.add(sku);
     beepSuccess();
-    updatePharmacistAuditConfirmBtn();
-    if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}
+    scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}
     return;
   }
 
@@ -1988,18 +1987,24 @@ function rebuildScanListMap(force=false){
   const isSupervisor=currentRole==='supervisor';
   const filterUser=currentUser&&currentRole!=='pharmacist'&&!isSupervisor;
   const filterAudit=currentRole==='pharmacist';
-  // PDA + WH: ซ่อน audit items จาก RESULT (ให้ดูใน Audit Verify popup แทน)
-  const hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH';
+  // PDA + WH: ซ่อน audit items จาก RESULT — ยกเว้น warehouse (ใช้ลิสต์นี้รีเช็ค audit)
+  const hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH'&&currentRole!=='warehouse';
+  const isWh=currentBranch==='WH';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
     if(filterAudit&&sd.status!=='audit')continue;
-    if(filterUser&&sd.scannedBy&&sd.scannedBy!==currentUser)continue;
+    // warehouse WH: เห็น audit ของทุกคน (worklist รีเช็ค) → ข้าม filterUser สำหรับ audit
+    const whWorklist=isWh&&sd.status==='audit'&&currentRole==='warehouse';
+    if(filterUser&&!whWorklist&&sd.scannedBy&&sd.scannedBy!==currentUser)continue;
     if(hideAuditPdaWh&&sd.status==='audit')continue;
     const si=state.skuMap.get(sku);
     const barcodes=si&&si.barcodes.length
       ?si.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName}))
       :[{barcode:sd.barcode||sku,unit:''}];
-    scanListMap.set(sku,{sku,barcodes,totalQty:sd.countedQty,status:sd.status,location:'',catLabel:''});
+    // warehouse+supervisor บน WH: audit row โชว์ recheckQty (จำนวนที่ warehouse สแกนรีเช็ค) แทน countedQty
+    const showRecheck=isWh&&sd.status==='audit'&&(currentRole==='warehouse'||currentRole==='supervisor');
+    const totalQty=showRecheck?(sd.recheckQty||0):sd.countedQty;
+    scanListMap.set(sku,{sku,barcodes,totalQty,status:sd.status,location:'',catLabel:''});
   }
 }
 
@@ -2223,6 +2228,7 @@ function updateStats(){
   if(_apWrap){if(auditTotal>0){_apWrap.style.display='block';if(_apFill){_apFill.style.width=_apct+'%';_apFill.style.background=_apct>=100?'var(--green)':'var(--red)';}if(_apPct)_apPct.textContent=_apct+'%';}else{_apWrap.style.display='none';}}
   updateAuditVerifyCount();
   updateHistoryStatsCount();
+  updatePharmacistAuditConfirmBtn();
 }
 function getActiveSkus(){return[...state.skuMap.keys()];}
 
@@ -2474,8 +2480,15 @@ function _applyCloudScanData(s){
       // WH only: cloud confirmed → apply ถ้า local ยังไม่ confirm และเภสัชยังไม่ verify
       if(_whPropagateConfirmed&&CONFIRMED.has(cloudItem.status)){
         if(local&&local.auditor)continue;                                  // local verify ที่เครื่องนี้แล้ว → เก็บไว้
-        if(local&&CONFIRMED.has(local.status)&&!cloudItem.auditor)continue; // local confirmed แต่ cloud ยังไม่ verify → เก็บ local (เช่น audit ยังไม่ทับกัน)
-        // cloud มี auditor (verify แล้ว เช่น stock_adjustment/pass จาก PDA) → ทับ local audit ที่ยังรอ verify ได้
+        if(local&&CONFIRMED.has(local.status)&&!cloudItem.auditor){
+          // local confirmed แต่ cloud ยังไม่ verify → ไม่ทับ status
+          // แต่ sync recheckQty/recheckBy ที่ warehouse สแกนรีเช็คมาจาก PDA (เอาค่าสูงกว่า กันเขียนทับด้วยค่าเก่าจากการ race)
+          if(local.status==='audit'&&cloudItem.status==='audit'&&(cloudItem.recheckQty||0)>(local.recheckQty||0)){
+            local.recheckQty=cloudItem.recheckQty;local.recheckBy=cloudItem.recheckBy||'';
+          }
+          continue;
+        }
+        // cloud มี auditor (verify แล้ว เช่น stock_adjustment/pass จาก supervisor Desktop) → ทับ local audit ที่ยังรอ verify ได้
         state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
         continue;
       }
@@ -2590,7 +2603,7 @@ function setAvFilter(f,btn){
 }
 
 function openAuditVerifyPopup(){
-  if(currentRole!=='pharmacist'&&currentRole!=='warehouse'&&currentRole!=='supervisor'){toast('เฉพาะเภสัช / คลัง / หัวหน้างาน เท่านั้น','warn');return;}
+  if(currentRole!=='pharmacist'&&currentRole!=='supervisor'){toast('เฉพาะเภสัช / หัวหน้างาน เท่านั้น','warn');return;}
   _avMap.clear();
   _avFilter='audit';
   const btn=document.getElementById('avBtnAudit');
@@ -2634,6 +2647,39 @@ function handleAuditVerifyScan(){
   _avMap.set(sku,(_avMap.get(sku)||0)+addQty);
   renderAuditVerifyTable();
   document.getElementById('auditVerifyScanInput').focus();
+}
+
+// ปุ่ม "ยืนยันรีเช็ค/ยืนยัน Audit" — dispatcher: supervisor ยืนยันจาก recheckQty ที่ sync มา | เภสัช ยืนยันจาก _avMap (สแกนเอง)
+function confirmRecheckBtn(){
+  if(currentRole==='supervisor'){confirmAllRecheckSupervisor();return;}
+  confirmAllAuditVerify();
+}
+
+// supervisor (มายด์) บน Desktop: ยืนยันทุก audit item ที่ warehouse รีเช็คมาแล้ว (มี recheckQty, ยังไม่มี auditor)
+// เทียบ recheckQty vs systemQty → Pass / Stock Adjustment, ตั้ง auditor = มายด์
+function confirmAllRecheckSupervisor(){
+  const items=[];
+  for(const[sku,sd]of state.scanData.entries()){
+    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor)items.push(sku);
+  }
+  if(!items.length){toast('ยังไม่มีรายการที่รีเช็ค (รอ warehouse สแกนบน PDA)','warn');return;}
+  let nPass=0,nAdj=0;
+  const _d=new Date();
+  const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
+  for(const sku of items){
+    const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);if(!sd||!si)continue;
+    const rq=sd.recheckQty||0;
+    if(rq===si.systemQty){sd.status='pass';sd.auditStatus='approved';nPass++;}
+    else{sd.status='stock_adjustment';sd.auditStatus='stock_adjustment';nAdj++;}
+    sd.auditor=currentUser;sd.timestamp=ts;
+    if(scanListMap.has(sku))scanListMap.get(sku).status=sd.status;
+  }
+  const parts=[];
+  if(nPass>0)parts.push(`✅ ผ่าน ${nPass} รายการ`);
+  if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj} รายการ`);
+  if(parts.length)toast(parts.join(', '),nAdj>0?'warn':'success');
+  invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();
+  rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
 }
 
 function confirmAllAuditVerify(){
@@ -2762,7 +2808,7 @@ function updateAuditVerifyCount(){
 function updateAuditVerifyPanel(){
   const p=document.getElementById('auditVerifyPanel');if(!p)return;
   p.style.display=currentRole?'':'none';
-  const canVerify=currentRole==='pharmacist'||currentRole==='warehouse'||currentRole==='supervisor';
+  const canVerify=currentRole==='pharmacist'||currentRole==='supervisor';
   const btn=document.getElementById('auditVerifyBtn');
   const lock=document.getElementById('auditVerifyLock');
   if(btn){
@@ -2783,7 +2829,14 @@ function updateAuditVerifyPanel(){
 
 function updatePharmacistAuditConfirmBtn(){
   const el=document.getElementById('pharmacistAuditCount');
-  if(el)el.textContent=_avMap.size;
+  if(!el)return;
+  if(currentRole==='supervisor'){
+    // นับ audit item ที่ warehouse รีเช็คมาแล้ว (มี recheckQty, ยังไม่ยืนยัน) — sync มาจาก PDA
+    let n=0;for(const[,sd]of state.scanData.entries()){if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor)n++;}
+    el.textContent=n;
+  }else{
+    el.textContent=_avMap.size;
+  }
 }
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
