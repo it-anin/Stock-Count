@@ -10,10 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `handleScanInput`, `handleScanKey`, `processScan`, `processPharmacistAuditScan`, `submitScanManual`
 - `handleBarcode`, `parseScanLine`, `drainQueue`, `scanQueue`
 - `evaluatePendingScans`, `validateAndProcess`
-- `appendScanRow`, `removeScanItem`, `clearScanList`, `rebuildScanListMap`, `renderScanList`, `patchScanRow`
+- `appendScanRow`, `removeScanItem`, `resetRecheckItem`, `clearScanList`, `rebuildScanListMap`, `renderScanList`, `patchScanRow`
 - `_applyCloudScanData`, `syncToFirestore` (scan data), `pullFromCloud`, `startScanSessionListener`, `restoreFromFirestore` (scan parts)
 - `confirmScanGap`, `showScanGapModal`, `_scanGapHold`
-- `handleAuditVerifyScan`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`
+- `handleAuditVerifyScan`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`, `confirmRecheckBtn`, `confirmAllRecheckSupervisor` (WH recheck confirm)
 - PDA keystroke detection: `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`
 - Time gates สำหรับ scan
 - Role check ใน scan list filter (`rebuildScanListMap` filterUser/filterAudit)
@@ -74,14 +74,16 @@ state = {
 
 **Scan list filter by role:** `rebuildScanListMap(force=false)` applies role-based filtering:
 - **assistant** — แสดงเฉพาะแถวที่ `sd.scannedBy === currentUser`
+- **warehouse** — แสดงของตัวเอง (`sd.scannedBy === currentUser`) **แต่** audit items แสดงของ**ทุกคน** (worklist รีเช็ค, ข้าม filter `scannedBy`); แถว audit โชว์ `sd.recheckQty`
 - **pharmacist** — แสดงเฉพาะ `sd.status === 'audit'` (รายการที่รอเภสัชตรวจ)
+- **supervisor** — แสดงทุกการสแกนของพนักงานทั้งหมด (ไม่ filter); แถว audit โชว์ `sd.recheckQty`
 - **ไม่ได้ login** — แสดงทั้งหมด
 
 Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) is unfiltered for all roles and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
 
 **Pharmacist PDA workflow:** เภสัช login บน PDA → scan list แสดงเฉพาะ Audit items ทันที (ไม่มี popup) → สแกน barcode ผ่านช่อง scanInput → `processPharmacistAuditScan()` สะสมใน `_avMap` → ช่อง QTY ในแถวอัปเดตเป็นจำนวนที่สะสม (bold, ไม่มี toast) → กด "✓ ยืนยัน Audit" เพื่อ confirm ทั้งหมด. Popup "รายการสต็อกสินค้า" เมื่อเภสัชเปิด จะ default filter เป็น `audit` อัตโนมัติ
 
-**Scan list QTY — pharmacist audit exception:** สำหรับแถวที่ `status === 'audit'` และ `currentRole === 'pharmacist'` จะแสดง `entry.totalQty` เสมอ (bold) โดยไม่ใช้ threshold `> 100` — `entry.totalQty` ในกรณีนี้คือจำนวนที่เภสัชสแกนสะสมจาก `_avMap` ไม่ใช่ `sd.countedQty` ของผู้ช่วย ทั้ง `renderScanList()` และ `patchScanRow()` ต้องตรวจสอบเงื่อนไขนี้
+**Scan list QTY — audit exception (pharmacist / warehouse / supervisor):** สำหรับแถวที่ `status === 'audit'` และ `currentRole` เป็น `pharmacist` / `warehouse` / `supervisor` จะแสดง `entry.totalQty` เสมอ (bold) โดยไม่ใช้ threshold `> 100`. `entry.totalQty` คือ: เภสัช = จำนวนสะสมจาก `_avMap`; warehouse/supervisor = `sd.recheckQty` (จำนวนที่ warehouse สแกนรีเช็ค, set ใน `rebuildScanListMap` + recheck branch ของ `handleBarcode`). ทั้ง `renderScanList()` และ `patchScanRow()` ต้องตรวจสอบเงื่อนไขนี้
 
 ### Data Flow
 
@@ -146,19 +148,38 @@ Four branches: **SRC**, **KKL**, **SSS** (ร้านขายยา), **WH** (
 
 ### Employee Profile System
 
-After branch PIN is verified, an employee selector modal appears. Three roles:
+After branch PIN is verified, an employee selector modal appears. Four roles:
 
 | Role | Branches / Names |
 |---|---|
 | **เภสัช** (pharmacist) | SRC: เภอ๊อฟ / KKL: เภออด / SSS: เภเบส |
 | **ผู้ช่วยเภสัช** (assistant) | SRC: ก้า, กิฟ, สุ่ย, นิกกี้ / KKL: แตงโม, ทราย / SSS: ออย, ฟ้าใส |
 | **คลัง** (warehouse) | WH: มุก, ตั๋ง, แล็ค |
+| **หัวหน้างาน** (supervisor) | WH: มายด์ |
 
-Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only the roles it uses (SRC/KKL/SSS = `pharmacist`+`assistant`; WH = `warehouse` only). `showEmployeeSelector` renders sections conditionally (`profiles.pharmacist`, `profiles.assistant`, `profiles.warehouse`) and hides missing ones. Selected employee is stored in `currentUser` (string) and `currentRole` (`'pharmacist'` | `'assistant'` | `'warehouse'`). The header displays the active user. On branch switch, `currentUser`/`currentRole` are cleared and the selector re-appears.
+Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only the roles it uses (SRC/KKL/SSS = `pharmacist`+`assistant`; WH = `supervisor`+`warehouse`). `showEmployeeSelector` renders sections conditionally (`profiles.pharmacist`, `profiles.assistant`, `profiles.warehouse`, `profiles.supervisor`) and hides missing ones. Selected employee is stored in `currentUser` (string) and `currentRole` (`'pharmacist'` | `'assistant'` | `'warehouse'` | `'supervisor'`). The header displays the active user (`คลัง: ` for warehouse, `หัวหน้างาน: ` for supervisor). On branch switch, `currentUser`/`currentRole` are cleared and the selector re-appears.
 
-**Warehouse role (`'warehouse'`)** — flat role: 3 staff (มุก, ตั๋ง, แล็ค) can scan **and** verify. Behaves like `assistant` for the main scan input (normal count, scan list filtered to own scans only) and like `pharmacist` for the Audit Verify panel (button enabled, can open popup and confirm). Does **NOT** get the pharmacist-only PDA UI (no `pharmacistAuditBar`, Confirm button remains visible, popup does not auto-filter to `audit`). QTY column in scan list shows accumulated `entry.totalQty` for `status==='audit'` rows (same exception applied to `pharmacist`) — covers `renderScanList()` and `patchScanRow()`.
+### WH recheck workflow — warehouse scans on PDA, supervisor confirms on Desktop
 
-**Pharmacist re-audit flow** (`openAuditVerifyPopup`, `handleAuditVerifyScan`, `confirmAllAuditVerify`):
+⚠️ **กฎสำคัญ:** flow นี้แยกคนละ device + คนละ role โดยเจตนา — **warehouse รีเช็คบน PDA แต่ยืนยันไม่ได้ / supervisor (มายด์) ยืนยันบน Desktop เท่านั้น**
+
+**Warehouse role (`'warehouse'`)** — 3 staff (มุก, ตั๋ง, แล็ค). นับสินค้าครั้งแรก **และ** สแกนรีเช็ค audit ได้ แต่ **ยืนยันไม่ได้** (`canVerify` ไม่รวม warehouse — เปิด Audit Verify popup ไม่ได้, ไอคอน 🔍 บน PDA ไม่ขึ้น).
+- **นับครั้งแรก:** เหมือน `assistant` — scan list กรองเฉพาะของตัวเอง (`scannedBy === currentUser`)
+- **รีเช็ค audit:** สแกน SKU ที่ `status==='audit'` ที่ **ช่อง scan หลัก** (ไม่ใช่ popup) → `handleBarcode` สะสมเข้า **`sd.recheckQty`** (persist + sync, ไม่ใช่ `_avMap` ชั่วคราว) + `sd.recheckBy = currentUser`, status คงเป็น `audit`
+- **worklist:** `rebuildScanListMap` ให้ warehouse เห็น audit ของ**ทุกคน** (ข้าม filter `scannedBy`) เป็น worklist รีเช็ค; แถว audit โชว์ `sd.recheckQty` (ไม่ใช่ `countedQty`) — `renderScanList` + `patchScanRow` ครอบคลุม `warehouse`/`supervisor`
+- **รีเซ็ตรีเช็ค:** แถว audit ของ warehouse มีปุ่ม **✕** เรียก `resetRecheckItem(sku)` → ลบ `recheckQty`/`recheckBy` (แถวเป็น 0, status คง audit) + ยกเลิก debounce/queue กัน PDA auto-submit → สแกนนับใหม่จาก 0
+
+**Supervisor role (`'supervisor'`)** — มายด์ (WH). ไม่สแกนนับ/รีเช็คเอง — ทำหน้าที่ **ยืนยัน** บน Desktop.
+- เห็นทุกการสแกนของพนักงานทั้งหมด (`rebuildScanListMap` ไม่ filter `scannedBy`), แถว audit โชว์ `recheckQty` ที่ sync มาจาก PDA
+- มี 2 ปุ่มบน Desktop (`updateScanInputMode`, gate `currentRole==='supervisor' && window.innerWidth>600`): **✔ Confirm** (นับ → `evaluatePendingScans`) และ **✓ ยืนยันรีเช็ค** (`pharmacistAuditBar`, label สลับผ่าน `#pharmacistAuditBtnLabel`)
+- ปุ่มยืนยันรีเช็คเรียก `confirmRecheckBtn()` → `confirmAllRecheckSupervisor()`: วนทุก audit item ที่มี `recheckQty !== undefined && !auditor` → เทียบ `recheckQty` vs `systemQty` → `pass` / `stock_adjustment`, ตั้ง `auditor = มายด์` → sync + `saveAuditLogToFirestore`
+- count บนปุ่ม (`#pharmacistAuditCount`) นับ audit item ที่รีเช็คแล้วรอยืนยัน (refresh ใน `updateStats`)
+
+**Cloud sync ของ recheckQty:** `_applyCloudScanData` (WH propagate path) **mirror `recheckQty`/`recheckBy` จาก cloud ตรงๆ** (ไม่ใช่ max) บน audit item ที่ทั้ง local+cloud เป็น `audit` และ cloud ยังไม่มี `auditor` — ต้อง mirror ตรงๆ ไม่งั้นการ **รีเซ็ต** (ค่าลดลง/หาย) จะไม่ sync จาก PDA ไป Desktop. ทิศย้อนกลับ (supervisor ยืนยัน → cloud มี `auditor`) จะ overwrite local audit บน PDA เป็น pass/stock_adjustment ตามปกติ
+
+> **ข้อจำกัด:** recheckQty บน PDA เป็น authoritative ตัวเดียว ถ้า Desktop (supervisor) เผลอ trigger `saveSession` ระหว่างที่ warehouse กำลังรีเช็ค อาจ clobber ค่า cloud ด้วยค่าเก่าได้ (window สั้น ~3s, self-heal เมื่อ PDA สแกนต่อ) — listener ไม่เรียก `saveSession` จึงเกิดยาก. supervisor เห็น recheckQty ก่อนกดยืนยันเสมอ
+
+**Pharmacist re-audit flow** (`openAuditVerifyPopup`, `handleAuditVerifyScan`, `confirmAllAuditVerify`) — **ใช้กับร้านยา (SRC/KKL/SSS) เท่านั้น**; WH ใช้ flow ด้านบนแทน (popup ยังเปิดได้สำหรับ supervisor/pharmacist แต่ warehouse เปิดไม่ได้):
 1. Pharmacist opens **Audit Verify** panel (visible to all roles; button disabled for non-pharmacist with 🔒 message).
 2. Pharmacist scans barcode(s) in the dedicated scan input; `_avMap: Map<SKU, number>` accumulates qty.
 3. On **ยืนยันทั้งหมด** (footer button): for each SKU in `_avMap`:
@@ -177,7 +198,7 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
 | Firestore `stock_sessions/${branch}` | Scan data | 3 s after localStorage write |
 | Firestore `stock_sessions/${branch}_r01/r05` | R01/R05 master data | After file upload |
 | Firestore `stock_sessions/global_pm` | Product Master | After PM upload; real-time listener on all devices |
-| Firestore `stock_audit_log/${branch}_${date}` | Audit items log | After `evaluatePendingScans()` + after pharmacist verify |
+| Firestore `stock_audit_log/${branch}_${date}` | Audit items log | After `evaluatePendingScans()` + after pharmacist verify + after supervisor `confirmAllRecheckSupervisor()` |
 
 > ⚠️ **ไม่มี history snapshot ที่ Firestore** — `startNewCount()` ลบ `scanData` + R01 ออกจาก localStorage และ overwrite Firestore (`syncToFirestore(true)`) โดย**ไม่บันทึก** snapshot ของรอบเก่าไปไหน ต้อง Export Excel เก็บเองก่อนกด เริ่มนับใหม่ (โค้ดเก่าเคยเขียน `stock_history/${branch}_${date}` แต่ถูกถอดออกแล้ว) `stock_audit_log` เป็น log สะสมต่อวัน ไม่ใช่ snapshot รอบนับ
 >
@@ -185,7 +206,7 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
 
 `global_pm` is **shared across all branches** with an `onSnapshot` real-time listener (`startProductMasterListener()`). All other data is per-branch.
 
-**Persisted fields in scanData:** `scannedBy`, `auditor`, `recheckQty`, `initialStatus` are all persisted (not stripped). Only `retries` and `scans` are stripped on save.
+**Persisted fields in scanData:** `scannedBy`, `auditor`, `recheckQty`, `recheckBy`, `initialStatus` are all persisted (not stripped) — both `saveSession()` and `syncToFirestore()` strip only `retries` and `scans`. `recheckQty`/`recheckBy` carry the WH recheck count from PDA to the supervisor's Desktop via cloud sync.
 
 ### Cloud Sync — `pullFromCloud()` และ `_applyCloudScanData()`
 
@@ -376,7 +397,7 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 
 ### Audit Verify Panel
 
-Panel card แสดงให้ **ทุก role** เห็น แต่ปุ่มจะ disabled (เทา + 🔒 ข้อความ) สำหรับ role ที่ไม่มีสิทธิ์ verify — `canVerify = currentRole === 'pharmacist' || currentRole === 'warehouse' || currentRole === 'supervisor'`
+Panel card แสดงให้ **ทุก role** เห็น แต่ปุ่มจะ disabled (เทา + 🔒 ข้อความ) สำหรับ role ที่ไม่มีสิทธิ์ verify — `canVerify = currentRole === 'pharmacist' || currentRole === 'supervisor'` (**warehouse ไม่มีสิทธิ์ verify แล้ว** — รีเช็คผ่านช่อง scan หลักบน PDA แทน ดูหัวข้อ "WH recheck workflow")
 
 **Popup title สลับตาม branch (set ใน `openAuditVerifyPopup`):**
 - SRC/KKL/SSS → `🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)`
@@ -505,7 +526,7 @@ Toasts appear center-screen with spring bounce animation (`@keyframes popIn`). D
   - Table renders 3 columns only: `SKU` / `Name` / `Recheck` (vs 7 cols on Desktop) — Barcode column hidden on PDA เพื่อประหยัดพื้นที่
   - Empty-state cell uses `colspan="3"` on PDA / `7` on Desktop
 
-**PDA WH — RESULT scan list hides audit items:** `rebuildScanListMap` filter `if(window.innerWidth<=600 && currentBranch==='WH' && sd.status==='audit') continue`. Also `evaluatePendingScans` deletes from `scanListMap` (instead of upserting) when an item evaluates to audit under PDA WH. And `handleBarcode` (re-scan path of a confirmed SKU) skips `appendScanRow` for audit on PDA WH, showing a contextual toast `"สินค้านี้อยู่ใน Audit — เปิด Audit Verify popup เพื่อรีเช็ค"`. Audit items move to the Audit Verify popup for recheck. Pharmacy branches and Desktop WH unchanged.
+**PDA WH — audit items: warehouse เห็น (worklist รีเช็ค), role อื่นซ่อน:** `rebuildScanListMap` filter ซ่อน audit เฉพาะเมื่อ `window.innerWidth<=600 && currentBranch==='WH' && currentRole!=='warehouse'` — **warehouse เห็น audit ทุกตัว**เพื่อรีเช็คในช่อง scan หลัก (ดู "WH recheck workflow"). สำหรับ role อื่นบน PDA WH ที่ยังซ่อน: `evaluatePendingScans` ลบออกจาก `scanListMap` (แทน upsert) เมื่อ item เป็น audit, และ `handleBarcode` (re-scan ของ SKU ที่ confirm แล้ว) ข้าม `appendScanRow` สำหรับ audit พร้อม toast `"สินค้านี้อยู่ใน Audit — เปิด Audit Verify popup เพื่อรีเช็ค"`. หมายเหตุ: warehouse จะไม่ตกเข้า path เหล่านี้เพราะ audit ของ warehouse ถูกดักที่ recheck branch ใน `handleBarcode` ก่อน (สะสม `sd.recheckQty`). Pharmacy branches และ Desktop unchanged.
 
 ## Firebase Config
 
