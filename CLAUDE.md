@@ -783,3 +783,17 @@ webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 | `android-app/app/stockcount.keystore` | signing key (ห้ามลบ) |
 | `version.json` | update manifest (served by Vercel) |
 | `.github/workflows/build-apk.yml` | CI build + GitHub Release |
+
+---
+
+## คู่มือผู้ใช้งาน (User Manuals)
+
+ไฟล์ HTML standalone — เปิดในเบราว์เซอร์ได้เลย รองรับการพิมพ์ (print-friendly CSS)
+
+| ไฟล์ | กลุ่มเป้าหมาย | เนื้อหา |
+|---|---|---|
+| `คู่มือการใช้งาน.html` | ทุก role (ภาพรวม) | ครอบคลุมทุก role ในไฟล์เดียว — login, สแกน, Confirm, Audit Verify, WH recheck, Export, ตารางสถานะ, ปัญหาที่พบบ่อย |
+| `คู่มือ-สาขา.html` | ผู้ช่วยเภสัช + เภสัช (SRC/KKL/SSS) | เฉพาะ workflow ร้านยา — ผู้ช่วยสแกน → เภสัช Confirm → เภสัช Audit Verify → Export |
+| `คู่มือ-คลัง.html` | พนักงานคลัง + หัวหน้างาน (WH) | เฉพาะ workflow คลังกลาง — ภาพรวม PDA/Desktop, นับครั้งแรก, Confirm, รีเช็ค Audit, ยืนยันรีเช็ค, Export |
+
+**หมายเหตุสำหรับ Claude:** ไฟล์คู่มือเหล่านี้เป็น standalone HTML ไม่ได้ import หรือ link กับ `index.html` — แก้ไขได้อิสระโดยไม่กระทบระบบหลัก ไม่ต้อง bump APK เมื่อแก้ไฟล์เหล่านี้

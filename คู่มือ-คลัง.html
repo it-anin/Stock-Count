@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>คู่มือนับสต็อก — คลังกลาง WH</title>
+<style>
+  :root {
+    --org: #d4620a; --org2: #a84d08; --org-light: #fff3e8; --org-mid: #f5c9a0;
+    --purple: #6b3fa0; --purple-light: #f3eeff; --purple-mid: #d4bcf5;
+    --green: #1a9e5c; --green-light: #e8f7ef;
+    --yellow: #e08c00; --yellow-light: #fff8e6;
+    --red: #d93025; --red-light: #fdecea;
+    --blue: #0072c6; --blue-light: #e8f2fb;
+    --gray: #4a5a72; --gray-light: #f0f4f8;
+    --border: #dce4ef; --text: #1a2233;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Segoe UI', 'TH Sarabun New', Sarabun, sans-serif; background:#f5f0eb; color:var(--text); font-size:16px; line-height:1.75; }
+
+  /* COVER */
+  .cover { background:linear-gradient(135deg,#d4620a,#a84d08); color:#fff; padding:52px 32px 44px; text-align:center; }
+  .cover-icon { font-size:62px; margin-bottom:14px; }
+  .cover h1 { font-size:1.9rem; font-weight:700; margin-bottom:6px; }
+  .cover-sub { font-size:1rem; opacity:.85; margin-bottom:20px; }
+  .cover-roles { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .cover-role { background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35); border-radius:22px; padding:6px 18px; font-size:.95rem; font-weight:700; }
+  .cover-branches { margin-top:14px; font-size:.85rem; opacity:.65; }
+
+  /* LAYOUT */
+  .container { max-width:820px; margin:0 auto; padding:32px 18px 64px; }
+
+  /* PHASE */
+  .phase { background:#fff; border:1px solid var(--border); border-radius:16px; margin-bottom:26px; box-shadow:0 2px 14px rgba(80,40,0,.07); overflow:hidden; }
+  .phase-head { display:flex; align-items:center; gap:14px; padding:18px 22px; border-bottom:3px solid var(--org); }
+  .phase-head.purple { border-color:var(--purple); }
+  .phase-head.green  { border-color:var(--green); }
+
+  .phase-num { width:44px; height:44px; border-radius:12px; background:var(--org); color:#fff; font-size:1.3rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .phase-num.purple { background:var(--purple); }
+  .phase-num.green  { background:var(--green); }
+
+  .phase-info h2 { font-size:1.1rem; font-weight:700; }
+  .phase-info p  { font-size:.88rem; color:var(--gray); margin-top:2px; }
+
+  .phase-body { padding:24px 26px; }
+
+  /* ROLE TAG */
+  .role-tag { display:inline-flex; align-items:center; gap:8px; background:var(--org-light); border:1px solid var(--org-mid); border-radius:20px; padding:4px 14px; font-size:.88rem; font-weight:700; color:var(--org); margin-bottom:14px; }
+  .role-tag.purple { background:var(--purple-light); border-color:var(--purple-mid); color:var(--purple); }
+
+  /* TWO-COLUMN ROLE SPLIT */
+  .role-cols { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media(max-width:640px){ .role-cols { grid-template-columns:1fr; } }
+  .role-col { background:var(--gray-light); border-radius:12px; padding:18px; border:1px solid var(--border); }
+  .role-col h3 { font-size:.95rem; font-weight:700; margin-bottom:12px; }
+
+  /* STEPS */
+  .steps { list-style:none; }
+  .step { display:flex; gap:14px; margin-bottom:18px; align-items:flex-start; }
+  .step:last-child { margin-bottom:0; }
+  .step-n { width:30px; height:30px; border-radius:50%; background:var(--org); color:#fff; font-weight:700; font-size:.88rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:3px; }
+  .step-n.purple { background:var(--purple); }
+  .step-n.green  { background:var(--green); }
+  .step-c strong { font-size:.98rem; display:block; margin-bottom:3px; }
+  .step-c p, .step-c ul { font-size:.92rem; color:#334; }
+  .step-c ul { padding-left:18px; margin-top:4px; }
+  .step-c li { margin-bottom:2px; }
+
+  /* CALLOUTS */
+  .tip, .warn, .note, .block-purple {
+    border-radius:10px; padding:11px 15px; font-size:.9rem; margin-top:10px;
+    display:flex; gap:10px; align-items:flex-start; line-height:1.6;
+  }
+  .tip          { background:var(--green-light);   border-left:4px solid var(--green);  }
+  .warn         { background:var(--yellow-light);  border-left:4px solid var(--yellow); }
+  .note         { background:var(--org-light);     border-left:4px solid var(--org);    }
+  .block-purple { background:var(--purple-light);  border-left:4px solid var(--purple); }
+  .ci { font-size:1.1rem; flex-shrink:0; margin-top:1px; }
+
+  /* BADGE */
+  .b { display:inline-block; padding:2px 9px; border-radius:16px; font-size:.8rem; font-weight:700; white-space:nowrap; }
+  .b-green  { background:var(--green-light);  color:var(--green);  border:1px solid rgba(26,158,92,.3);  }
+  .b-yellow { background:var(--yellow-light); color:var(--yellow); border:1px solid rgba(224,140,0,.3);  }
+  .b-blue   { background:var(--blue-light);   color:var(--blue);   border:1px solid rgba(0,114,198,.3);  }
+  .b-red    { background:var(--red-light);    color:var(--red);    border:1px solid rgba(217,48,37,.3);  }
+  .b-gray   { background:var(--gray-light);   color:var(--gray);   border:1px solid var(--border);       }
+
+  hr.div { border:none; border-top:1px dashed var(--border); margin:20px 0; }
+
+  /* TABLE */
+  .t { width:100%; border-collapse:collapse; font-size:.9rem; }
+  .t th { background:var(--gray-light); padding:8px 12px; text-align:left; font-size:.8rem; color:var(--gray); font-weight:700; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border); }
+  .t td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .t tr:last-child td { border-bottom:none; }
+
+  /* FLOW */
+  .flow { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:12px 0; }
+  .flow-box { background:var(--org-light); border:1px solid var(--org-mid); border-radius:8px; padding:6px 14px; font-size:.88rem; font-weight:700; color:var(--org); }
+  .flow-box.purple { background:var(--purple-light); border-color:var(--purple-mid); color:var(--purple); }
+  .flow-box.green  { background:var(--green-light);  border-color:rgba(26,158,92,.3); color:var(--green); }
+  .flow-box.red    { background:var(--red-light);    border-color:rgba(217,48,37,.3); color:var(--red); }
+  .flow-arr { color:var(--gray); font-size:1rem; }
+
+  /* DEVICE LABEL */
+  .device-label { font-size:.75rem; font-weight:700; padding:2px 8px; border-radius:6px; display:inline-block; margin-left:6px; }
+  .dl-pda  { background:#e3f5ec; color:#1a9e5c; border:1px solid rgba(26,158,92,.3); }
+  .dl-desk { background:#e8f2fb; color:#0072c6; border:1px solid rgba(0,114,198,.3); }
+
+  @media print {
+    body { background:#fff; font-size:13px; }
+    .phase { break-inside:avoid; box-shadow:none; }
+    .phase-head, .step-n, .role-tag, .tip, .warn, .note, .block-purple, .b, .flow-box, .device-label { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-icon">🏭</div>
+  <h1>คู่มือนับสต็อก — คลังกลาง</h1>
+  <div class="cover-sub">ขั้นตอนการนับสินค้าสำหรับพนักงานคลังกลาง</div>
+  <div class="cover-roles">
+    <span class="cover-role">📦 พนักงานคลัง</span>
+    <span class="cover-role">👔 หัวหน้างาน (มายด์)</span>
+  </div>
+  <div class="cover-branches">สาขา WH คลังกลาง</div>
+</div>
+
+<div class="container">
+
+  <!-- ========== OVERVIEW ========== -->
+  <div class="phase">
+    <div class="phase-head green">
+      <div class="phase-num green">📋</div>
+      <div class="phase-info">
+        <h2>ภาพรวม — ใครทำอะไร</h2>
+        <p>พนักงานคลังและหัวหน้างานทำคนละขั้นตอน บนคนละอุปกรณ์</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-cols">
+        <div class="role-col">
+          <h3>📦 พนักงานคลัง <span class="device-label dl-pda">PDA</span></h3>
+          <ul style="font-size:.92rem;padding-left:18px;color:#334;">
+            <li style="margin-bottom:6px">สแกนสินค้านับครั้งแรก</li>
+            <li style="margin-bottom:6px">สแกนรีเช็คสินค้าที่ขึ้น Audit</li>
+            <li>แจ้งหัวหน้าเมื่อพร้อม</li>
+          </ul>
+          <div class="note" style="margin-top:12px">
+            <span class="ci">ℹ️</span>
+            <span>กด <strong>Confirm</strong> และ<strong>ยืนยัน</strong> ไม่ได้ — สิทธิ์ของหัวหน้าเท่านั้น</span>
+          </div>
+        </div>
+        <div class="role-col">
+          <h3>👔 หัวหน้างาน (มายด์) <span class="device-label dl-desk">Desktop</span></h3>
+          <ul style="font-size:.92rem;padding-left:18px;color:#334;">
+            <li style="margin-bottom:6px">กด Confirm หลังพนักงานสแกนครบ</li>
+            <li style="margin-bottom:6px">ดูผลรีเช็คที่ sync มาจาก PDA</li>
+            <li>กดยืนยันรีเช็คและ Export Excel</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 1: LOGIN ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num">1</div>
+      <div class="phase-info">
+        <h2>เข้าสู่ระบบ</h2>
+        <p>ทำครั้งเดียวตอนเปิดแอป — พนักงานและหัวหน้าทำเหมือนกัน</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n">1</div>
+          <div class="step-c">
+            <strong>เปิดแอป Anin Stock Count</strong>
+            <ul>
+              <li><strong>พนักงานคลัง</strong> — เปิดแอปบน PDA</li>
+              <li><strong>หัวหน้างาน</strong> — เปิดในเบราว์เซอร์บนคอมพิวเตอร์</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">2</div>
+          <div class="step-c">
+            <strong>กดเลือกสาขา <span class="b b-gray">WH</span></strong>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">3</div>
+          <div class="step-c">
+            <strong>พิมพ์รหัสผ่านสาขา WH แล้วกด "ยืนยัน"</strong>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">4</div>
+          <div class="step-c">
+            <strong>เลือกชื่อของตัวเอง</strong>
+            <ul>
+              <li>พนักงานคลัง: <strong>มุก · ตั๋ง · แล็ค</strong></li>
+              <li>หัวหน้างาน: <strong>มายด์</strong></li>
+            </ul>
+            <div class="warn" style="margin-top:8px">
+              <span class="ci">⚠️</span>
+              <span>เลือกชื่อผิด → ข้อมูลการสแกนบันทึกในชื่อคนอื่น<br>แก้โดยกด <strong>เปลี่ยน Role</strong> ที่มุมขวาบน แล้วเลือกชื่อใหม่</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 2: SCAN ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num">2</div>
+      <div class="phase-info">
+        <h2>นับสินค้าครั้งแรก <span class="device-label dl-pda">PDA</span></h2>
+        <p>พนักงานคลังทำขั้นตอนนี้บน PDA</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-tag">📦 พนักงานคลัง</div>
+
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n">1</div>
+          <div class="step-c">
+            <strong>ยิง Barcode สินค้าลงในช่องสแกน</strong>
+            <p>ยิง Barcode แล้วรายการจะขึ้นอัตโนมัติ พร้อมสถานะ <span class="b b-blue">⏳ รอยืนยัน</span></p>
+            <ul>
+              <li>สแกน Barcode เดิมซ้ำ → จำนวนบวกเพิ่มอัตโนมัติ</li>
+              <li>สินค้าในระบบมากกว่า 100 ชิ้น → แก้ตัวเลขในช่องได้โดยตรง</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">2</div>
+          <div class="step-c">
+            <strong>ถ้าสแกนผิด กดปุ่ม ✕ หน้ารายการนั้น</strong>
+            <p>รายการถูกลบ และรีเซ็ตเป็น 0 — สแกนใหม่ได้ทันที</p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">3</div>
+          <div class="step-c">
+            <strong>สแกนจนครบ แล้วแจ้งหัวหน้างาน (มายด์) ให้กด Confirm</strong>
+            <div class="note" style="margin-top:8px">
+              <span class="ci">ℹ️</span>
+              <span>ข้อมูลบันทึกและส่งไปหัวหน้าอัตโนมัติตลอดเวลา ปิดหน้าจอได้ ข้อมูลไม่หาย</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="warn" style="margin-top:16px">
+        <span class="ci">⚠️</span>
+        <div>
+          <strong>ห่างจากสินค้าเดิมนานเกิน 2 นาที</strong><br>
+          ถ้าสแกนสินค้าตัวเดิมซ้ำ หลังจากสแกนครั้งล่าสุดนานกว่า 2 นาที ระบบจะแสดงหน้าต่างเตือนพร้อมเสียง<br>
+          — กด <strong>"ยืนยัน"</strong> → ล้างค่าเดิม เริ่มนับใหม่จาก 0 (ต้องสแกนใหม่)<br>
+          — กด <strong>"ยกเลิก"</strong> → ข้อมูลเดิมคงอยู่
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 3: CONFIRM (SUPERVISOR) ========== -->
+  <div class="phase">
+    <div class="phase-head purple">
+      <div class="phase-num purple">3</div>
+      <div class="phase-info">
+        <h2>กด Confirm — ตรวจเทียบจำนวน <span class="device-label dl-desk">Desktop</span></h2>
+        <p>หัวหน้างานทำขั้นตอนนี้บน Desktop หลังพนักงานสแกนครบ</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-tag purple">👔 หัวหน้างาน (มายด์)</div>
+
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n purple">1</div>
+          <div class="step-c">
+            <strong>ตรวจดูตัวเลข "นับแล้ว" ด้านบนว่าครบตามที่ต้องการ</strong>
+            <p>ข้อมูลจาก PDA ของพนักงานซิงค์มาอัตโนมัติ ไม่ต้องรีเฟรช</p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n purple">2</div>
+          <div class="step-c">
+            <strong>กดปุ่ม "✔ Confirm"</strong>
+            <p>ระบบจะเปรียบเทียบจำนวนที่สแกนกับข้อมูลในคอมพิวเตอร์</p>
+            <div style="margin-top:12px">
+              <p style="font-size:.9rem;font-weight:700;margin-bottom:8px;color:var(--gray);">ผลลัพธ์ที่จะได้:</p>
+              <div class="flow">
+                <div class="flow-box">จำนวนตรง</div>
+                <span class="flow-arr">→</span>
+                <div class="flow-box green">✅ ผ่าน</div>
+                <span class="flow-arr">&nbsp;|&nbsp;</span>
+                <div class="flow-box">จำนวนไม่ตรง</div>
+                <span class="flow-arr">→</span>
+                <div class="flow-box" style="background:var(--yellow-light);border-color:rgba(224,140,0,.3);color:var(--yellow);">⚠️ Audit</div>
+              </div>
+            </div>
+            <div class="tip" style="margin-top:12px">
+              <span class="ci">✅</span>
+              <span>ถ้าไม่มีสินค้าขึ้น Audit — จบขั้นตอน ข้ามไปขั้นตอนที่ 6 (Export Excel)</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 4: RECHECK (WAREHOUSE) ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num">4</div>
+      <div class="phase-info">
+        <h2>รีเช็คสินค้าที่ขึ้น Audit <span class="device-label dl-pda">PDA</span></h2>
+        <p>พนักงานคลังทำ — ไปนับสินค้าที่ไม่ตรงอีกครั้ง แล้วสแกนใหม่</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-tag">📦 พนักงานคลัง</div>
+
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n">1</div>
+          <div class="step-c">
+            <strong>ดูรายการสินค้าที่ขึ้น <span class="b b-yellow">⚠️ Audit</span> บน PDA</strong>
+            <p>หลังหัวหน้ากด Confirm แล้ว รายการ Audit จะปรากฏในหน้าจอ PDA ของพนักงานคลัง — เห็นของทุกคนในทีม ไม่ใช่แค่ของตัวเอง</p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">2</div>
+          <div class="step-c">
+            <strong>ไปนับสินค้านั้นใหม่ แล้วสแกน Barcode ลงช่องสแกนหลักได้เลย</strong>
+            <p>ระบบรู้อัตโนมัติว่านี่คือ "รีเช็ค" — จำนวนที่สแกนจะสะสมเป็น <strong>ยอดรีเช็ค</strong> แยกจากยอดนับแรก</p>
+            <ul>
+              <li>สแกนซ้ำเพื่อสะสมจำนวน เช่น นับได้ 5 ชิ้น → สแกน 5 ครั้ง</li>
+              <li>ถ้าต้องการเริ่มนับใหม่จาก 0 กดปุ่ม <strong>✕</strong> หน้ารายการนั้น</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">3</div>
+          <div class="step-c">
+            <strong>รีเช็คจนครบทุกรายการ Audit แล้วแจ้งหัวหน้างาน</strong>
+            <p>หัวหน้าจะเห็นยอดรีเช็คบน Desktop พร้อมกดยืนยัน</p>
+          </div>
+        </li>
+      </ol>
+
+      <div class="block-purple" style="margin-top:14px">
+        <span class="ci">💡</span>
+        <div>
+          <strong>พนักงานคลังรีเช็คผ่านช่องสแกนหลักได้เลย</strong><br>
+          ไม่ต้องเปิดหน้าต่างพิเศษ ไม่ต้องกดปุ่มอื่น — สแกน Barcode สินค้าที่ขึ้น Audit ลงช่องสแกนปกติได้ทันที
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 5: CONFIRM RECHECK (SUPERVISOR) ========== -->
+  <div class="phase">
+    <div class="phase-head purple">
+      <div class="phase-num purple">5</div>
+      <div class="phase-info">
+        <h2>ยืนยันรีเช็ค <span class="device-label dl-desk">Desktop</span></h2>
+        <p>หัวหน้างานทำ — กดยืนยันผลการรีเช็คของพนักงาน</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-tag purple">👔 หัวหน้างาน (มายด์)</div>
+
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n purple">1</div>
+          <div class="step-c">
+            <strong>ดูตัวเลขบนปุ่ม "✓ ยืนยันรีเช็ค" ว่าครบตามที่ต้องการ</strong>
+            <p>ตัวเลขในวงเล็บ คือจำนวนรายการที่พนักงานรีเช็คมาแล้ว — เพิ่มขึ้นอัตโนมัติเมื่อพนักงานสแกนบน PDA</p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n purple">2</div>
+          <div class="step-c">
+            <strong>กดปุ่ม "✓ ยืนยันรีเช็ค"</strong>
+            <p>ระบบจะตัดสินผลแต่ละรายการ</p>
+            <div style="margin-top:12px">
+              <div class="flow">
+                <div class="flow-box">รีเช็คตรงกับระบบ</div>
+                <span class="flow-arr">→</span>
+                <div class="flow-box green">✅ ผ่าน</div>
+                <span class="flow-arr">&nbsp;|&nbsp;</span>
+                <div class="flow-box">รีเช็คไม่ตรง</div>
+                <span class="flow-arr">→</span>
+                <div class="flow-box red">🔴 ปรับสต็อก</div>
+              </div>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 6: EXPORT ========== -->
+  <div class="phase">
+    <div class="phase-head purple">
+      <div class="phase-num purple">6</div>
+      <div class="phase-info">
+        <h2>ดาวน์โหลดรายงาน <span class="device-label dl-desk">Desktop</span></h2>
+        <p>หัวหน้างาน Export Excel สรุปผลการนับ</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-tag purple">👔 หัวหน้างาน (มายด์)</div>
+      <div style="margin-top:14px">
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n purple">1</div>
+            <div class="step-c">
+              <strong>กดปุ่ม "📊 ประวัติการนับ"</strong>
+              <p>เพื่อเปิดหน้าต่างสรุปผล</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n purple">2</div>
+            <div class="step-c">
+              <strong>เลือกแท็บ 🔴 Stock Adj แล้วกด "⬇️ Export Excel"</strong>
+              <p>ไฟล์ Excel จะดาวน์โหลดมาให้อัตโนมัติ — ประกอบด้วยรายการที่ต้องปรับสต็อกทั้งหมด พร้อมจำนวนต่างกี่ชิ้น</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== REFERENCE ========== -->
+  <div class="phase">
+    <div class="phase-head green">
+      <div class="phase-num green">📌</div>
+      <div class="phase-info">
+        <h2>ข้อมูลอ้างอิง</h2>
+        <p>สรุปสถานะ · ปุ่มสำคัญ · ปัญหาที่พบบ่อย</p>
+      </div>
+    </div>
+    <div class="phase-body">
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🏷️ ความหมายสถานะ</p>
+      <table class="t" style="margin-bottom:22px">
+        <thead><tr><th>สถานะ</th><th>ความหมาย</th><th>ต้องทำอะไรต่อ</th></tr></thead>
+        <tbody>
+          <tr><td><span class="b b-blue">⏳ รอยืนยัน</span></td><td>สแกนแล้ว รอหัวหน้ากด Confirm</td><td>รอ — ไม่ต้องทำอะไร</td></tr>
+          <tr><td><span class="b b-green">✅ ผ่าน</span></td><td>จำนวนตรง เสร็จสิ้น</td><td>ไม่ต้องทำอะไร</td></tr>
+          <tr><td><span class="b b-yellow">⚠️ Audit</span></td><td>จำนวนไม่ตรง รอพนักงานรีเช็ค</td><td>พนักงานต้องไปนับและสแกนใหม่</td></tr>
+          <tr><td><span class="b b-red">🔴 ปรับสต็อก</span></td><td>รีเช็คแล้ว ยืนยันว่าไม่ตรง</td><td>แจ้งฝ่ายที่เกี่ยวข้องปรับยอดในระบบ</td></tr>
+          <tr><td><span class="b" style="background:#fff3e0;color:#d4620a;border:1px solid rgba(212,98,10,.3);">🟠 ไม่พบในระบบ</span></td><td>Barcode ไม่มีในระบบ</td><td>แจ้งหัวหน้าตรวจสอบ</td></tr>
+        </tbody>
+      </table>
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🔘 ปุ่มสำคัญ</p>
+      <table class="t" style="margin-bottom:22px">
+        <thead><tr><th>ปุ่ม</th><th>ใครกด</th><th>อุปกรณ์</th><th>ทำอะไร</th></tr></thead>
+        <tbody>
+          <tr><td><strong>✔ Confirm</strong></td><td>หัวหน้า</td><td><span class="device-label dl-desk">Desktop</span></td><td>ตรวจเทียบจำนวน แบ่งสถานะ ผ่าน / Audit</td></tr>
+          <tr><td><strong>✓ ยืนยันรีเช็ค</strong></td><td>หัวหน้า</td><td><span class="device-label dl-desk">Desktop</span></td><td>ยืนยันผลรีเช็คที่พนักงานสแกนบน PDA</td></tr>
+          <tr><td><strong>☁️ Cloud</strong></td><td>ทุกคน</td><td>ทั้งคู่</td><td>ดึงข้อมูลล่าสุดจากระบบกลาง</td></tr>
+          <tr><td><strong>✕ Clear</strong></td><td>ทุกคน</td><td>ทั้งคู่</td><td>ล้างหน้าจอรายการ (ข้อมูลไม่หาย)</td></tr>
+          <tr><td><strong>✕ (หน้าแถว)</strong></td><td>ทุกคน</td><td>ทั้งคู่</td><td>ลบรายการ / เริ่มนับใหม่จาก 0</td></tr>
+          <tr><td><strong>⬇️ Export Excel</strong></td><td>หัวหน้า</td><td><span class="device-label dl-desk">Desktop</span></td><td>ดาวน์โหลดรายงานสรุปผลการนับ</td></tr>
+        </tbody>
+      </table>
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🔧 ปัญหาที่พบบ่อย</p>
+
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">❓</span>
+        <div><strong>สแกนแล้วไม่มีอะไรขึ้น (พนักงาน)</strong><br>
+          1. เวลาตอนนี้อยู่ใน 08:00–20:59 ไหม? (ระบบสแกนได้เฉพาะช่วงนี้)<br>
+          2. เลือกชื่อตัวเองในระบบหรือยัง?<br>
+          3. แตะที่ช่องสแกนก่อน — ต้องมีกรอบสีน้ำเงินแสดงอยู่
+        </div>
+      </div>
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">❓</span>
+        <div><strong>เปิดแอปมาแล้วรายการหาย / ตัวเลขเป็น 0</strong><br>
+          กดปุ่ม <strong>☁️ Cloud</strong> ที่มุมขวาบน เพื่อดึงข้อมูลล่าสุดกลับมา
+        </div>
+      </div>
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">❓</span>
+        <div><strong>หัวหน้ากดปุ่ม "ยืนยันรีเช็ค" แล้วตัวเลขยังไม่เปลี่ยน</strong><br>
+          พนักงานอาจยังสแกนรีเช็คไม่ครบ — ตรวจดูจำนวนตัวเลขในวงเล็บบนปุ่ม แล้วแจ้งพนักงานให้สแกนเพิ่ม
+        </div>
+      </div>
+      <div class="warn">
+        <span class="ci">❓</span>
+        <div><strong>ข้อมูล PDA ไม่ขึ้นบน Desktop ของหัวหน้า</strong><br>
+          กดปุ่ม <strong>☁️ Cloud</strong> บน Desktop เพื่อดึงข้อมูลล่าสุดจาก PDA
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;color:var(--gray);font-size:.85rem;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+    ระบบนับสต็อกสินค้า — อนินทร์ฟาร์มาซี คลังกลาง WH &nbsp;|&nbsp; มีปัญหา ติดต่อฝ่าย IT
+  </div>
+
+</div>
+</body>
+</html>

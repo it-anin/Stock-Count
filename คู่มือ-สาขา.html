@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>คู่มือนับสต็อก — สาขาร้านยา</title>
+<style>
+  :root {
+    --blue: #0072c6; --blue2: #004fa3; --blue-light: #e8f2fb; --blue-mid: #c8e0f5;
+    --green: #1a9e5c; --green-light: #e8f7ef;
+    --yellow: #e08c00; --yellow-light: #fff8e6;
+    --red: #d93025; --red-light: #fdecea;
+    --gray: #4a5a72; --gray-light: #f0f4f8;
+    --border: #dce4ef; --text: #1a2233;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Segoe UI', 'TH Sarabun New', Sarabun, sans-serif; background:#f0f4f8; color:var(--text); font-size:16px; line-height:1.75; }
+
+  /* COVER */
+  .cover { background: linear-gradient(135deg,#0072c6,#004fa3); color:#fff; padding:52px 32px 44px; text-align:center; }
+  .cover-icon { font-size:62px; margin-bottom:14px; }
+  .cover h1 { font-size:1.9rem; font-weight:700; margin-bottom:6px; }
+  .cover-sub { font-size:1rem; opacity:.85; margin-bottom:20px; }
+  .cover-roles { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .cover-role { background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35); border-radius:22px; padding:6px 18px; font-size:.95rem; font-weight:700; }
+  .cover-branches { margin-top:14px; font-size:.85rem; opacity:.65; }
+
+  /* LAYOUT */
+  .container { max-width:820px; margin:0 auto; padding:32px 18px 64px; }
+
+  /* PHASE HEADER */
+  .phase {
+    background:#fff; border:1px solid var(--border); border-radius:16px;
+    margin-bottom:26px; box-shadow:0 2px 14px rgba(0,60,120,.07); overflow:hidden;
+  }
+  .phase-head {
+    display:flex; align-items:center; gap:14px; padding:18px 22px;
+    border-bottom:3px solid var(--blue);
+  }
+  .phase-head.green  { border-color:var(--green); }
+  .phase-head.yellow { border-color:var(--yellow); }
+
+  .phase-num {
+    width:44px; height:44px; border-radius:12px;
+    background:var(--blue); color:#fff;
+    font-size:1.3rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .phase-num.green  { background:var(--green); }
+  .phase-num.yellow { background:var(--yellow); }
+
+  .phase-info h2 { font-size:1.1rem; font-weight:700; }
+  .phase-info p  { font-size:.88rem; color:var(--gray); margin-top:2px; }
+
+  .phase-body { padding:24px 26px; }
+
+  /* ROLE SECTION inside phase */
+  .role-block { margin-bottom:28px; }
+  .role-block:last-child { margin-bottom:0; }
+  .role-tag {
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--blue-light); border:1px solid var(--blue-mid);
+    border-radius:20px; padding:4px 14px; font-size:.88rem; font-weight:700;
+    color:var(--blue); margin-bottom:14px;
+  }
+  .role-tag.green { background:var(--green-light); border-color:rgba(26,158,92,.3); color:var(--green); }
+
+  /* STEPS */
+  .steps { list-style:none; }
+  .step { display:flex; gap:14px; margin-bottom:18px; align-items:flex-start; }
+  .step:last-child { margin-bottom:0; }
+  .step-n {
+    width:30px; height:30px; border-radius:50%;
+    background:var(--blue); color:#fff; font-weight:700; font-size:.88rem;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:3px;
+  }
+  .step-n.green  { background:var(--green); }
+  .step-n.yellow { background:var(--yellow); }
+  .step-c strong { font-size:.98rem; display:block; margin-bottom:3px; }
+  .step-c p, .step-c ul { font-size:.92rem; color:#334; }
+  .step-c ul { padding-left:18px; margin-top:4px; }
+  .step-c li { margin-bottom:2px; }
+
+  /* CALLOUTS */
+  .tip, .warn, .note, .block-info {
+    border-radius:10px; padding:11px 15px;
+    font-size:.9rem; margin-top:10px;
+    display:flex; gap:10px; align-items:flex-start; line-height:1.6;
+  }
+  .tip        { background:var(--green-light);  border-left:4px solid var(--green);  }
+  .warn       { background:var(--yellow-light); border-left:4px solid var(--yellow); }
+  .note       { background:var(--blue-light);   border-left:4px solid var(--blue);   }
+  .block-info { background:#f3eeff; border-left:4px solid #6b3fa0; }
+  .ci { font-size:1.1rem; flex-shrink:0; margin-top:1px; }
+
+  /* BADGE */
+  .b { display:inline-block; padding:2px 9px; border-radius:16px; font-size:.8rem; font-weight:700; white-space:nowrap; }
+  .b-green  { background:var(--green-light);  color:var(--green);  border:1px solid rgba(26,158,92,.3);  }
+  .b-yellow { background:var(--yellow-light); color:var(--yellow); border:1px solid rgba(224,140,0,.3);  }
+  .b-blue   { background:var(--blue-light);   color:var(--blue);   border:1px solid rgba(0,114,198,.3);  }
+  .b-red    { background:var(--red-light);    color:var(--red);    border:1px solid rgba(217,48,37,.3);  }
+  .b-gray   { background:var(--gray-light);   color:var(--gray);   border:1px solid var(--border);       }
+
+  hr.div { border:none; border-top:1px dashed var(--border); margin:20px 0; }
+
+  /* TABLE */
+  .t { width:100%; border-collapse:collapse; font-size:.9rem; }
+  .t th { background:var(--gray-light); padding:8px 12px; text-align:left; font-size:.8rem; color:var(--gray); font-weight:700; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border); }
+  .t td { padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .t tr:last-child td { border-bottom:none; }
+
+  /* FLOW DIAGRAM */
+  .flow { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:12px 0; }
+  .flow-box { background:var(--blue-light); border:1px solid var(--blue-mid); border-radius:8px; padding:6px 14px; font-size:.88rem; font-weight:700; color:var(--blue); }
+  .flow-box.green { background:var(--green-light); border-color:rgba(26,158,92,.3); color:var(--green); }
+  .flow-box.yellow { background:var(--yellow-light); border-color:rgba(224,140,0,.3); color:var(--yellow); }
+  .flow-box.red { background:var(--red-light); border-color:rgba(217,48,37,.3); color:var(--red); }
+  .flow-arr { color:var(--gray); font-size:1rem; }
+
+  @media print {
+    body { background:#fff; font-size:13px; }
+    .phase { break-inside:avoid; box-shadow:none; }
+    .phase-head, .step-n, .role-tag, .tip, .warn, .note, .b, .flow-box { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-icon">💊</div>
+  <h1>คู่มือนับสต็อก — ร้านยา</h1>
+  <div class="cover-sub">ขั้นตอนการนับสินค้าสำหรับพนักงานสาขาร้านยา</div>
+  <div class="cover-roles">
+    <span class="cover-role">🙋 ผู้ช่วยเภสัช</span>
+    <span class="cover-role">👩‍⚕️ เภสัชกร</span>
+  </div>
+  <div class="cover-branches">สาขา SRC · KKL · SSS</div>
+</div>
+
+<div class="container">
+
+  <!-- ========== PHASE 1: LOGIN ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num">1</div>
+      <div class="phase-info">
+        <h2>เข้าสู่ระบบ</h2>
+        <p>ทำครั้งเดียวตอนเปิดแอป — ทั้งเภสัชและผู้ช่วยทำเหมือนกัน</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n">1</div>
+          <div class="step-c">
+            <strong>เปิดแอป Anin Stock Count บน PDA หรือเครื่องคอม</strong>
+            <p>กดไอคอนแอปบน Home Screen หรือเปิดลิงก์ระบบในเบราว์เซอร์</p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">2</div>
+          <div class="step-c">
+            <strong>กดเลือกสาขาของคุณ</strong>
+            <ul>
+              <li><strong>SRC</strong> — ร้านสระบุรี</li>
+              <li><strong>KKL</strong> — ร้าน กกล.</li>
+              <li><strong>SSS</strong> — ร้าน สสส.</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">3</div>
+          <div class="step-c">
+            <strong>พิมพ์รหัสผ่านสาขา แล้วกด "ยืนยัน"</strong>
+            <div class="note" style="margin-top:8px">
+              <span class="ci">ℹ️</span>
+              <span>ถ้าพิมพ์ผิดสามารถลองใหม่ได้ทันที — ระบบไม่ล็อก</span>
+            </div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">4</div>
+          <div class="step-c">
+            <strong>เลือกชื่อของคุณจากรายชื่อที่ปรากฏ</strong>
+            <p>ระบบจะแสดงชื่อพนักงานทั้งหมดในสาขา กดเลือกชื่อตัวเองให้ถูกต้อง</p>
+            <div class="warn" style="margin-top:8px">
+              <span class="ci">⚠️</span>
+              <span>เลือกชื่อผิด → ข้อมูลการสแกนจะบันทึกในชื่อคนอื่น<br>แก้โดยกด <strong>เปลี่ยน Role</strong> ที่มุมขวาบน แล้วเลือกชื่อใหม่</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 2: SCAN (ASSISTANT) ========== -->
+  <div class="phase">
+    <div class="phase-head green">
+      <div class="phase-num green">2</div>
+      <div class="phase-info">
+        <h2>สแกนสินค้า</h2>
+        <p>ผู้ช่วยเภสัชทำขั้นตอนนี้ — เภสัชไม่ต้องสแกนเอง</p>
+      </div>
+    </div>
+    <div class="phase-body">
+
+      <div class="role-block">
+        <div class="role-tag green">🙋 ผู้ช่วยเภสัช</div>
+
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n green">1</div>
+            <div class="step-c">
+              <strong>ยิง Barcode สินค้าลงในช่องสแกน</strong>
+              <p>ใช้ PDA ยิง Barcode หรือพิมพ์ตัวเลขบาร์โค้ดลงในช่องสีขาวที่เขียนว่า <em>"สแกน Barcode..."</em></p>
+              <ul>
+                <li>ใช้ PDA ยิง → รายการขึ้นอัตโนมัติ ไม่ต้องกด Enter</li>
+                <li>พิมพ์มือ → กด <strong>Enter</strong> หรือปุ่ม <strong>⏎</strong> หลังพิมพ์เสร็จ</li>
+              </ul>
+              <div class="tip" style="margin-top:10px">
+                <span class="ci">✅</span>
+                <span>สแกนสำเร็จ → เห็นรายการใหม่ขึ้นด้านบนสุดพร้อมสถานะ <span class="b b-blue">⏳ รอยืนยัน</span></span>
+              </div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n green">2</div>
+            <div class="step-c">
+              <strong>ถ้านับหลายชิ้น — สแกน Barcode เดิมซ้ำ</strong>
+              <p>ระบบ<strong>บวกจำนวนให้อัตโนมัติ</strong> ไม่ต้องทำอะไรเพิ่ม</p>
+              <ul>
+                <li>สแกน 3 ครั้ง → จำนวนขึ้น 3</li>
+                <li>สินค้าที่มีในระบบมากกว่า 100 ชิ้น → ช่องตัวเลขให้แก้ไขได้โดยตรง</li>
+              </ul>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n green">3</div>
+            <div class="step-c">
+              <strong>ถ้าสแกนผิด กดปุ่ม ✕ หน้ารายการนั้น</strong>
+              <p>รายการจะถูกลบและรีเซ็ตเป็น 0 — สแกนใหม่ได้ทันที</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n green">4</div>
+            <div class="step-c">
+              <strong>สแกนสินค้าทุกตัวในพื้นที่ที่รับผิดชอบจนครบ</strong>
+              <p>เมื่อครบแล้ว แจ้งเภสัชว่าพร้อมให้กด Confirm ได้เลย</p>
+              <div class="note" style="margin-top:8px">
+                <span class="ci">ℹ️</span>
+                <span>ข้อมูลบันทึกอัตโนมัติตลอดเวลา ปิดหน้าจอได้เลย ข้อมูลไม่หาย</span>
+              </div>
+            </div>
+          </li>
+        </ol>
+
+        <hr class="div">
+
+        <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">⚡ เรื่องที่ต้องรู้</p>
+
+        <div class="warn" style="margin-bottom:10px">
+          <span class="ci">⚠️</span>
+          <div>
+            <strong>ห่างจากสินค้าเดิมนานเกิน 2 นาที</strong><br>
+            ถ้าสแกนสินค้าตัวเดิมซ้ำ หลังจากสแกนครั้งล่าสุดนานกว่า 2 นาที ระบบจะแสดงหน้าต่างเตือนและมีเสียง<br>
+            — กด <strong>"ยืนยัน"</strong> → ล้างค่าเดิม เริ่มนับใหม่จาก 0 (ต้องสแกนใหม่)<br>
+            — กด <strong>"ยกเลิก"</strong> → ยกเลิก ข้อมูลเดิมคงอยู่
+          </div>
+        </div>
+
+        <div class="note">
+          <span class="ci">ℹ️</span>
+          <div>
+            <strong>ปุ่ม "✕ Clear"</strong> — ล้างหน้าจอรายการให้โล่ง <u>ข้อมูลไม่หาย</u><br>
+            ถ้าอยากดูรายการเดิม กดปุ่ม <strong>☁️ Cloud</strong> ที่มุมขวาบน
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 3: CONFIRM ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num">3</div>
+      <div class="phase-info">
+        <h2>กด Confirm — ตรวจเทียบจำนวน</h2>
+        <p>เภสัชทำขั้นตอนนี้ หลังผู้ช่วยสแกนครบ</p>
+      </div>
+    </div>
+    <div class="phase-body">
+
+      <div class="role-block">
+        <div class="role-tag">👩‍⚕️ เภสัชกร</div>
+
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n">1</div>
+            <div class="step-c">
+              <strong>ตรวจดูตัวเลข "นับแล้ว" ว่าครบตามที่คาดไว้</strong>
+              <p>มองตัวเลขการ์ดด้านบนของหน้าจอ — ถ้าครบ พร้อมกด Confirm ได้เลย</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">2</div>
+            <div class="step-c">
+              <strong>กดปุ่ม "✔ Confirm" สีน้ำเงิน</strong>
+              <p>ระบบจะเปรียบเทียบจำนวนที่สแกนกับข้อมูลในคอมพิวเตอร์</p>
+
+              <div style="margin-top:12px">
+                <p style="font-size:.9rem;font-weight:700;margin-bottom:8px;color:var(--gray);">ผลลัพธ์ที่จะได้:</p>
+                <div class="flow">
+                  <div class="flow-box">สแกนครบ</div>
+                  <span class="flow-arr">→</span>
+                  <div class="flow-box green">✅ ผ่าน</div>
+                  <span class="flow-arr">&nbsp;|&nbsp;</span>
+                  <div class="flow-box">จำนวนไม่ตรง</div>
+                  <span class="flow-arr">→</span>
+                  <div class="flow-box yellow">⚠️ Audit</div>
+                </div>
+              </div>
+
+              <div class="tip" style="margin-top:12px">
+                <span class="ci">✅</span>
+                <span>ถ้าไม่มีสินค้าขึ้น Audit เลย — นับถูกทุกตัว จบขั้นตอน ไม่ต้องทำอะไรเพิ่ม</span>
+              </div>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 4: AUDIT VERIFY ========== -->
+  <div class="phase">
+    <div class="phase-head yellow">
+      <div class="phase-num yellow">4</div>
+      <div class="phase-info">
+        <h2>ตรวจสอบสินค้าที่ไม่ตรง (Audit)</h2>
+        <p>เภสัชทำขั้นตอนนี้ — ตรวจสอบเฉพาะรายการที่ขึ้น Audit เท่านั้น</p>
+      </div>
+    </div>
+    <div class="phase-body">
+
+      <div class="role-block">
+        <div class="role-tag">👩‍⚕️ เภสัชกร</div>
+
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n yellow">1</div>
+            <div class="step-c">
+              <strong>กดปุ่ม 🔍 Audit Verify เพื่อเปิดหน้าตรวจสอบ</strong>
+              <ul>
+                <li><strong>Desktop</strong> — กดที่แผงด้านซ้ายมือ</li>
+                <li><strong>PDA</strong> — กดไอคอน 🔍 ที่แถบบนสุดของหน้าจอ</li>
+              </ul>
+              <p style="margin-top:6px">ระบบจะเปิดรายชื่อสินค้าทั้งหมดที่ต้องตรวจ</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n yellow">2</div>
+            <div class="step-c">
+              <strong>ไปหยิบสินค้าแต่ละตัวมาสแกนใหม่ในช่องที่หน้าต่างนี้</strong>
+              <p>สแกนซ้ำได้เพื่อสะสมจำนวน ตัวเลขจะแสดงสะสมในช่อง "Recheck" ของแต่ละแถว</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n yellow">3</div>
+            <div class="step-c">
+              <strong>กดปุ่ม "✓ ยืนยันทั้งหมด" เมื่อตรวจครบทุกรายการ</strong>
+              <p>ระบบจะตัดสินผลแต่ละรายการ</p>
+              <ul>
+                <li>สแกนได้<strong>เท่ากับ</strong>ในระบบ → <span class="b b-green">✅ ผ่าน</span></li>
+                <li>สแกน<strong>ไม่ตรง</strong>กับในระบบ → <span class="b b-red">🔴 ปรับสต็อก</span></li>
+              </ul>
+            </div>
+          </li>
+        </ol>
+
+        <hr class="div">
+
+        <div class="note">
+          <span class="ci">ℹ️</span>
+          <div>
+            <strong>สแกนบน PDA ได้โดยตรง</strong><br>
+            Login เป็นเภสัช → ช่องสแกนหลักจะรับ barcode เข้าหน้าต่าง Audit Verify อัตโนมัติ
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PHASE 5: EXPORT ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num">5</div>
+      <div class="phase-info">
+        <h2>ดาวน์โหลดรายงาน (ถ้าต้องการ)</h2>
+        <p>Export Excel สรุปผลการนับ</p>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="role-tag">👩‍⚕️ เภสัชกร</div>
+      <div style="margin-top:14px">
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n">1</div>
+            <div class="step-c">
+              <strong>กดปุ่ม "📋 รายการสต็อกสินค้า"</strong>
+              <p>เพื่อเปิดหน้าตารางรายการสินค้าทั้งหมด</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">2</div>
+            <div class="step-c">
+              <strong>กดปุ่ม "⬇️ Export Excel" ที่ด้านล่างของหน้าต่าง</strong>
+              <p>ไฟล์ Excel จะดาวน์โหลดมาให้อัตโนมัติ — ประกอบด้วยรายการ Audit และ ปรับสต็อกทั้งหมด</p>
+            </div>
+          </li>
+        </ol>
+        <div class="tip" style="margin-top:4px">
+          <span class="ci">💡</span>
+          <span>ดู <strong>รายการที่ปรับสต็อก</strong> เพิ่มเติมได้ที่ปุ่ม <strong>📊 ประวัติการนับ</strong> → แท็บ 🔴 Stock Adj</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== REFERENCE ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:#6b3fa0;">📌</div>
+      <div class="phase-info">
+        <h2>ข้อมูลอ้างอิง</h2>
+        <p>สรุปสถานะ · ปุ่มสำคัญ · ปัญหาที่พบบ่อย</p>
+      </div>
+    </div>
+    <div class="phase-body">
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🏷️ ความหมายสถานะ</p>
+      <table class="t" style="margin-bottom:22px">
+        <thead><tr><th>สถานะ</th><th>ความหมาย</th><th>ต้องทำอะไรต่อ</th></tr></thead>
+        <tbody>
+          <tr><td><span class="b b-blue">⏳ รอยืนยัน</span></td><td>สแกนแล้ว รอเภสัชกด Confirm</td><td>รอ — ไม่ต้องทำอะไร</td></tr>
+          <tr><td><span class="b b-green">✅ ผ่าน</span></td><td>จำนวนตรง เสร็จสิ้น</td><td>ไม่ต้องทำอะไร</td></tr>
+          <tr><td><span class="b b-yellow">⚠️ Audit</span></td><td>จำนวนไม่ตรง รอเภสัชตรวจ</td><td>เภสัชต้องเปิด Audit Verify แล้วสแกน</td></tr>
+          <tr><td><span class="b b-red">🔴 ปรับสต็อก</span></td><td>ตรวจแล้ว ยืนยันว่าไม่ตรง</td><td>แจ้งฝ่ายที่เกี่ยวข้องปรับยอดในระบบ</td></tr>
+          <tr><td><span class="b" style="background:#fff3e0;color:#d4620a;border:1px solid rgba(212,98,10,.3);">🟠 ไม่พบในระบบ</span></td><td>Barcode ไม่มีในระบบ</td><td>แจ้งเภสัชตรวจสอบ</td></tr>
+        </tbody>
+      </table>
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🔘 ปุ่มสำคัญ</p>
+      <table class="t" style="margin-bottom:22px">
+        <thead><tr><th>ปุ่ม</th><th>ใครกด</th><th>ทำอะไร</th></tr></thead>
+        <tbody>
+          <tr><td><strong>✔ Confirm</strong></td><td>เภสัช (Desktop)</td><td>ตรวจเทียบจำนวน แบ่งสถานะ ผ่าน / Audit</td></tr>
+          <tr><td><strong>🔍 Audit Verify</strong></td><td>เภสัช</td><td>เปิดหน้าตรวจสอบสินค้า Audit</td></tr>
+          <tr><td><strong>✓ ยืนยันทั้งหมด</strong></td><td>เภสัช</td><td>ยืนยันผลการตรวจสอบสินค้าทั้งหมด</td></tr>
+          <tr><td><strong>☁️ Cloud</strong></td><td>ทุกคน</td><td>ดึงข้อมูลล่าสุดจากระบบกลาง</td></tr>
+          <tr><td><strong>✕ Clear</strong></td><td>ทุกคน</td><td>ล้างหน้าจอรายการ (ข้อมูลไม่หาย)</td></tr>
+          <tr><td><strong>✕ (หน้าแถว)</strong></td><td>ทุกคน</td><td>ลบรายการนั้น / เริ่มนับใหม่จาก 0</td></tr>
+          <tr><td><strong>⬇️ Export Excel</strong></td><td>เภสัช</td><td>ดาวน์โหลดรายงานสรุปผลการนับ</td></tr>
+        </tbody>
+      </table>
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🔧 ปัญหาที่พบบ่อย</p>
+
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">❓</span>
+        <div><strong>สแกนแล้วไม่มีอะไรขึ้น</strong><br>
+          1. เวลาตอนนี้อยู่ใน 08:00–20:59 ไหม? (ระบบสแกนได้เฉพาะช่วงนี้)<br>
+          2. เลือกชื่อตัวเองในระบบหรือยัง?<br>
+          3. แตะที่ช่องสแกนก่อน — ต้องมีกรอบสีน้ำเงินแสดงอยู่
+        </div>
+      </div>
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">❓</span>
+        <div><strong>เปิดแอปมาแล้วรายการหาย / ตัวเลขเป็น 0</strong><br>
+          กดปุ่ม <strong>☁️ Cloud</strong> ที่มุมขวาบน เพื่อดึงข้อมูลล่าสุดกลับมา
+        </div>
+      </div>
+      <div class="warn">
+        <span class="ci">❓</span>
+        <div><strong>สแกนสินค้าที่ Confirm แล้ว แต่ไม่ขึ้น</strong><br>
+          สินค้าที่ผ่านการยืนยันแล้ว (✅ ผ่าน / ⚠️ Audit / 🔴 ปรับสต็อก) จะล็อกไม่ให้สแกนซ้ำ<br>
+          ระบบจะแจ้งเตือน "สแกนและ Confirm ไปแล้ว" — ข้ามไปสแกนตัวถัดไป
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;color:var(--gray);font-size:.85rem;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+    ระบบนับสต็อกสินค้า — อนินทร์ฟาร์มาซี &nbsp;|&nbsp; มีปัญหา ติดต่อฝ่าย IT
+  </div>
+
+</div>
+</body>
+</html>
