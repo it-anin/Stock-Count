@@ -427,6 +427,23 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 - โหลดโดย `loadAuditLogFromFirestore()` เมื่อ local state ว่างเปล่า
 - เก็บเฉพาะ items ที่ `initialStatus === 'audit'`
 
+### Dashboard Popup (📊 Dashboard)
+
+ปุ่มอยู่ใน header bar แสดงให้ทุก role เห็น เปิด `openDashboardPopup()` → `refreshDashboard()` → ดึง Firestore แล้ว `buildDashboardData()` → `renderDashboard()`
+
+**Branch filter — `getActiveDashBranches()`:**
+- **WH login** (`currentBranch === 'WH'`) → แสดงเฉพาะ WH คลังสินค้า, title = `"📊 Dashboard — WH คลังสินค้า"`
+- **สาขาอื่น** → แสดงทุกสาขา (SRC, KKL, SSS, WH), title = `"📊 Dashboard — สรุปการนับสต็อกทุกสาขา"`
+
+`DASHBOARD_BRANCHES` constant ยังคงเป็น `['SRC','KKL','SSS','WH']` — `getActiveDashBranches()` เป็น runtime filter ทุก Dashboard function ใช้ `getActiveDashBranches()` แทน constant โดยตรง ได้แก่ `refreshDashboard`, `buildDashboardData`, `renderDashboard`, `renderDashAssistantTable`
+
+**Sections ใน Dashboard:**
+1. Branch summary doughnut cards (Pass/Audit/Stock Adj/Scanning per branch)
+2. Per-assistant scan table (filterable by branch)
+3. Audit progress table (เภสัช/คลัง — ตรวจแล้ว vs เหลือ)
+4. Daily activity bar chart (จาก `stock_audit_log`)
+5. Audit % per assistant bar chart
+
 ### Audit Verify Panel
 
 Panel card แสดงให้ **ทุก role** เห็น แต่ปุ่มจะ disabled (เทา + 🔒 ข้อความ) สำหรับ role ที่ไม่มีสิทธิ์ verify — `canVerify = currentRole === 'pharmacist' || currentRole === 'supervisor'` (**warehouse ไม่มีสิทธิ์ verify แล้ว** — รีเช็คผ่านช่อง scan หลักบน PDA แทน ดูหัวข้อ "WH recheck workflow")

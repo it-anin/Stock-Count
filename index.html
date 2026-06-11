@@ -723,7 +723,7 @@
 <div class="stock-popup-overlay" id="dashboardPopupOverlay" style="display:none" onclick="handleDashboardOverlayClick(event)">
   <div class="stock-popup" style="max-width:1280px;">
     <div class="stock-popup-header">
-      <h2>📊 Dashboard — สรุปการนับสต็อกทุกสาขา</h2>
+      <h2 id="dashTitle">📊 Dashboard — สรุปการนับสต็อกทุกสาขา</h2>
       <button class="stock-popup-close" onclick="closeDashboardPopup()">✕</button>
     </div>
     <div class="stock-popup-toolbar" style="gap:10px;align-items:center;">
@@ -3033,12 +3033,14 @@ let _hsFirestoreLoading=false;
 
 // ===================== Dashboard =====================
 const DASHBOARD_BRANCHES=['SRC','KKL','SSS','WH'];
+function getActiveDashBranches(){return currentBranch==='WH'?['WH']:DASHBOARD_BRANCHES;}
 let _dashLoading=false;
 let _dashAssistantData=null;
 let _dashAssistantFilter='all';
 
 function openDashboardPopup(){
   _dashAssistantFilter='all';
+  document.getElementById('dashTitle').textContent=currentBranch==='WH'?'📊 Dashboard — WH คลังสินค้า':'📊 Dashboard — สรุปการนับสต็อกทุกสาขา';
   document.getElementById('dashboardPopupOverlay').style.display='flex';
   refreshDashboard();
 }
@@ -3053,8 +3055,9 @@ async function refreshDashboard(){
   document.getElementById('dashRefreshBtn').disabled=true;
   document.getElementById('dashboardBody').innerHTML='<div style="text-align:center;padding:60px;color:var(--text3);">กำลังโหลด...</div>';
   try{
-    const sessionPromises=DASHBOARD_BRANCHES.map(b=>_db.collection('stock_sessions').doc(b).get().then(d=>({b,d})).catch(()=>({b,d:null})));
-    const auditPromises=DASHBOARD_BRANCHES.map(b=>_db.collection('stock_audit_log').where('branch','==',b).get().then(s=>({b,s})).catch(()=>({b,s:null})));
+    const activeBranches=getActiveDashBranches();
+    const sessionPromises=activeBranches.map(b=>_db.collection('stock_sessions').doc(b).get().then(d=>({b,d})).catch(()=>({b,d:null})));
+    const auditPromises=activeBranches.map(b=>_db.collection('stock_audit_log').where('branch','==',b).get().then(s=>({b,s})).catch(()=>({b,s:null})));
     const [sessionResults,auditResults]=await Promise.all([Promise.all(sessionPromises),Promise.all(auditPromises)]);
     const data=buildDashboardData(sessionResults,auditResults);
     renderDashboard(data);
@@ -3070,7 +3073,7 @@ async function refreshDashboard(){
 
 function buildDashboardData(sessionResults,auditResults){
   const branches={};
-  for(const b of DASHBOARD_BRANCHES){
+  for(const b of getActiveDashBranches()){
     branches[b]={branch:b,totalSku:0,passCount:0,auditCount:0,stockAdjCount:0,scanningCount:0,auditTotal:0,auditDone:0,auditPending:0,assistants:{},dateActivity:{}};
   }
   // Current session: scanData per branch (live count)
@@ -3128,7 +3131,7 @@ function setDashAssistantFilter(branch,btn){
 function renderDashAssistantTable(){
   const wrap=document.getElementById('dashAssistantTableWrap');
   if(!wrap||!_dashAssistantData)return;
-  const branchesToShow=_dashAssistantFilter==='all'?DASHBOARD_BRANCHES:[_dashAssistantFilter];
+  const branchesToShow=_dashAssistantFilter==='all'?getActiveDashBranches():[_dashAssistantFilter];
   const rows=[];
   branchesToShow.forEach(b=>{
     const list=Object.values(_dashAssistantData[b].assistants).sort((a,c)=>c.scanned-a.scanned);
@@ -3193,9 +3196,10 @@ function renderDoughnut(d){
 function renderDashboard(branches){
   const body=document.getElementById('dashboardBody');
   const sections=[];
+  const activeBranches=getActiveDashBranches();
   // Section 1: Branch summary doughnut cards
   sections.push(`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:24px;">${
-    DASHBOARD_BRANCHES.map(b=>{
+    activeBranches.map(b=>{
       const d=branches[b];
       const auditPct=d.totalSku?Math.round((d.auditCount+d.stockAdjCount)/d.totalSku*100):0;
       return `<div style="background:linear-gradient(135deg,rgba(0,114,198,0.08),rgba(0,114,198,0.02));border:1px solid rgba(0,114,198,0.25);border-radius:12px;padding:16px;">
@@ -3224,14 +3228,14 @@ function renderDashboard(branches){
       <h3 style="font-size:0.95rem;">👥 ผู้สแกน (ผู้ช่วยเภสัช / คลัง) — สรุปการสแกน</h3>
       <div id="dashAssistantFilter" style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="dash-filter-btn active" data-branch="all" onclick="setDashAssistantFilter('all',this)">ทุกสาขา</button>
-        ${DASHBOARD_BRANCHES.map(b=>`<button class="dash-filter-btn" data-branch="${b}" onclick="setDashAssistantFilter('${b}',this)">${b}</button>`).join('')}
+        ${activeBranches.map(b=>`<button class="dash-filter-btn" data-branch="${b}" onclick="setDashAssistantFilter('${b}',this)">${b}</button>`).join('')}
       </div>
     </div>
     <div id="dashAssistantTableWrap"></div>
   </div>`);
 
   // Section 2.5: Pharmacist audit progress per branch
-  const pharmRows=DASHBOARD_BRANCHES.map(b=>{
+  const pharmRows=activeBranches.map(b=>{
     const d=branches[b];
     const total=d.auditTotal;
     const done=d.auditDone;
@@ -3268,7 +3272,7 @@ function renderDashboard(branches){
   // Section 3: Daily activity chart (per branch)
   sections.push(`<div style="margin-bottom:24px;">
     <h3 style="font-size:0.95rem;margin-bottom:10px;">📅 วันที่นับสต็อก</h3>
-    ${DASHBOARD_BRANCHES.map(b=>{
+    ${activeBranches.map(b=>{
       const dates=Object.values(branches[b].dateActivity).sort((a,c)=>a.date.localeCompare(c.date));
       if(!dates.length)return `<div style="margin-bottom:14px;"><div style="font-size:0.8rem;font-weight:700;color:var(--accent);margin-bottom:4px;">${b}</div><div style="font-size:0.75rem;color:var(--text3);padding:10px;background:var(--surface2);border-radius:8px;">ไม่มีข้อมูล</div></div>`;
       const max=Math.max(...dates.map(d=>d.total),1);
@@ -3294,7 +3298,7 @@ function renderDashboard(branches){
 
   // Section 4: Audit % per assistant chart
   const allAssist=[];
-  DASHBOARD_BRANCHES.forEach(b=>Object.values(branches[b].assistants).forEach(a=>{
+  activeBranches.forEach(b=>Object.values(branches[b].assistants).forEach(a=>{
     const auditTotal=a.audit+a.stockAdj;
     const pct=a.scanned?(auditTotal/a.scanned*100):0;
     if(a.scanned>0)allAssist.push({branch:b,name:a.name,pct,scanned:a.scanned,auditTotal});
