@@ -68,7 +68,9 @@ state = {
   barcodeMap,  // barcode → SKU
   skuDirectMap,// SKU → { barcode, unitName } (smallest-unit barcode)
   scanData,    // Map<SKU, { countedQty, status, timestamp, scannedBy, auditor, recheckQty, initialStatus, ... }>
-  unknownScans // items scanned but not in system
+  unknownScans,// items scanned but not in system
+  locationMap, // Map<SKU, string> — WH only: location string e.g. "A1-01" (loaded from Firestore WH_location)
+  zoneStaffMap // Map<zone, staff> — WH only: zone letter → staff name e.g. "A" → "มุก"
 }
 ```
 
@@ -202,6 +204,58 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
 
 > **ข้อจำกัด:** recheckQty บน PDA เป็น authoritative ตัวเดียว ถ้า Desktop (supervisor) เผลอ trigger `saveSession` ระหว่างที่ warehouse กำลังรีเช็ค อาจ clobber ค่า cloud ด้วยค่าเก่าได้ (window สั้น ~3s, self-heal เมื่อ PDA สแกนต่อ) — listener ไม่เรียก `saveSession` จึงเกิดยาก. supervisor เห็น recheckQty ก่อนกดยืนยันเสมอ
 
+### Location Master — WH คลังสินค้า
+
+ฟีเจอร์สำหรับ **WH branch เท่านั้น** — จัดการตำแหน่งวางสินค้า (Location) และกำหนดโซนให้พนักงาน
+
+**State:**
+- `state.locationMap: Map<SKU, string>` — SKU → location string เช่น `"A1-01"`
+- `state.zoneStaffMap: Map<zone, staff>` — zone letter → staff name เช่น `"A" → "มุก"`
+
+**Firestore:** `stock_sessions/WH_location` — document เดียว shared ทั้ง WH, format: `{locationData:{SKU:loc}, zoneStaff:{zone:staff}, updatedAt}`
+
+**ปุ่มเข้าถึง:** `#btnLocation` (📍 Location) — ซ่อนบน PDA (`window.innerWidth <= 600`) และซ่อนเมื่อ `currentBranch !== 'WH'`
+
+**Functions:**
+- `openLocationPopup()` / `closeLocationPopup()` — เปิด/ปิด popup `#locationPopupOverlay`
+- `renderLocationTable()` — render ตาราง Location (เรียงตาม Location ascending, empty ท้าย) พร้อม filter zone/staff/search
+- `updateLocationEntry(sku, loc)` — แก้ไข inline ใน popup table
+- `saveLocationToFirestore()` — บันทึก locationData + zoneStaff ลง Firestore, อัปเดต status badge
+- `loadLocationFromFirestore()` — โหลดข้อมูลจาก Firestore เข้า state (เรียกใน `initAfterLogin`)
+- `startLocationListener()` / `stopLocationListener()` — `onSnapshot` listener สำหรับ real-time sync ระหว่างเครื่อง; ปิดเมื่อ switch branch
+- `importLocationCSV(file)` — นำเข้า CSV/Excel; lookup SKU จาก `productMasterMap` (Firestore global_pm) เป็นหลัก เพราะไม่ต้องการ R01+R05
+- `renderZoneStaffPanel()` — render dropdown ทุกโซน A–O ใน Zone Staff popup
+- `updateZoneStaff(zone, staff)` — set `state.zoneStaffMap`, อัปเดตตาราง + เปลี่ยน status badge เป็น "ยังไม่ได้ Save"
+- `openZoneStaffPopup()` / `closeZoneStaffPopup()` — popup `#zoneStaffPopupOverlay` สำหรับกำหนดโซน
+
+**CSV Import format:**
+
+| Col | Index | เนื้อหา |
+|---|---|---|
+| A | 0 | SKU หรือ Barcode |
+| B | 1 | Barcode (ไม่ใช้โดยตรง) |
+| C | 2 | ชื่อสินค้า (ไม่ใช้) |
+| D | 3 | หน่วย (ไม่ใช้) |
+| E | 4 | **Location** — ค่าที่ต้องการ |
+
+Header row ตรวจจับอัตโนมัติ (ข้ามแถวที่ col A คือ `sku`, `barcode`, `รหัสสินค้า`, หรือ `location`). แถวที่ไม่มี Location ถูกข้าม (`skipped++`). SKU lookup priority: `productMasterMap` → `barcodeMap` → `skuMap`.
+
+**Location table:**
+- เรียง ascending ตาม `localeCompare({numeric:true})` — A2 ก่อน A10
+- ตาราง 6 คอลัมน์: `#` / `SKU` / `Barcode` / `Product Name` / `Location` / `พนักงาน`
+- **พนักงาน column:** ดึง zone จาก `loc.charAt(0).toUpperCase()` → `state.zoneStaffMap.get(zone)`
+- Filter: zone dropdown (`A`–`O`) + staff dropdown (มุก/ตั๋ง/แล็ค) + text search
+- Render สูงสุด `LOC_MAX_ROWS = 200` แถวเมื่อมี search/filter; แสดงทั้งหมดเมื่อไม่กรอง
+
+**Zone Staff popup (⚙ กำหนดโซน):**
+- `_LOCATION_ZONES = ['A'...'O']` (15 โซน), `_LOCATION_STAFF = ['มุก','ตั๋ง','แล็ค']`
+- ปุ่มอยู่ใน toolbar ของ Location popup ถัดจาก title ก่อนปุ่ม Import CSV
+- เปลี่ยนแล้วไม่ sync ทันที — ต้องกด 💾 Save ใน Location popup เพื่อบันทึกลง Firestore
+
+**onSnapshot sync:** `startLocationListener()` ฟัง `WH_location` document — เมื่อข้อมูลเปลี่ยน อัปเดต `state.locationMap` + `state.zoneStaffMap` + re-render ทั้ง Zone panel และ Location table ถ้า popup เปิดอยู่
+
+---
+
 **Pharmacist re-audit flow** (`openAuditVerifyPopup`, `handleAuditVerifyScan`, `confirmAllAuditVerify`) — **ใช้กับร้านยา (SRC/KKL/SSS) เท่านั้น**; WH ใช้ flow ด้านบนแทน (popup ยังเปิดได้สำหรับ supervisor/pharmacist แต่ warehouse เปิดไม่ได้):
 1. Pharmacist opens **Audit Verify** panel (visible to all roles; button disabled for non-pharmacist with 🔒 message).
 2. Pharmacist scans barcode(s) in the dedicated scan input; `_avMap: Map<SKU, number>` accumulates qty.
@@ -221,6 +275,7 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
 | Firestore `stock_sessions/${branch}` | Scan data | 3 s after localStorage write |
 | Firestore `stock_sessions/${branch}_r01/r05` | R01/R05 master data | After file upload |
 | Firestore `stock_sessions/global_pm` | Product Master | After PM upload; real-time listener on all devices |
+| Firestore `stock_sessions/WH_location` | Location master + zone-staff map | After 💾 Save in Location popup; `{locationData:{SKU:loc}, zoneStaff:{zone:staff}, updatedAt}` — WH only |
 | Firestore `stock_audit_log/${branch}_${date}` | Audit items log | After `evaluatePendingScans()` + after pharmacist verify + after supervisor `confirmAllRecheckSupervisor()` |
 
 > ⚠️ **ไม่มี history snapshot ที่ Firestore** — `startNewCount()` ลบ `scanData` + R01 ออกจาก localStorage และ overwrite Firestore (`syncToFirestore(true)`) โดย**ไม่บันทึก** snapshot ของรอบเก่าไปไหน ต้อง Export Excel เก็บเองก่อนกด เริ่มนับใหม่ (โค้ดเก่าเคยเขียน `stock_history/${branch}_${date}` แต่ถูกถอดออกแล้ว) `stock_audit_log` เป็น log สะสมต่อวัน ไม่ใช่ snapshot รอบนับ
@@ -407,6 +462,13 @@ The scan list header columns are drag-resizable via `initColResize()`. Widths ar
 
 Scan list columns (5 total): **SKU** / **Barcode** / **Product Name** / **Qty** / **Status**. There is no separate remove-button column — the ✕ button (`btn-remove-sku`) is embedded inside the SKU cell as a flex child, visible only when `status === 'scanning'`.
 
+**WH Supervisor Desktop — 7-column scan list:** เมื่อ `currentRole === 'supervisor' && currentBranch === 'WH' && window.innerWidth > 600`, `applyColWidths()` และ `renderScanList()` สลับเป็น 7 คอลัมน์: **SKU / Barcode / Product Name / Qty / Sys Qty / Location / Status**
+
+- Header spans `#scanListHeaderSysQty` และ `#scanListHeaderLocation` แสดง/ซ่อนโดย `updateScanInputMode()`
+- `renderScanList()` เพิ่ม div `.scan-row-sysqty` และ `.scan-row-loc` ต่อแถว
+- **Column widths:** hardcoded สำหรับ 7-col mode — SKU(82) Barcode(90) Name(computed) Qty(60) SysQty(58) Location(65) Status(95) รวม fixed = 450px; `nameW = max(60, header.offsetWidth − 450)` คำนวณ dynamic ทุกครั้งที่ `applyColWidths()` / `renderScanList()` ถูกเรียก เพื่อป้องกัน scan list overflow ที่ viewport 600–820px (ซึ่งทำให้ main-layout ดูกว้างกว่า header/stats-bar)
+- **Drag-resize ใน 7-col mode:** ไม่ทำงาน — `_colWidths` ยังคงเป็น 5 elements สำหรับ 5-col mode เท่านั้น
+
 ### History Stats Panel (📊 ประวัติการนับ)
 
 Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`. Has 4 tabs:
@@ -418,7 +480,11 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 | 🔴 Stock Adj ทั้งหมด | SKU ที่ `status === 'stock_adjustment'` พร้อมปุ่ม Export Excel |
 | 📂 อัพโหลดใบนับสินค้า | upload CSV/Excel เพื่อเปรียบเทียบ |
 
-**Stock Adj columns:** # / SKU / Barcode / Product Name / หน่วย / จำนวนคงเหลือ (systemQty) / จำนวนปรับปรุง (recheckQty) / Diff (systemQty − recheckQty, บวก=ขาด/แดง, ลบ=เกิน/เขียว)
+**Location column (WH branch):** ทุก tab ที่แสดงตาราง (👥 ผู้ช่วย, 🧑‍⚕️ ผู้รีเช็ค, 🔴 Stock Adj) จะเพิ่มคอลัมน์ **Location** หลัง Product Name เมื่อ `currentBranch === 'WH'` — ดึงจาก `state.locationMap.get(sku)` สาขาอื่นไม่มีคอลัมน์นี้
+
+**Stock Adj columns (pharmacy):** # / SKU / Barcode / Product Name / หน่วย / จำนวนคงเหลือ (systemQty) / จำนวนปรับปรุง (recheckQty) / Diff (systemQty − recheckQty, บวก=ขาด/แดง, ลบ=เกิน/เขียว)
+
+**Stock Adj columns (WH):** # / SKU / Barcode / Product Name / **Location** / หน่วย / จำนวนคงเหลือ / จำนวนปรับปรุง / Diff — Export Excel (`exportStockAdjExcel`) รวม Location column ด้วยเมื่อ WH
 
 `_hsFirestoreItems`: `null`=ยังไม่โหลด, `[]`=โหลดแล้วไม่มีข้อมูล, `[...]`=มีข้อมูล
 
@@ -439,10 +505,12 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 
 **Sections ใน Dashboard:**
 1. Branch summary doughnut cards (Pass/Audit/Stock Adj/Scanning per branch)
-2. Per-assistant scan table (filterable by branch)
-3. Audit progress table (เภสัช/คลัง — ตรวจแล้ว vs เหลือ)
+2. Per-assistant scan table (filterable by branch) — title/labels สลับด้วย `isWhDash` flag: WH → "👥 พนักงานคลัง — สรุปการสแกน", branch filter hidden (single branch)
+3. Audit progress table — WH → "🔁 รีเช็ค Audit — ความคืบหน้า"; pharmacy → "🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า"
 4. Daily activity bar chart (จาก `stock_audit_log`)
-5. Audit % per assistant bar chart
+5. Audit % per staff bar chart — WH → "⚠️ Audit % ต่อพนักงานคลัง"
+
+`isWhDash = currentBranch === 'WH'` คำนวณใน `renderDashboard()` เพื่อควบคุม label ทุก section แทนการใช้ constant โดยตรง
 
 ### Audit Verify Panel
 

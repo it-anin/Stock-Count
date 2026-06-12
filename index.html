@@ -367,6 +367,7 @@
           <span id="userLabel" style="display:none;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;font-size:0.68rem;font-weight:700;"></span>
         </div>
 
+        <button class="btn" id="btnLocation" style="display:none;padding:6px 12px;font-size:0.75rem;border-color:rgba(26,158,92,0.35);color:var(--green);background:rgba(26,158,92,0.08);flex:none;width:auto;" onclick="openLocationPopup()">📍 Location</button>
         <button class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(0,114,198,0.35);color:var(--accent);background:rgba(0,114,198,0.08);flex:none;width:auto;" onclick="openDashboardPopup()">📊 Dashboard</button>
         <button class="btn" id="btnAdmin" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(107,63,160,0.35);color:var(--purple);background:rgba(107,63,160,0.08);flex:none;width:auto;" onclick="toggleAdmin()">🔒 Administrator</button>
         <button class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(250,168,0,0.4);color:#e09000;background:rgba(250,168,0,0.08);flex:none;width:auto;" onclick="startNewCount()">🔄 เริ่มนับใหม่</button>
@@ -537,6 +538,8 @@
             <span>Barcode<div class="col-resizer" data-col="1"></div></span>
             <span>Product Name<div class="col-resizer" data-col="2"></div></span>
             <span style="justify-content:center">Qty<div class="col-resizer" data-col="3"></div></span>
+            <span id="scanListHeaderSysQty" style="justify-content:center;display:none;">Sys Qty</span>
+            <span id="scanListHeaderLocation" style="justify-content:center;display:none;">Location</span>
             <span style="justify-content:center">Status<div class="col-resizer" data-col="4"></div></span>
           </div>
           <div class="scan-list-body" id="scanListBody">
@@ -668,7 +671,7 @@
     </div>
     <div class="stock-popup-body">
       <table class="ptable">
-        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th>Audit</th><th>Timestamp</th></tr></thead>
+        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th>Audit</th><th>Timestamp</th><th id="popupThLocation" style="display:none;">Location</th></tr></thead>
         <tbody id="popupTableBody"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
       </table>
     </div>
@@ -733,6 +736,57 @@
     <div class="stock-popup-body" id="dashboardBody" style="padding:18px 22px;">
       <div style="text-align:center;padding:60px;color:var(--text3);">กำลังโหลด...</div>
     </div>
+  </div>
+</div>
+
+<!-- Location Popup (WH only) -->
+<div class="stock-popup-overlay" id="locationPopupOverlay" style="display:none" onclick="if(event.target.id==='locationPopupOverlay')closeLocationPopup()">
+  <div class="stock-popup" style="max-width:900px;">
+    <div class="stock-popup-header">
+      <h2>📍 Location — WH คลังสินค้า</h2>
+      <button class="stock-popup-close" onclick="closeLocationPopup()">✕</button>
+    </div>
+    <div class="stock-popup-toolbar" style="gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="locationSearch" placeholder="🔍 ค้นหา SKU / Barcode / ชื่อสินค้า / Location..." oninput="renderLocationTable()" style="flex:1;min-width:160px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-size:0.82rem;font-family:inherit;">
+      <select id="locationZoneFilter" onchange="renderLocationTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-size:0.82rem;font-family:inherit;cursor:pointer;">
+        <option value="">ทุกโซน</option>
+        <option value="A">โซน A</option><option value="B">โซน B</option><option value="C">โซน C</option><option value="D">โซน D</option>
+        <option value="E">โซน E</option><option value="F">โซน F</option><option value="G">โซน G</option><option value="H">โซน H</option>
+        <option value="I">โซน I</option><option value="J">โซน J</option><option value="K">โซน K</option><option value="L">โซน L</option>
+        <option value="M">โซน M</option><option value="N">โซน N</option><option value="O">โซน O</option>
+      </select>
+      <select id="locationStaffFilter" onchange="renderLocationTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-size:0.82rem;font-family:inherit;cursor:pointer;">
+        <option value="">ทุกคน</option>
+        <option value="มุก">มุก</option><option value="ตั๋ง">ตั๋ง</option><option value="แล็ค">แล็ค</option>
+      </select>
+      <button onclick="openZoneStaffPopup()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(14,116,144,0.4);background:rgba(14,116,144,0.08);color:#0e7490;font-family:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;white-space:nowrap;">⚙ กำหนดโซน</button>
+      <input type="file" id="fileLocationCsv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importLocationCSV(event)">
+      <button onclick="document.getElementById('fileLocationCsv').value='';document.getElementById('fileLocationCsv').click()" style="padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-family:inherit;font-size:0.8rem;cursor:pointer;white-space:nowrap;">📥 Import CSV</button>
+      <button id="btnLocationSave" onclick="saveLocationToFirestore()" style="padding:6px 14px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.1);color:var(--green);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;">💾 Save</button>
+      <span id="locationSaveStatus" style="font-size:0.78rem;color:var(--text3);white-space:nowrap;"></span>
+    </div>
+    <div style="padding:6px 18px 4px;font-size:0.74rem;color:var(--text3);">คอลัมน์: <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">A=SKU, B=Barcode, C=ชื่อ, D=หน่วย, E=Location</code> (แถวแรกเป็น header ได้)</div>
+    <div class="stock-popup-body">
+      <table class="ptable">
+        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Location</th><th>พนักงาน</th></tr></thead>
+        <tbody id="locationTableBody"><tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
+      </table>
+    </div>
+    <div class="stock-popup-footer" style="justify-content:flex-end;">
+      <span id="locationRowCount" class="popup-row-count"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Zone Staff Popup -->
+<div id="zoneStaffPopupOverlay" style="display:none;position:fixed;inset:0;z-index:10001;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);" onclick="if(event.target.id==='zoneStaffPopupOverlay')closeZoneStaffPopup()">
+  <div style="background:var(--surface);border-radius:14px;padding:20px 24px;max-width:640px;width:92%;box-shadow:0 8px 40px rgba(0,0,0,0.35);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:0.95rem;font-weight:700;">⚙ กำหนดโซน — พนักงาน</h3>
+      <button onclick="closeZoneStaffPopup()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text3);padding:2px 8px;border-radius:6px;">✕</button>
+    </div>
+    <div id="locationZonePanel" style="display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;"></div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:0.75rem;color:var(--text3);">เปลี่ยนแล้วปิด popup → กด 💾 Save ในหน้า Location เพื่อบันทึกลง Firestore</div>
   </div>
 </div>
 
@@ -874,6 +928,7 @@ let _pinVerified = false;
 let _pmUnsubscribe = null;
 let _pmListenerReady = false;
 let _scanSessionUnsubscribe = null;
+let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
 let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
@@ -910,6 +965,8 @@ function updateBranchDisplay(){
   }
   const r16103Sec=document.getElementById('r16103UploadSection');
   if(r16103Sec)r16103Sec.style.display=(currentBranch==='WH'&&window.innerWidth>600)?'':'none';
+  const locBtn=document.getElementById('btnLocation');
+  if(locBtn)locBtn.style.display=(currentBranch==='WH'&&window.innerWidth>600)?'':'none';
 }
 function showBranchSelector(){document.getElementById('branchModal').style.display='flex';}
 function stopProductMasterListener(){
@@ -1052,6 +1109,7 @@ async function initAfterLogin(){
   rebuildScanListMap();
   renderScanList();updateStats();renderTable();
   if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
+  if(currentBranch==='WH'){await loadLocationFromFirestore();startLocationListener();}
   updateScanInputMode();
   // WH PDA: เริ่ม session ด้วย RESULT ว่าง — พนักงานเห็นเฉพาะสิ่งที่สแกนใหม่
   if(currentBranch==='WH'&&window.innerWidth<=600){
@@ -1089,6 +1147,7 @@ function requestBranchChange(){
 async function selectBranch(branch){
   stopProductMasterListener();
   stopScanSessionListener();
+  stopLocationListener();
   if(_pinVerified){
     // สลับสาขาระหว่างใช้งาน — save สาขาเดิมก่อน
     clearTimeout(_firestoreSyncTimer);
@@ -1126,7 +1185,7 @@ const state = {
   r01Data:[], r01UploadedAt:'', r05Data:[],
   r16Data:[], r16SalesMap:new Map(), r16RawMap:new Map(), r16InboundMap:new Map(), r16InboundRawMap:new Map(), r16Loaded:false, r16DateMismatch:false, r16UploadedAt:'',
   r16_103Map:new Map(), r16_103RawMap:new Map(), r16_103Loaded:false, r16_103UploadedAt:'',
-  skuMap:new Map(), barcodeMap:new Map(), skuDirectMap:new Map(), scanData:new Map(), unknownScans:[],
+  skuMap:new Map(), barcodeMap:new Map(), skuDirectMap:new Map(), scanData:new Map(), unknownScans:[], locationMap:new Map(), zoneStaffMap:new Map(),
   currentFilter:'all',
 };
 
@@ -1516,7 +1575,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','dashboardPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -2140,8 +2199,17 @@ function _initColDefaults(){
   applyColWidths();
 }
 function applyColWidths(){
-  const tpl = _colWidths.map(w=>w+'px').join(' ');
-  document.querySelectorAll('.scan-list-header,.scan-row').forEach(el=>{ el.style.gridTemplateColumns=tpl; });
+  let tpl;
+  if(currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600){
+    const header=document.getElementById('scanListHeader');
+    const available=header?header.offsetWidth:600;
+    // 7-col fixed (excl name): SKU(82)+Barcode(90)+Qty(60)+SysQty(58)+Loc(65)+Status(95) = 450
+    const nameW=Math.max(60,available-450);
+    tpl=`82px 90px ${nameW}px 60px 58px 65px 95px`;
+  }else{
+    tpl=_colWidths.map(w=>w+'px').join(' ');
+  }
+  document.querySelectorAll('.scan-list-header,.scan-row').forEach(el=>{el.style.gridTemplateColumns=tpl;});
 }
 function initColResize(){
   _initColDefaults();
@@ -2172,7 +2240,11 @@ function renderScanList(){
   const entries=[...scanListMap.values()].reverse();
   const total=entries.length;
   const visible=entries.slice(0,SCAN_LIST_MAX);
-  const tpl=_colWidths.map(w=>w+'px').join(' ');
+  const showSysQty=currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600;
+  const showLoc=showSysQty;
+  let tpl;
+  if(showSysQty){const hdrEl=document.querySelector('.scan-list-header');const available=hdrEl?hdrEl.offsetWidth:600;const nameW=Math.max(60,available-450);tpl=`82px 90px ${nameW}px 60px 58px 65px 95px`;}
+  else{tpl=_colWidths.map(w=>w+'px').join(' ');}
   const limitBanner=total>SCAN_LIST_MAX?`<div style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
   body.innerHTML=limitBanner+visible.map(entry=>{
     const{cls,label}=getScanRowStyle(entry.status);
@@ -2185,6 +2257,8 @@ function renderScanList(){
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
       <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((si?.systemQty||0)>100?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='warehouse'||currentRole==='supervisor'))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
+      ${showSysQty?`<div class="scan-row-sysqty" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 6px;">${si?.systemQty??''}</div>`:''}
+      ${showLoc?`<div class="scan-row-loc" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.locationMap.get(entry.sku)||'—'}</div>`:''}
       <div class="scan-row-status"><span class="pill ${getPillClass(entry.status)}">${label}</span></div>
     </div>`;
   }).join('');
@@ -2407,12 +2481,16 @@ function setPopupFilter(f,btn){popupFilterState=f;document.querySelectorAll('.po
 function renderPopupTable(){
   const search=(document.getElementById('popupSearch').value||'').toLowerCase();
   const tbody=document.getElementById('popupTableBody');
+  const isWhSup=currentRole==='supervisor'&&currentBranch==='WH';
+  const thLoc=document.getElementById('popupThLocation');
+  if(thLoc)thLoc.style.display=isWhSup?'':'none';
+  const colspan=isWhSup?10:9;
   if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
   let rows=popupBaseRowsCache;
   if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
-  if(!rows.length){tbody.innerHTML=`<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;return;}
+  if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;return;}
   tbody.innerHTML=rows.slice(0,POPUP_MAX_RENDER_ROWS).map((r,i)=>{
     const{sku,info,sd,barcodes}=r;const sp=getStatusPill(sd.status);
     let ap;
@@ -2427,7 +2505,8 @@ function renderPopupTable(){
     const canEdit=(info.systemQty||0)>100&&(sd.status==='pending'||sd.status==='scanning');
     const qtyCell=canEdit?`<input type="number" class="popup-qty-input" value="${sd.countedQty}" min="0" onchange="updatePopupQty('${sku}',this.value)"/>`:`<span style="color:${qc};font-weight:700">${sd.countedQty}</span>`;
     const scannedByCell=sd.scannedBy?`<span style="font-size:0.74rem;color:var(--text2);font-weight:600;">${sd.scannedBy}</span>`:'<span style="color:var(--text3);">—</span>';
-    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td><td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.timestamp||'—'}</td></tr>`;
+    const locCell=isWhSup?`<td style="font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--text2);text-align:center;">${state.locationMap.get(sku)||'—'}</td>`:'';
+    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td><td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.timestamp||'—'}</td>${locCell}</tr>`;
   }).join('');
 }
 
@@ -3022,6 +3101,11 @@ function updateScanInputMode(){
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=isPharm?'none':'flex';
   if(!isPharm&&!isSvDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
+  const sysQtyHdr=document.getElementById('scanListHeaderSysQty');
+  if(sysQtyHdr)sysQtyHdr.style.display=isSvDesktop&&currentBranch==='WH'?'flex':'none';
+  const locHdr=document.getElementById('scanListHeaderLocation');
+  if(locHdr)locHdr.style.display=isSvDesktop&&currentBranch==='WH'?'flex':'none';
+  applyColWidths();
 }
 
 // ─── History Stats ───────────────────────────────────────────────────────────
@@ -3223,13 +3307,15 @@ function renderDashboard(branches){
 
   // Section 2: Per-Assistant table (filterable by branch)
   _dashAssistantData=branches;
+  const isWhDash=currentBranch==='WH';
   sections.push(`<div style="margin-bottom:24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-      <h3 style="font-size:0.95rem;">👥 ผู้สแกน (ผู้ช่วยเภสัช / คลัง) — สรุปการสแกน</h3>
-      <div id="dashAssistantFilter" style="display:flex;gap:6px;flex-wrap:wrap;">
+      <h3 style="font-size:0.95rem;">${isWhDash?'👥 พนักงานคลัง — สรุปการสแกน':'👥 ผู้สแกน (ผู้ช่วยเภสัช / คลัง) — สรุปการสแกน'}</h3>
+      ${isWhDash?'':
+      `<div id="dashAssistantFilter" style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="dash-filter-btn active" data-branch="all" onclick="setDashAssistantFilter('all',this)">ทุกสาขา</button>
         ${activeBranches.map(b=>`<button class="dash-filter-btn" data-branch="${b}" onclick="setDashAssistantFilter('${b}',this)">${b}</button>`).join('')}
-      </div>
+      </div>`}
     </div>
     <div id="dashAssistantTableWrap"></div>
   </div>`);
@@ -3256,7 +3342,7 @@ function renderDashboard(branches){
     </tr>`;
   }).join('');
   sections.push(`<div style="margin-bottom:24px;">
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'🔁 รีเช็ค Audit — ความคืบหน้า':'🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า'}</h3>
     <table class="ptable" style="width:100%;">
       <thead><tr>
         <th style="width:80px;">สาขา</th>
@@ -3305,7 +3391,7 @@ function renderDashboard(branches){
   }));
   allAssist.sort((a,b)=>b.pct-a.pct);
   sections.push(`<div>
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">⚠️ Audit % ต่อผู้สแกน</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'⚠️ Audit % ต่อพนักงานคลัง':'⚠️ Audit % ต่อผู้สแกน'}</h3>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
       ${allAssist.length?allAssist.map(a=>{
         const w=Math.min(100,a.pct);
@@ -3343,12 +3429,15 @@ async function loadAuditLogFromFirestore(){
 
 function _renderAssistantRows(tbody,cnt,items){
   const auditBadge='<span style="color:var(--yellow);font-weight:700;">⚠️ Audit</span>';
+  const isWh=currentBranch==='WH';
   tbody.innerHTML=items.map((it,i)=>{
+    const loc=isWh?(state.locationMap.get(it.sku)||'—'):'';
     return`<tr>
       <td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>
       <td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${it.sku}</td>
       <td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${it.barcode}</td>
       <td class="ptd-name">${it.productName}</td>
+      ${isWh?`<td style="text-align:center;font-size:0.75rem;color:var(--text2);">${loc}</td>`:''}
       <td style="text-align:center;font-weight:700;">${it.countedQty}</td>
       <td style="text-align:center;">${auditBadge}</td>
       <td style="font-size:0.7rem;color:var(--text3);">${it.timestamp}</td>
@@ -3430,7 +3519,8 @@ function renderHistoryStatsTable(){
 
   if(_hsFilter==='assistant'){
     _buildAssistantDropdown();
-    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>ชื่อผู้ช่วย</th></tr>';
+    const isWhA=currentBranch==='WH';
+    if(thead)thead.innerHTML=`<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th>${isWhA?'<th style="text-align:center;">Location</th>':''}<th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>ชื่อผู้ช่วย</th></tr>`;
     const note=document.getElementById('hsFirestoreNote');
 
     // ── รวบรวมจาก local state ก่อน ──
@@ -3448,12 +3538,12 @@ function renderHistoryStatsTable(){
       _renderAssistantRows(tbody,cnt,localItems);
     } else if(_hsFirestoreLoading){
       // กำลังโหลด
-      tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">⏳ กำลังโหลดจาก Cloud...</td></tr>';
+      tbody.innerHTML=`<tr><td colspan="${isWhA?9:8}" style="text-align:center;padding:32px;color:var(--text3)">⏳ กำลังโหลดจาก Cloud...</td></tr>`;
       if(cnt)cnt.textContent='—';if(note)note.textContent='';
     } else if(_hsFirestoreItems===null){
       // ยังไม่เคยโหลด → โหลดอัตโนมัติ
       if(note)note.textContent='';
-      tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">⏳ กำลังโหลดจาก Cloud...</td></tr>';
+      tbody.innerHTML=`<tr><td colspan="${isWhA?9:8}" style="text-align:center;padding:32px;color:var(--text3)">⏳ กำลังโหลดจาก Cloud...</td></tr>`;
       if(cnt)cnt.textContent='—';
       loadAuditLogFromFirestore();
     } else {
@@ -3462,7 +3552,7 @@ function renderHistoryStatsTable(){
       if(note)note.textContent=fsItems.length?'ข้อมูลจาก Cloud':'';
       if(!fsItems.length){
         const msg=_hsAssistantSel?`ไม่มีสินค้าที่ ${_hsAssistantSel} สแกนขึ้น Audit`:'ไม่พบข้อมูลใน Cloud วันนี้';
-        tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">${msg}</td></tr>`;
+        tbody.innerHTML=`<tr><td colspan="${isWhA?9:8}" style="text-align:center;padding:32px;color:var(--text3)">${msg}</td></tr>`;
         if(cnt)cnt.textContent='0 รายการ';
       } else {
         _renderAssistantRows(tbody,cnt,fsItems);
@@ -3470,23 +3560,26 @@ function renderHistoryStatsTable(){
     }
   }
   else if(_hsFilter==='pharmacist'){
-    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>'+(currentBranch==='WH'?'ชื่อผู้รีเช็ค':'ชื่อเภสัช')+'</th></tr>';
+    const isWhP=currentBranch==='WH';
+    if(thead)thead.innerHTML=`<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th>${isWhP?'<th style="text-align:center;">Location</th>':''}<th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>${isWhP?'ชื่อผู้รีเช็ค':'ชื่อเภสัช'}</th></tr>`;
     const items=[];
     for(const[sku,sd] of state.scanData.entries()){
       if(!sd.auditor)continue;
       const si=state.skuMap.get(sku);if(!si)continue;
       items.push({sku,sd,si});
     }
-    if(!items.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr>';if(cnt)cnt.textContent='0 รายการ';return;}
+    if(!items.length){tbody.innerHTML=`<tr><td colspan="${isWhP?9:8}" style="text-align:center;padding:32px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr>`;if(cnt)cnt.textContent='0 รายการ';return;}
     const stLabel={pass:'<span style="color:var(--green);font-weight:700;">Pass</span>',audit:'<span style="color:var(--yellow);font-weight:700;">Audit</span>',stock_adjustment:'<span style="color:var(--red);font-weight:700;">Stock Adj</span>'};
     tbody.innerHTML=items.map(({sku,sd,si},i)=>{
       const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'—';
       const st=stLabel[sd.status]||`<span style="color:var(--text3);">${sd.status}</span>`;
+      const loc=isWhP?(state.locationMap.get(sku)||'—'):'';
       return`<tr>
         <td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>
         <td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${sku}</td>
         <td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${bc}</td>
         <td class="ptd-name">${si.productName}</td>
+        ${isWhP?`<td style="text-align:center;font-size:0.75rem;color:var(--text2);">${loc}</td>`:''}
         <td style="text-align:center;font-weight:700;">${sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty}</td>
         <td style="text-align:center;">${st}</td>
         <td style="font-size:0.7rem;color:var(--text3);">${sd.timestamp||'—'}</td>
@@ -3496,14 +3589,15 @@ function renderHistoryStatsTable(){
     if(cnt)cnt.textContent=`${items.length} รายการ`;
   }
   else if(_hsFilter==='stockadj'){
-    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวนคงเหลือ</th><th style="text-align:center;">จำนวนปรับปรุง</th><th style="text-align:center;">Diff</th></tr>';
+    const isWhS=currentBranch==='WH';
+    if(thead)thead.innerHTML=`<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th>${isWhS?'<th style="text-align:center;">Location</th>':''}<th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวนคงเหลือ</th><th style="text-align:center;">จำนวนปรับปรุง</th><th style="text-align:center;">Diff</th></tr>`;
     const items=[];
     for(const[sku,sd] of state.scanData.entries()){
       if(sd.status!=='stock_adjustment')continue;
       const si=state.skuMap.get(sku);if(!si)continue;
       items.push({sku,sd,si});
     }
-    if(!items.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">ไม่มีสินค้าที่ Stock Adjustment</td></tr>';if(cnt)cnt.textContent='0 รายการ';return;}
+    if(!items.length){tbody.innerHTML=`<tr><td colspan="${isWhS?9:8}" style="text-align:center;padding:32px;color:var(--text3)">ไม่มีสินค้าที่ Stock Adjustment</td></tr>`;if(cnt)cnt.textContent='0 รายการ';return;}
     tbody.innerHTML=items.map(({sku,sd,si},i)=>{
       const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'—';
       const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
@@ -3512,11 +3606,13 @@ function renderHistoryStatsTable(){
       const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
       const diff=sysQty-rv;
       const dc=diff>0?`<span style="color:var(--red);font-weight:700;">-${diff}</span>`:diff<0?`<span style="color:var(--green);font-weight:700;">+${Math.abs(diff)}</span>`:`<span style="color:var(--green);font-weight:700;">0</span>`;
+      const loc=isWhS?(state.locationMap.get(sku)||'—'):'';
       return`<tr>
         <td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>
         <td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--accent);font-weight:700;">${sku}</td>
         <td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--text3);">${bc}</td>
         <td class="ptd-name">${si.productName}</td>
+        ${isWhS?`<td style="text-align:center;font-size:0.75rem;color:var(--text2);">${loc}</td>`:''}
         <td style="text-align:center;font-size:0.8rem;">${unitName}</td>
         <td style="text-align:center;font-weight:700;">${sysQty}</td>
         <td style="text-align:center;font-weight:700;">${rv}</td>
@@ -3629,7 +3725,10 @@ function exportHsCountExcel(){
 }
 
 function exportStockAdjExcel(){
-  const header=['#','SKU','Barcode','Product Name','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff'];
+  const isWh=currentBranch==='WH';
+  const header=isWh
+    ?['#','SKU','Barcode','Product Name','Location','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff']
+    :['#','SKU','Barcode','Product Name','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff'];
   const rows=[header];
   let i=0;
   for(const[sku,sd] of state.scanData.entries()){
@@ -3641,7 +3740,12 @@ function exportStockAdjExcel(){
     const sysQty=si.systemQty;
     const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
     const diff=sysQty-rv;
-    rows.push([++i,sku,bc,si.productName,unitName,sysQty,rv,diff]);
+    if(isWh){
+      const loc=state.locationMap.get(sku)||'';
+      rows.push([++i,sku,bc,si.productName,loc,unitName,sysQty,rv,diff]);
+    }else{
+      rows.push([++i,sku,bc,si.productName,unitName,sysQty,rv,diff]);
+    }
   }
   if(rows.length===1){toast('ไม่มีข้อมูล Stock Adjustment','warn');return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
@@ -3660,6 +3764,192 @@ function updateHistoryStatsPanel(){
   const p=document.getElementById('historyStatsPanel');if(!p)return;
   p.style.display=currentRole?'':'none';
   updateHistoryStatsCount();
+}
+
+// ─── Location Master (WH only) ───────────────────────────────────────────────
+function getLocationRef(){return _db.collection('stock_sessions').doc('WH_location');}
+
+function openLocationPopup(){
+  if(!currentRole){toast('กรุณาเลือกผู้ใช้งานก่อน','warn');return;}
+  const el=document.getElementById('locationSearch');if(el)el.value='';
+  const ss=document.getElementById('locationSaveStatus');if(ss)ss.textContent='';
+  document.getElementById('locationPopupOverlay').style.display='flex';
+  renderLocationTable();
+}
+function openZoneStaffPopup(){
+  renderZoneStaffPanel();
+  document.getElementById('zoneStaffPopupOverlay').style.display='flex';
+}
+function closeZoneStaffPopup(){
+  document.getElementById('zoneStaffPopupOverlay').style.display='none';
+}
+function closeLocationPopup(){
+  document.getElementById('locationPopupOverlay').style.display='none';
+}
+
+function renderLocationTable(){
+  const search=(document.getElementById('locationSearch')?.value||'').trim().toLowerCase();
+  const tbody=document.getElementById('locationTableBody');
+  if(!tbody)return;
+  // ใช้ PM เป็นหลัก (โหลดจาก Firestore ทุก login) — fallback skuMap ถ้า PM ยังไม่โหลด
+  const hasPm=state.productMasterData.length>0;
+  const hasSkuMap=state.skuMap.size>0;
+  if(!hasPm&&!hasSkuMap){
+    tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text3)">รอโหลด Product Master จาก Firestore...</td></tr>`;
+    document.getElementById('locationRowCount').textContent='';
+    return;
+  }
+  const skuSource=hasPm?state.productMasterData.map(r=>r.sku):[...state.skuMap.keys()];
+  let rows=skuSource.map(sku=>{
+    const pm=state.productMasterMap.get(sku)||'';
+    const si=state.skuMap.get(sku);
+    const name=pm||si?.productName||sku;
+    const bc=si?.barcodes[0]?.barcode||'';
+    const loc=state.locationMap.get(sku)||'';
+    return{sku,name,bc,loc};
+  });
+  // เรียงตาม Location น้อยไปมาก — ไม่มี location ไปอยู่ท้าย
+  rows.sort((a,b)=>{
+    if(!a.loc&&!b.loc)return 0;
+    if(!a.loc)return 1;
+    if(!b.loc)return -1;
+    return a.loc.localeCompare(b.loc,undefined,{numeric:true,sensitivity:'base'});
+  });
+  const zone=(document.getElementById('locationZoneFilter')?.value||'');
+  const staffFilter=(document.getElementById('locationStaffFilter')?.value||'');
+  if(zone)rows=rows.filter(r=>r.loc.toUpperCase().startsWith(zone));
+  if(staffFilter)rows=rows.filter(r=>state.zoneStaffMap.get(r.loc.toUpperCase().charAt(0)||'')===staffFilter);
+  if(search)rows=rows.filter(r=>r.sku.toLowerCase().includes(search)||r.name.toLowerCase().includes(search)||r.loc.toLowerCase().includes(search)||r.bc.toLowerCase().includes(search));
+  const LOC_MAX_ROWS=200;
+  const total=rows.length;
+  const limited=rows.slice(0,LOC_MAX_ROWS);
+  document.getElementById('locationRowCount').textContent=
+    total<=LOC_MAX_ROWS?`${total} รายการ`:`แสดง ${LOC_MAX_ROWS}/${total} — กรอง Search เพื่อค้นหา`;
+  tbody.innerHTML=limited.map((r,i)=>{
+    const z=r.loc.toUpperCase().charAt(0)||'';
+    const staff=state.zoneStaffMap.get(z)||'';
+    return `<tr>`+
+    `<td style="color:var(--text3);font-size:0.75rem">${i+1}</td>`+
+    `<td class="ptd-sku">${r.sku}</td>`+
+    `<td class="ptd-bc">${r.bc}</td>`+
+    `<td class="ptd-name">${r.name}</td>`+
+    `<td><input type="text" value="${r.loc.replace(/"/g,'&quot;')}" placeholder="เช่น A01" `+
+    `onchange="updateLocationEntry('${r.sku}',this.value.trim())" `+
+    `style="width:100%;max-width:120px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;font-size:0.82rem;background:var(--surface2);color:var(--text);font-family:inherit;"></td>`+
+    `<td style="text-align:center;font-size:0.82rem;color:var(--text2);white-space:nowrap;">${staff}</td>`+
+    `</tr>`;
+  }).join('');
+}
+
+function updateLocationEntry(sku,loc){
+  if(loc)state.locationMap.set(sku,loc);
+  else state.locationMap.delete(sku);
+  const s=document.getElementById('locationSaveStatus');
+  if(s){s.textContent='● ยังไม่ได้ Save';s.style.color='var(--yellow)';}
+}
+
+const _LOCATION_ZONES=['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
+const _LOCATION_STAFF=['มุก','ตั๋ง','แล็ค'];
+
+function renderZoneStaffPanel(){
+  const panel=document.getElementById('locationZonePanel');
+  if(!panel)return;
+  panel.innerHTML='<span style="font-size:0.78rem;color:var(--text3);font-weight:600;white-space:nowrap;margin-right:4px;">กำหนดโซน:</span>'+
+    _LOCATION_ZONES.map(z=>{
+      const cur=state.zoneStaffMap.get(z)||'';
+      const opts='<option value="">—</option>'+_LOCATION_STAFF.map(s=>`<option value="${s}"${cur===s?' selected':''}>${s}</option>`).join('');
+      return `<label style="display:inline-flex;align-items:center;gap:3px;"><span style="font-size:0.78rem;font-weight:700;min-width:12px;">${z}</span>`+
+        `<select onchange="updateZoneStaff('${z}',this.value)" style="padding:2px 4px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:0.76rem;font-family:inherit;cursor:pointer;">${opts}</select></label>`;
+    }).join('');
+}
+
+function updateZoneStaff(zone,staff){
+  if(staff)state.zoneStaffMap.set(zone,staff);
+  else state.zoneStaffMap.delete(zone);
+  renderLocationTable();
+  const s=document.getElementById('locationSaveStatus');
+  if(s){s.textContent='● ยังไม่ได้ Save';s.style.color='var(--yellow)';}
+}
+
+async function saveLocationToFirestore(){
+  if(!_db){toast('ไม่มีการเชื่อมต่อ Firestore','warn');return;}
+  const btn=document.getElementById('btnLocationSave');
+  if(btn)btn.disabled=true;
+  try{
+    const data={};
+    state.locationMap.forEach((loc,sku)=>{if(loc)data[sku]=loc;});
+    const zoneStaff={};
+    state.zoneStaffMap.forEach((staff,zone)=>{if(staff)zoneStaff[zone]=staff;});
+    await getLocationRef().set({locationData:data,zoneStaff,updatedAt:new Date().toISOString()});
+    const s=document.getElementById('locationSaveStatus');
+    if(s){s.textContent='✓ บันทึกแล้ว';s.style.color='var(--green)';}
+    toast('บันทึก Location แล้ว','success');
+  }catch(e){
+    toast('บันทึกไม่สำเร็จ: '+e.message,'error');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+async function loadLocationFromFirestore(){
+  if(!_db||currentBranch!=='WH')return;
+  try{
+    const doc=await getLocationRef().get();
+    if(doc.exists){
+      const data=doc.data().locationData||{};
+      state.locationMap.clear();
+      Object.entries(data).forEach(([sku,loc])=>{if(loc)state.locationMap.set(sku,loc);});
+      const zs=doc.data().zoneStaff||{};
+      state.zoneStaffMap.clear();
+      Object.entries(zs).forEach(([zone,staff])=>{if(staff)state.zoneStaffMap.set(zone,staff);});
+    }
+  }catch(e){console.warn('[Location] load error:',e);}
+}
+
+function startLocationListener(){
+  if(!_db||currentBranch!=='WH')return;
+  stopLocationListener();
+  _locationUnsubscribe=getLocationRef().onSnapshot(doc=>{
+    if(!doc.exists)return;
+    const data=doc.data().locationData||{};
+    state.locationMap.clear();
+    Object.entries(data).forEach(([sku,loc])=>{if(loc)state.locationMap.set(sku,loc);});
+    const zs=doc.data().zoneStaff||{};
+    state.zoneStaffMap.clear();
+    Object.entries(zs).forEach(([zone,staff])=>{if(staff)state.zoneStaffMap.set(zone,staff);});
+    if(document.getElementById('locationPopupOverlay')?.style.display==='flex'){renderZoneStaffPanel();renderLocationTable();}
+  },e=>console.warn('[Location] listener error:',e));
+}
+
+function stopLocationListener(){
+  if(_locationUnsubscribe){_locationUnsubscribe();_locationUnsubscribe=null;}
+}
+
+function importLocationCSV(event){
+  const file=event.target.files[0];if(!file)return;
+  parseFile(file,rows=>{
+    let imported=0,skipped=0;
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i];if(!r||!r.length)continue;
+      const col0=(r[0]??'').toString().trim();
+      const loc=(r[4]??'').toString().trim();
+      if(!col0)continue;
+      const c0l=col0.toLowerCase();
+      if(c0l==='sku'||c0l==='barcode'||c0l==='รหัสสินค้า'||c0l==='location')continue;
+      if(!loc){skipped++;continue;}
+      // lookup SKU จาก Product Master (โหลดจาก Firestore global_pm) เป็นหลัก
+      let sku=null;
+      if(state.productMasterMap.has(col0))sku=col0;
+      else if(state.barcodeMap.has(col0))sku=state.barcodeMap.get(col0);
+      else if(state.skuMap.has(col0))sku=col0;
+      if(!sku){skipped++;continue;}
+      state.locationMap.set(sku,loc);imported++;
+    }
+    toast(`Import Location: ${imported} รายการ`+(skipped?` (ข้าม ${skipped})`:''),'success');
+    renderLocationTable();
+    const s=document.getElementById('locationSaveStatus');
+    if(s){s.textContent='● ยังไม่ได้ Save';s.style.color='var(--yellow)';}
+  });
 }
 </script>
 <script>
