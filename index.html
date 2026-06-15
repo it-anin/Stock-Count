@@ -168,6 +168,8 @@
     @keyframes branchFadeIn { from{opacity:0;} to{opacity:1;} }
     .branch-card-enter { animation:branchSlideUp 0.35s cubic-bezier(0.22,1,0.36,1); }
     .branch-overlay-enter { animation:branchFadeIn 0.25s ease; }
+    @keyframes modalSlideOut { from{opacity:1;transform:translateY(0) scale(1);} to{opacity:0;transform:translateY(-30px) scale(0.97);} }
+    .modal-card-exit { animation:modalSlideOut 0.22s cubic-bezier(0.4,0,0.6,1) forwards; }
     .scan-row-sku { font-family:'Inter',sans-serif; font-size:0.75rem; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:4px; }
     .scan-row-sku .sku-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .btn-remove-sku { flex-shrink:0; padding:1px 5px; font-size:0.68rem; border-radius:4px; line-height:1.3; }
@@ -993,6 +995,19 @@ function _openModal(overlayId, cardId){
   card.classList.add('branch-card-enter');
   ov.classList.add('branch-overlay-enter');
 }
+function _closeModal(overlayId, cardId, cb){
+  const ov=document.getElementById(overlayId);
+  const card=document.getElementById(cardId);
+  if(!card){if(ov)ov.style.display='none';if(cb)cb();return;}
+  card.classList.remove('modal-card-exit');
+  void card.offsetWidth;
+  card.classList.add('modal-card-exit');
+  setTimeout(()=>{
+    if(ov)ov.style.display='none';
+    card.classList.remove('modal-card-exit');
+    if(cb)cb();
+  },220);
+}
 function stopProductMasterListener(){
   if(_pmUnsubscribe){_pmUnsubscribe();_pmUnsubscribe=null;}
   _pmListenerReady=false;
@@ -1116,13 +1131,14 @@ function showEmployeeSelector(callback){
 }
 function selectEmployee(name,role){
   currentUser=name;currentRole=role;
-  document.getElementById('employeeModal').style.display='none';
-  updateUserDisplay();
-  updateAuditVerifyPanel();
-  updateHistoryStatsPanel();
-  updateScanInputMode();
-  if(_employeeCallback)_employeeCallback();
-  _employeeCallback=null;
+  _closeModal('employeeModal','employeeModalCard',()=>{
+    updateUserDisplay();
+    updateAuditVerifyPanel();
+    updateHistoryStatsPanel();
+    updateScanInputMode();
+    if(_employeeCallback)_employeeCallback();
+    _employeeCallback=null;
+  });
 }
 async function initAfterLogin(){
   loadSession();
