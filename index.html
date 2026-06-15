@@ -164,6 +164,10 @@
     .scan-row > div:last-child { border-right:none; }
     .scan-row:hover { background:var(--surface3); }
     @keyframes rowSlide { from{opacity:0;transform:translateX(-6px);} to{opacity:1;transform:translateX(0);} }
+    @keyframes branchSlideUp { from{opacity:0;transform:translateY(40px) scale(0.97);} to{opacity:1;transform:translateY(0) scale(1);} }
+    @keyframes branchFadeIn { from{opacity:0;} to{opacity:1;} }
+    .branch-card-enter { animation:branchSlideUp 0.35s cubic-bezier(0.22,1,0.36,1); }
+    .branch-overlay-enter { animation:branchFadeIn 0.25s ease; }
     .scan-row-sku { font-family:'Inter',sans-serif; font-size:0.75rem; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:4px; }
     .scan-row-sku .sku-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .btn-remove-sku { flex-shrink:0; padding:1px 5px; font-size:0.68rem; border-radius:4px; line-height:1.3; }
@@ -899,7 +903,7 @@
 
 <!-- Branch Selector Modal -->
 <div id="branchModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.65);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
+  <div id="branchModalCard" style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
     <div style="font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:6px;">เลือกสาขา</div>
     <div style="color:var(--text3);font-size:0.82rem;margin-bottom:28px;">Select Branch</div>
     <div style="display:flex;flex-direction:column;gap:12px;">
@@ -968,7 +972,16 @@ function updateBranchDisplay(){
   const locBtn=document.getElementById('btnLocation');
   if(locBtn)locBtn.style.display=(currentBranch==='WH'&&window.innerWidth>600)?'':'none';
 }
-function showBranchSelector(){document.getElementById('branchModal').style.display='flex';}
+function showBranchSelector(){
+  const modal=document.getElementById('branchModal');
+  const card=document.getElementById('branchModalCard');
+  modal.style.display='flex';
+  modal.classList.remove('branch-overlay-enter');
+  card.classList.remove('branch-card-enter');
+  void card.offsetWidth;
+  modal.classList.add('branch-overlay-enter');
+  card.classList.add('branch-card-enter');
+}
 function stopProductMasterListener(){
   if(_pmUnsubscribe){_pmUnsubscribe();_pmUnsubscribe=null;}
   _pmListenerReady=false;
