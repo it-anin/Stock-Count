@@ -659,7 +659,7 @@
 
 <!-- Stock Popup -->
 <div class="stock-popup-overlay" id="stockPopupOverlay" style="display:none" onclick="handleOverlayClick(event)">
-  <div class="stock-popup">
+  <div class="stock-popup" id="stockPopupCard">
     <div class="stock-popup-header">
       <h2>📋 รายการสต็อคสินค้า</h2>
       <button class="stock-popup-close" onclick="closeStockPopup()">✕</button>
@@ -691,7 +691,7 @@
 
 <!-- Audit Verify Popup -->
 <div class="stock-popup-overlay" id="auditVerifyPopupOverlay" style="display:none" onclick="handleAuditVerifyOverlayClick(event)">
-  <div class="stock-popup" style="max-width:1100px;">
+  <div class="stock-popup" id="auditVerifyPopupCard" style="max-width:1100px;">
     <div class="stock-popup-header">
       <h2 id="auditVerifyTitle">🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)</h2>
       <button class="stock-popup-close" onclick="closeAuditVerifyPopup()">✕</button>
@@ -730,7 +730,7 @@
 
 <!-- Dashboard Popup -->
 <div class="stock-popup-overlay" id="dashboardPopupOverlay" style="display:none" onclick="handleDashboardOverlayClick(event)">
-  <div class="stock-popup" style="max-width:1280px;">
+  <div class="stock-popup" id="dashboardPopupCard" style="max-width:1280px;">
     <div class="stock-popup-header">
       <h2 id="dashTitle">📊 Dashboard — สรุปการนับสต็อกทุกสาขา</h2>
       <button class="stock-popup-close" onclick="closeDashboardPopup()">✕</button>
@@ -798,7 +798,7 @@
 
 <!-- History Stats Popup -->
 <div class="stock-popup-overlay" id="historyStatsPopupOverlay" style="display:none" onclick="handleHistoryStatsOverlayClick(event)">
-  <div class="stock-popup" style="max-width:1100px;">
+  <div class="stock-popup" id="historyStatsPopupCard" style="max-width:1100px;">
     <div class="stock-popup-header">
       <h2>📊 ประวัติการนับสต็อก</h2>
       <button class="stock-popup-close" onclick="closeHistoryStatsPopup()">✕</button>
@@ -2502,7 +2502,7 @@ function buildPopupBaseRows(){
 }
 
 function openStockPopup(){
-  document.getElementById('stockPopupOverlay').style.display='flex';
+  _openModal('stockPopupOverlay','stockPopupCard');
   document.getElementById('popupSearch').value='';
   if(currentRole==='pharmacist'){
     popupFilterState='audit';
@@ -2513,7 +2513,7 @@ function openStockPopup(){
   schedulePopupRender();
   if(currentRole!=='pharmacist')setTimeout(()=>document.getElementById('popupSearch').focus(),100);
 }
-function closeStockPopup(){document.getElementById('stockPopupOverlay').style.display='none';document.getElementById('scanInput').focus();}
+function closeStockPopup(){_closeModal('stockPopupOverlay','stockPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleOverlayClick(e){if(e.target===document.getElementById('stockPopupOverlay'))closeStockPopup();}
 
 function setPopupFilter(f,btn){popupFilterState=f;document.querySelectorAll('.popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
@@ -2907,14 +2907,15 @@ function openAuditVerifyPopup(){
   if(tabRow)tabRow.style.display=isPda?'none':'flex';
   const scanBtn=document.getElementById('avScanBtn');
   if(scanBtn)scanBtn.style.display=isPda?'none':'';
-  document.getElementById('auditVerifyPopupOverlay').style.display='flex';
+  _openModal('auditVerifyPopupOverlay','auditVerifyPopupCard');
   renderAuditVerifyTable();
   setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
 }
 function closeAuditVerifyPopup(){
-  document.getElementById('auditVerifyPopupOverlay').style.display='none';
-  _avMap.clear();
-  document.getElementById('scanInput').focus();
+  _closeModal('auditVerifyPopupOverlay','auditVerifyPopupCard',()=>{
+    _avMap.clear();
+    document.getElementById('scanInput').focus();
+  });
 }
 function handleAuditVerifyOverlayClick(e){if(e.target===document.getElementById('auditVerifyPopupOverlay'))closeAuditVerifyPopup();}
 
@@ -3165,10 +3166,10 @@ let _dashAssistantFilter='all';
 function openDashboardPopup(){
   _dashAssistantFilter='all';
   document.getElementById('dashTitle').textContent=currentBranch==='WH'?'📊 Dashboard — WH คลังสินค้า':'📊 Dashboard — สรุปการนับสต็อกทุกสาขา';
-  document.getElementById('dashboardPopupOverlay').style.display='flex';
+  _openModal('dashboardPopupOverlay','dashboardPopupCard');
   refreshDashboard();
 }
-function closeDashboardPopup(){document.getElementById('dashboardPopupOverlay').style.display='none';}
+function closeDashboardPopup(){_closeModal('dashboardPopupOverlay','dashboardPopupCard',null);}
 function handleDashboardOverlayClick(e){if(e.target===document.getElementById('dashboardPopupOverlay'))closeDashboardPopup();}
 
 async function refreshDashboard(){
@@ -3531,12 +3532,11 @@ function openHistoryStatsPopup(){
   if(exportCountBtn)exportCountBtn.style.display='';
   const exportAdjBtn=document.getElementById('btnExportStockAdj');
   if(exportAdjBtn)exportAdjBtn.style.display='none';
-  document.getElementById('historyStatsPopupOverlay').style.display='flex';
+  _openModal('historyStatsPopupOverlay','historyStatsPopupCard');
   renderHistoryStatsTable();
 }
 function closeHistoryStatsPopup(){
-  document.getElementById('historyStatsPopupOverlay').style.display='none';
-  document.getElementById('scanInput').focus();
+  _closeModal('historyStatsPopupOverlay','historyStatsPopupCard',()=>document.getElementById('scanInput').focus());
 }
 function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById('historyStatsPopupOverlay'))closeHistoryStatsPopup();}
 
