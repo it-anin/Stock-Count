@@ -839,7 +839,7 @@
 
 <!-- PIN Login Modal -->
 <div id="pinModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.75);z-index:10000;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
+  <div id="pinModalCard" style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
     <div style="font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:6px;">Stock Count System</div>
     <div style="color:var(--text3);font-size:0.82rem;margin-bottom:20px;">กรุณาใส่รหัส PIN เพื่อเข้าใช้งาน</div>
     <input type="password" id="pinInput" maxlength="10" placeholder="PIN" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:10px;font-size:1.2rem;text-align:center;letter-spacing:8px;font-weight:700;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter')verifyPin()">
@@ -850,7 +850,7 @@
 
 <!-- Employee Selector Modal -->
 <div id="employeeModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.75);z-index:10001;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border-radius:16px;padding:36px 44px;min-width:320px;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,0.28);text-align:center;">
+  <div id="employeeModalCard" style="background:var(--surface);border-radius:16px;padding:36px 44px;min-width:320px;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,0.28);text-align:center;">
     <div style="font-size:1.2rem;font-weight:700;color:var(--text);margin-bottom:4px;">เลือกผู้ใช้งาน</div>
     <div id="employeeModalBranch" style="color:var(--text3);font-size:0.8rem;margin-bottom:22px;"></div>
     <div id="employeeModalPharmacist" style="margin-bottom:14px;">
@@ -982,6 +982,17 @@ function showBranchSelector(){
   modal.classList.add('branch-overlay-enter');
   card.classList.add('branch-card-enter');
 }
+function _openModal(overlayId, cardId){
+  const ov=document.getElementById(overlayId);
+  const card=document.getElementById(cardId);
+  if(!ov||!card)return;
+  ov.style.display='flex';
+  card.classList.remove('branch-card-enter');
+  ov.classList.remove('branch-overlay-enter');
+  void card.offsetWidth;
+  card.classList.add('branch-card-enter');
+  ov.classList.add('branch-overlay-enter');
+}
 function stopProductMasterListener(){
   if(_pmUnsubscribe){_pmUnsubscribe();_pmUnsubscribe=null;}
   _pmListenerReady=false;
@@ -1101,7 +1112,7 @@ function showEmployeeSelector(callback){
     b.onclick=()=>selectEmployee(name,'warehouse');
     whBtns.appendChild(b);
   });
-  document.getElementById('employeeModal').style.display='flex';
+  _openModal('employeeModal','employeeModalCard');
 }
 function selectEmployee(name,role){
   currentUser=name;currentRole=role;
@@ -1174,7 +1185,7 @@ async function selectBranch(branch){
   if(!_pinVerified){
     // ยังไม่ได้ใส่ PIN → แสดง PIN modal
     updateBranchDisplay();
-    document.getElementById('pinModal').style.display='flex';
+    _openModal('pinModal','pinModalCard');
     return;
   }
   // สลับสาขา → โหลดข้อมูลใหม่ + เลือก employee ใหม่
