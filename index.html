@@ -181,6 +181,11 @@
     .popup-qty-input { width:68px; text-align:center; padding:3px 6px; font-family:'Inter',sans-serif; font-size:0.82rem; font-weight:700; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--text); outline:none; transition:border-color 0.15s,box-shadow 0.15s; }
     .popup-qty-input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,114,198,0.15); }
     .scan-list-empty { text-align:center; padding:32px 16px; color:var(--text3); font-size:0.83rem; }
+    .scan-list-loading { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:var(--surface); z-index:5; border-radius:8px; }
+    .scan-list-loading.show { display:flex; }
+    .sl-spinner { width:38px; height:38px; border:3px solid var(--surface3); border-top-color:var(--accent); border-radius:50%; animation:slSpin 0.7s linear infinite; }
+    .sl-loading-text { font-size:0.82rem; color:var(--text3); letter-spacing:0.5px; }
+    @keyframes slSpin { to { transform:rotate(360deg); } }
     .btn-remove-row { width:20px; height:20px; border-radius:6px; border:1px solid rgba(217,48,37,0.35); background:rgba(217,48,37,0.08); color:var(--red); cursor:pointer; font-size:0.6rem; font-weight:700; display:flex; align-items:center; justify-content:center; transition:background 0.15s,border-color 0.15s; margin:auto; padding:0; }
     .btn-remove-row:hover { background:rgba(217,48,37,0.18); border-color:rgba(217,48,37,0.6); }
     .btn-audit-inline:disabled { opacity:0.5; cursor:not-allowed; background:var(--surface3); border-color:var(--border); color:var(--text3); }
@@ -538,7 +543,11 @@
         <div style="display:flex;align-items:center;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
           <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);">RESULT</span>
         </div>
-        <div class="scan-list-card" style="margin:10px 14px;border-radius:8px;">
+        <div class="scan-list-card" style="margin:10px 14px;border-radius:8px;position:relative;">
+          <div class="scan-list-loading" id="scanListLoading">
+            <div class="sl-spinner"></div>
+            <div class="sl-loading-text">กำลังโหลด...</div>
+          </div>
           <div class="scan-list-header" id="scanListHeader">
             <span>SKU<div class="col-resizer" data-col="0"></div></span>
             <span>Barcode<div class="col-resizer" data-col="1"></div></span>
@@ -1158,10 +1167,10 @@ function resetStaleScanningItems(){
 }
 async function initAfterLogin(){
   const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
-  const _slBody=document.getElementById('scanListBody');
-  // visual mask: ซ่อน RESULT ระหว่าง login เพื่อไม่ให้รายการเก่า flash ก่อนถูก clear (เฉพาะ startEmpty)
-  // ไม่แตะ logic การ render/sync — แค่ซ่อนการแสดงผลชั่วคราว
-  if(_startEmpty&&_slBody)_slBody.style.opacity='0';
+  const _slLoading=document.getElementById('scanListLoading');
+  // visual mask: แสดง Loading คลุม RESULT ระหว่าง login เพื่อไม่ให้รายการเก่า flash ก่อนถูก clear (เฉพาะ startEmpty)
+  // ไม่แตะ logic การ render/sync — แค่ overlay บนการแสดงผลชั่วคราว
+  if(_startEmpty&&_slLoading)_slLoading.classList.add('show');
   try{
     loadSession();
     updateBranchDisplay();
@@ -1181,8 +1190,8 @@ async function initAfterLogin(){
       scanListMap.clear();_listCleared=true;renderScanList();
     }
   }finally{
-    // คืนการแสดงผล RESULT เสมอ แม้ login error กลางทาง (กันจอค้างซ่อน)
-    if(_startEmpty&&_slBody)_slBody.style.opacity='';
+    // ปิด Loading overlay เสมอ แม้ login error กลางทาง (กันจอค้าง Loading)
+    if(_startEmpty&&_slLoading)_slLoading.classList.remove('show');
   }
 }
 function updateUserDisplay(){
