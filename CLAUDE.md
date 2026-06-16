@@ -76,7 +76,7 @@ state = {
 
 `_countResetAt` (module-level `let`, ไม่ใช่ใน state object) — ISO timestamp ที่ตั้งทุกครั้งที่ `startNewCount()` ถูกเรียก persisted ใน localStorage + Firestore ใช้โดย `_applyCloudScanData` เพื่อ detect reset จากเครื่องอื่นและ clear local confirmed items
 
-`scanListMap` is a separate `Map` used only for rendering the live scan list UI (last 100 entries). It is rebuilt from `state.scanData` via `rebuildScanListMap()`.
+`scanListMap` is a separate `Map` used only for rendering the live scan list UI (last 30 entries, `SCAN_LIST_MAX`). It is rebuilt from `state.scanData` via `rebuildScanListMap()`.
 
 **Scan list filter by role:** `rebuildScanListMap(force=false)` applies role-based filtering:
 - **assistant** — แสดงเฉพาะแถวที่ `sd.scannedBy === currentUser`
@@ -397,7 +397,7 @@ R01.102 is uploaded once at 21:00 (time-gated in normal mode). SystemQty represe
 `parseFile()` handles `.csv` and `.xlsx`/`.xls`. For CSV, it auto-detects UTF-8 BOM → UTF-8 → Windows-874 (Thai Excel default) encoding.
 
 Column mappings (zero-indexed, skip row 0 header):
-- **R01.102**: Col E (index 4)=SKU, F (5)=ProductName, G (6)=SystemQty; rows with qty≤0 are skipped. Re-uploading clears previous data (`state.r01Data = []` first) and resets all scanData to pending.
+- **R01.102**: Col E (index 4)=SKU, F (5)=ProductName, G (6)=SystemQty; rows with qty≤0 are skipped. Re-uploading clears previous data (`state.r01Data = []` first) then calls `rebuildMaps()`. ⚠️ **scanData ของ SKU เดิมไม่ถูกรีเซ็ตเป็น pending** — `rebuildMaps()` เพิ่ม pending เฉพาะ SKU ใหม่ที่ยังไม่มีใน scanData (`if(!state.scanData.has(sku))`) เท่านั้น. ของค้างถูกล้างด้วย `startNewCount()` หรือ `resetStaleScanningItems()` (login) เท่านั้น
 - **R05.106**: Col A (0)=Barcode, E (4)=SKU, G (6)=unitName, H (7)=unitMultiplier.
 - **R16.104**: Col C (2) กำหนดประเภทเอกสาร — กรองเฉพาะ 5 ประเภทนี้ ที่เหลือข้ามทั้งหมด:
 
@@ -430,12 +430,12 @@ location,SKU,qty
 
 ### PDA Barcode Scanner — PDA vs Manual Detection
 
-`handleScanInput()` detects PDA scanner vs manual typing based on inter-keystroke timing (`PDA_KEYSTROKE_THRESHOLD_MS = 50 ms`):
+`handleScanInput()` detects PDA scanner vs manual typing based on inter-keystroke timing (`PDA_KEYSTROKE_THRESHOLD_MS = 150 ms`):
 
-- **PDA mode** — when a keystroke arrives within 50 ms of the previous one, `_pdaMode = true`. The 200 ms debounce (`SCAN_DEBOUNCE_MS`) auto-submits 200 ms after the last keystroke. This handles PDA scanners that don't send Enter.
-- **Manual mode** — keystrokes ≥ 50 ms apart keep `_pdaMode = false`. **No auto-submit** — the user must press **Enter** or click the **⏎ submit button**. This prevents premature submission when typing barcodes by hand.
+- **PDA mode** — when a keystroke arrives within 150 ms of the previous one, `_pdaMode = true`. The 80 ms debounce (`SCAN_DEBOUNCE_MS`) auto-submits 80 ms after the last keystroke. This handles PDA scanners that don't send Enter.
+- **Manual mode** — keystrokes ≥ 150 ms apart keep `_pdaMode = false`. **No auto-submit** via PDA debounce — but a **fallback debounce 350 ms** fires `processScan()` if `value.trim().length >= 6` (covers very slow scanners > 150 ms/char). Otherwise the user presses **Enter** or the **⏎ submit button**.
 - The first keystroke can't be classified (no previous timestamp), so detection happens on the second keystroke. Once `_pdaMode = true`, it stays true until the scan is processed (then resets to `false`).
-- 200 ms is safely wider than a full PDA scan (~20–50 ms total) but shorter than the minimum gap between two physical scans (~500 ms+), preventing concatenation.
+- 80 ms is safely wider than a full PDA scan (~20–50 ms total) but shorter than the minimum gap between two physical scans (~500 ms+), preventing concatenation.
 - If Enter or `\r\n` arrives first, the debounce timer is cancelled and `processScan()` fires immediately.
 
 **Manual submit button (⏎)** is rendered next to the scan input and calls `submitScanManual()`, which clears the debounce/PDA state and runs `processScan()`. It exists as a device-agnostic fallback when keyboard `keydown` events don't fire reliably (some Android/PDA browsers).
@@ -446,8 +446,8 @@ State variables: `_lastKeystrokeTime` and `_pdaMode` are reset in `resetScanRunt
 
 ### Rendering
 
-- All renders are debounced (80 ms for popup table, 60 ms for scan list, 400 ms for save).
-- Scan list renders last **100** entries (`SCAN_LIST_MAX`).
+- All renders are debounced: `scheduleRender`→`renderTable` 80 ms, `schedulePopupRender`→`renderPopupTable` 160 ms (`POPUP_RENDER_DEBOUNCE_MS`), `scheduleScanListRender`→`renderScanList` 20 ms, `scheduleSave`→`saveSession` 400 ms.
+- Scan list renders last **30** entries (`SCAN_LIST_MAX`).
 - Popup table renders at most **500** rows (`POPUP_MAX_RENDER_ROWS`).
 - `popupBaseRowsCache` caches the full popup row list; invalidated by `invalidatePopupRowsCache()` on any state change. Call this whenever `state.scanData` or `state.unknownScans` changes.
 - `patchScanRow(key)` does targeted in-place DOM update for a single row without full re-render; used during batch scans.
@@ -595,16 +595,26 @@ The **✕ Clear** button calls `clearScanList()` which clears `scanListMap` + se
 
 **`_listCleared` flag behavior:**
 - `clearScanList()` → sets `_listCleared = true` → `onSnapshot` skips `rebuildScanListMap`/`renderScanList` (prevents list from reappearing)
-- `appendScanRow()` → resets `_listCleared = false` (except WH PDA — see below)
+- `appendScanRow()` → resets `_listCleared = false` (except startEmpty roles — see below)
 - `pullFromCloud()` → resets `_listCleared = false` + rebuilds with `excludeStatuses = {pass, stock_adjustment}`
 
-**WH PDA — RESULT starts empty:** `initAfterLogin()` sets `_listCleared = true` and clears `scanListMap` after restore. `appendScanRow` on WH PDA does NOT reset `_listCleared` — so `onSnapshot` never floods old items back. ผลลัพธ์: พนักงานเห็นเฉพาะสินค้าที่สแกนในรอบนี้ ไม่เห็น history
+**RESULT starts empty (startEmpty roles):** `initAfterLogin()` sets `_listCleared = true` and clears `scanListMap` after restore for **WH PDA และ ผู้ช่วยเภสัช (assistant) PDA** — condition กลางคือ `window.innerWidth<=600 && (currentBranch==='WH' || currentRole==='assistant')`. `appendScanRow` บน startEmpty role เดียวกันนี้ **ไม่** reset `_listCleared` — `onSnapshot` จึงไม่ flood ของเก่ากลับ. ผลลัพธ์: เห็นเฉพาะสินค้าที่สแกนในรอบนี้ ไม่ต้องกด Clear เอง
+
+> **เหตุผลที่รวม assistant:** เดิมผู้ช่วยเภสัชเปิดแอปกลับมาเห็นของ `pass`/`audit` ของตัวเองค้างเต็ม RESULT (filter assistant ใน `rebuildScanListMap` กรองแค่ `scannedBy` ไม่กรอง status) ต้องกด Clear ทุกครั้ง. เภสัช (pharmacist) **ไม่รวม** — ยังต้องเห็น audit worklist ตอนเปิดแอป
+
+**Stale overnight scanning reset — `resetStaleScanningItems()`:** เรียกใน `initAfterLogin` หลัง `restoreFromFirestore()` แต่**ก่อน** `startScanSessionListener()`. วน `state.scanData` รีเซ็ต item ที่ `status==='scanning'` และ `sd.timestamp.substring(0,10) < วันนี้` (local date) กลับเป็น pending (countedQty=0, ฟิลด์เดียวกับ `removeScanItem`). บังคับนับใหม่สำหรับของที่สแกนค้างไว้ข้ามวัน (เผลอสแกน/ไปขายของแล้วไม่ Confirm).
+- ถ้ามีการรีเซ็ต (n>0) → `saveSession()` + `await syncToFirestore(true)` ดันสถานะ pending ขึ้น cloud เป็น **authoritative ก่อน listener เริ่ม** — กัน `_applyCloudScanData` ดึง cloud scanning เก่ากลับมา resurrect (`syncToFirestore(false)` จะไม่ช่วยเพราะกฎ "local pending ไม่ overwrite cloud scanning")
+- toast `♻️ รีเซ็ตของค้างข้ามวัน N รายการ` (เครื่องแรกที่ login เห็น, เครื่องอื่นเห็น cloud สะอาดแล้ว n=0)
+- แตะเฉพาะ `scanning` — `pass`/`audit`/`stock_adjustment` (confirm แล้ว) ไม่ยุ่ง; ของที่สแกนวันนี้ (timestamp = วันนี้) ไม่ยุ่ง
+- ⚠️ R01.102 re-upload **ไม่ได้** ล้างของค้าง (`rebuildMaps` เพิ่ม pending เฉพาะ SKU ใหม่ ไม่รีเซ็ตของเดิม) — กลไกที่ล้างของค้างจริงคือ `startNewCount` และ `resetStaleScanningItems` นี้เท่านั้น
+
+**Login loader (visual mask) — barcode scan-line:** สำหรับ startEmpty role, `initAfterLogin` แสดง overlay `#scanListLoading` (CSS `.sl-barcode` — แท่งบาร์โค้ด + เส้นเลเซอร์ accent กวาดขึ้นลง, ข้อความ "เตรียมข้อมูล...") คลุมพื้นที่ scan list ระหว่าง login กัน flash ของรายการเก่าก่อนถูก clear. เปิดด้วย `.classList.add('show')` ตอนต้น, ปิดใน `finally` (กันค้างถ้า error). เป็น UI-only — ไม่แตะ logic การสแกน/sync. animation ใช้ `transform:translate3d` + `will-change`/`translateZ(0)` เพื่อบังคับ GPU layer ให้ลื่นบน PDA (ห้ามใช้ `top` — trigger layout/paint = กระตุก)
 
 To fully reset a scanned item, use the **✕** button on individual rows (`removeScanItem`), which resets that SKU's `scanData` entry back to `pending`.
 
 **`removeScanItem(sku)` — full reset for re-scan:**
 1. Resets `sd` fields: `countedQty=0`, `status='pending'`, `timestamp=''`, `barcode=''`, `scans=[]`, `scannedBy=''`, `auditor=''`, `auditStatus='pending'`. Deletes `soldQty`, `rawCountedQty`, `initialStatus`, `recheckQty`.
-2. Cancels any in-flight scan: `clearTimeout(_scanDebounceTimer)`, resets `_lastKeystrokeTime`/`_pdaMode`, clears the `scanInput` field. This prevents a barcode that was injected by the PDA right before the user clicked ✕ from being auto-submitted via the 200 ms debounce after the reset.
+2. Cancels any in-flight scan: `clearTimeout(_scanDebounceTimer)`, resets `_lastKeystrokeTime`/`_pdaMode`, clears the `scanInput` field. This prevents a barcode that was injected by the PDA right before the user clicked ✕ from being auto-submitted via the 80 ms debounce after the reset.
 3. Filters `scanQueue` to drop any pending entries that resolve to the same SKU (via `barcodeMap` or `skuDirectMap`).
 4. Removes the DOM row immediately (`row.remove()`) instead of waiting for the 60 ms debounced render — prevents `patchScanRow()` from updating the stale row before the next render fires.
 5. Toast: `"ลบแล้ว — สแกนใหม่เพื่อเริ่มนับ"` confirms the reset.
