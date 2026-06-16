@@ -662,6 +662,17 @@ The Firebase project credentials (`FIREBASE_CONFIG`) are hardcoded in `index.htm
 
 ## Android App (PDA)
 
+## ⚠️ กฎสำคัญ — แก้ Android ต้อง bump versionCode + version.json + push tag ทุกครั้ง
+
+**ทุกครั้งที่แก้ไฟล์ใน `android-app/**` และต้องการสร้าง APK ใหม่ ต้องทำครบ 3 ขั้นตอนนี้พร้อมกัน:**
+1. bump `versionCode` (+1) และ `versionName` ใน `android-app/app/build.gradle`
+2. sync `version.json` ให้ตรง — `versionCode`, `versionName`, `downloadUrl`, `releaseNotes` (ภาษาไทย)
+3. `git tag v<X.Y>` แล้ว `git push origin main --tags` → GitHub Actions build + Release อัตโนมัติ → PDA popup อัปเดต
+
+**ถ้าขาดขั้นตอนใดขั้นตอนหนึ่ง:** PDA จะไม่รู้ว่ามี APK ใหม่ (version.json ไม่ตรง) หรือ GitHub ไม่สร้าง Release (ไม่มี tag)
+
+---
+
 WebView wrapper สำหรับ iTCAN IT68 PDA โหลด `https://anin-stock-count.vercel.app/` อยู่ใน `android-app/`
 
 **ชื่อแอป:** `Anin Stock Count` — กำหนดใน `android-app/app/src/main/res/values/strings.xml` (`app_name`)
