@@ -1140,20 +1140,49 @@ function selectEmployee(name,role){
     _employeeCallback=null;
   });
 }
+// รีเซ็ตของค้าง scanning ที่สแกนไว้ข้ามวัน (timestamp ก่อนวันนี้) → บังคับนับใหม่ในวันถัดไป
+// แตะเฉพาะ status==='scanning' เท่านั้น — pass/audit/stock_adjustment (confirm แล้ว) ไม่ยุ่ง
+function resetStaleScanningItems(){
+  const _d=new Date();
+  const today=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  let n=0;
+  for(const[,sd]of state.scanData.entries()){
+    if(sd.status!=='scanning'||!sd.timestamp)continue;
+    if(sd.timestamp.substring(0,10)>=today)continue; // สแกนวันนี้ → ไม่แตะ
+    sd.countedQty=0;sd.status='pending';sd.timestamp='';sd.barcode='';
+    sd.scans=[];sd.scannedBy='';sd.auditor='';sd.auditStatus='pending';
+    delete sd.soldQty;delete sd.rawCountedQty;delete sd.initialStatus;delete sd.recheckQty;delete sd.recheckBy;
+    n++;
+  }
+  return n;
+}
 async function initAfterLogin(){
-  loadSession();
-  updateBranchDisplay();
-  await restoreFromFirestore();
-  startProductMasterListener();
-  startScanSessionListener();
-  rebuildScanListMap();
-  renderScanList();updateStats();renderTable();
-  if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
-  if(currentBranch==='WH'){await loadLocationFromFirestore();startLocationListener();}
-  updateScanInputMode();
-  // WH PDA + ผู้ช่วยเภสัช PDA: เริ่ม session ด้วย RESULT ว่าง — เห็นเฉพาะสิ่งที่สแกนใหม่ (ไม่ต้องกด Clear)
-  if(window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant')){
-    scanListMap.clear();_listCleared=true;renderScanList();
+  const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
+  const _slBody=document.getElementById('scanListBody');
+  // visual mask: ซ่อน RESULT ระหว่าง login เพื่อไม่ให้รายการเก่า flash ก่อนถูก clear (เฉพาะ startEmpty)
+  // ไม่แตะ logic การ render/sync — แค่ซ่อนการแสดงผลชั่วคราว
+  if(_startEmpty&&_slBody)_slBody.style.opacity='0';
+  try{
+    loadSession();
+    updateBranchDisplay();
+    await restoreFromFirestore();
+    // รีเซ็ตของค้างข้ามวัน → ดันขึ้น cloud เป็น authoritative ก่อนเริ่ม listener (กัน listener ดึงของค้างกลับมา resurrect)
+    const _staleReset=resetStaleScanningItems();
+    if(_staleReset>0){saveSession();await syncToFirestore(true);toast(`♻️ รีเซ็ตของค้างข้ามวัน ${_staleReset} รายการ — กรุณานับใหม่`,'info',4000);}
+    startProductMasterListener();
+    startScanSessionListener();
+    rebuildScanListMap();
+    renderScanList();updateStats();renderTable();
+    if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
+    if(currentBranch==='WH'){await loadLocationFromFirestore();startLocationListener();}
+    updateScanInputMode();
+    // WH PDA + ผู้ช่วยเภสัช PDA: เริ่ม session ด้วย RESULT ว่าง — เห็นเฉพาะสิ่งที่สแกนใหม่ (ไม่ต้องกด Clear)
+    if(_startEmpty){
+      scanListMap.clear();_listCleared=true;renderScanList();
+    }
+  }finally{
+    // คืนการแสดงผล RESULT เสมอ แม้ login error กลางทาง (กันจอค้างซ่อน)
+    if(_startEmpty&&_slBody)_slBody.style.opacity='';
   }
 }
 function updateUserDisplay(){
