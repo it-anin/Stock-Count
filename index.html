@@ -2792,15 +2792,16 @@ function _applyCloudScanData(s){
       if(CONFIRMED.has(local.status))state.scanData.delete(sku);
     }
   }
-  // WH only: propagate cloud confirmed items (audit/pass/stock_adjustment) ลง local
-  // เพื่อให้ PDA WH รับสถานะ audit จาก Desktop Confirm และโยกไป Audit Verify popup ตาม WH filter
-  const _whPropagateConfirmed=(currentBranch==='WH');
+  // ทุกสาขา: propagate cloud confirmed items (audit/pass/stock_adjustment) ลง local
+  // - WH: PDA รับสถานะ audit จาก Desktop Confirm → โยกไป Audit Verify popup ตาม WH filter
+  // - ร้านยา: เภสัชยืม PDA ผู้ช่วย login เป็นเภสัช → ต้องรับ audit ของทุกเครื่องมา local เพื่อให้ตรวจ + ยืนยันข้ามเครื่องได้
+  const _propagateConfirmed=true;
   let scanned=0;
   if(s.scanData){
     for(const[sku,cloudItem]of Object.entries(s.scanData)){
       const local=state.scanData.get(sku);
       // WH only: cloud confirmed → apply ถ้า local ยังไม่ confirm และเภสัชยังไม่ verify
-      if(_whPropagateConfirmed&&CONFIRMED.has(cloudItem.status)){
+      if(_propagateConfirmed&&CONFIRMED.has(cloudItem.status)){
         if(local&&local.auditor)continue;                                  // local verify ที่เครื่องนี้แล้ว → เก็บไว้
         if(local&&CONFIRMED.has(local.status)&&!cloudItem.auditor){
           // local confirmed แต่ cloud ยังไม่ verify → ไม่ทับ status
