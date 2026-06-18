@@ -2764,6 +2764,9 @@ async function syncToFirestore(overwrite=false){
             // ป้องกัน local confirmed (pass/audit/stock_adj) resurrection หลัง startNewCount
             // — ถ้า cloud ไม่มี SKU นี้แล้ว แสดงว่าถูกลบโดย startNewCount → ไม่ re-upload
             if(!mergedSd[k]&&_confirmedSet.has(localSd[k].status))continue;
+            // cloud ถูก verify แล้ว (มี auditor จาก supervisor/เภสัช) แต่ local ยังไม่ verify
+            // → ห้าม local audit เก่าทับค่าที่ยืนยันแล้วบน cloud (WH recheck: supervisor ยืนยันบน Desktop แล้ว PDA เผลอ revert)
+            if(mergedSd[k]?.auditor&&!localSd[k].auditor)continue;
             mergedSd[k]=localSd[k];
           }
         }

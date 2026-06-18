@@ -321,6 +321,7 @@ Merge logic ถูกแยกออกเป็น `_applyCloudScanData(s)` (sh
 - local item ที่เป็น `pending` จะไม่ overwrite cloud item ที่มี status อื่น (เพื่อไม่ reset สิ่งที่เครื่องอื่นสแกนแล้ว)
 - **local item ที่เป็น `scanning`/`pending` แต่ไม่มีใน cloud → ไม่ re-upload** (ป้องกัน PDA เขียนข้อมูลเก่ากลับหลัง `startNewCount`)
 - **local item ที่เป็น `pass`/`audit`/`stock_adjustment` แต่ไม่มีใน cloud → ไม่ re-upload** (ป้องกัน data resurrection หลัง `startNewCount`)
+- **cloud item มี `auditor` (verify แล้ว) แต่ local ยังไม่มี `auditor` → ไม่ overwrite** (`if(mergedSd[k]?.auditor && !localSd[k].auditor)continue;`) — ป้องกัน **WH recheck race**: หลัง supervisor (มายด์) กดยืนยันรีเช็คบน Desktop (cloud = pass/stock_adj + auditor) แล้ว PDA ที่ยังถือ local `audit` เก่า เผลอ sync ทับ cloud กลับเป็น audit ทำให้ PDA ค้างที่ audit ไม่อัปเดต. สมมาตรกับ `_applyCloudScanData` (local-verified เก็บไว้ / cloud-verified ทับ local-unverified)
 
 ### Known Pitfalls — Cloud Sync
 
