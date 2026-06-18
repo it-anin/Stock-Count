@@ -1191,7 +1191,8 @@ async function initAfterLogin(){
     if(_staleReset>0){saveSession();await syncToFirestore(true);toast(`♻️ รีเซ็ตของค้างข้ามวัน ${_staleReset} รายการ — กรุณานับใหม่`,'info',4000);}
     startProductMasterListener();
     startScanSessionListener();
-    rebuildScanListMap();
+    // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
+    rebuildScanListMap(currentRole==='pharmacist');
     renderScanList();updateStats();renderTable();
     if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
     if(currentBranch==='WH'){await loadLocationFromFirestore();startLocationListener();}

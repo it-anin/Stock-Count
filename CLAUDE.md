@@ -622,6 +622,8 @@ The **✕ Clear** button calls `clearScanList()` which clears `scanListMap` + se
 - **startEmpty role** (WH PDA + assistant PDA) — กัน flash ของรายการเก่าก่อนถูก clear, ข้อความ "เตรียมข้อมูล..."
 - **เภสัช Desktop** — โหลดสินค้า Audit จาก cloud (`restoreFromFirestore`) ใช้เวลา, ข้อความ "กำลังโหลดสินค้า Audit..." (set ผ่าน `.sl-loading-text`). **ไม่ใช่ startEmpty** จึงไม่ clear scan list — แค่ overlay ระหว่างรอโหลด
 
+> ⚠️ **เภสัช login → ต้อง force rebuild scan list:** `initAfterLogin` เรียก `rebuildScanListMap(currentRole==='pharmacist')` — เพราะ `loadSession()`/`restoreFromFirestore()` restore `scanListMap` จาก localStorage/cloud (มี `pass` ปน) แล้ว `rebuildScanListMap()` ปกติติด guard `if(scanListMap.size>0)return` ไม่ได้กรองใหม่ → เภสัชจะเห็น pass ค้าง. force=true เคลียร์ก่อนแล้วกรอง audit-only (line `if(filterAudit&&sd.status!=='audit')continue;`)
+
 เปิดด้วย `.classList.add('show')` ตอนต้น, ปิดใน `finally` (กันค้างถ้า error). เป็น UI-only — ไม่แตะ logic การสแกน/sync. animation ใช้ `transform:translate3d` + `will-change`/`translateZ(0)` เพื่อบังคับ GPU layer ให้ลื่นบน PDA (ห้ามใช้ `top` — trigger layout/paint = กระตุก)
 
 To fully reset a scanned item, use the **✕** button on individual rows (`removeScanItem`), which resets that SKU's `scanData` entry back to `pending`.
