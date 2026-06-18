@@ -3604,7 +3604,7 @@ function renderHistoryStatsTable(){
   if(_hsFilter==='assistant'){
     _buildAssistantDropdown();
     const isWhA=currentBranch==='WH';
-    if(thead)thead.innerHTML=`<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th>${isWhA?'<th style="text-align:center;">Location</th>':''}<th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>ชื่อผู้ช่วย</th></tr>`;
+    if(thead)thead.innerHTML=`<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th>${isWhA?'<th style="text-align:center;">Location</th>':''}<th style="text-align:center;">Count Qty</th><th style="text-align:center;">Status</th><th>Timestamp</th><th>${isWhA?'ชื่อผู้สแกน':'ชื่อผู้ช่วย'}</th></tr>`;
     const note=document.getElementById('hsFirestoreNote');
 
     // ── รวบรวมจาก local state ก่อน ──
@@ -3756,7 +3756,7 @@ function exportHsCountExcel(){
   const isAssistant=_hsFilter==='assistant';
   const isPharm=_hsFilter==='pharmacist';
   if(!isAssistant&&!isPharm){toast('เลือก tab นับครั้งแรก หรือ รีเช็คสินค้า ก่อน','warn');return;}
-  const staffHeader=isAssistant?'ชื่อผู้ช่วย':(currentBranch==='WH'?'ชื่อผู้รีเช็ค':'ชื่อเภสัช');
+  const staffHeader=isAssistant?(currentBranch==='WH'?'ชื่อผู้สแกน':'ชื่อผู้ช่วย'):(currentBranch==='WH'?'ชื่อผู้รีเช็ค':'ชื่อเภสัช');
   const header=['Location','SKU','Barcode','NAME','Unit','CountQty','SystemQty','Diff',staffHeader,'เวลาที่สแกน'];
   const rows=[header];
   const collected=[];
