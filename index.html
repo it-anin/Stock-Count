@@ -3147,7 +3147,8 @@ function renderAuditVerifyTable(){
 }
 
 function updateAuditVerifyCount(){
-  let n=0;for(const[,sd] of state.scanData.entries()){if(sd.status==='audit'||sd.status==='stock_adjustment')n++;}
+  // นับเฉพาะ audit (รายการที่รอ verify) — stock_adjustment ตรวจเสร็จแล้ว ไม่นับ
+  let n=0;for(const[,sd] of state.scanData.entries()){if(sd.status==='audit')n++;}
   const el=document.getElementById('auditVerifyCount');if(el)el.textContent=n;
   const el2=document.getElementById('btnPdaAuditCount');if(el2)el2.textContent=n;
 }

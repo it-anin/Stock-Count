@@ -529,7 +529,7 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 - SRC/KKL/SSS → `🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)`
 - WH → `🔍 Audit Verify — รีเช็คสินค้า`
 
-**PDA access** — panel เดิมที่อยู่ใน `.left-panel` ถูก CSS ซ่อนบน PDA (`.left-panel{display:none}`). มีปุ่มไอคอน `#btnPdaAuditVerify` (🔍 + badge นับ) ที่ header ข้างปุ่ม Cloud ทำหน้าที่เปิด popup เดียวกัน — แสดงเฉพาะ `window.innerWidth <= 600 && canVerify` (logic ใน `updateAuditVerifyPanel`). Badge sync กับ `updateAuditVerifyCount`.
+**PDA access** — panel เดิมที่อยู่ใน `.left-panel` ถูก CSS ซ่อนบน PDA (`.left-panel{display:none}`). มีปุ่มไอคอน `#btnPdaAuditVerify` (🔍 + badge นับ) ที่ header ข้างปุ่ม Cloud ทำหน้าที่เปิด popup เดียวกัน — แสดงเฉพาะ `window.innerWidth <= 600 && canVerify` (logic ใน `updateAuditVerifyPanel`). Badge sync กับ `updateAuditVerifyCount` — **นับเฉพาะ `status==='audit'` (รายการที่รอ verify) ไม่รวม `stock_adjustment`** (ตรวจเสร็จแล้ว); ใช้ค่าเดียวกันทั้งปุ่ม Desktop (`#auditVerifyCount`) และ PDA (`#btnPdaAuditCount`).
 
 **Popup has two filter tabs:**
 
