@@ -3757,7 +3757,7 @@ function exportHsCountExcel(){
   const isPharm=_hsFilter==='pharmacist';
   if(!isAssistant&&!isPharm){toast('เลือก tab นับครั้งแรก หรือ รีเช็คสินค้า ก่อน','warn');return;}
   const staffHeader=isAssistant?'ชื่อผู้ช่วย':(currentBranch==='WH'?'ชื่อผู้รีเช็ค':'ชื่อเภสัช');
-  const header=['Location','SKU','Barcode','NAME','Unit','CountQty','SystemQty','Diff',staffHeader];
+  const header=['Location','SKU','Barcode','NAME','Unit','CountQty','SystemQty','Diff',staffHeader,'เวลาที่สแกน'];
   const rows=[header];
   const collected=[];
   if(isAssistant){
@@ -3797,7 +3797,8 @@ function exportHsCountExcel(){
     const cnt=Number(countQty)||0;
     const diff=cnt-sysQty;
     const staff=isAssistant?(sd?.scannedBy||fsItem?.scannedBy||''):(sd?.auditor||fsItem?.auditor||''); // นับครั้งแรก=ผู้สแกน, รีเช็ค=ผู้ยืนยัน
-    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff]);
+    const ts=sd?.timestamp||fsItem?.timestamp||''; // เวลาที่พนักงานสแกน/นับ
+    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff,ts]);
   });
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
