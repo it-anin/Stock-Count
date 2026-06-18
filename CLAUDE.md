@@ -98,6 +98,7 @@ Stats cards (Scanned/Audit totals) always count all employees regardless of filt
 2. **Scan** → `handleBarcode()` → looks up in `barcodeMap` first, then `skuDirectMap` (for SKU direct scan) → accumulates `countedQty` in `state.scanData`; status set to `scanning`. Sets `sd.scannedBy = currentUser`. If item is already confirmed (`pass`, `audit`, `stock_adjustment`), scanning is blocked — `countedQty` and status remain unchanged, and a warn toast "สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป" is shown.
 
 3. **Upload R16.104** → `loadR16()` → builds `r16SalesMap` + `r16RawMap` (sales: ORCM/OCTM) and `r16InboundMap` + `r16InboundRawMap` (inbound: OTFB/ORTS/OTFI) for time-filtered adjustment. After loading, automatically calls `reEvaluateAuditItems()` if matched > 0, and shows a date-mismatch warning if R16 TRANDATE dates don't overlap with scan dates.
+   - ⚠️ **WH branch ข้ามยอดขาย (ORCM/OCTM)** — `loadR16()` ตั้ง `isWhBranch=currentBranch==='WH'` แล้ว `isSale=!isWhBranch && _matchR16Prefix(...)` → WH ไม่เก็บ sales เข้า `r16SalesMap`/`r16RawMap` เลย (ยอดขายเป็นรายการของสาขา ไม่เกี่ยวกับคลัง) WH ใช้เฉพาะ inbound (OTFB/ORTS/OTFI) + R16.103. สาขายา (SRC/KKL/SSS) ยังนับยอดขายตามเดิม
 
 4. **Upload R16.103** (WH only) → `loadR16_103()` → builds `r16_103Map` + `r16_103RawMap` (รับเข้าที่ยังไม่ขึ้นชั้น: IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN) สำหรับ WH branch เท่านั้น ปุ่มแสดงเฉพาะ Desktop WH (`window.innerWidth > 600 && currentBranch === 'WH'`)
 
@@ -399,12 +400,16 @@ R01.102 is uploaded once at 21:00 (time-gated in normal mode). SystemQty represe
 Column mappings (zero-indexed, skip row 0 header):
 - **R01.102**: Col E (index 4)=SKU, F (5)=ProductName, G (6)=SystemQty; rows with qty≤0 are skipped. Re-uploading clears previous data (`state.r01Data = []` first) then calls `rebuildMaps()`. ⚠️ **scanData ของ SKU เดิมไม่ถูกรีเซ็ตเป็น pending** — `rebuildMaps()` เพิ่ม pending เฉพาะ SKU ใหม่ที่ยังไม่มีใน scanData (`if(!state.scanData.has(sku))`) เท่านั้น. ของค้างถูกล้างด้วย `startNewCount()` หรือ `resetStaleScanningItems()` (login) เท่านั้น
 - **R05.106**: Col A (0)=Barcode, E (4)=SKU, G (6)=unitName, H (7)=unitMultiplier.
+> 📌 **ไฟล์ R16 (R16.103 + R16.104) ที่ export ออกมาจากระบบเป็นไฟล์รวมทุกสาขา + WH ในไฟล์เดียว** — ไม่ได้แยกตามสาขา ดังนั้น Col C prefix filter จึงเป็นกลไกหลักที่คัดเฉพาะรายการที่เกี่ยวข้อง และเป็นเหตุผลที่ **WH ต้องข้ามยอดขาย (ORCM/OCTM)** เพราะรายการขายเหล่านั้นเป็นของสาขายาที่ปนมาในไฟล์รวมเดียวกัน ไม่ใช่ของคลัง การ filter จึงต้องทำทั้งฝั่งสาขาและ WH (คนละ prefix set)
+
 - **R16.104**: Col C (2) กำหนดประเภทเอกสาร — กรองเฉพาะ 5 ประเภทนี้ ที่เหลือข้ามทั้งหมด:
 
   | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
   |---|---|---|
-  | `ORCM`, `OCTM` | ยอดขาย (Sales) | หักออก → บวกกลับเข้า countedQty (`r16SalesMap`) |
+  | `ORCM`, `OCTM` | ยอดขาย (Sales) | หักออก → บวกกลับเข้า countedQty (`r16SalesMap`) — **WH ข้าม ไม่นับ** |
   | `OTFB`, `ORTS`, `OTFI` | รับเข้าคลัง (Inbound) | บวกเพิ่ม → หักออกจาก countedQty (`r16InboundMap`) |
+
+  ⚠️ **WH branch:** `loadR16()` ข้ามยอดขาย (`ORCM`/`OCTM`) ทั้งหมด — `isSale=!isWhBranch && _matchR16Prefix(...)` ดังนั้น WH นับเฉพาะ inbound (OTFB/ORTS/OTFI) จาก R16.104 + R16.103. ยอดขายเป็นรายการของสาขา ไม่กระทบ effectiveCnt ของคลัง
 
   Col O (14)=Barcode; Col R (17)=BASEQUANTITY (แปลงเป็นหน่วยเล็กสุดแล้ว); Col X (23)=SKU; TRANDATE column auto-detected from header row (row 0).
 
@@ -484,7 +489,9 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 
 **Stock Adj columns (pharmacy):** # / SKU / Barcode / Product Name / หน่วย / จำนวนคงเหลือ (systemQty) / จำนวนปรับปรุง (recheckQty) / Diff (systemQty − recheckQty, บวก=ขาด/แดง, ลบ=เกิน/เขียว)
 
-**Stock Adj columns (WH):** # / SKU / Barcode / Product Name / **Location** / หน่วย / จำนวนคงเหลือ / จำนวนปรับปรุง / Diff — Export Excel (`exportStockAdjExcel`) รวม Location column ด้วยเมื่อ WH
+**Stock Adj columns (WH, ตารางบนจอ):** # / SKU / Barcode / Product Name / **Location** / หน่วย / จำนวนคงเหลือ / จำนวนปรับปรุง / Diff
+
+**Export Excel layout (`exportStockAdjExcel`) — ใช้ร่วมกันทั้งสาขาและ WH (10 คอลัมน์, ตัด # ออก):** A=Location / B=SKU / C=Barcode / D=Product Name / E=หน่วย / F=จำนวนคงเหลือ / G=จำนวนปรับปรุง / H=Diff / I=พนักงานที่สแกน (`sd.scannedBy`) / J=เวลาที่นับ (`sd.timestamp`). สาขาที่ไม่มี Location (non-WH) คอลัมน์ A เว้นว่าง
 
 `_hsFirestoreItems`: `null`=ยังไม่โหลด, `[]`=โหลดแล้วไม่มีข้อมูล, `[...]`=มีข้อมูล
 
@@ -551,7 +558,7 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 | ปุ่ม | ฟังก์ชัน | เนื้อหา | ไฟล์ |
 |---|---|---|---|
 | ⬇️ Export Excel (popup รายการสต็อก toolbar) | `exportExcel()` | audit + stock_adj เท่านั้น — SKU, Barcode, ProductName, SystemQty, CountedQty, Status, Timestamp, Audit Status | `audit_${date}.xlsx` |
-| ⬇️ Export Excel (History Stats → tab 🔴 Stock Adj) | `exportStockAdjExcel()` | stock_adj ปัจจุบัน — #, SKU, Barcode, Product Name, หน่วย, จำนวนคงเหลือ, จำนวนปรับปรุง, Diff (`sysQty − recheckQty`; บวก=ขาด, ลบ=เกิน) | `stockadj_${branch}_${date}.xlsx` |
+| ⬇️ Export Excel (History Stats → tab 🔴 Stock Adj) | `exportStockAdjExcel()` | stock_adj ปัจจุบัน — A=Location, B=SKU, C=Barcode, D=Product Name, E=หน่วย, F=จำนวนคงเหลือ, G=จำนวนปรับปรุง, H=Diff (`sysQty − recheckQty`; บวก=ขาด, ลบ=เกิน), I=พนักงานที่สแกน, J=เวลาที่นับ — layout เดียวกันทั้งสาขา/WH | `stockadj_${branch}_${date}.xlsx` |
 
 ### Scan List QTY Masking
 

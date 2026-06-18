@@ -1349,10 +1349,11 @@ function loadR16(event) {
     if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
     console.log('[R16] headers:',rows[0]?.slice(0,10));console.log('[R16] TRANDATE col index:',tranDateColIdx);if(rows[1])console.log('[R16] row[1] sample TRANDATE:',tranDateColIdx>=0?rows[1][tranDateColIdx]:'(no TRANDATE col)');}
     let sk=0,matched=0,mismatch=0,missing=0;
+    const isWhBranch=currentBranch==='WH'; // WH: ไม่นับยอดขาย ORCM/OCTM (เป็นรายการขายของสาขา ไม่เกี่ยวกับคลัง)
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
-      const isSale=_matchR16Prefix(colC,R16_SALES_PREFIXES);
+      const isSale=!isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ข้ามยอดขาย
       const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES);
       if(!isSale&&!isInbound){sk++;continue;}
       const barcode=(r[14]??'').toString().trim();   // Col O (index 14)
@@ -3808,12 +3809,9 @@ function exportHsCountExcel(){
 }
 
 function exportStockAdjExcel(){
-  const isWh=currentBranch==='WH';
-  const header=isWh
-    ?['#','SKU','Barcode','Product Name','Location','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff']
-    :['#','SKU','Barcode','Product Name','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff'];
+  // A=Location, B-H=ข้อมูลสินค้า, I=พนักงานที่สแกน, J=เวลาที่นับ (ใช้ layout เดียวกันทั้งสาขาและ WH; สาขาที่ไม่มี Location เว้นว่าง)
+  const header=['Location','SKU','Barcode','Product Name','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff','พนักงานที่สแกน','เวลาที่นับ'];
   const rows=[header];
-  let i=0;
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
     const si=state.skuMap.get(sku);if(!si)continue;
@@ -3823,12 +3821,8 @@ function exportStockAdjExcel(){
     const sysQty=si.systemQty;
     const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
     const diff=sysQty-rv;
-    if(isWh){
-      const loc=state.locationMap.get(sku)||'';
-      rows.push([++i,sku,bc,si.productName,loc,unitName,sysQty,rv,diff]);
-    }else{
-      rows.push([++i,sku,bc,si.productName,unitName,sysQty,rv,diff]);
-    }
+    const loc=state.locationMap.get(sku)||'';
+    rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',sd.timestamp||'']);
   }
   if(rows.length===1){toast('ไม่มีข้อมูล Stock Adjustment','warn');return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
