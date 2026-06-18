@@ -618,7 +618,11 @@ The **✕ Clear** button calls `clearScanList()` which clears `scanListMap` + se
 - แตะเฉพาะ `scanning` — `pass`/`audit`/`stock_adjustment` (confirm แล้ว) ไม่ยุ่ง; ของที่สแกนวันนี้ (timestamp = วันนี้) ไม่ยุ่ง
 - ⚠️ R01.102 re-upload **ไม่ได้** ล้างของค้าง (`rebuildMaps` เพิ่ม pending เฉพาะ SKU ใหม่ ไม่รีเซ็ตของเดิม) — กลไกที่ล้างของค้างจริงคือ `startNewCount` และ `resetStaleScanningItems` นี้เท่านั้น
 
-**Login loader (visual mask) — barcode scan-line:** สำหรับ startEmpty role, `initAfterLogin` แสดง overlay `#scanListLoading` (CSS `.sl-barcode` — แท่งบาร์โค้ด + เส้นเลเซอร์ accent กวาดขึ้นลง, ข้อความ "เตรียมข้อมูล...") คลุมพื้นที่ scan list ระหว่าง login กัน flash ของรายการเก่าก่อนถูก clear. เปิดด้วย `.classList.add('show')` ตอนต้น, ปิดใน `finally` (กันค้างถ้า error). เป็น UI-only — ไม่แตะ logic การสแกน/sync. animation ใช้ `transform:translate3d` + `will-change`/`translateZ(0)` เพื่อบังคับ GPU layer ให้ลื่นบน PDA (ห้ามใช้ `top` — trigger layout/paint = กระตุก)
+**Login loader (visual mask) — barcode scan-line:** `initAfterLogin` แสดง overlay `#scanListLoading` (CSS `.sl-barcode` — แท่งบาร์โค้ด + เส้นเลเซอร์ accent กวาดขึ้นลง) คลุมพื้นที่ scan list ระหว่าง login. แสดงเมื่อ `_showLoader = _startEmpty || (currentRole==='pharmacist' && window.innerWidth>600)`:
+- **startEmpty role** (WH PDA + assistant PDA) — กัน flash ของรายการเก่าก่อนถูก clear, ข้อความ "เตรียมข้อมูล..."
+- **เภสัช Desktop** — โหลดสินค้า Audit จาก cloud (`restoreFromFirestore`) ใช้เวลา, ข้อความ "กำลังโหลดสินค้า Audit..." (set ผ่าน `.sl-loading-text`). **ไม่ใช่ startEmpty** จึงไม่ clear scan list — แค่ overlay ระหว่างรอโหลด
+
+เปิดด้วย `.classList.add('show')` ตอนต้น, ปิดใน `finally` (กันค้างถ้า error). เป็น UI-only — ไม่แตะ logic การสแกน/sync. animation ใช้ `transform:translate3d` + `will-change`/`translateZ(0)` เพื่อบังคับ GPU layer ให้ลื่นบน PDA (ห้ามใช้ `top` — trigger layout/paint = กระตุก)
 
 To fully reset a scanned item, use the **✕** button on individual rows (`removeScanItem`), which resets that SKU's `scanData` entry back to `pending`.
 

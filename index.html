@@ -1172,10 +1172,16 @@ function resetStaleScanningItems(){
 }
 async function initAfterLogin(){
   const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
+  // เภสัช Desktop: โหลดสินค้า Audit จาก cloud ใช้เวลา → แสดง loader ด้วย (ไม่ใช่ startEmpty — ไม่ clear scan list)
+  const _showLoader=_startEmpty||(currentRole==='pharmacist'&&window.innerWidth>600);
   const _slLoading=document.getElementById('scanListLoading');
-  // visual mask: แสดง Loading คลุม RESULT ระหว่าง login เพื่อไม่ให้รายการเก่า flash ก่อนถูก clear (เฉพาะ startEmpty)
+  // visual mask: แสดง Loading คลุม RESULT ระหว่าง login เพื่อไม่ให้รายการเก่า flash / ระหว่างรอโหลด audit
   // ไม่แตะ logic การ render/sync — แค่ overlay บนการแสดงผลชั่วคราว
-  if(_startEmpty&&_slLoading)_slLoading.classList.add('show');
+  if(_showLoader&&_slLoading){
+    const _txt=_slLoading.querySelector('.sl-loading-text');
+    if(_txt)_txt.textContent=currentRole==='pharmacist'?'กำลังโหลดสินค้า Audit...':'เตรียมข้อมูล...';
+    _slLoading.classList.add('show');
+  }
   try{
     loadSession();
     updateBranchDisplay();
@@ -1196,7 +1202,7 @@ async function initAfterLogin(){
     }
   }finally{
     // ปิด Loading overlay เสมอ แม้ login error กลางทาง (กันจอค้าง Loading)
-    if(_startEmpty&&_slLoading)_slLoading.classList.remove('show');
+    if(_showLoader&&_slLoading)_slLoading.classList.remove('show');
   }
 }
 function updateUserDisplay(){
