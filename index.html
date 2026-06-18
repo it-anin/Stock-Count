@@ -3849,8 +3849,12 @@ function exportStockAdjExcel(){
 }
 
 function updateHistoryStatsCount(){
+  const el=document.getElementById('historyStatsCount');if(!el)return;
+  // Desktop เภสัช: ไม่ต้องโชว์จำนวนบนปุ่มประวัติการนับ → ซ่อน badge
+  if(currentRole==='pharmacist'&&window.innerWidth>600){el.style.display='none';return;}
+  el.style.display='';
   let n=0;for(const[,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')n++;
-  const el=document.getElementById('historyStatsCount');if(el)el.textContent=n;
+  el.textContent=n;
 }
 function updateHistoryStatsPanel(){
   const p=document.getElementById('historyStatsPanel');if(!p)return;
