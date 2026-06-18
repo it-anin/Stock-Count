@@ -3756,7 +3756,8 @@ function exportHsCountExcel(){
   const isAssistant=_hsFilter==='assistant';
   const isPharm=_hsFilter==='pharmacist';
   if(!isAssistant&&!isPharm){toast('เลือก tab นับครั้งแรก หรือ รีเช็คสินค้า ก่อน','warn');return;}
-  const header=['Location','SKU','Barcode','NAME','Unit','CountQty','SystemQty','Diff'];
+  const staffHeader=isAssistant?'ชื่อผู้ช่วย':(currentBranch==='WH'?'ชื่อผู้รีเช็ค':'ชื่อเภสัช');
+  const header=['Location','SKU','Barcode','NAME','Unit','CountQty','SystemQty','Diff',staffHeader];
   const rows=[header];
   const collected=[];
   if(isAssistant){
@@ -3787,7 +3788,7 @@ function exportHsCountExcel(){
   }
   if(!collected.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
   collected.forEach(({sku,sd,si,countQty,fsItem})=>{
-    const location=sd?.location||'';
+    const location=state.locationMap.get(sku)||sd?.location||fsItem?.location||''; // WH: ดึงจาก Location Master ไม่ใช่ sd.location (ที่มักว่าง)
     const barcode=(si&&si.barcodes[0]&&si.barcodes[0].barcode)||sd?.barcode||fsItem?.barcode||'';
     const name=si?.productName||fsItem?.productName||'';
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
@@ -3795,7 +3796,8 @@ function exportHsCountExcel(){
     const sysQty=Number(si?.systemQty||0);
     const cnt=Number(countQty)||0;
     const diff=cnt-sysQty;
-    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff]);
+    const staff=isAssistant?(sd?.scannedBy||fsItem?.scannedBy||''):(sd?.auditor||fsItem?.auditor||''); // นับครั้งแรก=ผู้สแกน, รีเช็ค=ผู้ยืนยัน
+    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff]);
   });
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});

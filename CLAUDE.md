@@ -553,12 +553,13 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 
 ### Export Excel
 
-ระบบมี **2 ปุ่ม Export** (ไม่มี Backup/Restore JSON และไม่มี History export):
+ระบบมี **3 ปุ่ม Export** (ไม่มี Backup/Restore JSON):
 
 | ปุ่ม | ฟังก์ชัน | เนื้อหา | ไฟล์ |
 |---|---|---|---|
 | ⬇️ Export Excel (popup รายการสต็อก toolbar) | `exportExcel()` | audit + stock_adj เท่านั้น — SKU, Barcode, ProductName, SystemQty, CountedQty, Status, Timestamp, Audit Status | `audit_${date}.xlsx` |
 | ⬇️ Export Excel (History Stats → tab 🔴 Stock Adj) | `exportStockAdjExcel()` | stock_adj ปัจจุบัน — A=Location, B=SKU, C=Barcode, D=Product Name, E=หน่วย, F=จำนวนคงเหลือ, G=จำนวนปรับปรุง, H=Diff (`sysQty − recheckQty`; บวก=ขาด, ลบ=เกิน), I=พนักงานที่สแกน, J=เวลาที่นับ — layout เดียวกันทั้งสาขา/WH | `stockadj_${branch}_${date}.xlsx` |
+| ⬇️ Export Excel (History Stats → tab 👥 นับครั้งแรก / 🧑‍⚕️ รีเช็ค) | `exportHsCountExcel()` | tab ที่ active — `Location, SKU, Barcode, NAME, Unit, CountQty, SystemQty, Diff, <ชื่อพนักงาน>` โดย Location ดึงจาก `state.locationMap` (ไม่ใช่ `sd.location`); คอลัมน์สุดท้าย: นับครั้งแรก=`scannedBy` (header "ชื่อผู้ช่วย"), รีเช็ค=`auditor` (header WH "ชื่อผู้รีเช็ค" / สาขา "ชื่อเภสัช") | `count_` / `recheck_${branch}_${date}.xlsx` |
 
 ### Scan List QTY Masking
 
