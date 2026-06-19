@@ -478,7 +478,7 @@ Scan list columns (5 total): **SKU** / **Barcode** / **Product Name** / **Qty** 
 
 ### History Stats Panel (📊 ประวัติการนับ)
 
-Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`. Has 4 tabs:
+Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`. ปุ่มมี badge นับ (`#historyStatsCount`) แสดงจำนวน `stock_adjustment` ปัจจุบัน (`updateHistoryStatsCount`) — **ยกเว้น Desktop เภสัช** (`currentRole==='pharmacist' && window.innerWidth>600`) ที่**ซ่อน badge** (`display:none`); role/อุปกรณ์อื่นโชว์ตามปกติ. Has 4 tabs:
 
 | Tab | เนื้อหา |
 |---|---|
