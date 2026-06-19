@@ -1563,9 +1563,12 @@ async function startNewCount(){
   const _ts103n=document.getElementById('r16_103Timestamp');if(_ts103n)_ts103n.style.display='none';
   _setR01Ts('');_setR16Ts('');
   _countResetAt=new Date().toISOString();
-  rebuildMaps();saveSession();
-  clearTimeout(_firestoreSyncTimer); // ยกเลิก timer จาก saveSession — sync ด้วย overwrite=true แทน
+  // sync ขึ้น cloud ตอน scanData ยัง "ว่าง" (ก่อน rebuildMaps) → cloud ได้ scanData={} + epoch ใหม่
+  // → ทุก SKU "หายจาก cloud" จริง ด่านกัน resurrection ใน syncToFirestore (ที่พึ่ง !mergedSd[k]) จึงทำงาน
+  // และไม่ broadcast pending ทั้ง catalog กลับขึ้น cloud (ต้นเหตุที่ทำให้ confirmed เด้งกลับ)
+  clearTimeout(_firestoreSyncTimer);
   await syncToFirestore(true);
+  rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
 }
@@ -2292,11 +2295,10 @@ function _initColDefaults(){
 function applyColWidths(){
   let tpl;
   if(currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600){
-    const header=document.getElementById('scanListHeader');
-    const available=header?header.offsetWidth:600;
-    // 7-col fixed (excl name): SKU(82)+Barcode(90)+Qty(60)+SysQty(58)+Loc(65)+Status(95) = 450
-    const nameW=Math.max(60,available-450);
-    tpl=`82px 90px ${nameW}px 60px 58px 65px 95px`;
+    // 7-col: Name ใช้ minmax(0,1fr) → เติมพื้นที่ที่เหลือพอดี + ย่อได้ถึง 0 (ชื่อยาว clip ด้วย ellipsis)
+    // กัน Name ดันคอลัมน์เลยขอบ container โดยไม่ต้องวัด offsetWidth (ซึ่งเพี้ยนตอน layout ไม่นิ่ง)
+    // fixed: SKU(82)+Barcode(90)+Qty(60)+SysQty(58)+Loc(65)+Status(95)=450 ; Name=ที่เหลือ
+    tpl=`82px 90px minmax(0,1fr) 60px 58px 65px 95px`;
   }else{
     tpl=_colWidths.map(w=>w+'px').join(' ');
   }
@@ -2333,8 +2335,10 @@ function renderScanList(){
   const visible=entries.slice(0,SCAN_LIST_MAX);
   const showSysQty=currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600;
   const showLoc=showSysQty;
+  // WH warehouse: QTY แก้ไขได้ทุกรอบ (scanning ทุก systemQty + audit recheck) ผ่าน inline input
+  const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
   let tpl;
-  if(showSysQty){const hdrEl=document.querySelector('.scan-list-header');const available=hdrEl?hdrEl.offsetWidth:600;const nameW=Math.max(60,available-450);tpl=`82px 90px ${nameW}px 60px 58px 65px 95px`;}
+  if(showSysQty){tpl=`82px 90px minmax(0,1fr) 60px 58px 65px 95px`;}
   else{tpl=_colWidths.map(w=>w+'px').join(' ');}
   const limitBanner=total>SCAN_LIST_MAX?`<div style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
   body.innerHTML=limitBanner+visible.map(entry=>{
@@ -2347,7 +2351,7 @@ function renderScanList(){
       <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&currentRole==='warehouse'&&currentBranch==='WH')?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
-      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((si?.systemQty||0)>100?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='warehouse'||currentRole==='supervisor'))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
+      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((whStaffEdit||(si?.systemQty||0)>100)?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&whStaffEdit)?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
       ${showSysQty?`<div class="scan-row-sysqty" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 6px;">${si?.systemQty??''}</div>`:''}
       ${showLoc?`<div class="scan-row-loc" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.locationMap.get(entry.sku)||'—'}</div>`:''}
       <div class="scan-row-status"><span class="pill ${getPillClass(entry.status)}">${label}</span></div>
@@ -2363,14 +2367,20 @@ function patchScanRow(key){
   const qtyCell=row.querySelector('.scan-row-qty');if(!qtyCell)return;
   const si=state.skuMap.get(key);
   const sysQty=(si?.systemQty||0);
+  const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
   if(entry.status==='scanning'){
-    if(sysQty>100){
+    if(whStaffEdit||sysQty>100){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`;}
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
-    if(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='warehouse'||currentRole==='supervisor'))qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
+    if(entry.status==='audit'&&whStaffEdit){
+      const input=qtyCell.querySelector('.inline-qty-input');
+      if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
+      else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`;}
+    }
+    else if(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'))qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
     else if(entry.totalQty>100)qtyCell.textContent=entry.totalQty;
     else qtyCell.innerHTML='';
   }
@@ -2380,6 +2390,15 @@ function updateInlineQty(sku,v){
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='scanning')return;
   sd.countedQty=q;
+  if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
+  scheduleSave();scheduleStats();scheduleRender();
+}
+// WH warehouse: แก้จำนวนรีเช็ค audit แบบ inline → เขียน recheckQty (ไม่ใช่ countedQty) + recheckBy
+// persist + sync ขึ้น cloud ให้ supervisor เห็นค่าที่แก้ (เหมือนตอนสแกนรีเช็คผ่าน handleBarcode)
+function updateRecheckInlineQty(sku,v){
+  const q=parseFloat(v);if(isNaN(q)||q<0)return;
+  const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
+  sd.recheckQty=q;sd.recheckBy=currentUser;
   if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
   scheduleSave();scheduleStats();scheduleRender();
 }
@@ -2759,6 +2778,16 @@ async function syncToFirestore(overwrite=false){
       if(existing.exists){
         const raw=existing.data();
         const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
+        // cloud ถูก "เริ่มนับใหม่" (epoch ใหม่กว่า local) → local เป็นข้อมูลเก่า:
+        // adopt epoch + reset local + ห้ามอัปข้อมูลเก่าทับ cloud (กัน confirmed/scanning resurrect + กัน revert epoch)
+        if(s&&s.countResetAt&&s.countResetAt>_countResetAt){
+          _countResetAt=s.countResetAt;
+          _resetLocalScanDataToPending();
+          saveSession();
+          if(!_listCleared){rebuildScanListMap(true);renderScanList();}
+          invalidatePopupRowsCache();updateStats();renderTable();updateConfirmBtn();
+          return;
+        }
         if(s?.scanData){
           mergedSd={...s.scanData};
           const _confirmedSet=new Set(['pass','audit','audit_check','stock_adjustment']);
@@ -2788,16 +2817,23 @@ async function syncToFirestore(overwrite=false){
   }catch(e){document.getElementById('dbStatus').textContent='Sync Error';console.warn('Firestore:',e.message);}
 }
 
+// reset ทุก item ใน scanData กลับเป็น pending — ใช้ตอน detect "เริ่มนับใหม่" (epoch) ข้ามเครื่อง
+// คง location ไว้ (มาจาก master ไม่ใช่การสแกน), ล้างทุกฟิลด์ที่เกี่ยวกับการนับ (รวม scanning ค้าง + confirmed)
+function _resetLocalScanDataToPending(){
+  for(const[sku,ld]of state.scanData.entries()){
+    state.scanData.set(sku,{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:(ld&&ld.location)||'',scans:[]});
+  }
+  scanListMap.clear();
+}
 function _applyCloudScanData(s){
   const UNCONFIRMED=new Set(['pending','scanning']);
   const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
-  // ตรวจ countResetAt — ถ้า cloud มี timestamp ใหม่กว่า local = startNewCount จากเครื่องอื่น
-  // → clear local confirmed items ทันที ป้องกัน data resurrection
-  if(s.countResetAt&&s.countResetAt!==_countResetAt){
+  // ตรวจ countResetAt — ถ้า cloud มี epoch "ใหม่กว่า" local = startNewCount จากเครื่องอื่น
+  // → reset ทุก item เป็น pending (รวม scanning ค้าง + confirmed) กัน resurrection ทุกชนิด
+  // ใช้ '>' ไม่ใช่ '!==' เพื่อให้ epoch เดินหน้าทางเดียว (snapshot เก่าที่ epoch ต่ำกว่าจะไม่ทำให้ reset ผิด)
+  if(s.countResetAt&&s.countResetAt>_countResetAt){
     _countResetAt=s.countResetAt;
-    for(const[sku,local]of state.scanData.entries()){
-      if(CONFIRMED.has(local.status))state.scanData.delete(sku);
-    }
+    _resetLocalScanDataToPending();
   }
   // ทุกสาขา: propagate cloud confirmed items (audit/pass/stock_adjustment) ลง local
   // - WH: PDA รับสถานะ audit จาก Desktop Confirm → โยกไป Audit Verify popup ตาม WH filter
@@ -2899,6 +2935,13 @@ async function restoreFromFirestore(force=false){
       if(s.r16_103Map){for(const k in s.r16_103Map)state.r16_103Map.set(k,s.r16_103Map[k]);}
     }
     if(!force&&hasLocalSessionData&&hasLocalMasterData){
+      // ถ้า cloud ถูก "เริ่มนับใหม่" (epoch ใหม่กว่า local ที่โหลดจาก localStorage) → ล้าง local เก่าก่อน merge
+      // กัน confirmed เก่าค้างหน้าจอ + กันเครื่องนี้ re-upload ของเก่า (resurrection ผ่าน login path)
+      if(s.countResetAt&&s.countResetAt>_countResetAt){
+        _countResetAt=s.countResetAt;
+        _resetLocalScanDataToPending();
+        saveSession();
+      }
       // merge confirmed items from Firestore even when local data exists
       const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
       let merged=false;
