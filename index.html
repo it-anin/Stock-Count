@@ -324,10 +324,7 @@
       .center-panel .panel-card{flex:1;min-height:0;display:flex;flex-direction:column;}
       .center-panel .panel-card>div{flex-shrink:0;}
       .scan-list-card{flex:1;min-height:0;display:flex;flex-direction:column;margin:4px 8px;}
-      .scan-list-body{flex:1;overflow-y:auto;max-height:none!important;-webkit-overflow-scrolling:touch;}
-      .scan-row{transition:none!important;contain:layout style paint;}
-      .scan-row:first-child{animation:none!important;}
-      .scan-dots span,.sl-barcode::after{animation:none!important;}
+      .scan-list-body{flex:1;overflow-y:auto;max-height:none!important;}
 
       /* Hide Confirm button — ไม่ใช้บน mobile (Confirm ทำที่คอมหลัง 21:00) */
       #btnConfirm{display:none!important;}
@@ -2001,13 +1998,7 @@ function drainQueue(){
     const i=scanQueue.shift();
     handleBarcode(typeof i==='string'?parseScanLine(i):i,false);
   }
-  if(scanListMap.size>prevSize){
-    renderScanList();
-  }else if(_pendingPatches.size){
-    let needsRender=false;
-    _pendingPatches.forEach(key=>{if(!patchScanRow(key))needsRender=true;});
-    if(needsRender)renderScanList();
-  }
+  if(scanListMap.size>prevSize||_pendingPatches.size>0){renderScanList();}else{_pendingPatches.forEach(patchScanRow);}
   scheduleStats();scheduleRender();scanProcessing=false;
 }
 
@@ -2345,8 +2336,7 @@ function renderScanList(){
   if(!scanListMap.size){body.innerHTML='<div class="scan-list-empty">รอการสแกน...</div>';return;}
   const entries=[...scanListMap.values()].reverse();
   const total=entries.length;
-  const visibleMax=window.innerWidth<=600?20:SCAN_LIST_MAX;
-  const visible=entries.slice(0,visibleMax);
+  const visible=entries.slice(0,SCAN_LIST_MAX);
   const showSysQty=currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600;
   const showLoc=showSysQty;
   // WH warehouse: QTY แก้ไขได้ทุกรอบ (scanning ทุก systemQty + audit recheck) ผ่าน inline input
@@ -2354,7 +2344,7 @@ function renderScanList(){
   let tpl;
   if(showSysQty){tpl=`82px 90px minmax(0,1fr) 60px 58px 65px 95px`;}
   else{tpl=_colWidths.map(w=>w+'px').join(' ');}
-  const limitBanner=total>visibleMax?`<div class="scan-list-limit" style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${visibleMax} / ${total} รายการล่าสุด</div>`:'';
+  const limitBanner=total>SCAN_LIST_MAX?`<div style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
   body.innerHTML=limitBanner+visible.map(entry=>{
     const{cls,label}=getScanRowStyle(entry.status);
     const bcText=entry.barcodes.map(b=>b.barcode).join(', ');
@@ -2376,20 +2366,12 @@ function renderScanList(){
 }
 
 function patchScanRow(key){
-  const entry=scanListMap.get(key);if(!entry)return false;
-  const row=document.querySelector(`[data-sku="${CSS.escape(key)}"]`);if(!row)return false;
-  const qtyCell=row.querySelector('.scan-row-qty');if(!qtyCell)return false;
+  const entry=scanListMap.get(key);if(!entry)return;
+  const row=document.querySelector(`[data-sku="${CSS.escape(key)}"]`);if(!row)return;
+  const qtyCell=row.querySelector('.scan-row-qty');if(!qtyCell)return;
   const si=state.skuMap.get(key);
   const sysQty=(si?.systemQty||0);
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
-  const body=document.getElementById('scanListBody');
-  if(body){
-    const firstRow=body.querySelector('.scan-row');
-    if(firstRow&&firstRow!==row){
-      const banner=body.querySelector('.scan-list-limit');
-      body.insertBefore(row,banner?banner.nextSibling:body.firstChild);
-    }
-  }
   if(entry.status==='scanning'){
     if(whStaffEdit||sysQty>100){
       const input=qtyCell.querySelector('.inline-qty-input');
@@ -2397,8 +2379,7 @@ function patchScanRow(key){
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`;}
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
-    if(entry.status==='unknown')qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
-    else if(entry.status==='audit'&&whStaffEdit){
+    if(entry.status==='audit'&&whStaffEdit){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`;}
@@ -2407,7 +2388,6 @@ function patchScanRow(key){
     else if(entry.totalQty>100)qtyCell.textContent=entry.totalQty;
     else qtyCell.innerHTML='';
   }
-  return true;
 }
 
 function updateInlineQty(sku,v){
