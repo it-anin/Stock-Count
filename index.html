@@ -2867,9 +2867,11 @@ function _applyCloudScanData(s){
         if(local&&local.auditor)continue;                                  // local verify ที่เครื่องนี้แล้ว → เก็บไว้
         if(local&&CONFIRMED.has(local.status)&&!cloudItem.auditor){
           // local confirmed แต่ cloud ยังไม่ verify → ไม่ทับ status
-          // mirror recheckQty/recheckBy จาก cloud เสมอ (warehouse เป็นเจ้าของค่านี้บน PDA)
-          // — ต้อง mirror ตรงๆ (ไม่ใช่ max) เพื่อให้การรีเซ็ตรีเช็ค (recheckQty หาย/ลดลง) sync มาที่ Desktop ด้วย
-          if(local.status==='audit'&&cloudItem.status==='audit'){
+          // mirror recheckQty/recheckBy จาก cloud — เฉพาะฝั่ง "คนอ่าน" (supervisor Desktop) เท่านั้น
+          // warehouse PDA เป็น "เจ้าของ" ค่า recheckQty → ห้าม cloud snapshot เก่าทับค่าที่เพิ่งสแกน
+          // (กันอาการเด้ง 800→700 จาก race: listener ถือ snapshot เก่า 3s แล้ว apply ทับ local ที่สูงกว่า)
+          // ต้อง mirror ตรงๆ (ไม่ใช่ max) เพื่อให้การรีเซ็ตรีเช็ค (recheckQty หาย/ลดลง) sync ไป Desktop ได้
+          if(local.status==='audit'&&cloudItem.status==='audit'&&currentRole!=='warehouse'){
             local.recheckQty=cloudItem.recheckQty;local.recheckBy=cloudItem.recheckBy||'';
           }
           continue;

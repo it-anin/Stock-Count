@@ -209,7 +209,9 @@ Profiles are defined in `EMPLOYEE_PROFILES` constant. Each branch declares only 
 
 **Cloud sync ของ recheckQty:** `_applyCloudScanData` (WH propagate path) **mirror `recheckQty`/`recheckBy` จาก cloud ตรงๆ** (ไม่ใช่ max) บน audit item ที่ทั้ง local+cloud เป็น `audit` และ cloud ยังไม่มี `auditor` — ต้อง mirror ตรงๆ ไม่งั้นการ **รีเซ็ต** (ค่าลดลง/หาย) จะไม่ sync จาก PDA ไป Desktop. ทิศย้อนกลับ (supervisor ยืนยัน → cloud มี `auditor`) จะ overwrite local audit บน PDA เป็น pass/stock_adjustment ตามปกติ
 
-> **ข้อจำกัด:** recheckQty บน PDA เป็น authoritative ตัวเดียว ถ้า Desktop (supervisor) เผลอ trigger `saveSession` ระหว่างที่ warehouse กำลังรีเช็ค อาจ clobber ค่า cloud ด้วยค่าเก่าได้ (window สั้น ~3s, self-heal เมื่อ PDA สแกนต่อ) — listener ไม่เรียก `saveSession` จึงเกิดยาก. supervisor เห็น recheckQty ก่อนกดยืนยันเสมอ
+> ⚠️ **mirror ทำเฉพาะฝั่ง "คนอ่าน" — guard `currentRole !== 'warehouse'`:** การ mirror ข้างบนรันเฉพาะบน **supervisor Desktop** (คนอ่าน/ยืนยัน) เท่านั้น **ไม่รันบน warehouse PDA** (คนเขียน/เจ้าของค่า). เหตุผล: warehouse PDA สแกนรีเช็คสะสม `recheckQty` ขึ้นเรื่อยๆ ระหว่างนั้น listener จับ snapshot ค้างไว้ 3s แล้ว apply ทีหลัง — ถ้า mirror บน PDA ด้วย snapshot เก่า (ค่าต่ำกว่า) จะทับค่า local ที่เพิ่งสแกน ทำให้ **เด้งกลับ** เช่น 800 → 700 (race window ~3s). guard นี้ทำให้ warehouse PDA เป็น single source of truth ของ recheckQty; supervisor Desktop ยังรับค่า + รับการรีเซ็ตครบเหมือนเดิม. **ฝั่งสาขา (SRC/KKL/SSS) ไม่เข้า branch นี้เลย** เพราะ pharmacist เขียน `recheckQty` พร้อม `auditor` + ย้าย status ออกจาก `audit` ในจังหวะเดียว (`confirmAuditVerifyItem`) → ไม่มีสถานะ "recheckQty มีค่าแต่ยังไม่มี auditor" แบบ WH
+
+> **ข้อจำกัด:** หลัง guard ข้างบน warehouse PDA ไม่รับ recheckQty ของ PDA เครื่องอื่นผ่าน listener (ตรงกับดีไซน์ "PDA authoritative ตัวเดียว") — ถ้าต้องรองรับ warehouse หลายเครื่องรีเช็ค SKU เดียวกันพร้อมกันในอนาคต ต้องเปลี่ยนไปใช้ timestamp guard (`recheckAt`) แทน. supervisor เห็น recheckQty ก่อนกดยืนยันเสมอ
 
 ### Location Master — WH คลังสินค้า
 
