@@ -625,6 +625,8 @@ In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (cas
 
 The **✕ Clear** button calls `clearScanList()` which clears `scanListMap` + sets `_listCleared = true`. It does NOT reset `state.scanData`. To see data again, press **Cloud ☁️** (shows only `scanning`/`audit` items, excludes `pass`/`stock_adjustment`).
 
+> **WH PDA — ปุ่ม Clear ถูกซ่อน:** บน WH PDA (`window.innerWidth<=600 && currentBranch==='WH'`) `updateScanInputMode()` ซ่อน `#confirmClearRow` ทั้งแถว (Confirm ถูกซ่อนบน PDA อยู่แล้วผ่าน CSS เหลือแต่ Clear เต็มความกว้าง → พนักงานเผลอกดโดนง่าย). Clear ลบแค่มุมมอง list ไม่ลบ `state.scanData` (ข้อมูลไม่หาย) แต่ซ่อนเพื่อกันสับสน. **confirm ของ supervisor ไม่เคลียร์ RESULT บน PDA** — มีแต่ 🔄 เริ่มนับใหม่ (`startNewCount` → `_resetLocalScanDataToPending` → `scanListMap.clear()`) ที่เคลียร์ข้ามเครื่อง. Desktop WH + สาขายังมีปุ่ม Clear ครบ
+
 **`_listCleared` flag behavior:**
 - `clearScanList()` → sets `_listCleared = true` → `onSnapshot` skips `rebuildScanListMap`/`renderScanList` (prevents list from reappearing)
 - `appendScanRow()` → resets `_listCleared = false` (except startEmpty roles — see below)

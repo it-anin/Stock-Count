@@ -3259,8 +3259,11 @@ function updateScanInputMode(){
   if(bar)bar.style.display=(isPharm||isSvDesktop)?'block':'none';
   const lbl=document.getElementById('pharmacistAuditBtnLabel');
   if(lbl)lbl.textContent=isSvDesktop?'✓ ยืนยันรีเช็ค':'✓ ยืนยัน Audit';
+  // WH PDA: ซ่อนทั้งแถว Confirm/Clear — Confirm ถูกซ่อนบน PDA อยู่แล้ว เหลือแต่ Clear ที่พนักงานเผลอกดโดนง่าย
+  // (Clear ลบแค่มุมมอง RESULT ไม่ลบ scanData แต่กันความสับสน) — Desktop WH ยังมีปุ่มครบ
+  const _whPda=window.innerWidth<=600&&currentBranch==='WH';
   const ccRow=document.getElementById('confirmClearRow');
-  if(ccRow)ccRow.style.display=isPharm?'none':'flex';
+  if(ccRow)ccRow.style.display=(isPharm||_whPda)?'none':'flex';
   if(!isPharm&&!isSvDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
   const sysQtyHdr=document.getElementById('scanListHeaderSysQty');
   if(sysQtyHdr)sysQtyHdr.style.display=isSvDesktop&&currentBranch==='WH'?'flex':'none';
