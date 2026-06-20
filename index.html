@@ -625,7 +625,7 @@
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--yellow);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">6</span>
-        <span>รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong></span>
+        <span id="guideStep6">รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong></span>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--green);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">7</span>
@@ -639,7 +639,7 @@
       <ul style="padding-left:16px;margin:0;font-size:0.8rem;line-height:1.7;">
         <li>สแกน SKU เดิมห่างกันเกิน <strong>2 นาที</strong> → จำนวนถูก reset เป็น 0 ใหม่</li>
         <li>คอลัม <strong>Qty ซ่อน</strong> ถ้าจำนวน ≤ 100 (ป้องกัน bias) — แสดงเมื่อ &gt; 100</li>
-        <li>สินค้า <strong>Pass / Audit / Stock Adj</strong> แล้ว → สแกนซ้ำไม่เปลี่ยนจำนวน</li>
+        <li>สินค้า <strong id="guideRulePill">Pass / Audit / Stock Adj</strong> แล้ว → สแกนซ้ำไม่เปลี่ยนจำนวน</li>
       </ul>
     </div>
 
@@ -647,7 +647,7 @@
     <p style="margin-bottom:6px;font-weight:700;color:var(--text);">สถานะผลลัพธ์:</p>
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;font-size:0.8rem;">
       <div style="display:flex;gap:8px;align-items:center;"><span style="background:rgba(26,158,92,0.12);color:var(--green);padding:1px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">✅ Pass</span><span>จำนวนตรงกับระบบ</span></div>
-      <div style="display:flex;gap:8px;align-items:center;"><span style="background:rgba(224,140,0,0.12);color:var(--yellow);padding:1px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">⚠️ Audit</span><span>จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify</span></div>
+      <div style="display:flex;gap:8px;align-items:center;"><span id="guideAuditPill" style="background:rgba(224,140,0,0.12);color:var(--yellow);padding:1px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">⚠️ Audit</span><span id="guideAuditDesc">จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify</span></div>
       <div style="display:flex;gap:8px;align-items:center;"><span style="background:rgba(217,48,37,0.1);color:var(--red);padding:1px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">🔴 Stock Adj</span><span>ตรวจซ้ำแล้วไม่ตรง — ต้องปรับสต็อก</span></div>
       <div style="display:flex;gap:8px;align-items:center;"><span style="background:rgba(107,63,160,0.12);color:var(--purple);padding:1px 8px;border-radius:20px;font-weight:700;white-space:nowrap;">❓ Unknown</span><span>ไม่พบ Barcode ในระบบ</span></div>
     </div>
@@ -2531,6 +2531,15 @@ function applyAuditTerminology(){
   set('popupFilterAuditLabel',w);
   set('popupThAudit',w);
   set('avTabAuditLabel',w);
+  // Scan Guide popover — สลับข้อความ flow ตาม branch (WH=Recheck/warehouse, สาขา=Audit/เภสัช)
+  const isWh=currentBranch==='WH';
+  const setHtml=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html;};
+  setHtml('guideStep6',isWh
+    ?'รายการ <strong style="color:var(--yellow);">⚠️ Recheck</strong> → <strong>warehouse</strong> สแกนรีเช็คที่ช่อง scan หลัก → <strong>หัวหน้างาน</strong>กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'
+    :'รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong>');
+  set('guideRulePill',isWh?'Pass / Recheck / Stock Adj':'Pass / Audit / Stock Adj');
+  set('guideAuditPill',isWh?'⚠️ Recheck':'⚠️ Audit');
+  set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':'จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify');
 }
 function getScanRowStyle(s){
   const m={

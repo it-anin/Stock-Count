@@ -122,6 +122,7 @@ pending → scanning → pass
 **WH terminology — "Audit" → "Recheck" (label เท่านั้น):** บน WH branch คำว่า "Audit" ที่ผู้ใช้เห็นถูกเปลี่ยนเป็น **"Recheck"** ทุกที่ (status pill ใน scan list, การ์ดสถิติ, popup pill/filter/header, Audit Verify panel/popup, dashboard, history, export) — สาขายา (SRC/KKL/SSS) ยังเป็น "Audit" ตามเดิม.
 - **`_auditTerm()`** → คืน `'Recheck'` ถ้า `currentBranch==='WH'` ไม่งั้น `'Audit'` — ใช้ในทุก render function (getScanRowStyle, getStatusPill, dashboard, history, export, renderAuditVerifyTable ฯลฯ)
 - **`applyAuditTerminology()`** → อัปเดต label ที่เป็น static HTML (มี id: `statAuditLabel`, `auditVerifyPanelTitle`, `auditVerifyBtnLabel`, `popupFilterAuditLabel`, `popupThAudit`, `avTabAuditLabel`) ตาม branch — เรียกใน `initAfterLogin()` + ตอนเลือกพนักงาน. การ์ด AUDIT label ยัง refresh ทุก `updateStats()` ด้วย
+  - **Scan Guide popover ก็ branch-aware** (id: `guideStep6`, `guideRulePill`, `guideAuditPill`, `guideAuditDesc`) — set ใน `applyAuditTerminology()` ด้วย: WH โชว์ flow "⚠️ Recheck → warehouse สแกนรีเช็ค → หัวหน้างานยืนยันรีเช็ค", สาขาโชว์ "⚠️ Audit → เภสัชเปิด Audit Verify". `guideStep6` ใช้ `innerHTML` (มี `<strong>`), ที่เหลือ `textContent`
 - ⚠️ **status code `'audit'` ไม่เปลี่ยน** — เปลี่ยนเฉพาะข้อความที่แสดง. ชื่อฟังก์ชัน/id (`openAuditVerifyPopup`, `pharmacistAuditBar` ฯลฯ) คงเดิม
 - **ที่ตั้งใจไม่เปลี่ยน:** help paragraphs ที่อธิบาย flow เภสัชโดยเฉพาะ (อธิบายการทำงานร้านยา), `audit_check` (legacy), tooltip `title` attr ของปุ่ม PDA verify
 
