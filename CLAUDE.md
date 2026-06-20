@@ -119,6 +119,12 @@ pending → scanning → pass
 
 `audit_check` still exists in the codebase for compatibility but is no longer produced by the re-audit flow.
 
+**WH terminology — "Audit" → "Recheck" (label เท่านั้น):** บน WH branch คำว่า "Audit" ที่ผู้ใช้เห็นถูกเปลี่ยนเป็น **"Recheck"** ทุกที่ (status pill ใน scan list, การ์ดสถิติ, popup pill/filter/header, Audit Verify panel/popup, dashboard, history, export) — สาขายา (SRC/KKL/SSS) ยังเป็น "Audit" ตามเดิม.
+- **`_auditTerm()`** → คืน `'Recheck'` ถ้า `currentBranch==='WH'` ไม่งั้น `'Audit'` — ใช้ในทุก render function (getScanRowStyle, getStatusPill, dashboard, history, export, renderAuditVerifyTable ฯลฯ)
+- **`applyAuditTerminology()`** → อัปเดต label ที่เป็น static HTML (มี id: `statAuditLabel`, `auditVerifyPanelTitle`, `auditVerifyBtnLabel`, `popupFilterAuditLabel`, `popupThAudit`, `avTabAuditLabel`) ตาม branch — เรียกใน `initAfterLogin()` + ตอนเลือกพนักงาน. การ์ด AUDIT label ยัง refresh ทุก `updateStats()` ด้วย
+- ⚠️ **status code `'audit'` ไม่เปลี่ยน** — เปลี่ยนเฉพาะข้อความที่แสดง. ชื่อฟังก์ชัน/id (`openAuditVerifyPopup`, `pharmacistAuditBar` ฯลฯ) คงเดิม
+- **ที่ตั้งใจไม่เปลี่ยน:** help paragraphs ที่อธิบาย flow เภสัชโดยเฉพาะ (อธิบายการทำงานร้านยา), `audit_check` (legacy), tooltip `title` attr ของปุ่ม PDA verify
+
 **Stat card — Audit:**
 - Large number: items still at `audit` (waiting for pharmacist).
 - Progress bar: pharmacist-checked items / total audit items ever flagged.
@@ -594,6 +600,8 @@ This applies to both `renderScanList()` (full re-render) and `patchScanRow()` (i
 ### 2-Minute Scan Gap Reset
 
 In `handleBarcode()`, if the same SKU is scanned again after more than 2 minutes since its last `timestamp`, a `scanGapModal` is shown requiring confirmation before continuing.
+
+> ⚠️ **WH branch ข้าม gap นี้ทั้งหมด** — เงื่อนไขมี `currentBranch!=='WH'` นำหน้า. คลังนับสต็อกของจำนวนเยอะ สแกน SKU เดิมซ้ำได้นานเกิน 2 นาทีโดย `countedQty` ไม่ถูก reset (สแกนแล้วบวกสะสมปกติ). เฉพาะสาขายา (SRC/KKL/SSS) ที่ยังเตือน + reset. หมายเหตุ: WH audit recheck ไม่เคยเข้าบล็อกนี้อยู่แล้ว (อยู่คนละ branch — สะสม `recheckQty` แล้ว return ก่อน). กลไกแก้พลาดบน WH ใช้ปุ่ม ✕ / แก้ QTY inline แทน
 
 `showScanGapModal()` triggers two alerts simultaneously:
 - **`beepWarn()`** — siren sound: 880 Hz → 440 Hz → 880 Hz → 440 Hz, 4 cycles, `square` wave, 0.22s per pulse (Web Audio API)

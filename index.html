@@ -402,7 +402,7 @@
     <div class="stat-card" id="statCardBranch"><div class="stat-label">SKU BRANCH</div><div class="stat-value orange" id="statBranchSku">—</div></div>
     <div class="stat-card"><div class="stat-label" id="statCountedLabel">Counted</div><div class="stat-value blue" id="statCounted">0</div></div>
     <div class="stat-card"><div class="stat-label">Pass</div><div class="stat-value green" id="statPass">0</div></div>
-    <div class="stat-card"><div class="stat-label">Audit</div><div class="stat-value red" id="statFail">0</div><div id="statAuditSub" style="font-size:0.62rem;color:var(--text3);margin-top:1px;display:none;"></div><div id="auditProgressWrap" style="display:none;margin-top:5px;width:100%;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span id="auditProgressLabel" style="font-size:0.58rem;color:var(--text3);">เภสัชตรวจแล้ว</span><span id="auditProgressPct" style="font-size:0.58rem;color:var(--text3);">0%</span></div><div style="width:100%;height:5px;background:rgba(217,48,37,0.15);border-radius:3px;overflow:hidden;"><div id="auditProgressFill" style="height:100%;border-radius:3px;transition:width 0.4s,background 0.4s;width:0%;background:var(--red);"></div></div></div></div>
+    <div class="stat-card"><div class="stat-label" id="statAuditLabel">Audit</div><div class="stat-value red" id="statFail">0</div><div id="statAuditSub" style="font-size:0.62rem;color:var(--text3);margin-top:1px;display:none;"></div><div id="auditProgressWrap" style="display:none;margin-top:5px;width:100%;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span id="auditProgressLabel" style="font-size:0.58rem;color:var(--text3);">เภสัชตรวจแล้ว</span><span id="auditProgressPct" style="font-size:0.58rem;color:var(--text3);">0%</span></div><div style="width:100%;height:5px;background:rgba(217,48,37,0.15);border-radius:3px;overflow:hidden;"><div id="auditProgressFill" style="height:100%;border-radius:3px;transition:width 0.4s,background 0.4s;width:0%;background:var(--red);"></div></div></div></div>
 
     <div class="stat-card"><div class="stat-label">Not in System</div><div class="stat-value purple" id="statUnknown">0</div></div>
     <div class="stat-card">
@@ -517,8 +517,8 @@
         <button class="stock-list-btn" onclick="openStockPopup()"><span>Check Product List</span><span class="scount" id="stockCount">0</span></button>
       </div>
       <div class="panel-card" id="auditVerifyPanel" style="padding:14px;display:none;">
-        <h3 style="margin-bottom:12px;">Audit Verify</h3>
-        <button id="auditVerifyBtn" class="stock-list-btn" onclick="openAuditVerifyPopup()" style="background:linear-gradient(135deg,var(--yellow),var(--orange));box-shadow:0 2px 8px rgba(224,140,0,0.25);"><span>Audit Verify</span><span class="scount" id="auditVerifyCount" style="background:rgba(255,255,255,0.25);">0</span></button>
+        <h3 id="auditVerifyPanelTitle" style="margin-bottom:12px;">Audit Verify</h3>
+        <button id="auditVerifyBtn" class="stock-list-btn" onclick="openAuditVerifyPopup()" style="background:linear-gradient(135deg,var(--yellow),var(--orange));box-shadow:0 2px 8px rgba(224,140,0,0.25);"><span id="auditVerifyBtnLabel">Audit Verify</span><span class="scount" id="auditVerifyCount" style="background:rgba(255,255,255,0.25);">0</span></button>
         <div id="auditVerifyLock" style="display:none;margin-top:8px;font-size:0.75rem;color:var(--text3);text-align:center;">🔒 เฉพาะเภสัชกรเท่านั้น</div>
       </div>
       <div class="panel-card" id="historyStatsPanel" style="padding:14px;display:none;">
@@ -683,7 +683,7 @@
       <button class="popup-filter active" onclick="setPopupFilter('all',this)"><span>📋</span><span>ทั้งหมด</span></button>
       <button class="popup-filter" onclick="setPopupFilter('pass',this)"><span>✅</span><span>Pass</span></button>
 
-      <button class="popup-filter" onclick="setPopupFilter('audit',this)"><span>⚠️</span><span>Audit</span></button>
+      <button class="popup-filter" onclick="setPopupFilter('audit',this)"><span>⚠️</span><span id="popupFilterAuditLabel">Audit</span></button>
 
       <button class="popup-filter" onclick="setPopupFilter('unknown',this)"><span>❓</span><span>Unknown</span></button>
       <button class="popup-filter" onclick="setPopupFilter('del',this)"><span>🗑️</span><span>DEL</span></button>
@@ -691,7 +691,7 @@
     </div>
     <div class="stock-popup-body">
       <table class="ptable">
-        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th>Audit</th><th>Timestamp</th><th id="popupThLocation" style="display:none;">Location</th></tr></thead>
+        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th id="popupThAudit">Audit</th><th>Timestamp</th><th id="popupThLocation" style="display:none;">Location</th></tr></thead>
         <tbody id="popupTableBody"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
       </table>
     </div>
@@ -718,7 +718,7 @@
       <button id="avScanBtn" onclick="handleAuditVerifyScan()" style="padding:10px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">สแกน</button>
     </div>
     <div id="avTabRow" style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;">
-      <button id="avBtnAudit" class="popup-filter active" onclick="setAvFilter('audit',this)"><span>⚠️</span><span>Audit <span id="avCountAudit" style="background:rgba(224,140,0,0.2);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
+      <button id="avBtnAudit" class="popup-filter active" onclick="setAvFilter('audit',this)"><span>⚠️</span><span><span id="avTabAuditLabel">Audit</span> <span id="avCountAudit" style="background:rgba(224,140,0,0.2);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
       <button id="avBtnStockAdj" class="popup-filter" onclick="setAvFilter('stock_adj',this)"><span>🔴</span><span>Stock Adj <span id="avCountStockAdj" style="background:rgba(217,48,37,0.15);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
     </div>
     <div class="stock-popup-body">
@@ -1150,6 +1150,7 @@ function selectEmployee(name,role){
     updateAuditVerifyPanel();
     updateHistoryStatsPanel();
     updateScanInputMode();
+    applyAuditTerminology();
     if(_employeeCallback)_employeeCallback();
     _employeeCallback=null;
   });
@@ -1197,6 +1198,7 @@ async function initAfterLogin(){
     if(state.r01Data.length&&state.r05Data.length) syncMasterToFirestore();
     if(currentBranch==='WH'){await loadLocationFromFirestore();startLocationListener();}
     updateScanInputMode();
+    applyAuditTerminology();
     // WH PDA + ผู้ช่วยเภสัช PDA: เริ่ม session ด้วย RESULT ว่าง — เห็นเฉพาะสิ่งที่สแกนใหม่ (ไม่ต้องกด Clear)
     if(_startEmpty){
       scanListMap.clear();_listCleared=true;renderScanList();
@@ -2071,11 +2073,13 @@ function handleBarcode(parsed,immediateRender=true){
       appendScanRow(sku,resolvedBarcode,sd.countedQty,unitName,sd.status,location);
       _pendingPatches.add(sku);
     }
-    toast(_hideAuditPdaWh?'สินค้านี้อยู่ใน Audit — เปิด Audit Verify popup เพื่อรีเช็ค':'สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','warn');
+    toast(_hideAuditPdaWh?'สินค้านี้อยู่ใน Recheck — เปิด Recheck popup เพื่อรีเช็ค':'สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','warn');
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}return;
   }
 
-  if(sd.timestamp&&(new Date(now)-new Date(sd.timestamp))>120000){
+  // WH: ข้าม gap 2 นาที — นับสต็อกของจำนวนเยอะ สแกน SKU เดิมซ้ำได้นานเกิน 2 นาทีโดยไม่ reset
+  // สาขายา (SRC/KKL/SSS) ยังคงเตือน + reset ตามเดิม (กันเผลอสแกนซ้ำของที่นับไปนานแล้ว)
+  if(currentBranch!=='WH'&&sd.timestamp&&(new Date(now)-new Date(sd.timestamp))>120000){
     const addQty=qty!==null?qty*mult:mult;
     _scanGapHold={sku,addQty,scannedBy,auditor,now,resolvedBarcode,location,unitName,resolvedFromSku};
     showScanGapModal(sku,sd.countedQty,addQty);
@@ -2484,11 +2488,25 @@ function _removeSkuFromFirestore(sku){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WH ใช้คำว่า "Recheck" แทน "Audit" ทุก label ที่ผู้ใช้เห็น (status code 'audit' ไม่เปลี่ยน)
+function _auditTerm(){return currentBranch==='WH'?'Recheck':'Audit';}
+// อัปเดต label static (Audit→Recheck) ตาม branch — เรียกหลัง login (initAfterLogin)
+function applyAuditTerminology(){
+  const w=_auditTerm();
+  const verify=currentBranch==='WH'?'Recheck':'Audit Verify';
+  const set=(id,txt)=>{const el=document.getElementById(id);if(el)el.textContent=txt;};
+  set('statAuditLabel',w);
+  set('auditVerifyPanelTitle',verify);
+  set('auditVerifyBtnLabel',verify);
+  set('popupFilterAuditLabel',w);
+  set('popupThAudit',w);
+  set('avTabAuditLabel',w);
+}
 function getScanRowStyle(s){
   const m={
     scanning:          {cls:'var(--accent)',  label: window.innerWidth<=600?'⏳ รอ':'⏳ รอยืนยัน'},
     pass:              {cls:'var(--green)',   label:'✅ Pass'},
-    audit:             {cls:'var(--red)',     label:'⚠️ Audit'},
+    audit:             {cls:'var(--red)',     label:'⚠️ '+_auditTerm()},
     audit_check:       {cls:'var(--green)',   label:'✅ Audit Check'},
     stock_adjustment:  {cls:'var(--red)',     label:'⚠️ Stock Adj'},
     unknown:           {cls:'var(--purple)',  label:'❓NO STOCK'},
@@ -2533,6 +2551,7 @@ function updateStats(){
   const _apFill=document.getElementById('auditProgressFill');
   const _apPct=document.getElementById('auditProgressPct');
   const _apLabel=document.getElementById('auditProgressLabel');if(_apLabel)_apLabel.textContent=(currentBranch==='WH'?'รีเช็คแล้ว':'เภสัชตรวจแล้ว');
+  const _alLabel=document.getElementById('statAuditLabel');if(_alLabel)_alLabel.textContent=_auditTerm();
   if(_apWrap){if(auditTotal>0){_apWrap.style.display='block';if(_apFill){_apFill.style.width=_apct+'%';_apFill.style.background=_apct>=100?'var(--green)':'var(--red)';}if(_apPct)_apPct.textContent=_apct+'%';}else{_apWrap.style.display='none';}}
   updateAuditVerifyCount();
   updateHistoryStatsCount();
@@ -2544,7 +2563,7 @@ function updateStats(){
   if(currentBranch==='WH'){
     if(_c1)_c1.style.display='none';
     if(_c2)_c2.style.display='none';
-    if(_cl)_cl.textContent='Audit ทั้งหมด';
+    if(_cl)_cl.textContent='Recheck ทั้งหมด';
     document.getElementById('statCounted').textContent=auditTotal;
     // PDA WH: ซ่อน card "Audit ทั้งหมด" (card 3) — แสดงเฉพาะ PASS + AUDIT
     const _c3=document.getElementById('statCounted').closest('.stat-card');
@@ -2622,14 +2641,14 @@ function renderPopupTable(){
 
 function renderTable(){if(document.getElementById('stockPopupOverlay').style.display!=='none')renderPopupTable();}
 function updateStockCount(){const el=document.getElementById('stockCount');if(el)el.textContent=getActiveSkus().length;}
-function getStatusPill(s){const m={pass:'<span class="pill pill-pass">✅ Pass</span>',audit:'<span class="pill pill-audit">⚠️ Audit</span>',audit_check:'<span class="pill pill-pass">✅ Audit Check</span>',stock_adjustment:'<span class="pill pill-audit">⚠️ Stock Adjustment</span>',pending:'<span class="pill pill-pending">⏳ รอนับ</span>',unknown:'<span class="pill pill-unknown">❓Unknown</span>'};return m[s]||`<span class="pill pill-pending">${s}</span>`;}
+function getStatusPill(s){const m={pass:'<span class="pill pill-pass">✅ Pass</span>',audit:`<span class="pill pill-audit">⚠️ ${_auditTerm()}</span>`,audit_check:'<span class="pill pill-pass">✅ Audit Check</span>',stock_adjustment:'<span class="pill pill-audit">⚠️ Stock Adjustment</span>',pending:'<span class="pill pill-pending">⏳ รอนับ</span>',unknown:'<span class="pill pill-unknown">❓Unknown</span>'};return m[s]||`<span class="pill pill-pending">${s}</span>`;}
 
 function exportExcel(){
-  const active=getActiveSkus(),header=['SKU','Barcode','ProductName','SystemQty','CountedQty','Status','Timestamp','Audit Status'],rows=[header];
+  const active=getActiveSkus(),header=['SKU','Barcode','ProductName','SystemQty','CountedQty','Status','Timestamp',_auditTerm()+' Status'],rows=[header];
   active.forEach(sku=>{const info=state.skuMap.get(sku),sd=state.scanData.get(sku);if(!info||!sd||!['audit','stock_adjustment'].includes(sd.status))return;rows.push([sku,info.barcodes.map(b=>b.barcode).join('; '),info.productName,info.systemQty,sd.countedQty,sd.status,sd.timestamp||'',sd.auditStatus||'pending']);});
   if(rows.length===1)return;
   const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=header.map((_,c)=>{let m=header[c].length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Audit');XLSX.writeFile(wb,`audit_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export Audit ${rows.length-1} รายการ สำเร็จ`,'success');
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,_auditTerm());XLSX.writeFile(wb,`audit_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export ${_auditTerm()} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
 function openGuideModal(){document.getElementById('guidePopover').style.display='block';}
@@ -2998,7 +3017,7 @@ function openAuditVerifyPopup(){
   if(btn){document.querySelectorAll('#auditVerifyPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
   // WH branch: change title to warehouse context
   const title=document.getElementById('auditVerifyTitle');
-  if(title)title.textContent=currentBranch==='WH'?'🔍 Audit Verify — รีเช็คสินค้า':'🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)';
+  if(title)title.textContent=currentBranch==='WH'?'🔍 Recheck — รีเช็คสินค้า':'🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)';
   // PDA: ซ่อน tab filter row (ประหยัดพื้นที่) + ซ่อนปุ่มสแกน (ใช้ scanner broadcast/keyboard wedge แทน)
   const isPda=window.innerWidth<=600;
   const tabRow=document.getElementById('avTabRow');
@@ -3028,7 +3047,7 @@ function handleAuditVerifyScan(){
   if(!sku&&state.skuMap.has(bc))sku=bc;
   if(!sku){toast(`ไม่พบ barcode: ${bc}`,'warn');document.getElementById('auditVerifyScanInput').focus();return;}
   const sd=state.scanData.get(sku);
-  if(!sd||sd.status!=='audit'){toast(`SKU ${sku} ไม่ได้อยู่ใน Audit`,'warn');document.getElementById('auditVerifyScanInput').focus();return;}
+  if(!sd||sd.status!=='audit'){toast(`SKU ${sku} ไม่ได้อยู่ใน ${_auditTerm()}`,'warn');document.getElementById('auditVerifyScanInput').focus();return;}
   const si=state.skuMap.get(sku);
   let mult=1;
   if(si){const bi=si.barcodes.find(b=>b.barcode===bc);if(bi)mult=bi.unitMultiplier||1;}
@@ -3155,12 +3174,12 @@ function renderAuditVerifyTable(){
       :'<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">Count Qty</th><th style="text-align:center;">Recheck</th><th>เวลาที่เช็คล่าสุด</th></tr>';
     const rows=[];
     for(const[sku,sd] of state.scanData.entries()){if(sd.status!=='audit')continue;const si=state.skuMap.get(sku);if(!si)continue;rows.push({sku,sd,si});}
-    if(rc)rc.textContent=rows.length+' รายการ Audit';
+    if(rc)rc.textContent=rows.length+' รายการ '+_auditTerm();
     const hasAny=_avMap.size>0;
     const confirmAllBtn=document.getElementById('avConfirmAllBtn');
     if(confirmAllBtn)confirmAllBtn.style.display=hasAny?'':'none';
     const colspan=isPda?3:7;
-    if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ Audit</td></tr>`;return;}
+    if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ ${_auditTerm()}</td></tr>`;return;}
     tbody.innerHTML=rows.map((r,i)=>{
       const{sku,sd,si}=r;
       const bc=si.barcodes.map(b=>b.barcode).join(', ');
@@ -3378,8 +3397,8 @@ function renderDashAssistantTable(){
       <th>ผู้สแกน</th>
       <th style="text-align:right;">SKU สแกน</th>
       <th style="text-align:right;">Pass</th>
-      <th style="text-align:right;">Audit</th>
-      <th style="text-align:right;">Audit %</th>
+      <th style="text-align:right;">${_auditTerm()}</th>
+      <th style="text-align:right;">${_auditTerm()} %</th>
     </tr></thead>
     <tbody>${rows.length?rows.join(''):'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);">ไม่มีข้อมูลผู้สแกน</td></tr>'}</tbody>
   </table>`;
@@ -3435,10 +3454,10 @@ function renderDashboard(branches){
           ${renderDoughnut(d)}
           <div style="flex:1;display:flex;flex-direction:column;gap:6px;font-size:0.78rem;">
             <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--green);"></span><span style="color:var(--text2);">Pass</span><span style="margin-left:auto;font-weight:700;color:var(--green);">${d.passCount}</span></div>
-            <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--yellow);"></span><span style="color:var(--text2);">Audit</span><span style="margin-left:auto;font-weight:700;color:var(--yellow);">${d.auditCount}</span></div>
+            <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--yellow);"></span><span style="color:var(--text2);">${_auditTerm()}</span><span style="margin-left:auto;font-weight:700;color:var(--yellow);">${d.auditCount}</span></div>
             <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--red);"></span><span style="color:var(--text2);">Stock Adj</span><span style="margin-left:auto;font-weight:700;color:var(--red);">${d.stockAdjCount}</span></div>
             <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--accent);"></span><span style="color:var(--text2);">Scanning</span><span style="margin-left:auto;font-weight:700;color:var(--accent);">${d.scanningCount}</span></div>
-            <div style="margin-top:4px;padding-top:6px;border-top:1px solid rgba(0,114,198,0.15);font-size:0.72rem;color:var(--text2);">Audit Rate: <strong style="color:${auditPct>=20?'var(--red)':auditPct>=10?'var(--yellow)':'var(--green)'};">${auditPct}%</strong></div>
+            <div style="margin-top:4px;padding-top:6px;border-top:1px solid rgba(0,114,198,0.15);font-size:0.72rem;color:var(--text2);">${_auditTerm()} Rate: <strong style="color:${auditPct>=20?'var(--red)':auditPct>=10?'var(--yellow)':'var(--green)'};">${auditPct}%</strong></div>
           </div>
         </div>
       </div>`;
@@ -3482,11 +3501,11 @@ function renderDashboard(branches){
     </tr>`;
   }).join('');
   sections.push(`<div style="margin-bottom:24px;">
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'🔁 รีเช็ค Audit — ความคืบหน้า':'🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า'}</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'🔁 รีเช็ค — ความคืบหน้า':'🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า'}</h3>
     <table class="ptable" style="width:100%;">
       <thead><tr>
         <th style="width:80px;">สาขา</th>
-        <th style="text-align:right;">Audit ทั้งหมด</th>
+        <th style="text-align:right;">${_auditTerm()} ทั้งหมด</th>
         <th style="text-align:right;">ตรวจแล้ว</th>
         <th style="text-align:right;">เหลือ</th>
         <th>Progress</th>
@@ -3531,7 +3550,7 @@ function renderDashboard(branches){
   }));
   allAssist.sort((a,b)=>b.pct-a.pct);
   sections.push(`<div>
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'⚠️ Audit % ต่อพนักงานคลัง':'⚠️ Audit % ต่อผู้สแกน'}</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'⚠️ Recheck % ต่อพนักงานคลัง':'⚠️ Audit % ต่อผู้สแกน'}</h3>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
       ${allAssist.length?allAssist.map(a=>{
         const w=Math.min(100,a.pct);
@@ -3568,7 +3587,7 @@ async function loadAuditLogFromFirestore(){
 }
 
 function _renderAssistantRows(tbody,cnt,items){
-  const auditBadge='<span style="color:var(--yellow);font-weight:700;">⚠️ Audit</span>';
+  const auditBadge=`<span style="color:var(--yellow);font-weight:700;">⚠️ ${_auditTerm()}</span>`;
   const isWh=currentBranch==='WH';
   tbody.innerHTML=items.map((it,i)=>{
     const loc=isWh?(state.locationMap.get(it.sku)||'—'):'';
@@ -3690,7 +3709,7 @@ function renderHistoryStatsTable(){
       const fsItems=(_hsFirestoreItems||[]).filter(it=>!_hsAssistantSel||it.scannedBy===_hsAssistantSel);
       if(note)note.textContent=fsItems.length?'ข้อมูลจาก Cloud':'';
       if(!fsItems.length){
-        const msg=_hsAssistantSel?`ไม่มีสินค้าที่ ${_hsAssistantSel} สแกนขึ้น Audit`:'ไม่พบข้อมูลใน Cloud วันนี้';
+        const msg=_hsAssistantSel?`ไม่มีสินค้าที่ ${_hsAssistantSel} สแกนขึ้น ${_auditTerm()}`:'ไม่พบข้อมูลใน Cloud วันนี้';
         tbody.innerHTML=`<tr><td colspan="${isWhA?9:8}" style="text-align:center;padding:32px;color:var(--text3)">${msg}</td></tr>`;
         if(cnt)cnt.textContent='0 รายการ';
       } else {
@@ -3708,7 +3727,7 @@ function renderHistoryStatsTable(){
       items.push({sku,sd,si});
     }
     if(!items.length){tbody.innerHTML=`<tr><td colspan="${isWhP?9:8}" style="text-align:center;padding:32px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr>`;if(cnt)cnt.textContent='0 รายการ';return;}
-    const stLabel={pass:'<span style="color:var(--green);font-weight:700;">Pass</span>',audit:'<span style="color:var(--yellow);font-weight:700;">Audit</span>',stock_adjustment:'<span style="color:var(--red);font-weight:700;">Stock Adj</span>'};
+    const stLabel={pass:'<span style="color:var(--green);font-weight:700;">Pass</span>',audit:`<span style="color:var(--yellow);font-weight:700;">${_auditTerm()}</span>`,stock_adjustment:'<span style="color:var(--red);font-weight:700;">Stock Adj</span>'};
     tbody.innerHTML=items.map(({sku,sd,si},i)=>{
       const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'—';
       const st=stLabel[sd.status]||`<span style="color:var(--text3);">${sd.status}</span>`;
