@@ -137,9 +137,9 @@ pending → scanning → pass
 |---|---|---|
 | Total SKU | ซ่อน (JS) | ซ่อน (JS) |
 | SKU BRANCH | ซ่อน (JS) | ซ่อน (CSS nth-child(2)) |
-| Counted → **Audit ทั้งหมด** | แสดง `auditTotal` | ซ่อน (JS — PDA ไม่ต้องการ) |
+| Counted → **Recheck ทั้งหมด** | แสดง `auditTotal` | ซ่อน (JS — PDA ไม่ต้องการ) |
 | Pass | แสดง | แสดง |
-| Audit | แสดง | แสดง (2×2 grid กับ Pass) |
+| Recheck (การ์ด "Audit") | แสดง | แสดง (2×2 grid กับ Pass) |
 | Not in System | แสดง | ซ่อน (CSS nth-child(6)) |
 | Progress | แสดง | ซ่อน (CSS nth-child(7)) |
 
@@ -530,7 +530,7 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 2. Per-assistant scan table (filterable by branch) — title/labels สลับด้วย `isWhDash` flag: WH → "👥 พนักงานคลัง — สรุปการสแกน", branch filter hidden (single branch)
 3. Audit progress table — WH → "🔁 รีเช็ค Audit — ความคืบหน้า"; pharmacy → "🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า"
 4. Daily activity bar chart (จาก `stock_audit_log`)
-5. Audit % per staff bar chart — WH → "⚠️ Audit % ต่อพนักงานคลัง"
+5. Audit/Recheck % per staff bar chart — WH → "⚠️ Recheck % ต่อพนักงานคลัง" (`isWhDash`); pharmacy → "⚠️ Audit % ต่อผู้สแกน"
 
 `isWhDash = currentBranch === 'WH'` คำนวณใน `renderDashboard()` เพื่อควบคุม label ทุก section แทนการใช้ constant โดยตรง
 
