@@ -574,7 +574,9 @@ Panel card แสดงให้ **ทุก role** เห็น แต่ปุ
 |---|---|---|---|
 | ⬇️ Export Excel (popup รายการสต็อก toolbar) | `exportExcel()` | audit + stock_adj เท่านั้น — SKU, Barcode, ProductName, SystemQty, CountedQty, Status, Timestamp, Audit Status | `audit_${date}.xlsx` |
 | ⬇️ Export Excel (History Stats → tab 🔴 Stock Adj) | `exportStockAdjExcel()` | stock_adj ปัจจุบัน — A=Location, B=SKU, C=Barcode, D=Product Name, E=หน่วย, F=จำนวนคงเหลือ, G=จำนวนปรับปรุง, H=Diff (`sysQty − recheckQty`; บวก=ขาด, ลบ=เกิน), I=พนักงานที่สแกน, J=เวลาที่นับ — layout เดียวกันทั้งสาขา/WH | `stockadj_${branch}_${date}.xlsx` |
-| ⬇️ Export Excel (History Stats → tab 👥 นับครั้งแรก / 🧑‍⚕️ รีเช็ค) | `exportHsCountExcel()` | tab ที่ active — `Location, SKU, Barcode, NAME, Unit, CountQty, SystemQty, Diff, <ชื่อพนักงาน>, เวลาที่สแกน` โดย Location ดึงจาก `state.locationMap` (ไม่ใช่ `sd.location`); ชื่อพนักงาน: นับครั้งแรก=`scannedBy` (header WH "ชื่อผู้สแกน" / สาขา "ชื่อผู้ช่วย"), รีเช็ค=`auditor` (header WH "ชื่อผู้รีเช็ค" / สาขา "ชื่อเภสัช"); เวลาที่สแกน=`sd.timestamp` | `count_` / `recheck_${branch}_${date}.xlsx` |
+| ⬇️ Export Excel (History Stats → tab 👥 นับครั้งแรก / 🧑‍⚕️ รีเช็ค) | `exportHsCountExcel()` | tab ที่ active — `Location, SKU, Barcode, NAME, Unit, CountQty, SystemQty, Diff, <ชื่อพนักงาน>, เวลาที่สแกน` โดย Location ดึงจาก `state.locationMap` (ไม่ใช่ `sd.location`); ชื่อพนักงาน: นับครั้งแรก=`scannedBy` (header WH "ชื่อผู้สแกน" / สาขา "ชื่อผู้ช่วย"), รีเช็ค: **WH=`recheckBy`** (พนักงานคลังที่สแกนรีเช็คจริง — header "ชื่อผู้รีเช็ค"; **ไม่ใช่ `auditor`** ซึ่งเป็นหัวหน้างานที่แค่กดยืนยัน) / สาขา=`auditor` (เภสัชที่สแกน audit verify + ยืนยันเอง คนเดียวกัน — header "ชื่อเภสัช"); เวลาที่สแกน=`sd.timestamp` | `count_` / `recheck_${branch}_${date}.xlsx` |
+
+> **คอลัมน์ "ชื่อผู้รีเช็ค" (WH) ใช้ `recheckBy` ไม่ใช่ `auditor`** — ทั้งใน Export (`exportHsCountExcel`) และตาราง on-screen tab 🧑‍⚕️ (`_hsFilter==='pharmacist'`). `confirmAllRecheckSupervisor` ตั้ง `auditor=หัวหน้างาน` แต่ไม่ลบ `recheckBy` (พนักงานคลัง) จึงดึงชื่อคนรีเช็คจริงได้. สาขายังใช้ `auditor` เพราะเภสัชเป็นทั้งคนสแกนและคนยืนยัน
 
 ### Scan List QTY Masking
 

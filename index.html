@@ -3778,7 +3778,7 @@ function renderHistoryStatsTable(){
         <td style="text-align:center;font-weight:700;">${sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty}</td>
         <td style="text-align:center;">${st}</td>
         <td style="font-size:0.7rem;color:var(--text3);">${sd.timestamp||'—'}</td>
-        <td style="font-weight:600;color:var(--text2);">${sd.auditor||'—'}</td>
+        <td style="font-weight:600;color:var(--text2);">${(isWhP?sd.recheckBy:sd.auditor)||'—'}</td>
       </tr>`;
     }).join('');
     if(cnt)cnt.textContent=`${items.length} รายการ`;
@@ -3907,7 +3907,11 @@ function exportHsCountExcel(){
     const sysQty=Number(si?.systemQty||0);
     const cnt=Number(countQty)||0;
     const diff=cnt-sysQty;
-    const staff=isAssistant?(sd?.scannedBy||fsItem?.scannedBy||''):(sd?.auditor||fsItem?.auditor||''); // นับครั้งแรก=ผู้สแกน, รีเช็ค=ผู้ยืนยัน
+    // นับครั้งแรก=ผู้สแกน | รีเช็ค: WH=พนักงานที่สแกนรีเช็คจริง (recheckBy) ไม่ใช่หัวหน้างานที่แค่กดยืนยัน (auditor)
+    //                            สาขา=เภสัช (auditor — เป็นคนสแกน audit verify + ยืนยันเอง คนเดียวกัน)
+    const staff=isAssistant
+      ?(sd?.scannedBy||fsItem?.scannedBy||'')
+      :(currentBranch==='WH'?(sd?.recheckBy||fsItem?.recheckBy||''):(sd?.auditor||fsItem?.auditor||''));
     const ts=sd?.timestamp||fsItem?.timestamp||''; // เวลาที่พนักงานสแกน/นับ
     rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff,ts]);
   });
