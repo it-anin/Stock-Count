@@ -569,7 +569,7 @@
 
         <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);">
           <button id="btnConfirm" class="btn btn-confirm" style="flex:1;" onclick="validateAndProcess()" disabled>✓ Confirm</button>
-          <button class="btn btn-clear" style="flex:1;" onclick="clearScanList()">✕ Clear</button>
+          <button class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
         </div>
         <div id="pharmacistAuditBar" style="display:none;padding:0 16px 14px;">
           <button id="pharmacistAuditBtn" onclick="confirmRecheckBtn()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"><span id="pharmacistAuditBtnLabel">✓ ยืนยัน Audit</span> (<span id="pharmacistAuditCount">0</span>)</button>
@@ -913,6 +913,20 @@
     <div style="display:flex;gap:10px;">
       <button onclick="document.getElementById('r16MismatchModal').style.display='none';" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;">✕ ยกเลิก — อัพ R16 ใหม่</button>
       <button onclick="document.getElementById('r16MismatchModal').style.display='none';processScan();evaluatePendingScans();" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--yellow),var(--orange));color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;font-family:inherit;">ยืนยันต่อไป →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ซ่อนรายการ (Hide Scan List) Confirm Modal -->
+<div id="clearConfirmModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:16px;padding:26px 30px;min-width:300px;max-width:410px;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid var(--accent);">
+    <div style="font-size:2.1rem;margin-bottom:8px;">👁️</div>
+    <div style="font-size:1.05rem;font-weight:700;color:var(--accent);margin-bottom:10px;">ซ่อนรายการในจอ?</div>
+    <div style="font-size:0.9rem;color:var(--text2);margin-bottom:8px;line-height:1.6;">รายการที่นับไว้ <strong style="color:var(--green);">ไม่หาย</strong> — ข้อมูลถูกบันทึกแล้ว เป็นการพักหน้าจอเท่านั้น</div>
+    <div style="font-size:0.78rem;color:var(--text3);margin-bottom:20px;line-height:1.5;">เรียกกลับได้ทุกเมื่อด้วยปุ่ม ☁️ Cloud ด้านบน</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="document.getElementById('clearConfirmModal').style.display='none';" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;">ยกเลิก</button>
+      <button onclick="clearScanList();" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;font-family:inherit;">✕ ซ่อนรายการ</button>
     </div>
   </div>
 </div>
@@ -2280,10 +2294,26 @@ function appendScanRow(sku,barcode,totalQty,unit,status,location='',catLabel='')
   scanListMap.delete(key);scanListMap.set(key,e);
 }
 
+// ปุ่ม "✕ ซ่อนรายการ" → ถาม confirm ก่อน (กันพนักงานเผลอกดแล้วเข้าใจว่าข้อมูลหาย)
+function askClearScanList(){
+  if(!scanListMap.size){toast('ไม่มีรายการให้ซ่อน','info');return;}
+  document.getElementById('clearConfirmModal').style.display='flex';
+}
+// worker — ซ่อนรายการจริง (ลบแค่มุมมอง scanListMap ไม่แตะ state.scanData) + toast พร้อมปุ่มเรียกคืน
 function clearScanList(){
+  const m=document.getElementById('clearConfirmModal');if(m)m.style.display='none';
   scanListMap.clear();
   _listCleared=true;
   updateStats();invalidatePopupRowsCache();renderScanList();
+  toastAction('ซ่อนรายการแล้ว — ข้อมูลการนับไม่หาย','↩ เรียกคืน','restoreScanList()','info',6000);
+}
+// เรียกรายการกลับมาจาก state.scanData (undo การซ่อน) — ไม่ดึง cloud, ใช้ข้อมูล local ที่มีอยู่
+function restoreScanList(){
+  _listCleared=false;
+  rebuildScanListMap(true);
+  invalidatePopupRowsCache();
+  renderScanList();updateStats();renderTable();
+  toast('เรียกรายการกลับมาแล้ว','success');
 }
 
 // ── Column resize ─────────────────────────────────────────────────────────────
@@ -2657,6 +2687,8 @@ function openScanGuide(){document.getElementById('scanGuidePopover').style.displ
 function closeScanGuide(){document.getElementById('scanGuidePopover').style.display='none';}
 
 function toast(msg,type='info',ms=2500){const c=document.getElementById('toastContainer'),t=document.createElement('div');t.className=`toast toast-${type}`;t.innerHTML=`<span>${msg}</span>`;c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
+// toast แบบมีปุ่ม action (เช่น "เรียกคืน") — กดปุ่มแล้วรัน action + ปิด toast
+function toastAction(msg,btnLabel,btnAction,type='info',ms=6000){const c=document.getElementById('toastContainer'),t=document.createElement('div');t.className=`toast toast-${type}`;t.innerHTML=`<span>${msg}</span><button onclick="${btnAction};this.closest('.toast').remove();" style="margin-left:12px;padding:6px 14px;border-radius:8px;border:none;background:rgba(255,255,255,0.28);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;font-family:inherit;">${btnLabel}</button>`;c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeStockPopup();closeAuditVerifyPopup();closeHistoryStatsPopup();}});
 

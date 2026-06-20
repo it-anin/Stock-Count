@@ -623,9 +623,16 @@ In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (cas
 
 ### Clear Scan List vs Clear Data
 
-The **✕ Clear** button calls `clearScanList()` which clears `scanListMap` + sets `_listCleared = true`. It does NOT reset `state.scanData`. To see data again, press **Cloud ☁️** (shows only `scanning`/`audit` items, excludes `pass`/`stock_adjustment`).
+The **✕ ซ่อนรายการ** button (เดิม "✕ Clear") calls `askClearScanList()` → ถาม confirm ผ่าน `#clearConfirmModal` ก่อน → กด "✕ ซ่อนรายการ" ใน modal → `clearScanList()` (worker) clears `scanListMap` + sets `_listCleared = true`. It does NOT reset `state.scanData`. To see data again, press **Cloud ☁️** (shows only `scanning`/`audit` items, excludes `pass`/`stock_adjustment`).
 
-> **WH PDA — ปุ่ม Clear ถูกซ่อน:** บน WH PDA (`window.innerWidth<=600 && currentBranch==='WH'`) `updateScanInputMode()` ซ่อน `#confirmClearRow` ทั้งแถว (Confirm ถูกซ่อนบน PDA อยู่แล้วผ่าน CSS เหลือแต่ Clear เต็มความกว้าง → พนักงานเผลอกดโดนง่าย). Clear ลบแค่มุมมอง list ไม่ลบ `state.scanData` (ข้อมูลไม่หาย) แต่ซ่อนเพื่อกันสับสน. **confirm ของ supervisor ไม่เคลียร์ RESULT บน PDA** — มีแต่ 🔄 เริ่มนับใหม่ (`startNewCount` → `_resetLocalScanDataToPending` → `scanListMap.clear()`) ที่เคลียร์ข้ามเครื่อง. Desktop WH + สาขายังมีปุ่ม Clear ครบ
+**3 ชั้นกันพนักงานเผลอกดแล้วเข้าใจว่าข้อมูลหาย** (พฤติกรรมปุ่มนี้บน Desktop ทุกสาขา + ผู้ช่วยสาขา PDA; WH PDA ซ่อนปุ่มทั้งแถว ดูด้านล่าง):
+1. **กันเผลอกด** — `askClearScanList()` เปิด `#clearConfirmModal` (ถ้า `scanListMap` ว่างอยู่แล้ว toast "ไม่มีรายการให้ซ่อน" ไม่เปิด modal)
+2. **แก้ความเข้าใจผิด** — label "ซ่อนรายการ" (ไม่ใช่ "Clear/ล้าง") + modal ระบุ "ข้อมูลการนับไม่หาย เป็นการพักหน้าจอ"
+3. **เรียกคืนง่าย** — หลังซ่อน `clearScanList()` ยิง `toastAction('ซ่อนรายการแล้ว…','↩ เรียกคืน','restoreScanList()',…,6000)` (toast แบบมีปุ่ม action, แสดง 6 วิ). `restoreScanList()` → `_listCleared=false` + `rebuildScanListMap(true)` (rebuild จาก `state.scanData` local ตาม role filter — ไม่ดึง cloud, ไม่ exclude สถานะ)
+
+`toastAction(msg,btnLabel,btnAction,type,ms)` — toast variant ที่ฝังปุ่ม `<button onclick="${btnAction};…remove()">` (อยู่ข้าง `toast()`)
+
+> **WH PDA — ปุ่ม ซ่อนรายการ ถูกซ่อนทั้งแถว:** บน WH PDA (`window.innerWidth<=600 && currentBranch==='WH'`) `updateScanInputMode()` ซ่อน `#confirmClearRow` ทั้งแถว (Confirm ถูกซ่อนบน PDA อยู่แล้วผ่าน CSS เหลือแต่ปุ่มซ่อนรายการเต็มความกว้าง → พนักงานเผลอกดโดนง่าย → warehouse ไม่จำเป็นต้องใช้เพราะ list cap 20 แถว + เคลียร์เองตอนเริ่มนับใหม่). **confirm ของ supervisor ไม่เคลียร์ RESULT บน PDA** — มีแต่ 🔄 เริ่มนับใหม่ (`startNewCount` → `_resetLocalScanDataToPending` → `scanListMap.clear()`) ที่เคลียร์ข้ามเครื่อง. Desktop WH + สาขายังมีปุ่มครบ (มี modal + เรียกคืน)
 
 **`_listCleared` flag behavior:**
 - `clearScanList()` → sets `_listCleared = true` → `onSnapshot` skips `rebuildScanListMap`/`renderScanList` (prevents list from reappearing)
