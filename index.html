@@ -572,6 +572,7 @@
           <button class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
         </div>
         <div id="pharmacistAuditBar" style="display:none;padding:0 16px 14px;">
+          <div id="supervisorStaffBtns" style="display:none;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
           <button id="pharmacistAuditBtn" onclick="confirmRecheckBtn()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"><span id="pharmacistAuditBtnLabel">✓ ยืนยัน Audit</span> (<span id="pharmacistAuditCount">0</span>)</button>
         </div>
       </div>
@@ -3133,6 +3134,54 @@ function confirmAllRecheckSupervisor(){
   rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
 }
 
+// ยืนยันรีเช็ค "ทีละพนักงาน" (group key = recheckBy) — มายด์กดยืนยันของคนที่สแกนเสร็จได้เลย ไม่ต้องรอครบทุกคน
+// logic เดียวกับ confirmAllRecheckSupervisor ทุกประการ ต่างแค่ filter เพิ่ม recheckBy === staffName
+function confirmRecheckByStaff(staffName){
+  const items=[];
+  for(const[sku,sd]of state.scanData.entries()){
+    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor&&(sd.recheckBy||'(ไม่ระบุ)')===staffName)items.push(sku);
+  }
+  if(!items.length){toast(`ไม่มีรายการรีเช็คของ ${staffName} (อาจยืนยันไปแล้ว)`,'warn');return;}
+  let nPass=0,nAdj=0;
+  const _d=new Date();
+  const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
+  for(const sku of items){
+    const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);if(!sd||!si)continue;
+    const rq=sd.recheckQty||0;
+    if(rq===si.systemQty){sd.status='pass';sd.auditStatus='approved';nPass++;}
+    else{sd.status='stock_adjustment';sd.auditStatus='stock_adjustment';nAdj++;}
+    sd.auditor=currentUser;sd.timestamp=ts;
+    if(scanListMap.has(sku))scanListMap.get(sku).status=sd.status;
+  }
+  const parts=[`ยืนยันของ ${staffName}`];
+  if(nPass>0)parts.push(`✅ ผ่าน ${nPass}`);
+  if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj}`);
+  toast(parts.join(', '),nAdj>0?'warn':'success');
+  invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();
+  rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
+}
+
+// render ปุ่มยืนยันรีเช็คต่อพนักงาน (เฉพาะ supervisor) — group audit ที่รอยืนยันตาม recheckBy แล้วสร้างปุ่มต่อคน
+// เรียกใน updatePharmacistAuditConfirmBtn → refresh สดตอน PDA sync (snapshot → updateStats)
+function renderSupervisorRecheckButtons(){
+  const box=document.getElementById('supervisorStaffBtns');
+  if(!box)return;
+  if(currentRole!=='supervisor'){box.style.display='none';box.innerHTML='';return;}
+  const grp=new Map();
+  for(const[,sd]of state.scanData.entries()){
+    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor){
+      const who=sd.recheckBy||'(ไม่ระบุ)';
+      grp.set(who,(grp.get(who)||0)+1);
+    }
+  }
+  if(!grp.size){box.style.display='none';box.innerHTML='';return;}
+  box.style.display='flex';
+  box.innerHTML=[...grp.entries()].map(([who,cnt])=>{
+    const esc=String(who).replace(/'/g,"\\'");
+    return`<button onclick="confirmRecheckByStaff('${esc}')" style="width:100%;padding:11px;border-radius:10px;border:none;background:var(--green);color:#fff;font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.2px;">✓ ยืนยันรีเช็ค: ${who} (${cnt})</button>`;
+  }).join('');
+}
+
 function confirmAllAuditVerify(){
   if(!_avMap.size){toast('ยังไม่มีรายการที่สแกน','warn');return;}
   // WH: ปิด toast per-item แล้วยิง summary เดียว
@@ -3289,6 +3338,7 @@ function updatePharmacistAuditConfirmBtn(){
   }else{
     el.textContent=_avMap.size;
   }
+  renderSupervisorRecheckButtons();
 }
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
@@ -3299,7 +3349,7 @@ function updateScanInputMode(){
   const bar=document.getElementById('pharmacistAuditBar');
   if(bar)bar.style.display=(isPharm||isSvDesktop)?'block':'none';
   const lbl=document.getElementById('pharmacistAuditBtnLabel');
-  if(lbl)lbl.textContent=isSvDesktop?'✓ ยืนยันรีเช็ค':'✓ ยืนยัน Audit';
+  if(lbl)lbl.textContent=isSvDesktop?'✓ ยืนยันรีเช็คทั้งหมด':'✓ ยืนยัน Audit';
   // WH PDA: ซ่อนทั้งแถว Confirm/Clear — Confirm ถูกซ่อนบน PDA อยู่แล้ว เหลือแต่ Clear ที่พนักงานเผลอกดโดนง่าย
   // (Clear ลบแค่มุมมอง RESULT ไม่ลบ scanData แต่กันความสับสน) — Desktop WH ยังมีปุ่มครบ
   const _whPda=window.innerWidth<=600&&currentBranch==='WH';
