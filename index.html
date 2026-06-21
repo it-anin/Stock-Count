@@ -337,6 +337,13 @@
       .scan-list-header>span:nth-child(2),
       .scan-row>div:nth-child(2){display:none;}
 
+      /* WH PDA เท่านั้น (scope ด้วย body.branch-wh): ลด font ตาราง RESULT → ชื่อสินค้าแสดงได้เต็มขึ้น */
+      .branch-wh .scan-row-pn{font-size:0.56rem!important;}
+      .branch-wh .scan-row-sku{font-size:0.54rem!important;}
+      .branch-wh .scan-row-qty{font-size:0.56rem!important;}
+      .branch-wh .scan-list-header{font-size:0.54rem!important;}
+      .branch-wh .pill{font-size:0.54rem!important;padding:2px 4px!important;}
+
       /* Toast PDA — lightweight fade+slide (no spring bounce, no heavy shadow) */
       @keyframes toastFadePda{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
       .toast{animation:toastFadePda 0.2s ease-out!important;box-shadow:0 2px 8px rgba(0,0,0,0.15)!important;border-radius:10px!important;padding:12px 20px!important;font-size:0.85rem!important;}
@@ -2577,6 +2584,8 @@ function _removeSkuFromFirestore(sku){
 function _auditTerm(){return currentBranch==='WH'?'Recheck':'Audit';}
 // อัปเดต label static (Audit→Recheck) ตาม branch — เรียกหลัง login (initAfterLogin)
 function applyAuditTerminology(){
+  // toggle class branch-wh บน body → ใช้ scope CSS เฉพาะ WH (เช่น ลด font ตาราง RESULT บน WH PDA)
+  if(document.body)document.body.classList.toggle('branch-wh',currentBranch==='WH');
   const w=_auditTerm();
   const verify=currentBranch==='WH'?'Recheck':'Audit Verify';
   const set=(id,txt)=>{const el=document.getElementById(id);if(el)el.textContent=txt;};
