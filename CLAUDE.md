@@ -478,7 +478,8 @@ State variables: `_lastKeystrokeTime` and `_pdaMode` are reset in `resetScanRunt
 - Scan list renders last **30** entries (`SCAN_LIST_MAX`).
 - Popup table renders at most **500** rows (`POPUP_MAX_RENDER_ROWS`).
 - `popupBaseRowsCache` caches the full popup row list; invalidated by `invalidatePopupRowsCache()` on any state change. Call this whenever `state.scanData` or `state.unknownScans` changes.
-- `patchScanRow(key)` does targeted in-place DOM update for a single row without full re-render; used during batch scans.
+- `patchScanRow(key)` does targeted in-place DOM update for a single row's QTY cell without full re-render; used during batch scans. คืน `true` ถ้า patch สำเร็จ, `false` ถ้าทำไม่ได้ (ไม่เจอ row/cell) เพื่อให้ caller fallback ไป full render. และย้ายแถวที่สแกนซ้ำขึ้นบนสุด (ตรงกับ reverse order ของ `renderScanList`) โดยไม่ rebuild ทั้งก้อน
+- **`drainQueue` render decision (สำคัญ — กัน scan list กระพริบ):** หลัง drain → `if(scanListMap.size>prevSize) renderScanList()` (เจอ SKU ใหม่ = full render); `else if(_pendingPatches.size){ patch ทุก key, ถ้า patchScanRow คืน false ค่อย renderScanList() }`. ⚠️ **ห้ามใช้เงื่อนไข `size>prevSize || _pendingPatches.size>0`** → จะ full render **ทุกสแกน** (เพราะ `_pendingPatches` ถูก `.add()` ทุกสแกน) → ทั้งแถวรวมชื่อสินค้ากระพริบ + ช้า โดยเฉพาะ WH ที่ทุกแถวเป็น inline input. บั๊กนี้เคยกลับมาจากการ revert commit perf (มิ.ย. 2026) แล้วแก้คืนด้วย patch-first logic
 
 ### DEL Items
 
