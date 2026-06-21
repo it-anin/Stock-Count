@@ -567,6 +567,7 @@
           </div>
         </div>
 
+        <div id="supervisorCountBtns" style="display:none;flex-direction:column;gap:6px;padding:8px 16px 0;"></div>
         <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);">
           <button id="btnConfirm" class="btn btn-confirm" style="flex:1;" onclick="validateAndProcess()" disabled>✓ Confirm</button>
           <button class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
@@ -1922,6 +1923,37 @@ function validateAndProcess(){
   processScan();evaluatePendingScans();
 }
 
+// Confirm นับครั้งแรก "ทีละพนักงาน" (group key = scannedBy) — มายด์ confirm ของคนที่นับโซนเสร็จได้เลย ไม่ต้องรอครบทุกคน
+// เงื่อนไขเดียวกับ validateAndProcess (ต้องอัพ R16 + ไม่ติด date mismatch) แค่ evaluate เฉพาะ scanning ของคนนั้น
+function confirmCountByStaff(staffName){
+  if(!state.r16Loaded){toast('กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน','warn');return;}
+  if(state.r16DateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
+  let n=0;for(const[,sd]of state.scanData.entries()){if(sd.status==='scanning'&&(sd.scannedBy||'(ไม่ระบุ)')===staffName)n++;}
+  if(!n){toast(`ไม่มีรายการที่ ${staffName} นับค้างอยู่`,'warn');return;}
+  evaluatePendingScans(staffName);
+  toast(`Confirm ของ ${staffName} ${n} รายการ`,'success');
+}
+// render ปุ่ม Confirm นับครั้งแรกต่อพนักงาน (เฉพาะ supervisor Desktop) — group scanning ตาม scannedBy
+// เรียกใน updatePharmacistAuditConfirmBtn → refresh สดตอน PDA สแกน (snapshot → updateStats)
+function renderSupervisorCountButtons(){
+  const box=document.getElementById('supervisorCountBtns');
+  if(!box)return;
+  if(currentRole!=='supervisor'||window.innerWidth<=600){box.style.display='none';box.innerHTML='';return;}
+  const grp=new Map();
+  for(const[,sd]of state.scanData.entries()){
+    if(sd.status==='scanning'){
+      const who=sd.scannedBy||'(ไม่ระบุ)';
+      grp.set(who,(grp.get(who)||0)+1);
+    }
+  }
+  if(!grp.size){box.style.display='none';box.innerHTML='';return;}
+  box.style.display='flex';
+  box.innerHTML=[...grp.entries()].map(([who,cnt])=>{
+    const esc=String(who).replace(/'/g,"\\'");
+    return`<button onclick="confirmCountByStaff('${esc}')" style="width:100%;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.2px;">✔ Confirm: ${who} (${cnt})</button>`;
+  }).join('');
+}
+
 let _scanGapHold=null;
 
 function showScanGapModal(sku,oldQty,addQty){
@@ -2180,10 +2212,11 @@ function getR16103QtyBefore(sku,scanTimestamp){
   },0);
 }
 
-function evaluatePendingScans(){
+function evaluatePendingScans(staffFilter=null){
   let any = false;
   for(const[sku, sd] of state.scanData.entries()){
     if(sd.status !== 'scanning') continue;
+    if(staffFilter && (sd.scannedBy||'(ไม่ระบุ)') !== staffFilter) continue; // Confirm ทีละพนักงาน: เฉพาะ scanning ของคนนั้น (group ตาม scannedBy)
     any = true;
     const si = state.skuMap.get(sku);
     if(!si) continue;
@@ -3342,6 +3375,7 @@ function updatePharmacistAuditConfirmBtn(){
     el.textContent=_avMap.size;
   }
   renderSupervisorRecheckButtons();
+  renderSupervisorCountButtons();
 }
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
