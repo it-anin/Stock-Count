@@ -1585,6 +1585,9 @@ async function startNewCount(){
   // และไม่ broadcast pending ทั้ง catalog กลับขึ้น cloud (ต้นเหตุที่ทำให้ confirmed เด้งกลับ)
   clearTimeout(_firestoreSyncTimer);
   await syncToFirestore(true);
+  // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
+  // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
+  if(_db&&currentBranch&&!_adminMode){try{await _db.collection('stock_sessions').doc(getSessionId()+'_r01').delete();}catch(e){console.warn('[startNewCount] clear _r01:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
