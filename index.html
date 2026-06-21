@@ -779,7 +779,7 @@
       </select>
       <select id="locationStaffFilter" onchange="renderLocationTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-size:0.82rem;font-family:inherit;cursor:pointer;">
         <option value="">ทุกคน</option>
-        <option value="มุก">มุก</option><option value="ตั๋ง">ตั๋ง</option><option value="แล็ค">แล็ค</option>
+        <option value="มุก">มุก</option><option value="ตั๋ง">ตั๋ง</option><option value="แล็ค">แล็ค</option><option value="พี">พี</option>
       </select>
       <button onclick="openZoneStaffPopup()" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(14,116,144,0.4);background:rgba(14,116,144,0.08);color:#0e7490;font-family:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;white-space:nowrap;">⚙ กำหนดโซน</button>
       <input type="file" id="fileLocationCsv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importLocationCSV(event)">
@@ -978,7 +978,7 @@ const EMPLOYEE_PROFILES={
   SRC:{pharmacist:['เภอ๊อฟ'],assistant:['ก้า','กิฟ','สุ่ย','นิกกี้']},
   KKL:{pharmacist:['เภออด'],assistant:['แตงโม','ทราย']},
   SSS:{pharmacist:['เภเบส'],assistant:['ออย','ฟ้าใส']},
-  WH:{supervisor:['มายด์'],warehouse:['มุก','ตั๋ง','แล็ค']}
+  WH:{supervisor:['มายด์'],warehouse:['มุก','ตั๋ง','แล็ค','พี']}
 };
 // R16 document type prefixes (Col C). Add new OXXX codes to the appropriate array.
 const R16_SALES_PREFIXES=['ORCM','OCTM'];          // ยอดขาย → บวกกลับเข้า countedQty
@@ -4144,7 +4144,7 @@ function updateLocationEntry(sku,loc){
 }
 
 const _LOCATION_ZONES=['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
-const _LOCATION_STAFF=['มุก','ตั๋ง','แล็ค'];
+const _LOCATION_STAFF=['มุก','ตั๋ง','แล็ค','พี'];
 
 function renderZoneStaffPanel(){
   const panel=document.getElementById('locationZonePanel');
