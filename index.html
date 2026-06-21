@@ -343,8 +343,8 @@
       .branch-wh .scan-row-qty{font-size:0.50rem!important;padding-left:2px!important;padding-right:2px!important;}
       .branch-wh .scan-list-header{font-size:0.50rem!important;}
       .branch-wh .pill{font-size:0.50rem!important;padding:2px 4px!important;}
-      /* WH PDA: ลดคอลัมน์ QTY 52→40px (เพิ่มพื้นที่ชื่อสินค้า) + ช่องกรอก 52→36px (ลด padding cell ให้พอดี) */
-      .branch-wh .scan-list-header,.branch-wh .scan-row{grid-template-columns:85px 1fr 40px 60px!important;}
+      /* WH PDA: QTY 52→40px + ช่องกรอก 52→36px + SKU 85→70px + Status 60→78px (ให้ "⚠️ Recheck" แสดงเต็ม ไม่ถูก clip) */
+      .branch-wh .scan-list-header,.branch-wh .scan-row{grid-template-columns:70px 1fr 40px 78px!important;}
       .branch-wh .inline-qty-input{width:36px!important;}
 
       /* Toast PDA — lightweight fade+slide (no spring bounce, no heavy shadow) */
