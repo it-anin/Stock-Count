@@ -2048,7 +2048,13 @@ function drainQueue(){
     const i=scanQueue.shift();
     handleBarcode(typeof i==='string'?parseScanLine(i):i,false);
   }
-  if(scanListMap.size>prevSize||_pendingPatches.size>0){renderScanList();}else{_pendingPatches.forEach(patchScanRow);}
+  if(scanListMap.size>prevSize){
+    renderScanList();
+  }else if(_pendingPatches.size){
+    let needsRender=false;
+    _pendingPatches.forEach(key=>{if(!patchScanRow(key))needsRender=true;});
+    if(needsRender)renderScanList();
+  }
   scheduleStats();scheduleRender();scanProcessing=false;
 }
 
@@ -2411,7 +2417,7 @@ function renderScanList(){
   let tpl;
   if(showSysQty){tpl=`82px 90px minmax(0,1fr) 60px 58px 65px 95px`;}
   else{tpl=_colWidths.map(w=>w+'px').join(' ');}
-  const limitBanner=total>SCAN_LIST_MAX?`<div style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
+  const limitBanner=total>SCAN_LIST_MAX?`<div class="scan-list-limit" style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
   body.innerHTML=limitBanner+visible.map(entry=>{
     const{cls,label}=getScanRowStyle(entry.status);
     const bcText=entry.barcodes.map(b=>b.barcode).join(', ');
@@ -2433,12 +2439,22 @@ function renderScanList(){
 }
 
 function patchScanRow(key){
-  const entry=scanListMap.get(key);if(!entry)return;
-  const row=document.querySelector(`[data-sku="${CSS.escape(key)}"]`);if(!row)return;
-  const qtyCell=row.querySelector('.scan-row-qty');if(!qtyCell)return;
+  // return true = patch ช่อง QTY สำเร็จ (ไม่ต้อง full render), false = patch ไม่ได้ → drainQueue จะ renderScanList แทน
+  const entry=scanListMap.get(key);if(!entry)return false;
+  const row=document.querySelector(`[data-sku="${CSS.escape(key)}"]`);if(!row)return false;
+  const qtyCell=row.querySelector('.scan-row-qty');if(!qtyCell)return false;
   const si=state.skuMap.get(key);
   const sysQty=(si?.systemQty||0);
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
+  // ย้ายแถวที่สแกนซ้ำขึ้นบนสุด (ตรงกับลำดับ reverse ของ renderScanList) โดยไม่ rebuild ทั้งก้อน → ไม่กระพริบ
+  const body=document.getElementById('scanListBody');
+  if(body){
+    const firstRow=body.querySelector('.scan-row');
+    if(firstRow&&firstRow!==row){
+      const banner=body.querySelector('.scan-list-limit');
+      body.insertBefore(row,banner?banner.nextSibling:body.firstChild);
+    }
+  }
   if(entry.status==='scanning'){
     if(whStaffEdit||sysQty>100){
       const input=qtyCell.querySelector('.inline-qty-input');
@@ -2446,7 +2462,8 @@ function patchScanRow(key){
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`;}
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
-    if(entry.status==='audit'&&whStaffEdit){
+    if(entry.status==='unknown')qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
+    else if(entry.status==='audit'&&whStaffEdit){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`;}
@@ -2455,6 +2472,7 @@ function patchScanRow(key){
     else if(entry.totalQty>100)qtyCell.textContent=entry.totalQty;
     else qtyCell.innerHTML='';
   }
+  return true;
 }
 
 function updateInlineQty(sku,v){
