@@ -834,6 +834,7 @@
       <button id="hsBtnPharmacist" class="popup-filter" onclick="setHsFilter('pharmacist',this)"><span>🧑‍⚕️</span><span>เภสัชตรวจ</span></button>
       <button id="hsBtnStockAdj" class="popup-filter" onclick="setHsFilter('stockadj',this)"><span>🔴</span><span>Stock Adj ทั้งหมด</span></button>
       <button id="hsBtnUpload" class="popup-filter" onclick="setHsFilter('upload',this)"><span>📂</span><span>อัพโหลดใบนับสินค้า</span></button>
+      <button id="hsBtnReport" class="popup-filter" style="display:none;" onclick="setHsFilter('countreport',this)"><span>📋</span><span>รายงานผลลัพธ์การนับ</span></button>
     </div>
     <div id="hsAssistantToolbar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:10px;flex-wrap:wrap;">
       <label style="font-size:0.82rem;color:var(--text2);font-weight:600;white-space:nowrap;">กรองผู้ช่วย:</label>
@@ -859,6 +860,7 @@
       <div style="display:flex;gap:8px;align-items:center;">
         <button id="btnExportHsCount" onclick="exportHsCountExcel()" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Excel</button>
         <button id="btnExportStockAdj" onclick="exportStockAdjExcel()" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Excel</button>
+        <button id="btnExportCountReport" onclick="exportCountReportExcel()" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Excel</button>
         <button onclick="closeHistoryStatsPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
     </div>
@@ -2153,6 +2155,7 @@ function handleBarcode(parsed,immediateRender=true){
   }
   sd.countedQty+=qty!==null?qty*mult:mult;
   sd.scannedBy=scannedBy;sd.auditor=auditor;sd.timestamp=now;sd.barcode=resolvedBarcode;
+  if(!sd.firstScanAt)sd.firstScanAt=now; // เวลาสแกนครั้งแรกจริง (ไม่ถูกเขียนทับตอน confirm) — ใช้ใน รายงานผลลัพธ์การนับ ColA
   if(location)sd.location=location;
   sd.scans.push({barcode:resolvedBarcode,qty:qty!==null?qty*mult:mult,unitName,timestamp:now,location,fromSku:resolvedFromSku});
   if(!['pass','audit'].includes(sd.status))sd.status='scanning';
@@ -3784,6 +3787,8 @@ function setHsFilter(f,btn){
   if(exportBtn)exportBtn.style.display=f==='stockadj'?'':'none';
   const exportCountBtn=document.getElementById('btnExportHsCount');
   if(exportCountBtn)exportCountBtn.style.display=(f==='assistant'||f==='pharmacist')?'':'none';
+  const exportReportBtn=document.getElementById('btnExportCountReport');
+  if(exportReportBtn)exportReportBtn.style.display=f==='countreport'?'':'none';
   renderHistoryStatsTable();
 }
 function onHsAssistantChange(){
@@ -3810,11 +3815,16 @@ function openHistoryStatsPopup(){
   const pLbl=document.querySelector('#hsBtnPharmacist span:last-child');
   if(aLbl)aLbl.textContent=isWh?'นับครั้งแรก':'ผู้ช่วยนับครั้งแรก';
   if(pLbl)pLbl.textContent=isWh?'รีเช็คสินค้า':'เภสัชตรวจ';
+  // แท็บ "รายงานผลลัพธ์การนับ" — เฉพาะ WH supervisor
+  const reportBtn=document.getElementById('hsBtnReport');
+  if(reportBtn)reportBtn.style.display=(currentBranch==='WH'&&currentRole==='supervisor')?'':'none';
   // Export button visibility — default tab is 'assistant'
   const exportCountBtn=document.getElementById('btnExportHsCount');
   if(exportCountBtn)exportCountBtn.style.display='';
   const exportAdjBtn=document.getElementById('btnExportStockAdj');
   if(exportAdjBtn)exportAdjBtn.style.display='none';
+  const exportRepBtn=document.getElementById('btnExportCountReport');
+  if(exportRepBtn)exportRepBtn.style.display='none';
   _openModal('historyStatsPopupOverlay','historyStatsPopupCard');
   renderHistoryStatsTable();
 }
@@ -3966,6 +3976,73 @@ function renderHistoryStatsTable(){
     tbody.innerHTML=rows.join('');
     if(cnt)cnt.textContent=`${_hsUploadData.length} รายการ · ตรง ${matched} / ไม่ตรง ${_hsUploadData.length-matched}`;
   }
+  else if(_hsFilter==='countreport'){
+    const rows=_buildCountReportRows();
+    if(thead)thead.innerHTML=`<tr><th>วันที่สแกน</th><th>Location</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">SystemQty</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Count</th><th style="text-align:center;">DIFF</th><th style="text-align:center;">Recheck</th><th style="text-align:center;">DIFF<br>(Recheck)</th><th>Check By</th></tr>`;
+    if(cnt)cnt.textContent=rows.length+' รายการ';
+    if(!rows.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีรายการที่ Confirm</td></tr>';return;}
+    const dCell=d=>d===null?'<td style="text-align:center;color:var(--text3);">—</td>':`<td style="text-align:center;font-weight:700;color:${d===0?'var(--green)':'var(--red)'};">${d>0?'+'+d:d}</td>`;
+    tbody.innerHTML=rows.map(r=>`<tr>
+      <td style="font-size:0.7rem;color:var(--text3);white-space:nowrap;">${r.scanAt||'—'}</td>
+      <td style="text-align:center;font-size:0.74rem;">${r.location||'—'}</td>
+      <td style="font-family:'Inter',sans-serif;font-size:0.72rem;">${r.sku}</td>
+      <td style="font-family:'Inter',sans-serif;font-size:0.68rem;color:var(--text3);">${r.barcode}</td>
+      <td class="ptd-name">${r.name}</td>
+      <td style="text-align:center;font-weight:600;color:var(--text2);">${r.systemQty}</td>
+      <td style="text-align:center;font-size:0.74rem;color:var(--text2);">${r.unit||'—'}</td>
+      <td style="text-align:center;font-weight:700;">${r.count}</td>
+      ${dCell(r.diffCount)}
+      <td style="text-align:center;font-weight:700;">${r.recheck===null?'—':r.recheck}</td>
+      ${dCell(r.diffRecheck)}
+      <td style="font-size:0.74rem;">${r.checkBy||'—'}</td>
+    </tr>`).join('');
+  }
+}
+
+// รายงานผลลัพธ์การนับ (WH supervisor) — รวมข้อมูล confirmed items 12 คอลัมน์ ใช้ร่วมกันระหว่าง render + export
+function _buildCountReportRows(){
+  const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
+  const rows=[];
+  for(const[sku,sd] of state.scanData.entries()){
+    if(!CONFIRMED.has(sd.status))continue; // เฉพาะที่ Confirm แล้ว
+    const si=state.skuMap.get(sku);if(!si)continue;
+    const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
+    const sysQty=Number(si.systemQty||0);
+    const cnt=Number(sd.countedQty||0);
+    const hasRecheck=sd.recheckQty!==undefined;
+    const rq=hasRecheck?Number(sd.recheckQty||0):null;
+    rows.push({
+      scanAt: sd.firstScanAt||sd.timestamp||'', // ColA: เวลาสแกนจริง (firstScanAt) — fallback timestamp สำหรับ data เก่า
+      location: state.locationMap.get(sku)||sd.location||'',
+      sku,
+      barcode: (si.barcodes[0]&&si.barcodes[0].barcode)||sd.barcode||'',
+      name: si.productName||'',
+      systemQty: sysQty,
+      unit: unitInfo?unitInfo.unitName:'',
+      count: cnt,
+      diffCount: cnt-sysQty,                         // ColI: Count - SystemQty (บวก=เกิน, ลบ=ขาด)
+      recheck: hasRecheck?rq:null,
+      diffRecheck: hasRecheck?(rq-sysQty):null,       // ColK: Recheck - SystemQty
+      checkBy: sd.scannedBy||''                       // ColL: คนนับครั้งแรก
+    });
+  }
+  rows.sort((a,b)=>String(a.scanAt||'').localeCompare(String(b.scanAt||'')));
+  return rows;
+}
+
+function exportCountReportExcel(){
+  const rows=_buildCountReportRows();
+  if(!rows.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
+  const header=['วันที่สแกน','Location','SKU','Barcode','Name','SystemQty','หน่วย','Count','DIFF','Recheck','DIFF(Recheck)','Check By'];
+  const aoa=[header];
+  rows.forEach(r=>aoa.push([r.scanAt,r.location,r.sku,r.barcode,r.name,r.systemQty,r.unit,r.count,r.diffCount,r.recheck===null?'':r.recheck,r.diffRecheck===null?'':r.diffRecheck,r.checkBy]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(rr=>{const v=rr[c]==null?'':String(rr[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'รายงานผลการนับ');
+  const dateStr=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,`count_report_${currentBranch||'all'}_${dateStr}.xlsx`);
+  toast(`Export รายงานผลลัพธ์การนับ ${rows.length} รายการ สำเร็จ`,'success');
 }
 
 function handleHsUploadFile(e){

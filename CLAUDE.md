@@ -500,7 +500,7 @@ Scan list columns (5 total): **SKU** / **Barcode** / **Product Name** / **Qty** 
 
 ### History Stats Panel (📊 ประวัติการนับ)
 
-Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`. ปุ่มมี badge นับ (`#historyStatsCount`) แสดงจำนวน `stock_adjustment` ปัจจุบัน (`updateHistoryStatsCount`) — **ยกเว้น Desktop เภสัช** (`currentRole==='pharmacist' && window.innerWidth>600`) ที่**ซ่อน badge** (`display:none`); role/อุปกรณ์อื่นโชว์ตามปกติ. Has 4 tabs:
+Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`. ปุ่มมี badge นับ (`#historyStatsCount`) แสดงจำนวน `stock_adjustment` ปัจจุบัน (`updateHistoryStatsCount`) — **ยกเว้น Desktop เภสัช** (`currentRole==='pharmacist' && window.innerWidth>600`) ที่**ซ่อน badge** (`display:none`); role/อุปกรณ์อื่นโชว์ตามปกติ. Has 5 tabs (แท็บที่ 5 **เฉพาะ WH supervisor**):
 
 | Tab | เนื้อหา |
 |---|---|
@@ -508,6 +508,7 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 | 🧑‍⚕️ เภสัชตรวจ | SKU ที่มี `sd.auditor` (เภสัชตรวจแล้ว) |
 | 🔴 Stock Adj ทั้งหมด | SKU ที่ `status === 'stock_adjustment'` พร้อมปุ่ม Export Excel |
 | 📂 อัพโหลดใบนับสินค้า | upload CSV/Excel เพื่อเปรียบเทียบ |
+| 📋 รายงานผลลัพธ์การนับ | **WH supervisor เท่านั้น** (`hsBtnReport` toggle ใน `openHistoryStatsPopup`) — ตาราง 12 คอลัมน์ของ item ที่ Confirm แล้ว + Export Excel (ดูด้านล่าง) |
 
 **Location column (WH branch):** ทุก tab ที่แสดงตาราง (👥 ผู้ช่วย, 🧑‍⚕️ ผู้รีเช็ค, 🔴 Stock Adj) จะเพิ่มคอลัมน์ **Location** หลัง Product Name เมื่อ `currentBranch === 'WH'` — ดึงจาก `state.locationMap.get(sku)` สาขาอื่นไม่มีคอลัมน์นี้
 
@@ -518,6 +519,23 @@ Panel card visible to **all roles** after login. Opens `openHistoryStatsPopup()`
 **Export Excel layout (`exportStockAdjExcel`) — ใช้ร่วมกันทั้งสาขาและ WH (10 คอลัมน์, ตัด # ออก):** A=Location / B=SKU / C=Barcode / D=Product Name / E=หน่วย / F=จำนวนคงเหลือ / G=จำนวนปรับปรุง / H=Diff / I=พนักงานที่สแกน (`sd.scannedBy`) / J=เวลาที่นับ (`sd.timestamp`). สาขาที่ไม่มี Location (non-WH) คอลัมน์ A เว้นว่าง
 
 `_hsFirestoreItems`: `null`=ยังไม่โหลด, `[]`=โหลดแล้วไม่มีข้อมูล, `[...]`=มีข้อมูล
+
+**รายงานผลลัพธ์การนับ (`_hsFilter==='countreport'`, WH supervisor):** ตาราง 12 คอลัมน์ของ item ที่ Confirm แล้ว (`pass`/`audit`/`audit_check`/`stock_adjustment`) — สร้างจาก `_buildCountReportRows()` (ใช้ร่วมกันระหว่าง render + export):
+
+| Col | Field | หมายเหตุ |
+|---|---|---|
+| A วันที่สแกน | `sd.firstScanAt \|\| sd.timestamp` | **`firstScanAt`** = เวลาสแกนครั้งแรกจริง เซ็ตครั้งเดียวใน `handleBarcode` (first-count path, `if(!sd.firstScanAt)`) ไม่ถูกเขียนทับตอน confirm. data เก่า fallback `sd.timestamp` |
+| B Location | `state.locationMap.get(sku)` | |
+| C SKU / D Barcode / E Name | `sku` / `si.barcodes[0]` / `si.productName` | |
+| F SystemQty | `si.systemQty` (R01) | |
+| G หน่วย | `skuDirectMap.get(sku).unitName` | |
+| H Count | `sd.countedQty` (นับครั้งแรก) | |
+| I DIFF | `countedQty − systemQty` | **บวก=เกิน, ลบ=ขาด; สี: 0=เขียว, ≠0=แดง** |
+| J Recheck | `sd.recheckQty` (รอบ 2) | `—` ถ้าไม่มี recheck |
+| K DIFF (Recheck) | `recheckQty − systemQty` | สีเหมือน I; `—` ถ้าไม่มี recheck |
+| L Check By | `sd.scannedBy` (คนนับครั้งแรก) | |
+
+Export: `exportCountReportExcel()` → `count_report_${branch}_${date}.xlsx`. `firstScanAt` persist อัตโนมัติ (save/sync strip แค่ `retries`+`scans`)
 
 **Firestore Audit Log** (`stock_audit_log/${branch}_${date}`):
 - บันทึกโดย `saveAuditLogToFirestore()` หลัง Confirm และหลัง pharmacist verify
