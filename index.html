@@ -1003,7 +1003,8 @@ const EMPLOYEE_PROFILES={
 };
 // R16 document type prefixes (Col C). Add new OXXX codes to the appropriate array.
 const R16_SALES_PREFIXES=['ORCM','OCTM'];          // ยอดขาย → บวกกลับเข้า countedQty
-const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้าคลัง → หักออกจาก countedQty
+const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้าคลัง → หักออกจาก countedQty (WH: รวม OTFI ที่คลังรับโอนเข้า)
+const R16_OUTBOUND_PREFIXES=['OTFI'];              // สาขา: โอนออกกลับคลัง → บวกกลับเข้า countedQty (เหมือนยอดขาย ของออกจากสาขา); WH ไม่ใช้ (คลังเป็นฝั่งรับ = inbound)
 const R16_103_PREFIXES=['IRNC','IRVC','IRNM','ICSM','ITFB','ITFW','IPOS','IRCN']; // WH: รับเข้าที่ยังไม่ขึ้นชั้น → บวกกลับเข้า countedQty
 function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
 let currentUser='';
@@ -1400,8 +1401,9 @@ function loadR16(event) {
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
       const isSale=!isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ข้ามยอดขาย
-      const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES);
-      if(!isSale&&!isInbound){sk++;continue;}
+      const isOutbound=!isWhBranch&&_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES); // สาขา: OTFI โอนออกกลับคลัง → บวกกลับ (เหมือนขาย ของออกจากสาขา)
+      const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES)&&!isOutbound;   // สาขา OTFI ไม่ใช่ inbound; WH OTFI ยังเป็น inbound (คลังรับโอนเข้า)
+      if(!isSale&&!isInbound&&!isOutbound){sk++;continue;}
       const barcode=(r[14]??'').toString().trim();   // Col O (index 14)
       const rawBaseQty=(r[17]??'').toString().replace(/,|\s/g,'').trim(); // Col R (index 17) = BASEQUANTITY (จำนวนแปลงเป็นหน่วยเล็กสุดแล้ว)
       const skuR16=(r[23]??'').toString().trim();    // Col X (index 23)

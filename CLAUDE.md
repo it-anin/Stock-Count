@@ -431,10 +431,13 @@ Column mappings (zero-indexed, skip row 0 header):
 
   | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
   |---|---|---|
-  | `ORCM`, `OCTM` | ยอดขาย (Sales) | หักออก → บวกกลับเข้า countedQty (`r16SalesMap`) — **WH ข้าม ไม่นับ** |
-  | `OTFB`, `ORTS`, `OTFI` | รับเข้าคลัง (Inbound) | บวกเพิ่ม → หักออกจาก countedQty (`r16InboundMap`) |
+  | `ORCM`, `OCTM` | ยอดขาย (Sales) | **บวกกลับ** เข้า countedQty (`r16SalesMap`) — **WH ข้าม ไม่นับ** |
+  | `OTFB`, `ORTS` | รับเข้าคลัง (Inbound) | **หักออก** จาก countedQty (`r16InboundMap`) |
+  | `OTFI` | **branch-aware** (`R16_OUTBOUND_PREFIXES`) | **สาขา:** โอนออกกลับคลัง (ของออก) → **บวกกลับ** (เข้า `r16SalesMap` เหมือนยอดขาย); **WH:** รับโอนเข้า → **หักออก** (inbound) |
 
   ⚠️ **WH branch:** `loadR16()` ข้ามยอดขาย (`ORCM`/`OCTM`) ทั้งหมด — `isSale=!isWhBranch && _matchR16Prefix(...)` ดังนั้น WH นับเฉพาะ inbound (OTFB/ORTS/OTFI) จาก R16.104 + R16.103. ยอดขายเป็นรายการของสาขา ไม่กระทบ effectiveCnt ของคลัง
+
+  ⚠️ **OTFI = โอนออกจากสาขากลับคลัง (branch-aware, แก้ false Audit):** `OTFI` อยู่ทั้งใน `R16_INBOUND_PREFIXES` และ `R16_OUTBOUND_PREFIXES`. `loadR16`: `isOutbound = !isWhBranch && match(OTFI)` → สาขา OTFI **บวกกลับ** (ของออกจากสาขา เหมือนขาย); `isInbound = match(inbound) && !isOutbound` → สาขา OTFI ไม่ใช่ inbound, **WH OTFI ยังเป็น inbound (หักออก)** เพราะคลังเป็นฝั่งรับโอน. เดิม OTFI ถูกหักออกทุกสาขา → สาขาที่โอนกลับคลังนับตรงแต่ขึ้น Audit (effectiveCnt เพี้ยน 2× ของ OTFI)
 
   Col O (14)=Barcode; Col R (17)=BASEQUANTITY (แปลงเป็นหน่วยเล็กสุดแล้ว); Col X (23)=SKU; TRANDATE column auto-detected from header row (row 0).
 
