@@ -143,6 +143,14 @@
     .btn-confirm:disabled { background:var(--border); color:var(--text3); cursor:not-allowed; }
     .btn-clear { background:var(--surface2); color:var(--text2); border:1px solid var(--border); }
     .btn-clear:hover { border-color:var(--red); color:var(--red); }
+    /* WH supervisor — layout ปุ่มยืนยัน: ปุ่มหลัก 100x100 + ปุ่มรายคน 40x40, แถวรีเช็คสีเขียว, ซ่อนรายการแยกล่าง */
+    body.wh-sup #btnConfirm{flex:0 0 auto!important;width:100px!important;height:100px!important;font-size:0.82rem;line-height:1.25;padding:6px;white-space:normal;}
+    body.wh-sup #supervisorCountBtns{order:1;align-self:center;}
+    body.wh-sup #btnHideList{display:none!important;}
+    body.wh-sup #pharmacistAuditBar{display:flex!important;flex-wrap:wrap;gap:8px;align-items:flex-start;}
+    body.wh-sup #pharmacistAuditBtn{flex:0 0 auto;width:100px!important;height:100px!important;padding:6px!important;font-size:0.82rem;line-height:1.25;white-space:normal;background:var(--green)!important;}
+    body.wh-sup #pharmacistAuditBtn:hover{background:#0a7c46!important;}
+    body.wh-sup #supervisorStaffBtns{order:1;align-self:center;}
     .btn-export { background:var(--surface2); color:var(--green); border:1px solid rgba(0,230,118,0.3); width:100%; }
     .btn-export:hover { background:rgba(0,230,118,0.1); transform:translateY(-1px); }
     .scan-list-card { border-radius:10px; border:1px solid var(--border); background:var(--surface2); overflow:hidden; }
@@ -577,15 +585,16 @@
           </div>
         </div>
 
-        <div id="supervisorCountBtns" style="display:none;flex-direction:column;gap:6px;padding:8px 16px 0;"></div>
-        <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);">
+        <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:flex-start;">
           <button id="btnConfirm" class="btn btn-confirm" style="flex:1;" onclick="validateAndProcess()" disabled>✓ Confirm</button>
-          <button class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
+          <div id="supervisorCountBtns" style="display:none;flex-wrap:wrap;gap:6px;"></div>
+          <button id="btnHideList" class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
         </div>
         <div id="pharmacistAuditBar" style="display:none;padding:0 16px 14px;">
-          <div id="supervisorStaffBtns" style="display:none;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
           <button id="pharmacistAuditBtn" onclick="confirmRecheckBtn()" style="width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"><span id="pharmacistAuditBtnLabel">✓ ยืนยัน Audit</span> (<span id="pharmacistAuditCount">0</span>)</button>
+          <div id="supervisorStaffBtns" style="display:none;flex-wrap:wrap;gap:6px;"></div>
         </div>
+        <button id="btnHideListWh" class="btn btn-clear" style="display:none;margin:0 16px 14px;padding:8px 16px;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
       </div>
     </div>
   </div>
@@ -1962,7 +1971,7 @@ function renderSupervisorCountButtons(){
   box.style.display='flex';
   box.innerHTML=[...grp.entries()].map(([who,cnt])=>{
     const esc=String(who).replace(/'/g,"\\'");
-    return`<button onclick="confirmCountByStaff('${esc}')" style="width:100%;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.2px;">✔ Confirm: ${who} (${cnt})</button>`;
+    return`<button onclick="confirmCountByStaff('${esc}')" title="Confirm: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
   }).join('');
 }
 
@@ -3249,7 +3258,7 @@ function renderSupervisorRecheckButtons(){
   box.style.display='flex';
   box.innerHTML=[...grp.entries()].map(([who,cnt])=>{
     const esc=String(who).replace(/'/g,"\\'");
-    return`<button onclick="confirmRecheckByStaff('${esc}')" style="width:100%;padding:11px;border-radius:10px;border:none;background:var(--green);color:#fff;font-family:inherit;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.2px;">✓ ยืนยันรีเช็ค: ${who} (${cnt})</button>`;
+    return`<button onclick="confirmRecheckByStaff('${esc}')" title="ยืนยันรีเช็ค: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--green);color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
   }).join('');
 }
 
@@ -3422,6 +3431,13 @@ function updateScanInputMode(){
   if(bar)bar.style.display=(isPharm||isSvDesktop)?'block':'none';
   const lbl=document.getElementById('pharmacistAuditBtnLabel');
   if(lbl)lbl.textContent=isSvDesktop?'✓ ยืนยันรีเช็คทั้งหมด':'✓ ยืนยัน Audit';
+  // WH supervisor Desktop: layout ปุ่มยืนยันใหม่ (Confirm/รีเช็ค 100x100 + ปุ่มรายคน 40x40) ผ่าน body.wh-sup
+  const _whSup=isSvDesktop&&currentBranch==='WH';
+  document.body.classList.toggle('wh-sup',_whSup);
+  const hideWh=document.getElementById('btnHideListWh');
+  if(hideWh)hideWh.style.display=_whSup?'block':'none';
+  const cfBtn=document.getElementById('btnConfirm');
+  if(cfBtn)cfBtn.innerHTML=_whSup?'✓ Confirm<br>ทั้งหมด':'✓ Confirm';
   // WH PDA: ซ่อนทั้งแถว Confirm/Clear — Confirm ถูกซ่อนบน PDA อยู่แล้ว เหลือแต่ Clear ที่พนักงานเผลอกดโดนง่าย
   // (Clear ลบแค่มุมมอง RESULT ไม่ลบ scanData แต่กันความสับสน) — Desktop WH ยังมีปุ่มครบ
   const _whPda=window.innerWidth<=600&&currentBranch==='WH';
