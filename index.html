@@ -1960,18 +1960,18 @@ function renderSupervisorCountButtons(){
   const box=document.getElementById('supervisorCountBtns');
   if(!box)return;
   if(currentRole!=='supervisor'||window.innerWidth<=600){box.style.display='none';box.innerHTML='';return;}
-  const grp=new Map();
+  const counts=new Map();
   for(const[,sd]of state.scanData.entries()){
-    if(sd.status==='scanning'){
-      const who=sd.scannedBy||'(ไม่ระบุ)';
-      grp.set(who,(grp.get(who)||0)+1);
-    }
+    if(sd.status==='scanning'){const who=sd.scannedBy||'(ไม่ระบุ)';counts.set(who,(counts.get(who)||0)+1);}
   }
-  if(!grp.size){box.style.display='none';box.innerHTML='';return;}
+  // แสดงพนักงานคลังครบทุกคน (จาก EMPLOYEE_PROFILES) + ชื่ออื่นที่มีงานแต่ไม่อยู่ในลิสต์; disable ถ้า count=0
+  const names=[...(EMPLOYEE_PROFILES[currentBranch]?.warehouse||[])];
+  for(const who of counts.keys())if(!names.includes(who))names.push(who);
+  if(!names.length){box.style.display='none';box.innerHTML='';return;}
   box.style.display='flex';
-  box.innerHTML=[...grp.entries()].map(([who,cnt])=>{
-    const esc=String(who).replace(/'/g,"\\'");
-    return`<button onclick="confirmCountByStaff('${esc}')" title="Confirm: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
+  box.innerHTML=names.map(who=>{
+    const cnt=counts.get(who)||0;const esc=String(who).replace(/'/g,"\\'");const dis=cnt===0;
+    return`<button onclick="confirmCountByStaff('${esc}')" ${dis?'disabled':''} title="Confirm: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};opacity:${dis?'0.38':'1'};display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
   }).join('');
 }
 
@@ -3247,18 +3247,18 @@ function renderSupervisorRecheckButtons(){
   const box=document.getElementById('supervisorStaffBtns');
   if(!box)return;
   if(currentRole!=='supervisor'){box.style.display='none';box.innerHTML='';return;}
-  const grp=new Map();
+  const counts=new Map();
   for(const[,sd]of state.scanData.entries()){
-    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor){
-      const who=sd.recheckBy||'(ไม่ระบุ)';
-      grp.set(who,(grp.get(who)||0)+1);
-    }
+    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor){const who=sd.recheckBy||'(ไม่ระบุ)';counts.set(who,(counts.get(who)||0)+1);}
   }
-  if(!grp.size){box.style.display='none';box.innerHTML='';return;}
+  // แสดงพนักงานคลังครบทุกคน + ชื่ออื่นที่มีงาน; disable ถ้า count=0
+  const names=[...(EMPLOYEE_PROFILES[currentBranch]?.warehouse||[])];
+  for(const who of counts.keys())if(!names.includes(who))names.push(who);
+  if(!names.length){box.style.display='none';box.innerHTML='';return;}
   box.style.display='flex';
-  box.innerHTML=[...grp.entries()].map(([who,cnt])=>{
-    const esc=String(who).replace(/'/g,"\\'");
-    return`<button onclick="confirmRecheckByStaff('${esc}')" title="ยืนยันรีเช็ค: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--green);color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
+  box.innerHTML=names.map(who=>{
+    const cnt=counts.get(who)||0;const esc=String(who).replace(/'/g,"\\'");const dis=cnt===0;
+    return`<button onclick="confirmRecheckByStaff('${esc}')" ${dis?'disabled':''} title="ยืนยันรีเช็ค: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--green);color:#fff;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};opacity:${dis?'0.38':'1'};display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
   }).join('');
 }
 
