@@ -602,13 +602,16 @@ QTY column behavior in the live scan list depends on status, `systemQty`, and ro
 
 The inline input threshold changed from `countedQty > 100` → `systemQty > 100` (commit `b7cd9e7`).
 
-**WH warehouse override — `whStaffEdit = currentRole==='warehouse' && currentBranch==='WH'`:** สำหรับ warehouse role (PDA คลัง) QTY **แก้ไขได้ inline ทุกรอบ** ข้าม threshold `systemQty > 100`:
-- `scanning` (นับครั้งแรก) → `<input>` เสมอ ทุก `systemQty` → `updateInlineQty()` เขียน `countedQty`
-- `audit` (รีเช็ค) → `<input>` เสมอ → **`updateRecheckInlineQty()`** เขียน `sd.recheckQty` + `recheckBy = currentUser` (ไม่ใช่ `countedQty`) → persist + sync ขึ้น cloud ให้ supervisor เห็น
-- แก้มือ + สแกนสะสมทำงานร่วมกัน: `handleBarcode` บวกเพิ่มจากค่าที่พิมพ์ (scanning→`countedQty`, audit→`recheckQty`); พิมพ์ใหม่ = ตั้งค่าทับ
-- role อื่น (assistant/pharmacist/supervisor) ไม่กระทบ — ใช้ logic เดิม. ⚠️ ต้องตั้ง PDA เป็น Broadcast Mode (`receiveBarcode` → `#scanInput`) เพื่อให้สแกนติดแม้ cursor อยู่ในช่อง qty
+**WH warehouse override — `whStaffEdit = currentRole==='warehouse' && currentBranch==='WH'`, `noEditPda = whStaffEdit && window.innerWidth<=600`:**
 
-This applies to both `renderScanList()` (full re-render) and `patchScanRow()` (in-place patch) — ทั้งคู่เช็ค `whStaffEdit` เหมือนกัน.
+⚠️ **WH PDA (`noEditPda`) ปิด inline QTY แล้ว** — ช่อง QTY เป็น `<span>` แสดงอย่างเดียวทั้ง `scanning` + `audit`. warehouse นับด้วย **การสแกนเท่านั้น**: จำนวนเยอะ → ยิง barcode กล่อง (× `unitMultiplier`) หรือพิมพ์ `barcode,qty` ในช่อง Scan (`parseScanLine` รองรับ); แก้ผิด → ปุ่ม **✕** (`removeScanItem`/`resetRecheckItem`) รีเซ็ตเป็น 0 แล้วสแกนใหม่. ทุกเงื่อนไข input ใน `renderScanList` + `patchScanRow` gate ด้วย `&& !noEditPda`
+
+inline `<input>` (แก้มือได้) เหลือเฉพาะ **WH Desktop warehouse** (`innerWidth>600`, กรณีหายาก):
+- `scanning` → `updateInlineQty()` เขียน `countedQty`
+- `audit` (รีเช็ค) → **`updateRecheckInlineQty()`** เขียน `sd.recheckQty` + `recheckBy = currentUser` (ไม่ใช่ `countedQty`) → persist + sync ให้ supervisor เห็น
+- role อื่น (assistant/pharmacist/supervisor) + สาขา ไม่กระทบ — assistant ยังได้ `<input>` เมื่อ `systemQty>100` (bulk). ⚠️ PDA ต้องเป็น Broadcast Mode (`receiveBarcode` → `#scanInput`) เพื่อให้สแกนติด
+
+ทั้ง `renderScanList()` (full re-render) และ `patchScanRow()` (in-place patch) เช็ค `whStaffEdit` + `noEditPda` เหมือนกัน
 
 ### 2-Minute Scan Gap Reset
 
