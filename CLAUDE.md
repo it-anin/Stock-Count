@@ -169,12 +169,12 @@ Four branches: **SRC**, **KKL**, **SSS** (ร้านขายยา), **WH** (
 | Feature | Allowed window | Admin bypass | WH bypass |
 |---|---|---|---|
 | R01.102 upload | After 21:00 | ✓ | ✓ |
-| R16.104 upload | 08:00 – 21:29 | ✓ | ✓ |
+| R16.104 upload | **ไม่มี gate (ปลดแล้ว)** | — | — |
 | R16.103 upload | ไม่มี gate | — | WH only |
 | Scan (all roles) | 08:00 – 20:59 | ✗ | ✗ |
 
 - R01.102 gate: `getHours() < 21` → blocked. **WH branch bypasses this** (`currentBranch !== 'WH'` check) — คลังกลางควบคุมสินค้าเข้าออกได้ตลอดเวลา
-- R16.104 gate: `getHours() < 8 \|\| getHours() > 21 \|\| (getHours() === 21 && getMinutes() >= 30)` → blocked. **WH branch bypasses this** — warehouse needs to confirm stock at any time.
+- R16.104 gate: **ปลดออกแล้ว** — `onclick` ของ upload item เปิด file picker ได้ทุกเวลาทุกสาขา (เดิมกั้น `getHours() < 8 \|\| > 21 \|\| (21 && min>=30)` เฉพาะสาขา; ถอดออกเพื่อรองรับ flow อัพ R16 สะสมรายวันได้ยืดหยุ่น). การปลด gate ไม่แตะ scanData — ของที่สแกนค้างไม่กระทบ; `loadR16` แค่ build sales maps + `reEvaluateAuditItems` (เฉพาะ audit/pass)
 - Scan gate: checked in `processScan()` — `getHours() < 8 \|\| getHours() >= 21` → blocked, clears input and shows toast.
 - **🗑️ ล้างข้อมูลทั้งหมด** is only accessible in Admin mode (button hidden otherwise, function guarded by `_adminMode` check).
 
