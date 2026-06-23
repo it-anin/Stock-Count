@@ -433,11 +433,11 @@ Column mappings (zero-indexed, skip row 0 header):
   |---|---|---|
   | `ORCM`, `OCTM` | ยอดขาย (Sales) | **บวกกลับ** เข้า countedQty (`r16SalesMap`) — **WH ข้าม ไม่นับ** |
   | `OTFB`, `ORTS` | รับเข้าคลัง (Inbound) | **หักออก** จาก countedQty (`r16InboundMap`) |
-  | `OTFI` | **branch-aware** (`R16_OUTBOUND_PREFIXES`) | **สาขา:** โอนออกกลับคลัง (ของออก) → **บวกกลับ** (เข้า `r16SalesMap` เหมือนยอดขาย); **WH:** รับโอนเข้า → **หักออก** (inbound) |
+  | `OTFI` | **branch-aware ด้วย Col A** (`R16_OUTBOUND_PREFIXES`) | **สาขา:** Col A=`1` (สาขา→คลัง โอนออก) → **บวกกลับ** (`r16SalesMap`); Col A=`0`/ว่าง (คลัง→สาขา รับเข้า) → **หักออก** (`r16InboundMap`). **WH:** ไม่อ่าน Col A, OTFI → **หักออก** เสมอ (inbound) |
 
   ⚠️ **WH branch:** `loadR16()` ข้ามยอดขาย (`ORCM`/`OCTM`) ทั้งหมด — `isSale=!isWhBranch && _matchR16Prefix(...)` ดังนั้น WH นับเฉพาะ inbound (OTFB/ORTS/OTFI) จาก R16.104 + R16.103. ยอดขายเป็นรายการของสาขา ไม่กระทบ effectiveCnt ของคลัง
 
-  ⚠️ **OTFI = โอนออกจากสาขากลับคลัง (branch-aware, แก้ false Audit):** `OTFI` อยู่ทั้งใน `R16_INBOUND_PREFIXES` และ `R16_OUTBOUND_PREFIXES`. `loadR16`: `isOutbound = !isWhBranch && match(OTFI)` → สาขา OTFI **บวกกลับ** (ของออกจากสาขา เหมือนขาย); `isInbound = match(inbound) && !isOutbound` → สาขา OTFI ไม่ใช่ inbound, **WH OTFI ยังเป็น inbound (หักออก)** เพราะคลังเป็นฝั่งรับโอน. เดิม OTFI ถูกหักออกทุกสาขา → สาขาที่โอนกลับคลังนับตรงแต่ขึ้น Audit (effectiveCnt เพี้ยน 2× ของ OTFI)
+  ⚠️ **OTFI = ทิศแยกด้วย Col A (สาขา) — รองรับทั้งรับเข้า + โอนกลับ:** `OTFI` อยู่ทั้งใน `R16_INBOUND_PREFIXES` และ `R16_OUTBOUND_PREFIXES` เพราะใช้ได้ 2 ทิศ. POS export **Col A (index 0)** เป็น flag ทิศ: `'1'`=สาขา→คลัง (โอนออก), `'0'`=คลัง→สาขา (รับเข้า). `loadR16`: `const colA=(r[0]??'').toString().trim();` แล้ว `isOutbound = !isWhBranch && match(OTFI) && colA==='1'` → สาขา OTFI **บวกกลับเฉพาะ Col A=1**; `isInbound = match(inbound) && !isOutbound` → สาขา OTFI ที่ Col A=`0`/ว่าง = inbound **หักออก** (**default ตอนว่าง = หัก** เพราะ OTFI ส่วนใหญ่เป็นรับเข้า; แต่ POS ใส่ Col A ครบเสมอ default แทบไม่ถูกใช้). **WH ไม่อ่าน Col A** (`isOutbound` มี `!isWhBranch` → false เสมอ) → OTFI ของ WH = inbound หักออกเสมอ (คลังเป็นฝั่งรับโอน). เดิมสาขา OTFI บวกกลับทุกตัว → ใบรับเข้า (คลัง→สาขา) ที่เป็น OTFI ถูกบวกผิด → effectiveCnt สูงเกิน → false Audit (เคส เบิกของจากคลังแต่ระบบยังไม่รับเข้า)
 
   Col O (14)=Barcode; Col R (17)=BASEQUANTITY (แปลงเป็นหน่วยเล็กสุดแล้ว); Col X (23)=SKU; TRANDATE column auto-detected from header row (row 0).
 
