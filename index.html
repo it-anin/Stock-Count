@@ -450,7 +450,7 @@
             <div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">
               <strong style="color:var(--accent);display:block;margin-bottom:5px;">⚡ ขั้นตอนการนับสต็อก</strong>
               <ol style="padding-left:18px;margin:0;line-height:1.8;">
-                <li>หลัง 21:00 → อัพโหลด <strong>R01.102</strong> (reset ข้อมูลนับเป็นวันใหม่)</li>
+                <li>อัพโหลด <strong>R01.102</strong> ตอนเริ่มรอบนับ (แนะนำหลัง 21:00 · อัพได้ทุกเวลา)</li>
                 <li>สแกนสินค้า</li>
                 <li>ก่อนกด Confirm → อัพโหลด <strong>R16.104</strong></li>
                 <li>กด <strong>Confirm</strong> → ระบบประเมินผล</li>
@@ -460,7 +460,7 @@
 
             <!-- R01 -->
             <div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid var(--border);">
-              <strong style="color:var(--accent);display:block;margin-bottom:5px;">1. R01.102 — จำนวนสินค้า (อัพได้หลัง 21:00)</strong>
+              <strong style="color:var(--accent);display:block;margin-bottom:5px;">1. R01.102 — จำนวนสินค้า (อัพได้ทุกเวลา · แนะนำหลัง 21:00)</strong>
               <ul style="padding-left:16px;margin:0;">
                 <li>รายงาน R01.102 → สร้างรายงาน → เลือกสาขา → ติ๊กสินค้าทั้งหมด → ส่งออก .CSV</li>
                 <li style="margin-top:3px;color:var(--green);font-weight:600;">การอัพโหลดจะ reset ข้อมูลการนับทั้งหมดให้เริ่มใหม่</li>
@@ -506,7 +506,7 @@
         </div>
         </div>
         <input type="file" id="fileR01" accept=".csv,.xlsx,.xls" style="display:none" onchange="loadR01(event)">
-        <div class="upload-file-item" onclick="if(!_adminMode&&currentBranch!=='WH'&&new Date().getHours()<21){toast('อัปโหลด R01.102 ได้หลัง 21:00 เท่านั้น','warn');return;}var _f=document.getElementById('fileR01');_f.value='';_f.click()">
+        <div class="upload-file-item" onclick="var _f=document.getElementById('fileR01');_f.value='';_f.click()">
           <div class="upload-file-info"><div class="upload-file-icon"><svg viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="9" height="12" rx="1.5" fill="#5DCAA5"/><rect x="4" y="4" width="5" height="1" rx="0.5" fill="white" opacity="0.8"/><rect x="4" y="6" width="5" height="1" rx="0.5" fill="white" opacity="0.8"/><rect x="4" y="8" width="3" height="1" rx="0.5" fill="white" opacity="0.8"/><path d="M9 1l3 3h-3V1z" fill="#1D9E75"/></svg></div><div><div class="upload-file-name">R01.102</div><div class="upload-file-sub">จำนวนสินค้า</div><div id="r01Timestamp" class="upload-file-ts" style="display:none"></div></div></div>
           <div class="upload-file-badge"><div class="upload-file-badge-dot"></div><span id="badgeR01">ยังไม่โหลด</span></div>
         </div>
@@ -630,7 +630,7 @@
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">2</span>
-        <span>หลัง 21:00 → อัพโหลด <strong>R01.102</strong> (reset ข้อมูลนับ + เริ่มวันใหม่)</span>
+        <span>อัพโหลด <strong>R01.102</strong> ตอนเริ่มรอบนับ (แนะนำหลัง 21:00 · อัพได้ทุกเวลา)</span>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">3</span>
