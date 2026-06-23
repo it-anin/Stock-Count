@@ -463,7 +463,7 @@
               <strong style="color:var(--accent);display:block;margin-bottom:5px;">1. R01.102 — จำนวนสินค้า (อัพได้ทุกเวลา · แนะนำหลัง 21:00)</strong>
               <ul style="padding-left:16px;margin:0;">
                 <li>รายงาน R01.102 → สร้างรายงาน → เลือกสาขา → ติ๊กสินค้าทั้งหมด → ส่งออก .CSV</li>
-                <li style="margin-top:3px;color:var(--green);font-weight:600;">การอัพโหลดจะ reset ข้อมูลการนับทั้งหมดให้เริ่มใหม่</li>
+                <li style="margin-top:3px;color:var(--green);font-weight:600;">อัพครั้งเดียวตอนเริ่มรอบ (= baseline systemQty) — ไม่ลบข้อมูลที่นับไว้ (ถ้าจะล้างจริงใช้ปุ่ม "เริ่มนับใหม่")</li>
               </ul>
             </div>
 
@@ -471,8 +471,8 @@
             <div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">
               <strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>
               <ul style="padding-left:16px;margin:0;">
-                <li>รายงาน R16.104 → สร้างรายงานตามวันที่ → ประจำวัน → ส่งออก .CSV</li>
-                <li style="margin-top:3px;">ระบบนำ <strong>ORCM/OCTM</strong> (ยอดขาย) บวกกลับ และ <strong>OTFB/ORTS/OTFI</strong> (รับเข้า) หักออก</li>
+                <li>รายงาน R16.104 → ตามวันที่ <strong>ตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (สะสม ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · อัพใหม่ทุกครั้งก่อน Confirm</li>
+                <li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI (โอนกลับคลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS (รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— ฝั่ง WH: OTFI = รับเข้า หักออก</span></li>
                 <li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>
               </ul>
             </div>
