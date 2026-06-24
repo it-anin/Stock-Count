@@ -87,7 +87,7 @@ state = {
 
 Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) shows all roles' scans and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
 
-**📋 popup — staff filter row (สาขาเท่านั้น):** ป็อปอัพมี toolbar 2 แถว — แถวบน `#popupStatusFilterRow` (status filter เดิม: ทั้งหมด/Pass/Audit/Unknown/DEL/รอนับ, `popupFilterState`), แถวล่าง `#popupStaffFilterRow` (filter ตามชื่อผู้สแกน, `popupStaffFilter`, default `'all'`). `renderPopupStaffButtons()` (เรียกใน `openStockPopup`) สร้างปุ่ม "ทุกคน" + ชื่อ pharmacist+assistant จาก `EMPLOYEE_PROFILES[currentBranch]` — **ซ่อนเมื่อ WH หรือไม่มี `profiles.assistant`**. `renderPopupTable` กรอง 2 ชั้นแบบ AND: `popupFilterState` แล้วตามด้วย `(r.sd.scannedBy||'')===popupStaffFilter`. `setPopupFilter`/`setPopupStaffFilter` toggle `.active` แยกกันด้วย row id (กันชน เพราะปุ่มใช้ class `.popup-filter` เหมือนกัน). reset เป็น `'all'` ทุกครั้งที่เปิดป็อปอัพ
+**📋 popup — staff filter row (สาขาเท่านั้น):** ป็อปอัพมี toolbar 2 แถว — แถวบน `#popupStatusFilterRow` (status filter เดิม: ทั้งหมด/Pass/Audit/Unknown/DEL/รอนับ, `popupFilterState`), แถวล่าง `#popupStaffFilterRow` (filter ตามชื่อผู้สแกน, `popupStaffFilter`, default `'all'`). `renderPopupStaffButtons()` (เรียกใน `openStockPopup`) สร้างปุ่ม "ทุกคน" + ชื่อ assistant จาก `EMPLOYEE_PROFILES[currentBranch]` (ไม่รวม pharmacist) — **ซ่อนเมื่อ WH หรือไม่มี `profiles.assistant`**. `renderPopupTable` กรอง 2 ชั้นแบบ AND: `popupFilterState` แล้วตามด้วย `(r.sd.scannedBy||'')===popupStaffFilter`. `setPopupFilter`/`setPopupStaffFilter` toggle `.active` แยกกันด้วย row id (กันชน เพราะปุ่มใช้ class `.popup-filter` เหมือนกัน). reset เป็น `'all'` ทุกครั้งที่เปิดป็อปอัพ
 
 **Pharmacist PDA workflow:** เภสัช login บน PDA → scan list แสดงเฉพาะ Audit items ทันที (ไม่มี popup) → สแกน barcode ผ่านช่อง scanInput → `processPharmacistAuditScan()` สะสมใน `_avMap` → ช่อง QTY ในแถวอัปเดตเป็นจำนวนที่สะสม (bold, ไม่มี toast) → กด "✓ ยืนยัน Audit" เพื่อ confirm ทั้งหมด. Popup "รายการสต็อกสินค้า" เมื่อเภสัชเปิด จะ default filter เป็น `audit` อัตโนมัติ
 
@@ -555,9 +555,9 @@ Export: `exportCountReportExcel()` → `count_report_${branch}_${date}.xlsx`. `f
 
 **Branch filter — `getActiveDashBranches()`:**
 - **WH login** (`currentBranch === 'WH'`) → แสดงเฉพาะ WH คลังสินค้า, title = `"📊 Dashboard — WH คลังสินค้า"`
-- **สาขาอื่น** → แสดงทุกสาขา (SRC, KKL, SSS, WH), title = `"📊 Dashboard — สรุปการนับสต็อกทุกสาขา"`
+- **สาขายา (SRC/KKL/SSS)** → แสดงเฉพาะสาขายา **(SRC, KKL, SSS — ไม่รวม WH)**, title = `"📊 Dashboard — สรุปการนับสต็อกทุกสาขา"` ("ทุกสาขา" = สาขายา 3 สาขา; WH เป็นคลังไม่ใช่สาขา). `getActiveDashBranches()` คืน `['SRC','KKL','SSS']` สำหรับสาขายา → ทุก section (กราฟ/ตาราง/dropdown filter) ไม่แสดง WH. Labels สาขายาตัด "/ คลัง" ออก (เพราะไม่มีพนักงานคลังในมุมมองนี้)
 
-`DASHBOARD_BRANCHES` constant ยังคงเป็น `['SRC','KKL','SSS','WH']` — `getActiveDashBranches()` เป็น runtime filter ทุก Dashboard function ใช้ `getActiveDashBranches()` แทน constant โดยตรง ได้แก่ `refreshDashboard`, `buildDashboardData`, `renderDashboard`, `renderDashAssistantTable`
+`DASHBOARD_BRANCHES` constant (`['SRC','KKL','SSS','WH']`) ยังคงไว้ แต่ `getActiveDashBranches()` ไม่ใช้แล้ว — return list ตรงตาม branch. ทุก Dashboard function ใช้ `getActiveDashBranches()` แทน constant โดยตรง ได้แก่ `refreshDashboard`, `buildDashboardData`, `renderDashboard`, `renderDashAssistantTable`
 
 **Sections ใน Dashboard:**
 1. Branch summary doughnut cards (Pass/Audit/Stock Adj/Scanning per branch)

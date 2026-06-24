@@ -2754,7 +2754,7 @@ function renderPopupStaffButtons(){
   const row=document.getElementById('popupStaffFilterRow');if(!row)return;
   const profiles=EMPLOYEE_PROFILES[currentBranch];
   if(currentBranch==='WH'||!profiles||!profiles.assistant){row.style.display='none';row.innerHTML='';return;}
-  const names=[...(profiles.pharmacist||[]),...(profiles.assistant||[])];
+  const names=[...(profiles.assistant||[])];
   row.innerHTML=`<button class="popup-filter active" onclick="setPopupStaffFilter('all',this)"><span>👥</span><span>ทุกคน</span></button>`+names.map(n=>`<button class="popup-filter" onclick="setPopupStaffFilter('${n}',this)"><span>🧑</span><span>${n}</span></button>`).join('');
   row.style.display='flex';
 }
@@ -3493,7 +3493,7 @@ let _hsFirestoreLoading=false;
 
 // ===================== Dashboard =====================
 const DASHBOARD_BRANCHES=['SRC','KKL','SSS','WH'];
-function getActiveDashBranches(){return currentBranch==='WH'?['WH']:DASHBOARD_BRANCHES;}
+function getActiveDashBranches(){return currentBranch==='WH'?['WH']:['SRC','KKL','SSS'];}
 let _dashLoading=false;
 let _dashAssistantData=null;
 let _dashAssistantFilter='all';
@@ -3686,7 +3686,7 @@ function renderDashboard(branches){
   const isWhDash=currentBranch==='WH';
   sections.push(`<div style="margin-bottom:24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-      <h3 style="font-size:0.95rem;">${isWhDash?'👥 พนักงานคลัง — สรุปการสแกน':'👥 ผู้สแกน (ผู้ช่วยเภสัช / คลัง) — สรุปการสแกน'}</h3>
+      <h3 style="font-size:0.95rem;">${isWhDash?'👥 พนักงานคลัง — สรุปการสแกน':'👥 ผู้สแกน (ผู้ช่วยเภสัช) — สรุปการสแกน'}</h3>
       ${isWhDash?'':
       `<div id="dashAssistantFilter" style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="dash-filter-btn active" data-branch="all" onclick="setDashAssistantFilter('all',this)">ทุกสาขา</button>
@@ -3718,7 +3718,7 @@ function renderDashboard(branches){
     </tr>`;
   }).join('');
   sections.push(`<div style="margin-bottom:24px;">
-    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'🔁 รีเช็ค — ความคืบหน้า':'🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า'}</h3>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">${isWhDash?'🔁 รีเช็ค — ความคืบหน้า':'🧑‍⚕️ ผู้ตรวจ Audit (เภสัช) — ความคืบหน้า'}</h3>
     <table class="ptable" style="width:100%;">
       <thead><tr>
         <th style="width:80px;">สาขา</th>
