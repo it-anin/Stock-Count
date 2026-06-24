@@ -423,8 +423,8 @@
     <div class="stat-card"><div class="stat-label" id="statAuditLabel">Audit</div><div class="stat-value red" id="statFail">0</div><div id="statAuditSub" style="font-size:0.62rem;color:var(--text3);margin-top:1px;display:none;"></div><div id="auditProgressWrap" style="display:none;margin-top:5px;width:100%;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span id="auditProgressLabel" style="font-size:0.58rem;color:var(--text3);">เภสัชตรวจแล้ว</span><span id="auditProgressPct" style="font-size:0.58rem;color:var(--text3);">0%</span></div><div style="width:100%;height:5px;background:rgba(217,48,37,0.15);border-radius:3px;overflow:hidden;"><div id="auditProgressFill" style="height:100%;border-radius:3px;transition:width 0.4s,background 0.4s;width:0%;background:var(--red);"></div></div></div></div>
 
     <div class="stat-card"><div class="stat-label">Not in System</div><div class="stat-value purple" id="statUnknown">0</div></div>
-    <div class="stat-card">
-      <div class="stat-label">Progress</div>
+    <div class="stat-card" id="progressCard" onclick="toggleProgressMode()">
+      <div class="stat-label" id="progressModeLabel">Progress</div>
       <div class="stat-value yellow" id="statPct">0%</div>
       <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
       <div class="progress-count" id="progressCount">0 / 0</div>
@@ -1210,6 +1210,7 @@ function resetStaleScanningItems(){
   return n;
 }
 async function initAfterLogin(){
+  _progressMode=(currentBranch!=='WH'&&localStorage.getItem('progressMode_'+currentBranch)==='catA')?'catA':'all';
   const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
   // เภสัช Desktop: โหลดสินค้า Audit จาก cloud ใช้เวลา → แสดง loader ด้วย (ไม่ใช่ startEmpty — ไม่ clear scan list)
   const _showLoader=_startEmpty||(currentRole==='pharmacist'&&window.innerWidth>600);
@@ -1355,7 +1356,7 @@ function loadProductMaster(event) {
   const file=event.target.files[0]; if(!file)return;
   parseFile(file,rows=>{
     state.productMasterData=[]; let sk=0;
-    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const sku=(r[0]??'').toString().trim();const name=(r[1]??'').toString().trim();const colD=(r[3]??'').toString().trim().toUpperCase();if(!sku){sk++;continue;}if(colD==='P'||colD==='REVIEW'){sk++;continue;}state.productMasterData.push({sku,productName:name});}
+    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const sku=(r[0]??'').toString().trim();const name=(r[1]??'').toString().trim();const colD=(r[3]??'').toString().trim().toUpperCase();if(!sku){sk++;continue;}if(colD==='P'||colD==='REVIEW'){sk++;continue;}state.productMasterData.push(colD==='A'?{sku,productName:name,cat:'A'}:{sku,productName:name});}
     state.productMasterMap.clear();
     state.productMasterData.forEach(r=>state.productMasterMap.set(r.sku,r.productName));
     document.getElementById('badgeProductMaster').textContent='Ready';
@@ -1734,6 +1735,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
 });
 
 let _cachedBranchSku=null;
+let _cachedCatA=null; // {set:Set<sku>, denom:number} ของ Col D='A' (สาขาเท่านั้น) — recompute พร้อม _cachedBranchSku
+let _progressMode='all'; // 'all' | 'catA' — โหมด Progress bar (สาขาเท่านั้น), โหลดจาก localStorage ตอน login
 let _cachedActiveSkus=[];
 let _cachedTotalSku=0;
 function rebuildMaps() {
@@ -2640,6 +2643,12 @@ function getScanRowStyle(s){
 function getPillClass(s){const m={scanning:'pill-pending',pass:'pill-pass',audit:'pill-audit',audit_check:'pill-pass',stock_adjustment:'pill-audit',unknown:'pill-unknown'};return m[s]||'pill-pending';}
 
 
+function toggleProgressMode(){
+  if(currentBranch==='WH')return; // สาขาเท่านั้น
+  _progressMode=_progressMode==='catA'?'all':'catA';
+  try{localStorage.setItem('progressMode_'+currentBranch,_progressMode);}catch(e){}
+  updateStats();
+}
 function updateStats(){
   const active=_cachedActiveSkus.length?_cachedActiveSkus:getActiveSkus();
   const statsSource=active.length?active:[...state.scanData.keys()];
@@ -2649,10 +2658,17 @@ function updateStats(){
       let n=0;for(const r of state.r01Data){if(pmSkuSet.has(r.colE))n++;}
       _cachedBranchSku=n;
     }else _cachedBranchSku=0;
+    // catA cache (สาขาเท่านั้น): set ของ Col D='A' + ตัวหาร (∩ R01 ถ้ามี R01)
+    if(currentBranch!=='WH'&&state.productMasterData.length){
+      const aSet=new Set();for(const r of state.productMasterData){if(r.cat==='A')aSet.add(r.sku);}
+      let aDenom=aSet.size;
+      if(state.r01Data.length){const r01s=new Set(state.r01Data.map(r=>r.colE));aDenom=0;for(const s of aSet){if(r01s.has(s))aDenom++;}}
+      _cachedCatA={set:aSet,denom:aDenom};
+    }else _cachedCatA=null;
   }
   const branchSku=_cachedBranchSku;
   const r01Set=branchSku>0?new Set(state.r01Data.map(r=>r.colE)):null;
-  let c=0,p=0,f=0,cBranch=0,auditGot=0,auditTotal=0;
+  let c=0,p=0,f=0,cBranch=0,cCatA=0,auditGot=0,auditTotal=0;
   for(const sku of statsSource){
     const sd=state.scanData.get(sku);
     if(!sd||sd.status==='pending'||sd.status==='scanning')continue;
@@ -2662,13 +2678,15 @@ function updateStats(){
     if(sd.status==='audit'||sd.status==='audit_check'||sd.status==='stock_adjustment'||(sd.auditor&&sd.status==='pass')){auditTotal++;}
     if(sd.status==='audit_check'||sd.status==='stock_adjustment'||(sd.auditor&&sd.status==='pass')){auditGot++;}
     if(r01Set&&r01Set.has(sku))cBranch++;
+    if(_cachedCatA&&_cachedCatA.set.has(sku)&&(!r01Set||r01Set.has(sku)))cCatA++;
   }
   const total=_cachedTotalSku||state.productMasterData.length||active.length||state.scanData.size;
   const u=state.unknownScans.length;
-  const progNum=branchSku?cBranch:c;
-  const progDenom=branchSku||total;
+  const _catAMode=(_progressMode==='catA'&&_cachedCatA&&currentBranch!=='WH');
+  const progNum=_catAMode?cCatA:(branchSku?cBranch:c);
+  const progDenom=_catAMode?_cachedCatA.denom:(branchSku||total);
   const pct=progDenom?Math.round(progNum/progDenom*100):0;
-  document.getElementById('statTotal').textContent=total;document.getElementById('statBranchSku').textContent=branchSku||'—';document.getElementById('statCounted').textContent=c;document.getElementById('statPass').textContent=p;document.getElementById('statFail').textContent=f;document.getElementById('statUnknown').textContent=u;document.getElementById('statPct').textContent=pct+'%';document.getElementById('progressFill').style.width=pct+'%';document.getElementById('progressCount').textContent=progNum+' / '+progDenom;const scEl=document.getElementById('stockCount');if(scEl)scEl.textContent=active.length;const auditSub=document.getElementById('statAuditSub');if(auditSub){if(auditTotal>0){auditSub.style.display='block';auditSub.textContent=auditGot+' / '+auditTotal;}else{auditSub.style.display='none';}}
+  document.getElementById('statTotal').textContent=total;document.getElementById('statBranchSku').textContent=branchSku||'—';document.getElementById('statCounted').textContent=c;document.getElementById('statPass').textContent=p;document.getElementById('statFail').textContent=f;document.getElementById('statUnknown').textContent=u;document.getElementById('statPct').textContent=pct+'%';document.getElementById('progressFill').style.width=pct+'%';document.getElementById('progressCount').textContent=(currentBranch!=='WH'?(_catAMode?'หมวด A · ':'ทั้งหมด · '):'')+progNum+' / '+progDenom;{const _pmL=document.getElementById('progressModeLabel'),_pC=document.getElementById('progressCard');if(currentBranch!=='WH'){if(_pmL)_pmL.textContent='Progress ⇄';if(_pC)_pC.style.cursor='pointer';}else{if(_pmL)_pmL.textContent='Progress';if(_pC)_pC.style.cursor='default';}}const scEl=document.getElementById('stockCount');if(scEl)scEl.textContent=active.length;const auditSub=document.getElementById('statAuditSub');if(auditSub){if(auditTotal>0){auditSub.style.display='block';auditSub.textContent=auditGot+' / '+auditTotal;}else{auditSub.style.display='none';}}
   const _apct=auditTotal?Math.round(auditGot/auditTotal*100):0;
   const _apWrap=document.getElementById('auditProgressWrap');
   const _apFill=document.getElementById('auditProgressFill');

@@ -656,7 +656,15 @@ In the popup table, `countedQty` is editable inline (`updatePopupQty`) when `sys
 
 ### Product Master Col D Filter
 
-In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (case-insensitive) are skipped.
+In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (case-insensitive) are skipped. Rows where Col D equals `A` are stored with `cat:'A'` ใน `productMasterData` (rows อื่นไม่มี field `cat`) — ค่านี้ serialize ขึ้น `global_pm` (`syncProductMasterToFirestore` stringify ทั้ง object) → ทุกเครื่องได้ผ่าน listener. **ต้องอัพ PM ใหม่ 1 ครั้ง** หลัง deploy เพื่อให้ของเดิมใน cloud มี `cat`.
+
+### Progress Toggle — หมวด A (สาขาเท่านั้น)
+
+การ์ด Progress (`#progressCard`, `onclick="toggleProgressMode()"`) แตะสลับ 2 โหมดสำหรับ **สาขา** (ไม่ใช่ WH) — เก็บ `_progressMode` (`'all'`|`'catA'`) ใน localStorage `progressMode_${branch}`, โหลดใน `initAfterLogin`:
+- **`all`** — Progress = SKU ที่นับเสร็จ / SKU สาขาทั้งหมด (เดิม)
+- **`catA`** — เฉพาะ SKU ที่ Product Master Col D=`A`: ตัวตั้ง = catA ที่นับเสร็จ, ตัวหาร = `_cachedCatA.denom` (catA ∩ R01 ถ้ามี R01, ไม่งั้น catA ทั้งหมดใน PM)
+
+`_cachedCatA={set,denom}` คำนวณใน block `_cachedBranchSku===null` ของ `updateStats` (invalidate พร้อมกันผ่าน `rebuildMaps` — ทั้ง file upload + cloud listener). `updateStats` นับ `cCatA` ใน loop, เลือก progNum/progDenom ด้วย `_catAMode`, แสดง prefix `หมวด A ·`/`ทั้งหมด ·` ใน `progressCount` + label `Progress ⇄`. **WH:** `_cachedCatA=null` → `_catAMode` false เสมอ, การ์ดไม่ตอบสนอง (cursor default, toggle return early).
 
 ### Clear Scan List vs Clear Data
 
