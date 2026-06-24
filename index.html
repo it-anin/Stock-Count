@@ -699,7 +699,7 @@
       <h2>📋 รายการสต็อคสินค้า</h2>
       <button class="stock-popup-close" onclick="closeStockPopup()">✕</button>
     </div>
-    <div class="stock-popup-toolbar">
+    <div class="stock-popup-toolbar" id="popupStatusFilterRow">
       <input class="popup-search" id="popupSearch" placeholder="🔍 ค้นหา SKU / Barcode / ชื่อ..." oninput="schedulePopupRender()">
       <button class="popup-filter active" onclick="setPopupFilter('all',this)"><span>📋</span><span>ทั้งหมด</span></button>
       <button class="popup-filter" onclick="setPopupFilter('pass',this)"><span>✅</span><span>Pass</span></button>
@@ -710,6 +710,7 @@
       <button class="popup-filter" onclick="setPopupFilter('del',this)"><span>🗑️</span><span>DEL</span></button>
       <button class="popup-filter" onclick="setPopupFilter('pending',this)"><span>⏳</span><span>รอนับ</span></button>
     </div>
+    <div class="stock-popup-toolbar" id="popupStaffFilterRow" style="display:none;padding-top:0;"></div>
     <div class="stock-popup-body">
       <table class="ptable">
         <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th id="popupThAudit">Audit</th><th>Timestamp</th><th id="popupThLocation" style="display:none;">Location</th></tr></thead>
@@ -2719,7 +2720,7 @@ function updateStats(){
 }
 function getActiveSkus(){return[...state.skuMap.keys()];}
 
-let popupFilterState='all',popupRenderTimer=null,popupBaseRowsCache=null;
+let popupFilterState='all',popupStaffFilter='all',popupRenderTimer=null,popupBaseRowsCache=null;
 const POPUP_RENDER_DEBOUNCE_MS=160,POPUP_MAX_RENDER_ROWS=500;
 function invalidatePopupRowsCache(){popupBaseRowsCache=null;}
 function schedulePopupRender(){clearTimeout(popupRenderTimer);popupRenderTimer=setTimeout(renderPopupTable,POPUP_RENDER_DEBOUNCE_MS);}
@@ -2734,6 +2735,7 @@ function buildPopupBaseRows(){
 function openStockPopup(){
   _openModal('stockPopupOverlay','stockPopupCard');
   document.getElementById('popupSearch').value='';
+  popupStaffFilter='all';renderPopupStaffButtons();
   if(currentRole==='pharmacist'){
     popupFilterState='audit';
     document.querySelectorAll('#stockPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));
@@ -2746,7 +2748,16 @@ function openStockPopup(){
 function closeStockPopup(){_closeModal('stockPopupOverlay','stockPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleOverlayClick(e){if(e.target===document.getElementById('stockPopupOverlay'))closeStockPopup();}
 
-function setPopupFilter(f,btn){popupFilterState=f;document.querySelectorAll('.popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
+function setPopupFilter(f,btn){popupFilterState=f;document.querySelectorAll('#popupStatusFilterRow .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
+function setPopupStaffFilter(name,btn){popupStaffFilter=name;document.querySelectorAll('#popupStaffFilterRow .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
+function renderPopupStaffButtons(){
+  const row=document.getElementById('popupStaffFilterRow');if(!row)return;
+  const profiles=EMPLOYEE_PROFILES[currentBranch];
+  if(currentBranch==='WH'||!profiles||!profiles.assistant){row.style.display='none';row.innerHTML='';return;}
+  const names=[...(profiles.pharmacist||[]),...(profiles.assistant||[])];
+  row.innerHTML=`<button class="popup-filter active" onclick="setPopupStaffFilter('all',this)"><span>👥</span><span>ทุกคน</span></button>`+names.map(n=>`<button class="popup-filter" onclick="setPopupStaffFilter('${n}',this)"><span>🧑</span><span>${n}</span></button>`).join('');
+  row.style.display='flex';
+}
 
 function renderPopupTable(){
   const search=(document.getElementById('popupSearch').value||'').toLowerCase();
@@ -2758,6 +2769,7 @@ function renderPopupTable(){
   if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
   let rows=popupBaseRowsCache;
   if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;return;}

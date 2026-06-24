@@ -85,7 +85,9 @@ state = {
 - **supervisor** — แสดงทุกการสแกนของพนักงานทั้งหมด (ไม่ filter); แถว audit โชว์ `sd.recheckQty`
 - **ไม่ได้ login** — แสดงทั้งหมด
 
-Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) is unfiltered for all roles and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
+Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) shows all roles' scans and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
+
+**📋 popup — staff filter row (สาขาเท่านั้น):** ป็อปอัพมี toolbar 2 แถว — แถวบน `#popupStatusFilterRow` (status filter เดิม: ทั้งหมด/Pass/Audit/Unknown/DEL/รอนับ, `popupFilterState`), แถวล่าง `#popupStaffFilterRow` (filter ตามชื่อผู้สแกน, `popupStaffFilter`, default `'all'`). `renderPopupStaffButtons()` (เรียกใน `openStockPopup`) สร้างปุ่ม "ทุกคน" + ชื่อ pharmacist+assistant จาก `EMPLOYEE_PROFILES[currentBranch]` — **ซ่อนเมื่อ WH หรือไม่มี `profiles.assistant`**. `renderPopupTable` กรอง 2 ชั้นแบบ AND: `popupFilterState` แล้วตามด้วย `(r.sd.scannedBy||'')===popupStaffFilter`. `setPopupFilter`/`setPopupStaffFilter` toggle `.active` แยกกันด้วย row id (กันชน เพราะปุ่มใช้ class `.popup-filter` เหมือนกัน). reset เป็น `'all'` ทุกครั้งที่เปิดป็อปอัพ
 
 **Pharmacist PDA workflow:** เภสัช login บน PDA → scan list แสดงเฉพาะ Audit items ทันที (ไม่มี popup) → สแกน barcode ผ่านช่อง scanInput → `processPharmacistAuditScan()` สะสมใน `_avMap` → ช่อง QTY ในแถวอัปเดตเป็นจำนวนที่สะสม (bold, ไม่มี toast) → กด "✓ ยืนยัน Audit" เพื่อ confirm ทั้งหมด. Popup "รายการสต็อกสินค้า" เมื่อเภสัชเปิด จะ default filter เป็น `audit` อัตโนมัติ
 
