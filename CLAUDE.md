@@ -563,7 +563,7 @@ Export: `exportCountReportExcel()` → `count_report_${branch}_${date}.xlsx`. `f
 1. Branch summary doughnut cards (Pass/Audit/Stock Adj/Scanning per branch)
 2. Per-assistant scan table (filterable by branch) — title/labels สลับด้วย `isWhDash` flag: WH → "👥 พนักงานคลัง — สรุปการสแกน", branch filter hidden (single branch)
 3. Audit progress table — WH → "🔁 รีเช็ค Audit — ความคืบหน้า"; pharmacy → "🧑‍⚕️ ผู้ตรวจ Audit (เภสัช / คลัง) — ความคืบหน้า"
-4. Daily activity bar chart (จาก `stock_audit_log`)
+4. 📅 วันที่นับสต็อก — แสดง **วันที่เริ่มนับ = R01.102 upload date** ต่อสาขา (จาก Firestore `stock_sessions/${b}_r01.r01UploadedAt`, fetch ใน `refreshDashboard` → `branches[b].r01Date`) + Daily activity bar chart (จาก `stock_audit_log`) ใต้วันที่ถ้ามี audit. เดิม section นี้โชว์แค่กราฟ → ว่างเมื่อไม่มี audit; ตอนนี้มีวันที่เริ่มนับเป็นข้อมูลหลักเสมอ
 5. Audit/Recheck % per staff bar chart — WH → "⚠️ Recheck % ต่อพนักงานคลัง" (`isWhDash`); pharmacy → "⚠️ Audit % ต่อผู้สแกน"
 
 `isWhDash = currentBranch === 'WH'` คำนวณใน `renderDashboard()` เพื่อควบคุม label ทุก section แทนการใช้ constant โดยตรง

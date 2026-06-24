@@ -3518,8 +3518,9 @@ async function refreshDashboard(){
     const activeBranches=getActiveDashBranches();
     const sessionPromises=activeBranches.map(b=>_db.collection('stock_sessions').doc(b).get().then(d=>({b,d})).catch(()=>({b,d:null})));
     const auditPromises=activeBranches.map(b=>_db.collection('stock_audit_log').where('branch','==',b).get().then(s=>({b,s})).catch(()=>({b,s:null})));
-    const [sessionResults,auditResults]=await Promise.all([Promise.all(sessionPromises),Promise.all(auditPromises)]);
-    const data=buildDashboardData(sessionResults,auditResults);
+    const r01Promises=activeBranches.map(b=>_db.collection('stock_sessions').doc(b+'_r01').get().then(d=>({b,d})).catch(()=>({b,d:null})));
+    const [sessionResults,auditResults,r01Results]=await Promise.all([Promise.all(sessionPromises),Promise.all(auditPromises),Promise.all(r01Promises)]);
+    const data=buildDashboardData(sessionResults,auditResults,r01Results);
     renderDashboard(data);
     document.getElementById('dashStatus').textContent=`อัปเดต: ${formatThaiDateTime(new Date())}`;
   }catch(e){
@@ -3531,11 +3532,13 @@ async function refreshDashboard(){
   }
 }
 
-function buildDashboardData(sessionResults,auditResults){
+function buildDashboardData(sessionResults,auditResults,r01Results){
   const branches={};
   for(const b of getActiveDashBranches()){
-    branches[b]={branch:b,totalSku:0,passCount:0,auditCount:0,stockAdjCount:0,scanningCount:0,auditTotal:0,auditDone:0,auditPending:0,assistants:{},dateActivity:{}};
+    branches[b]={branch:b,totalSku:0,passCount:0,auditCount:0,stockAdjCount:0,scanningCount:0,auditTotal:0,auditDone:0,auditPending:0,assistants:{},dateActivity:{},r01Date:''};
   }
+  // R01.102 upload date per branch (วันที่เริ่มนับสต็อก)
+  if(r01Results)for(const{b,d} of r01Results){if(d&&d.exists&&branches[b])branches[b].r01Date=(d.data().r01UploadedAt||'');}
   // Current session: scanData per branch (live count)
   for(const{b,d} of sessionResults){
     if(!d||!d.exists)continue;
@@ -3735,15 +3738,13 @@ function renderDashboard(branches){
   sections.push(`<div style="margin-bottom:24px;">
     <h3 style="font-size:0.95rem;margin-bottom:10px;">📅 วันที่นับสต็อก</h3>
     ${activeBranches.map(b=>{
+      const r01d=branches[b].r01Date||'';
       const dates=Object.values(branches[b].dateActivity).sort((a,c)=>a.date.localeCompare(c.date));
-      if(!dates.length)return `<div style="margin-bottom:14px;"><div style="font-size:0.8rem;font-weight:700;color:var(--accent);margin-bottom:4px;">${b}</div><div style="font-size:0.75rem;color:var(--text3);padding:10px;background:var(--surface2);border-radius:8px;">ไม่มีข้อมูล</div></div>`;
-      const max=Math.max(...dates.map(d=>d.total),1);
-      return `<div style="margin-bottom:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <div style="font-size:0.8rem;font-weight:700;color:var(--accent);">${b}</div>
-          <div style="font-size:0.7rem;color:var(--text3);">${dates.length} วัน · รวม ${dates.reduce((a,c)=>a+c.total,0)} audit items</div>
-        </div>
-        <div style="display:flex;align-items:flex-end;gap:4px;height:80px;padding:6px 8px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);overflow-x:auto;">
+      const startLine=`<div style="font-size:0.78rem;color:var(--text2);padding:8px 10px;background:var(--surface2);border-radius:8px;">📅 วันที่เริ่มนับ (อัพ R01.102): <strong style="color:${r01d?'var(--accent)':'var(--text3)'};">${r01d||'— ยังไม่ได้อัพ R01.102'}</strong></div>`;
+      let chart='';
+      if(dates.length){
+        const max=Math.max(...dates.map(d=>d.total),1);
+        chart=`<div style="display:flex;align-items:flex-end;gap:4px;height:80px;padding:6px 8px;margin-top:6px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);overflow-x:auto;">
           ${dates.map(d=>{
             const h=Math.max(4,Math.round(d.total/max*68));
             const dd=d.date.slice(8,10),mm=d.date.slice(5,7);
@@ -3753,7 +3754,15 @@ function renderDashboard(branches){
               <div style="font-size:0.62rem;color:var(--text2);font-family:monospace;">${dd}/${mm}</div>
             </div>`;
           }).join('')}
+        </div>`;
+      }
+      return `<div style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-size:0.8rem;font-weight:700;color:var(--accent);">${b}</div>
+          ${dates.length?`<div style="font-size:0.7rem;color:var(--text3);">${dates.length} วัน · รวม ${dates.reduce((a,c)=>a+c.total,0)} audit items</div>`:''}
         </div>
+        ${startLine}
+        ${chart}
       </div>`;
     }).join('')}
   </div>`);
