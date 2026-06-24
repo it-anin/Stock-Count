@@ -664,7 +664,7 @@ In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (cas
 - **`all`** — Progress = SKU ที่นับเสร็จ / SKU สาขาทั้งหมด (เดิม)
 - **`catA`** — เฉพาะ SKU ที่ Product Master Col D=`A`: ตัวตั้ง = catA ที่นับเสร็จ, ตัวหาร = `_cachedCatA.denom` (catA ∩ R01 ถ้ามี R01, ไม่งั้น catA ทั้งหมดใน PM)
 
-`_cachedCatA={set,denom}` คำนวณใน block `_cachedBranchSku===null` ของ `updateStats` (invalidate พร้อมกันผ่าน `rebuildMaps` — ทั้ง file upload + cloud listener). `updateStats` นับ `cCatA` ใน loop, เลือก progNum/progDenom ด้วย `_catAMode`, แสดง prefix `หมวด A ·`/`ทั้งหมด ·` ใน `progressCount` + label `Progress ⇄`. **WH:** `_cachedCatA=null` → `_catAMode` false เสมอ, การ์ดไม่ตอบสนอง (cursor default, toggle return early).
+`_cachedCatA={set,denom}` คำนวณใน block `_cachedBranchSku===null` ของ `updateStats` (invalidate พร้อมกันผ่าน `rebuildMaps` — ทั้ง file upload + cloud listener). `updateStats` นับ `cCatA` ใน loop, เลือก progNum/progDenom ด้วย `_catAMode`, แสดง prefix `CatA ·` (โหมดหมวด A) / `Stock100 ·` (โหมดทั้งหมด) ใน `progressCount` + label `Progress ⇄`. **WH:** `_cachedCatA=null` → `_catAMode` false เสมอ, การ์ดไม่ตอบสนอง (cursor default, toggle return early).
 
 ### Clear Scan List vs Clear Data
 
