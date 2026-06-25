@@ -569,7 +569,7 @@
         <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
           <span id="resultLabel" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);">RESULT</span>
           <div id="whResultTabs" style="display:none;gap:6px;flex:1;">
-            <button id="whTabResult" onclick="setWhResultTab('result')" class="wh-result-tab active">รอยืนยัน <span id="whTabResultCount"></span></button>
+            <button id="whTabResult" onclick="setWhResultTab('result')" class="wh-result-tab active">เริ่มนับ <span id="whTabResultCount"></span></button>
             <button id="whTabRecheck" onclick="setWhResultTab('recheck')" class="wh-result-tab">รีเช็ค <span id="whTabRecheckCount"></span></button>
           </div>
         </div>
@@ -996,7 +996,7 @@ let _scanSessionUnsubscribe = null;
 let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
-let _whResultTab = 'result'; // WH PDA warehouse: 'result'=รอยืนยัน(scanning) | 'recheck'=รีเช็ค(audit)
+let _whResultTab = 'result'; // WH PDA warehouse: 'result'=เริ่มนับ(scanning) | 'recheck'=รีเช็ค(audit)
 let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
@@ -2378,7 +2378,7 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
   const isWh=currentBranch==='WH';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
-    // WH warehouse PDA: แยก tab — "รอยืนยัน" โชว์ scanning, "รีเช็ค" โชว์ audit (ซ่อน pass/stock_adjustment/audit_check อัตโนมัติ)
+    // WH warehouse PDA: แยก tab — "เริ่มนับ" โชว์ scanning, "รีเช็ค" โชว์ audit (ซ่อน pass/stock_adjustment/audit_check อัตโนมัติ)
     if(window.innerWidth<=600&&isWh&&currentRole==='warehouse'&&sd.status!==(_whResultTab==='recheck'?'audit':'scanning'))continue;
     if(excludeStatuses&&excludeStatuses.has(sd.status))continue;
     if(filterAudit&&sd.status!=='audit')continue;
@@ -2796,8 +2796,9 @@ function setPopupStaffFilter(name,btn){popupStaffFilter=name;document.querySelec
 function renderPopupStaffButtons(){
   const row=document.getElementById('popupStaffFilterRow');if(!row)return;
   const profiles=EMPLOYEE_PROFILES[currentBranch];
-  if(currentBranch==='WH'||!profiles||!profiles.assistant){row.style.display='none';row.innerHTML='';return;}
-  const names=[...(profiles.assistant||[])];
+  // WH: พนักงานแพ็คกิ้ง (warehouse); สาขา: ผู้ช่วยเภสัช (assistant)
+  const names=currentBranch==='WH'?[...(profiles?.warehouse||[])]:[...(profiles?.assistant||[])];
+  if(!names.length){row.style.display='none';row.innerHTML='';return;}
   row.innerHTML=`<button class="popup-filter active" onclick="setPopupStaffFilter('all',this)"><span>👥</span><span>ทุกคน</span></button>`+names.map(n=>`<button class="popup-filter" onclick="setPopupStaffFilter('${n}',this)"><span>🧑</span><span>${n}</span></button>`).join('');
   row.style.display='flex';
 }
@@ -3497,7 +3498,7 @@ function updatePharmacistAuditConfirmBtn(){
   renderSupervisorRecheckButtons();
   renderSupervisorCountButtons();
 }
-// WH PDA warehouse: สลับ tab รอยืนยัน(scanning) / รีเช็ค(audit)
+// WH PDA warehouse: สลับ tab เริ่มนับ(scanning) / รีเช็ค(audit)
 function setWhResultTab(tab){
   _whResultTab=tab==='recheck'?'recheck':'result';
   updateWhResultTabs();
@@ -3539,7 +3540,7 @@ function updateScanInputMode(){
   const _whPda=window.innerWidth<=600&&currentBranch==='WH';
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=(isPharm||_whPda)?'none':'flex';
-  // WH PDA warehouse: แสดง tab "รอยืนยัน"/"รีเช็ค" แทน label RESULT
+  // WH PDA warehouse: แสดง tab "เริ่มนับ"/"รีเช็ค" แทน label RESULT
   const _whWhse=_whPda&&currentRole==='warehouse';
   const rLabel=document.getElementById('resultLabel');const whTabs=document.getElementById('whResultTabs');
   if(rLabel)rLabel.style.display=_whWhse?'none':'';
