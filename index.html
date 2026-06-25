@@ -160,6 +160,8 @@
     .wh-result-tab { flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:7px; background:var(--surface); color:var(--text2); font-size:0.74rem; font-weight:700; cursor:pointer; transition:background 0.15s,color 0.15s,border-color 0.15s; }
     .wh-result-tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
     #whTabRecheck.active { background:var(--orange); border-color:var(--orange); }
+    .wh-sup-filter { padding:4px 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text2); font-size:0.72rem; font-weight:700; cursor:pointer; transition:background 0.15s,color 0.15s,border-color 0.15s; }
+    .wh-sup-filter.active { background:var(--accent); color:#fff; border-color:var(--accent); }
     .col-resizer { position:absolute; right:-3px; top:0; height:100%; width:6px; cursor:col-resize; z-index:10; }
     .col-resizer::after { content:''; position:absolute; left:50%; top:20%; height:60%; width:2px; background:var(--border); border-radius:1px; transform:translateX(-50%); transition:background 0.15s; }
     .col-resizer:hover::after, .col-resizer.resizing::after { background:var(--accent); }
@@ -231,6 +233,7 @@
 
     .tag-unknown { font-size:0.65rem; padding:1px 6px; border-radius:3px; background:rgba(107,63,160,0.12); color:var(--purple); margin-left:4px; }
     .tag-del { font-size:0.65rem; padding:1px 6px; border-radius:3px; background:rgba(220,38,38,0.1); color:#dc2626; margin-left:4px; font-weight:700; }
+    .tag-p { font-size:0.65rem; padding:1px 6px; border-radius:3px; background:rgba(107,63,160,0.12); color:#6b3fa0; margin-left:4px; font-weight:700; }
     .progress-bar { height:8px; background:var(--surface3); border-radius:4px; margin-top:8px; overflow:hidden; }
     .progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--green)); background-size:200% 100%; border-radius:4px; transition:width 0.4s ease; animation:progressShimmer 2s linear infinite; }
     @keyframes progressShimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
@@ -572,6 +575,13 @@
             <button id="whTabResult" onclick="setWhResultTab('result')" class="wh-result-tab active">เริ่มนับ <span id="whTabResultCount"></span></button>
             <button id="whTabRecheck" onclick="setWhResultTab('recheck')" class="wh-result-tab">รีเช็ค <span id="whTabRecheckCount"></span></button>
           </div>
+          <div id="whSupFilterRow" style="display:none;gap:6px;flex:1;flex-wrap:wrap;">
+            <button onclick="setWhSupFilter('all',this)" class="wh-sup-filter active">ทั้งหมด</button>
+            <button onclick="setWhSupFilter('scanning',this)" class="wh-sup-filter">รอยืนยัน</button>
+            <button onclick="setWhSupFilter('pass',this)" class="wh-sup-filter">Pass</button>
+            <button onclick="setWhSupFilter('audit',this)" class="wh-sup-filter">รีเช็ค</button>
+            <button onclick="setWhSupFilter('stock_adjustment',this)" class="wh-sup-filter">ปรับสต็อก</button>
+          </div>
         </div>
         <div class="scan-list-card" style="margin:10px 14px;border-radius:8px;position:relative;">
           <div class="scan-list-loading" id="scanListLoading">
@@ -715,6 +725,7 @@
 
       <button class="popup-filter" onclick="setPopupFilter('unknown',this)"><span>❓</span><span>Unknown</span></button>
       <button class="popup-filter" onclick="setPopupFilter('del',this)"><span>🗑️</span><span>DEL</span></button>
+      <button class="popup-filter" onclick="setPopupFilter('p',this)"><span>🏷️</span><span>P</span></button>
       <button class="popup-filter" onclick="setPopupFilter('pending',this)"><span>⏳</span><span>รอนับ</span></button>
     </div>
     <div class="stock-popup-toolbar" id="popupStaffFilterRow" style="display:none;padding-top:0;"></div>
@@ -997,6 +1008,7 @@ let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
 let _whResultTab = 'result'; // WH PDA warehouse: 'result'=เริ่มนับ(scanning) | 'recheck'=รีเช็ค(audit)
+let _whSupFilter = 'all'; // WH supervisor Desktop: filter ตาราง RESULT ตาม status (all/scanning/pass/audit/stock_adjustment)
 let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
@@ -1397,7 +1409,7 @@ function loadProductMaster(event) {
   const file=event.target.files[0]; if(!file)return;
   parseFile(file,rows=>{
     state.productMasterData=[]; let sk=0;
-    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const sku=(r[0]??'').toString().trim();const name=(r[1]??'').toString().trim();const colD=(r[3]??'').toString().trim().toUpperCase();if(!sku){sk++;continue;}if(colD==='P'||colD==='REVIEW'){sk++;continue;}state.productMasterData.push(colD==='A'?{sku,productName:name,cat:'A'}:{sku,productName:name});}
+    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const sku=(r[0]??'').toString().trim();const name=(r[1]??'').toString().trim();const colD=(r[3]??'').toString().trim().toUpperCase();if(!sku){sk++;continue;}if(colD==='REVIEW'){sk++;continue;}const cat=colD==='A'?'A':(colD==='P'?'P':'');state.productMasterData.push(cat?{sku,productName:name,cat}:{sku,productName:name});}
     state.productMasterMap.clear();
     state.productMasterData.forEach(r=>state.productMasterMap.set(r.sku,r.productName));
     document.getElementById('badgeProductMaster').textContent='Ready';
@@ -1790,7 +1802,7 @@ function rebuildMaps() {
   const qtyMap=new Map();const r01NameMap=new Map();
   state.r01Data.forEach(r=>{qtyMap.set(r.colE,r.systemQty);if(r.productName)r01NameMap.set(r.colE,r.productName);});
   const skuSource=state.productMasterData.length?state.productMasterData:state.r01Data.map(r=>({sku:r.colE,productName:r.productName}));
-  skuSource.forEach(r=>{if(!state.skuMap.has(r.sku)){const pn=r.productName||r01NameMap.get(r.sku)||r.sku;state.skuMap.set(r.sku,{sku:r.sku,productName:pn,systemQty:qtyMap.get(r.sku)??0,barcodes:[],isDel:false});}});
+  skuSource.forEach(r=>{if(!state.skuMap.has(r.sku)){const pn=r.productName||r01NameMap.get(r.sku)||r.sku;state.skuMap.set(r.sku,{sku:r.sku,productName:pn,systemQty:qtyMap.get(r.sku)??0,barcodes:[],isDel:false,isP:r.cat==='P'});}});
   // R01 items not in Product Master → DEL (ถูกตัดออกจาก PM แต่ยังมีสต็อกจริง)
   if(state.productMasterData.length&&state.r01Data.length){const pmSet=new Set(state.productMasterData.map(r=>r.sku));state.r01Data.forEach(r=>{if(!pmSet.has(r.colE)&&!state.skuMap.has(r.colE)){state.skuMap.set(r.colE,{sku:r.colE,productName:r.productName||r.colE,systemQty:r.systemQty,barcodes:[],isDel:true});}});}
   state.r05Data.forEach(r=>{if(state.skuMap.has(r.colE)){state.skuMap.get(r.colE).barcodes.push({barcode:r.barcode,unitName:r.unitName,unitMultiplier:r.unitMultiplier});state.barcodeMap.set(r.barcode,r.colE);}});
@@ -2380,6 +2392,8 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
     if(sd.status==='pending')continue;
     // WH warehouse PDA: แยก tab — "เริ่มนับ" โชว์ scanning, "รีเช็ค" โชว์ audit (ซ่อน pass/stock_adjustment/audit_check อัตโนมัติ)
     if(window.innerWidth<=600&&isWh&&currentRole==='warehouse'&&sd.status!==(_whResultTab==='recheck'?'audit':'scanning'))continue;
+    // WH supervisor Desktop: filter RESULT ตาม status ที่เลือก
+    if(isWh&&isSupervisor&&window.innerWidth>600&&_whSupFilter!=='all'&&sd.status!==_whSupFilter)continue;
     if(excludeStatuses&&excludeStatuses.has(sd.status))continue;
     if(filterAudit&&sd.status!=='audit')continue;
     // warehouse WH PDA: เห็นเฉพาะของตัวเอง (scannedBy) ทั้ง scanning + audit — แต่ละคนเช็ค zone ตัวเอง ไม่เห็นของคนอื่น. Desktop warehouse: audit ยังเห็นทุกคน (worklist)
@@ -2770,7 +2784,7 @@ function schedulePopupRender(){clearTimeout(popupRenderTimer);popupRenderTimer=s
 
 function buildPopupBaseRows(){
   const base=[];
-  getActiveSkus().forEach(sku=>{const info=state.skuMap.get(sku);if(!info)return;const sd=state.scanData.get(sku)||{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:''};base.push({sku,info,sd,barcodes:info.barcodes.map(b=>b.barcode).join(', '),isUnknown:false,isDel:!!info.isDel});});
+  getActiveSkus().forEach(sku=>{const info=state.skuMap.get(sku);if(!info)return;const sd=state.scanData.get(sku)||{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:''};base.push({sku,info,sd,barcodes:info.barcodes.map(b=>b.barcode).join(', '),isUnknown:false,isDel:!!info.isDel,isP:!!info.isP});});
   state.unknownScans.forEach(u=>base.push({sku:'—',info:{sku:'—',productName:'ไม่มีในระบบ',systemQty:0,barcodes:[]},sd:{countedQty:u.count,status:'unknown',retries:0,timestamp:u.timestamp,scannedBy:u.scannedBy,auditor:'',auditStatus:'—',barcode:u.barcode,location:u.location||''},barcodes:u.barcode,isUnknown:true}));
   return base;
 }
@@ -2812,7 +2826,7 @@ function renderPopupTable(){
   const colspan=isWhSup?10:9;
   if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
   let rows=popupBaseRowsCache;
-  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
   if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
@@ -2825,14 +2839,14 @@ function renderPopupTable(){
     else if(sd.auditStatus==='pending'&&sd.status!=='pending'){ap='<span class="pill pill-audit">⏳</span>';}
     else{ap='—';}
     const ut=r.isUnknown?'<span class="tag-unknown">ไม่มีในระบบ</span>':'';
-    const dt=r.isDel?'<span class="tag-del">DEL</span>':'';
+    const dt=r.isDel?'<span class="tag-del">DEL</span>':'';const pt=r.isP?'<span class="tag-p">P</span>':'';
     const qc=sd.status==='pass'||sd.status==='audit_check'?'var(--green)':'var(--text)';
     const bcs=barcodes.length>22?barcodes.slice(0,22)+'…':barcodes;
     const canEdit=(info.systemQty||0)>100&&(sd.status==='pending'||sd.status==='scanning');
     const qtyCell=canEdit?`<input type="number" class="popup-qty-input" value="${sd.countedQty}" min="0" onchange="updatePopupQty('${sku}',this.value)"/>`:`<span style="color:${qc};font-weight:700">${sd.countedQty}</span>`;
     const scannedByCell=sd.scannedBy?`<span style="font-size:0.74rem;color:var(--text2);font-weight:600;">${sd.scannedBy}</span>`:'<span style="color:var(--text3);">—</span>';
     const locCell=isWhSup?`<td style="font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--text2);text-align:center;">${state.locationMap.get(sku)||'—'}</td>`:'';
-    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td><td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.timestamp||'—'}</td>${locCell}</tr>`;
+    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}${pt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td><td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.timestamp||'—'}</td>${locCell}</tr>`;
   }).join('');
 }
 
@@ -3518,6 +3532,13 @@ function updateWhResultTabs(){
   document.getElementById('whTabResult')?.classList.toggle('active',_whResultTab==='result');
   document.getElementById('whTabRecheck')?.classList.toggle('active',_whResultTab==='recheck');
 }
+// WH supervisor Desktop: filter ตาราง RESULT ตาม status
+function setWhSupFilter(status,btn){
+  _whSupFilter=status;
+  document.querySelectorAll('#whSupFilterRow .wh-sup-filter').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  rebuildScanListMap(true);renderScanList();
+}
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
   // หัวหน้างาน (supervisor) บน Desktop: รีเช็ค audit ผ่านช่อง scan หลักได้ → โชว์ทั้งปุ่ม Confirm (นับ) และปุ่มยืนยันรีเช็ค
@@ -3546,6 +3567,9 @@ function updateScanInputMode(){
   if(rLabel)rLabel.style.display=_whWhse?'none':'';
   if(whTabs)whTabs.style.display=_whWhse?'flex':'none';
   if(_whWhse)updateWhResultTabs();
+  // WH supervisor Desktop: status filter row บนตาราง RESULT
+  const whSupRow=document.getElementById('whSupFilterRow');
+  if(whSupRow)whSupRow.style.display=_whSup?'flex':'none';
   if(!isPharm&&!isSvDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
   const sysQtyHdr=document.getElementById('scanListHeaderSysQty');
   if(sysQtyHdr)sysQtyHdr.style.display=isSvDesktop&&currentBranch==='WH'?'flex':'none';

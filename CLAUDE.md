@@ -82,7 +82,7 @@ state = {
 - **assistant** — แสดงเฉพาะแถวที่ `sd.scannedBy === currentUser`
 - **warehouse** — แสดง **เฉพาะของตัวเอง** (`sd.scannedBy === currentUser`) ทั้ง scanning + audit (แต่ละคนนับ/รีเช็ค zone ตัวเอง ไม่เห็นของคนอื่น). ข้อยกเว้น `whWorklist` (ข้าม filter `scannedBy`) เหลือเฉพาะ **Desktop warehouse audit** (`isWh && warehouse && status==='audit' && window.innerWidth>600`) — Desktop ยังเห็น audit ทุกคนเป็น worklist; **PDA เห็น audit เฉพาะ own**. แถว audit โชว์ `sd.recheckQty`. **บน PDA แยก 2 tab** ในแถว header (id `whResultTabs`, แทน label "RESULT") — **"เริ่มนับ"** (`_whResultTab==='result'`, default) โชว์ `scanning` ของตัวเอง (นับครั้งแรก รอ supervisor confirm) · **"รีเช็ค"** (`_whResultTab==='recheck'`) โชว์ `audit` ของตัวเอง (worklist รีเช็ค zone ตัวเอง). `rebuildScanListMap` กรอง `sd.status !== (_whResultTab==='recheck'?'audit':'scanning')` → แต่ละ tab status เดียว (ซ่อน `pass`/`stock_adjustment`/`audit_check` อัตโนมัติ). `setWhResultTab(tab)` สลับ + rebuild; `updateWhResultTabs()` อัปเดต active + จำนวนบน tab (นับ scanning+audit **เฉพาะ own** `scannedBy===currentUser` ให้ตรงกับ list, เรียกใน `updateStats` + `updateScanInputMode`). Desktop warehouse ไม่มี tab
 - **pharmacist** — แสดงเฉพาะ `sd.status === 'audit'` (รายการที่รอเภสัชตรวจ)
-- **supervisor** — แสดงทุกการสแกนของพนักงานทั้งหมด (ไม่ filter); แถว audit โชว์ `sd.recheckQty`
+- **supervisor** — แสดงทุกการสแกนของพนักงานทั้งหมด (ไม่ filter `scannedBy`); แถว audit โชว์ `sd.recheckQty`. **WH supervisor Desktop:** มี **status filter row** บน header ตาราง RESULT (`#whSupFilterRow`, โชว์ใน `updateScanInputMode` เมื่อ `_whSup`) — ปุ่ม ทั้งหมด/รอยืนยัน(scanning)/Pass/รีเช็ค(audit)/ปรับสต็อก(stock_adjustment); `setWhSupFilter(status)` set `_whSupFilter` + rebuild; `rebuildScanListMap` กรอง `isWh && isSupervisor && Desktop && _whSupFilter!=='all' && sd.status!==_whSupFilter`
 - **ไม่ได้ login** — แสดงทั้งหมด
 
 Stats cards (Scanned/Audit totals) always count all employees regardless of filter. The 📋 popup table (`renderTable`) shows all roles' scans and is **read-only** — pharmacist verification must be done exclusively through the Audit Verify panel.
@@ -662,7 +662,9 @@ In the popup table, `countedQty` is editable inline (`updatePopupQty`) when `sys
 
 ### Product Master Col D Filter
 
-In `loadProductMaster()`, rows where Col D (index 3) equals `P` or `REVIEW` (case-insensitive) are skipped. Rows where Col D equals `A` are stored with `cat:'A'` ใน `productMasterData` (rows อื่นไม่มี field `cat`) — ค่านี้ serialize ขึ้น `global_pm` (`syncProductMasterToFirestore` stringify ทั้ง object) → ทุกเครื่องได้ผ่าน listener. **ต้องอัพ PM ใหม่ 1 ครั้ง** หลัง deploy เพื่อให้ของเดิมใน cloud มี `cat`.
+In `loadProductMaster()`, rows where Col D (index 3) equals `REVIEW` (case-insensitive) are skipped. **`P` ไม่ถูกข้ามแล้ว** — สินค้า `P` ถูกเก็บเข้า Product Master เพื่อให้นับได้ (เป็นสินค้าปกติใน skuMap ไม่ใช่ DEL) + ติด flag `cat:'P'`. Rows where Col D equals `A` are stored with `cat:'A'`; `P` → `cat:'P'`; rows อื่นไม่มี field `cat` — ค่านี้ serialize ขึ้น `global_pm` (`syncProductMasterToFirestore` stringify ทั้ง object) → ทุกเครื่องได้ผ่าน listener. **ต้องอัพ PM ใหม่ 1 ครั้ง** หลัง deploy เพื่อให้ของเดิมใน cloud มี `cat`.
+
+**P badge (เหมือน DEL):** `rebuildMaps` ตั้ง `skuMap[sku].isP = (r.cat==='P')`. ในป็อปอัพ 📋 — `buildPopupBaseRows` ใส่ `isP:!!info.isP`, render badge **P สีม่วง** (`.tag-p`) ในเซลล์ SKU (ข้าง badge DEL) + ปุ่ม filter **🏷️ P** (`setPopupFilter('p')` → `r.isP`). ต่างจาก DEL: สินค้า P **โผล่ใน filter "รอนับ" (pending) ด้วย** (เป็นสินค้าปกติ ไม่ถูก exclude เหมือน DEL).
 
 ### Progress Toggle — หมวด A (สาขาเท่านั้น)
 
