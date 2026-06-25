@@ -1412,7 +1412,7 @@ function loadR01(event) {
   const file=event.target.files[0]; if(!file)return;
   parseFile(file,rows=>{
     state.r01Data=[]; let sk=0;
-    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const e=(r[4]??'').toString().trim();const f=(r[5]??'').toString().trim();const g=(r[6]??'').toString().replace(/,|\s/g,'').trim();if(!e){sk++;continue;}const qty=g===''?0:(isFinite(+g)?+g:0);if(qty<=0){sk++;continue;}state.r01Data.push({colE:e,productName:f,systemQty:qty});}
+    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const e=(r[4]??'').toString().trim();const f=(r[5]??'').toString().trim();const g=(r[6]??'').toString().replace(/,|\s/g,'').trim();if(!e){sk++;continue;}if(g===''||!isFinite(+g)){sk++;continue;}const qty=+g;state.r01Data.push({colE:e,productName:f,systemQty:qty});}
     document.getElementById('badgeR01').textContent='Ready';
     document.getElementById('fileR01').nextElementSibling.style.borderColor='var(--green)';
     _setR01Ts(formatThaiDateTime(new Date()));
