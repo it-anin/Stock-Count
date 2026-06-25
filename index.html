@@ -157,6 +157,9 @@
     .scan-list-header { display:grid; grid-template-columns:98px 120px 1fr 88px 128px; gap:0; background:#eef3fa; border-bottom:1px solid var(--border); font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--text2); overflow:hidden; }
     .scan-list-header > span { position:relative; padding:7px 10px; border-right:1px solid var(--border); overflow:hidden; white-space:nowrap; display:flex; align-items:center; }
     .scan-list-header > span:last-child { border-right:none; }
+    .wh-result-tab { flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:7px; background:var(--surface); color:var(--text2); font-size:0.74rem; font-weight:700; cursor:pointer; transition:background 0.15s,color 0.15s,border-color 0.15s; }
+    .wh-result-tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+    #whTabRecheck.active { background:var(--orange); border-color:var(--orange); }
     .col-resizer { position:absolute; right:-3px; top:0; height:100%; width:6px; cursor:col-resize; z-index:10; }
     .col-resizer::after { content:''; position:absolute; left:50%; top:20%; height:60%; width:2px; background:var(--border); border-radius:1px; transform:translateX(-50%); transition:background 0.15s; }
     .col-resizer:hover::after, .col-resizer.resizing::after { background:var(--accent); }
@@ -563,8 +566,12 @@
           </div>
         </div>
 
-        <div style="display:flex;align-items:center;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
-          <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);">RESULT</span>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+          <span id="resultLabel" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);">RESULT</span>
+          <div id="whResultTabs" style="display:none;gap:6px;flex:1;">
+            <button id="whTabResult" onclick="setWhResultTab('result')" class="wh-result-tab active">รอยืนยัน <span id="whTabResultCount"></span></button>
+            <button id="whTabRecheck" onclick="setWhResultTab('recheck')" class="wh-result-tab">รีเช็ค <span id="whTabRecheckCount"></span></button>
+          </div>
         </div>
         <div class="scan-list-card" style="margin:10px 14px;border-radius:8px;position:relative;">
           <div class="scan-list-loading" id="scanListLoading">
@@ -989,6 +996,7 @@ let _scanSessionUnsubscribe = null;
 let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
+let _whResultTab = 'result'; // WH PDA warehouse: 'result'=รอยืนยัน(scanning) | 'recheck'=รีเช็ค(audit)
 let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
@@ -2370,8 +2378,8 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
   const isWh=currentBranch==='WH';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
-    // WH warehouse PDA: RESULT เห็นเฉพาะ scanning (นับ) + audit (worklist รีเช็ค) — ซ่อน pass/stock_adjustment/audit_check (เสร็จแล้ว ไม่ใช่งานที่ต้องทำ)
-    if(window.innerWidth<=600&&isWh&&currentRole==='warehouse'&&sd.status!=='scanning'&&sd.status!=='audit')continue;
+    // WH warehouse PDA: แยก tab — "รอยืนยัน" โชว์ scanning, "รีเช็ค" โชว์ audit (ซ่อน pass/stock_adjustment/audit_check อัตโนมัติ)
+    if(window.innerWidth<=600&&isWh&&currentRole==='warehouse'&&sd.status!==(_whResultTab==='recheck'?'audit':'scanning'))continue;
     if(excludeStatuses&&excludeStatuses.has(sd.status))continue;
     if(filterAudit&&sd.status!=='audit')continue;
     // warehouse WH: เห็น audit ของทุกคน (worklist รีเช็ค) → ข้าม filterUser สำหรับ audit
@@ -2731,6 +2739,7 @@ function updateStats(){
   if(_apWrap){if(auditTotal>0){_apWrap.style.display='block';if(_apFill){_apFill.style.width=_apct+'%';_apFill.style.background=_apct>=100?'var(--green)':'var(--red)';}if(_apPct)_apPct.textContent=_apct+'%';}else{_apWrap.style.display='none';}}
   updateAuditVerifyCount();
   updateHistoryStatsCount();
+  updateWhResultTabs();
   updatePharmacistAuditConfirmBtn();
   // WH: ซ่อน Total SKU + SKU BRANCH, เปลี่ยน Counted → Audit ทั้งหมด (auditTotal)
   const _c1=document.getElementById('statCardTotal');
@@ -3488,6 +3497,25 @@ function updatePharmacistAuditConfirmBtn(){
   renderSupervisorRecheckButtons();
   renderSupervisorCountButtons();
 }
+// WH PDA warehouse: สลับ tab รอยืนยัน(scanning) / รีเช็ค(audit)
+function setWhResultTab(tab){
+  _whResultTab=tab==='recheck'?'recheck':'result';
+  updateWhResultTabs();
+  rebuildScanListMap(true);renderScanList();
+}
+// อัปเดต active state + จำนวนบน tab (เฉพาะ WH PDA warehouse)
+function updateWhResultTabs(){
+  if(!(window.innerWidth<=600&&currentBranch==='WH'&&currentRole==='warehouse'))return;
+  let nScan=0,nAudit=0;
+  for(const[,sd]of state.scanData.entries()){
+    if(sd.status==='scanning')nScan++;
+    else if(sd.status==='audit')nAudit++;
+  }
+  const rc=document.getElementById('whTabResultCount');if(rc)rc.textContent=nScan?`(${nScan})`:'';
+  const ac=document.getElementById('whTabRecheckCount');if(ac)ac.textContent=nAudit?`(${nAudit})`:'';
+  document.getElementById('whTabResult')?.classList.toggle('active',_whResultTab==='result');
+  document.getElementById('whTabRecheck')?.classList.toggle('active',_whResultTab==='recheck');
+}
 function updateScanInputMode(){
   const isPharm=currentRole==='pharmacist';
   // หัวหน้างาน (supervisor) บน Desktop: รีเช็ค audit ผ่านช่อง scan หลักได้ → โชว์ทั้งปุ่ม Confirm (นับ) และปุ่มยืนยันรีเช็ค
@@ -3510,6 +3538,12 @@ function updateScanInputMode(){
   const _whPda=window.innerWidth<=600&&currentBranch==='WH';
   const ccRow=document.getElementById('confirmClearRow');
   if(ccRow)ccRow.style.display=(isPharm||_whPda)?'none':'flex';
+  // WH PDA warehouse: แสดง tab "รอยืนยัน"/"รีเช็ค" แทน label RESULT
+  const _whWhse=_whPda&&currentRole==='warehouse';
+  const rLabel=document.getElementById('resultLabel');const whTabs=document.getElementById('whResultTabs');
+  if(rLabel)rLabel.style.display=_whWhse?'none':'';
+  if(whTabs)whTabs.style.display=_whWhse?'flex':'none';
+  if(_whWhse)updateWhResultTabs();
   if(!isPharm&&!isSvDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
   const sysQtyHdr=document.getElementById('scanListHeaderSysQty');
   if(sysQtyHdr)sysQtyHdr.style.display=isSvDesktop&&currentBranch==='WH'?'flex':'none';
