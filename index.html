@@ -2370,6 +2370,8 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
   const isWh=currentBranch==='WH';
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
+    // WH warehouse PDA: RESULT เห็นเฉพาะ scanning (นับ) + audit (worklist รีเช็ค) — ซ่อน pass/stock_adjustment/audit_check (เสร็จแล้ว ไม่ใช่งานที่ต้องทำ)
+    if(window.innerWidth<=600&&isWh&&currentRole==='warehouse'&&sd.status!=='scanning'&&sd.status!=='audit')continue;
     if(excludeStatuses&&excludeStatuses.has(sd.status))continue;
     if(filterAudit&&sd.status!=='audit')continue;
     // warehouse WH: เห็น audit ของทุกคน (worklist รีเช็ค) → ข้าม filterUser สำหรับ audit

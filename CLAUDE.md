@@ -80,7 +80,7 @@ state = {
 
 **Scan list filter by role:** `rebuildScanListMap(force=false)` applies role-based filtering:
 - **assistant** — แสดงเฉพาะแถวที่ `sd.scannedBy === currentUser`
-- **warehouse** — แสดงของตัวเอง (`sd.scannedBy === currentUser`) **แต่** audit items แสดงของ**ทุกคน** (worklist รีเช็ค, ข้าม filter `scannedBy`); แถว audit โชว์ `sd.recheckQty`
+- **warehouse** — แสดงของตัวเอง (`sd.scannedBy === currentUser`) **แต่** audit items แสดงของ**ทุกคน** (worklist รีเช็ค, ข้าม filter `scannedBy`); แถว audit โชว์ `sd.recheckQty`. **บน PDA (`window.innerWidth<=600`):** เห็นเฉพาะ `scanning` (นับ) + `audit` (worklist) — `rebuildScanListMap` ซ่อน `pass`/`stock_adjustment`/`audit_check` (เสร็จแล้ว) ไม่งั้น pass ของตัวเอง (filter แค่ `scannedBy` ไม่กรอง status) จะปนเต็ม RESULT. Desktop warehouse ไม่กรอง (เห็น pass ด้วย)
 - **pharmacist** — แสดงเฉพาะ `sd.status === 'audit'` (รายการที่รอเภสัชตรวจ)
 - **supervisor** — แสดงทุกการสแกนของพนักงานทั้งหมด (ไม่ filter); แถว audit โชว์ `sd.recheckQty`
 - **ไม่ได้ login** — แสดงทั้งหมด
@@ -690,7 +690,7 @@ The **✕ ซ่อนรายการ** button (เดิม "✕ Clear") cal
 
 **RESULT starts empty (startEmpty roles):** `initAfterLogin()` sets `_listCleared = true` and clears `scanListMap` after restore for **ผู้ช่วยเภสัช (assistant) PDA** — condition กลางคือ `window.innerWidth<=600 && (currentBranch==='WH' || currentRole==='assistant')`. `appendScanRow` บน startEmpty role เดียวกันนี้ **ไม่** reset `_listCleared` — `onSnapshot` จึงไม่ flood ของเก่ากลับ. ผลลัพธ์: เห็นเฉพาะสินค้าที่สแกนในรอบนี้ ไม่ต้องกด Clear เอง
 
-> ⚠️ **ยกเว้น WH warehouse:** แม้เข้าเงื่อนไข `_startEmpty` (WH PDA) แต่ **warehouse ไม่ start empty** — `initAfterLogin` เรียก `rebuildScanListMap(true)` แทนการ clear (คง `_listCleared=false`) เพราะ warehouse **ต้องเห็น recheck worklist** (audit ที่ supervisor confirm) + scanning ของตัวเอง. ถ้า clear + `_listCleared=true` → onSnapshot handler (`if(!_listCleared)rebuildScanListMap`) จะข้าม rebuild → audit items ถูกดึงเข้า `scanData` แล้วแต่ **ไม่ขึ้น RESULT** (bug ที่เคยเกิด: supervisor confirm แล้ว WH PDA ไม่เห็นรีเช็ค). pass ยังไม่โชว์ (rebuildScanListMap ของ warehouse กรอง pass ออก)
+> ⚠️ **ยกเว้น WH warehouse:** แม้เข้าเงื่อนไข `_startEmpty` (WH PDA) แต่ **warehouse ไม่ start empty** — `initAfterLogin` เรียก `rebuildScanListMap(true)` แทนการ clear (คง `_listCleared=false`) เพราะ warehouse **ต้องเห็น recheck worklist** (audit ที่ supervisor confirm) + scanning ของตัวเอง. ถ้า clear + `_listCleared=true` → onSnapshot handler (`if(!_listCleared)rebuildScanListMap`) จะข้าม rebuild → audit items ถูกดึงเข้า `scanData` แล้วแต่ **ไม่ขึ้น RESULT** (bug ที่เคยเกิด: supervisor confirm แล้ว WH PDA ไม่เห็นรีเช็ค). pass ไม่โชว์บน PDA — `rebuildScanListMap` มี filter `window.innerWidth<=600 && isWh && currentRole==='warehouse' && status!=='scanning' && status!=='audit' → continue` (ซ่อน pass/stock_adjustment/audit_check ที่ filter `scannedBy` ไม่ได้กรอง — ไม่งั้น pass ตัวเองปนเต็ม RESULT)
 
 > **เหตุผลที่รวม assistant:** เดิมผู้ช่วยเภสัชเปิดแอปกลับมาเห็นของ `pass`/`audit` ของตัวเองค้างเต็ม RESULT (filter assistant ใน `rebuildScanListMap` กรองแค่ `scannedBy` ไม่กรอง status) ต้องกด Clear ทุกครั้ง. เภสัช (pharmacist) **ไม่รวม** — ยังต้องเห็น audit worklist ตอนเปิดแอป
 
