@@ -2382,8 +2382,8 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
     if(window.innerWidth<=600&&isWh&&currentRole==='warehouse'&&sd.status!==(_whResultTab==='recheck'?'audit':'scanning'))continue;
     if(excludeStatuses&&excludeStatuses.has(sd.status))continue;
     if(filterAudit&&sd.status!=='audit')continue;
-    // warehouse WH: เห็น audit ของทุกคน (worklist รีเช็ค) → ข้าม filterUser สำหรับ audit
-    const whWorklist=isWh&&sd.status==='audit'&&currentRole==='warehouse';
+    // warehouse WH PDA: เห็นเฉพาะของตัวเอง (scannedBy) ทั้ง scanning + audit — แต่ละคนเช็ค zone ตัวเอง ไม่เห็นของคนอื่น. Desktop warehouse: audit ยังเห็นทุกคน (worklist)
+    const whWorklist=isWh&&currentRole==='warehouse'&&sd.status==='audit'&&window.innerWidth>600;
     if(filterUser&&!whWorklist&&sd.scannedBy&&sd.scannedBy!==currentUser)continue;
     if(hideAuditPdaWh&&sd.status==='audit')continue;
     const si=state.skuMap.get(sku);
@@ -3508,6 +3508,7 @@ function updateWhResultTabs(){
   if(!(window.innerWidth<=600&&currentBranch==='WH'&&currentRole==='warehouse'))return;
   let nScan=0,nAudit=0;
   for(const[,sd]of state.scanData.entries()){
+    if(sd.scannedBy&&sd.scannedBy!==currentUser)continue; // เฉพาะของตัวเอง — ตรงกับ list (PDA warehouse เห็นเฉพาะ own)
     if(sd.status==='scanning')nScan++;
     else if(sd.status==='audit')nAudit++;
   }
