@@ -1265,7 +1265,13 @@ async function initAfterLogin(){
     applyAuditTerminology();
     // WH PDA + ผู้ช่วยเภสัช PDA: เริ่ม session ด้วย RESULT ว่าง — เห็นเฉพาะสิ่งที่สแกนใหม่ (ไม่ต้องกด Clear)
     if(_startEmpty){
-      scanListMap.clear();_listCleared=true;renderScanList();
+      if(currentBranch==='WH'&&currentRole==='warehouse'){
+        // warehouse: ไม่ start empty — ต้องเห็น recheck worklist (audit จาก supervisor) + scanning ตัวเอง
+        // _listCleared คง false → onSnapshot rebuild ได้ → recheck items ขึ้น RESULT real-time
+        rebuildScanListMap(true);renderScanList();
+      }else{
+        scanListMap.clear();_listCleared=true;renderScanList();
+      }
     }
   }finally{
     // ปิด Loading overlay เสมอ แม้ login error กลางทาง (กันจอค้าง Loading)
