@@ -478,7 +478,7 @@
               <strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>
               <ul style="padding-left:16px;margin:0;">
                 <li>รายงาน R16.104 → ตามวันที่ <strong>ตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (สะสม ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · อัพใหม่ทุกครั้งก่อน Confirm</li>
-                <li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— WH: OTFI หักออกเสมอ</span></li>
+                <li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— WH: OTFI หักออกเสมอ · SRC: OTFB บวกกลับ (คลังส่งออก)</span></li>
                 <li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>
               </ul>
             </div>
@@ -1024,8 +1024,9 @@ const EMPLOYEE_PROFILES={
 };
 // R16 document type prefixes (Col C). Add new OXXX codes to the appropriate array.
 const R16_SALES_PREFIXES=['ORCM','OCTM'];          // ยอดขาย → บวกกลับเข้า countedQty
-const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้า → หักออกจาก countedQty (สาขา: OTFI ที่ Col A=0/ว่าง คลัง→สาขา; WH: OTFI ทุกตัวที่คลังรับโอนเข้า)
+const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้า → หักออกจาก countedQty (KKL/SSS: OTFB คลัง→สาขา รับเข้า; OTFI Col A=0/ว่าง คลัง→สาขา; WH: OTFI ทุกตัวที่คลังรับโอนเข้า)
 const R16_OUTBOUND_PREFIXES=['OTFI'];              // สาขา: OTFI ที่ Col A=1 (สาขา→คลัง โอนออกกลับ) → บวกกลับเข้า countedQty (เหมือนยอดขาย); WH ไม่ใช้ (คลังเป็นฝั่งรับ = inbound)
+// ⚠️ SRC ("อนิน สาขาแยกชากค้อ" = SRC+คลังรวมใน POS แยกไม่ได้): OTFB = คลังของชากค้อส่งออกไปสาขาอื่น → outbound (บวกกลับ) ไม่ใช่ inbound — ดู isSrcOtfbOut ใน loadR16
 const R16_103_PREFIXES=['IRNC','IRVC','IRNM','ICSM','ITFB','ITFW','IPOS','IRCN']; // WH: รับเข้าที่ยังไม่ขึ้นชั้น → บวกกลับเข้า countedQty
 function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
 let currentUser='';
@@ -1456,7 +1457,10 @@ function loadR16(event) {
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
       const colA=(r[0]??'').toString().trim(); // Col A (index 0): ทิศ OTFI ของสาขา (จาก POS export) — '1'=สาขา→คลัง บวกกลับ, '0'=คลัง→สาขา หัก
       const isSale=!isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ข้ามยอดขาย
-      const isOutbound=!isWhBranch&&_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES)&&colA==='1'; // สาขา OTFI: บวกกลับ "เฉพาะ Col A=1" (สาขาโอนออกกลับคลัง); Col A=0/ว่าง → หัก (รับเข้าจากคลัง)
+      // SRC: "อนิน สาขาแยกชากค้อ" = SRC+คลังรวมใน POS (แยกไม่ได้) → OTFB (คลังโอนไปสาขา) = คลังส่งออกไปสาขาอื่น → บวกกลับ (outbound)
+      // KKL/SSS = สาขาผู้รับ → OTFB ยังเป็น inbound (หักออก) ตามเดิม
+      const isSrcOtfbOut=currentBranch==='SRC'&&colC.startsWith('OTFB');
+      const isOutbound=!isWhBranch&&((_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES)&&colA==='1')||isSrcOtfbOut); // สาขา OTFI Col A=1 (สาขาโอนกลับคลัง) + SRC OTFB (คลังส่งออก) → บวกกลับ; OTFI Col A=0/ว่าง → หัก (รับเข้าจากคลัง)
       const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES)&&!isOutbound;   // OTFB/ORTS=inbound; OTFI สาขาขึ้นกับ Col A; WH OTFI=inbound เสมอ (ไม่อ่าน Col A)
       if(!isSale&&!isInbound&&!isOutbound){sk++;continue;}
       const barcode=(r[14]??'').toString().trim();   // Col O (index 14)
@@ -2899,7 +2903,7 @@ function guideHtml(isWh){
       :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>'
         +'<ul style="padding-left:16px;margin:0;">'
         +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · อัพใหม่ทุกครั้งก่อน Confirm</li>'
-        +'<li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า)</li>'
+        +'<li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— SRC: OTFB บวกกลับ (คลังส่งออก)</span></li>'
         +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>'
         +'</ul>')
   +'</div>'
