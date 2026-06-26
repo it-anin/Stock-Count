@@ -1643,7 +1643,15 @@ function reEvaluateAuditItems(){
   }
   if(changed>0){
     saveAuditLogToFirestore();
-    renderScanList();updateStats();renderTable();invalidatePopupRowsCache();
+    rebuildScanListMap(true);
+    renderScanList();
+    updateStats();
+    renderTable();
+    invalidatePopupRowsCache();
+    updatePharmacistAuditConfirmBtn();
+    updateAuditVerifyCount();
+    const auditPopup=document.getElementById('auditVerifyPopupOverlay');
+    if(auditPopup&&auditPopup.style.display==='flex')renderAuditVerifyTable();
     toast(`R16 ใหม่: ปรับสถานะ ${changed} รายการ`,'info');
   }
 }
