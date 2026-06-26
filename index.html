@@ -1461,12 +1461,13 @@ function loadR16(event) {
     if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
     console.log('[R16] headers:',rows[0]?.slice(0,10));console.log('[R16] TRANDATE col index:',tranDateColIdx);if(rows[1])console.log('[R16] row[1] sample TRANDATE:',tranDateColIdx>=0?rows[1][tranDateColIdx]:'(no TRANDATE col)');}
     let sk=0,matched=0,mismatch=0,missing=0;
-    const isWhBranch=currentBranch==='WH'; // WH: ไม่นับยอดขาย ORCM/OCTM (เป็นรายการขายของสาขา ไม่เกี่ยวกับคลัง)
+    const isWhBranch=currentBranch==='WH'; // WH: ORCM/OCTM บวกกลับ (ตามไฟล์ที่ใช้จริง)
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
       const colA=(r[0]??'').toString().trim(); // Col A (index 0): ทิศ OTFI ของสาขา (จาก POS export) — '1'=สาขา→คลัง บวกกลับ, '0'=คลัง→สาขา หัก
-      const isSale=!isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ข้ามยอดขาย
+      const isWhSale=isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ใช้ ORCM/OCTM เป็นรายการบวกกลับ
+      const isSale=_matchR16Prefix(colC,R16_SALES_PREFIXES)&&(!isWhBranch||isWhSale); // WH: รับ ORCM/OCTM, สาขา: ORCM/OCTM
       // SRC: "อนิน สาขาแยกชากค้อ" = สาขา SRC + คลังรวมใน POS (แยกไม่ได้) → OTFB ใช้ Col A บอกผู้ส่ง: 0=คลัง / 1=สาขาชากค้อ
       //  Col A=0 (คลังเป็นผู้ส่งไปสาขาอื่น เช่น เก้ากิโล) → ไม่กระทบสต็อกสาขา → ข้าม (ไม่นับ)
       //  Col A=1 (สาขาชากค้อเป็นผู้ส่ง) → สต็อกสาขาออก → บวกกลับ (outbound) [ทางปฏิบัติเคสนี้ออกเป็นบิลขาย ORCM แทบไม่เจอ OTFB — safety net]
@@ -1474,7 +1475,7 @@ function loadR16(event) {
       const isSrcOtfb=currentBranch==='SRC'&&colC.startsWith('OTFB');
       const isSrcOtfbOut=isSrcOtfb&&colA==='1';   // สาขาเป็นผู้ส่ง → บวกกลับ
       const isSrcOtfbSkip=isSrcOtfb&&colA!=='1';  // คลังเป็นผู้ส่ง → ข้าม ไม่กระทบสต็อกสาขา
-      const isOutbound=!isWhBranch&&((_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES)&&colA==='1')||isSrcOtfbOut); // OTFI Col A=1 (สาขาโอนกลับคลัง) + SRC OTFB Col A=1 (สาขาส่งออก) → บวกกลับ; OTFI Col A=0/ว่าง → หัก
+      const isOutbound=(!isWhBranch&&((_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES)&&colA==='1')||isSrcOtfbOut))||isWhSale; // WH ORCM/OCTM + สาขา OTFI Col A=1 / SRC OTFB Col A=1 → บวกกลับ
       const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES)&&!isOutbound&&!isSrcOtfbSkip;   // OTFB/ORTS=inbound; SRC OTFB Col A=0 → ข้าม; OTFI สาขาขึ้นกับ Col A; WH OTFI=inbound เสมอ
       if(!isSale&&!isInbound&&!isOutbound){sk++;continue;}
       const barcode=(r[14]??'').toString().trim();   // Col O (index 14)
@@ -2897,7 +2898,7 @@ function exportExcel(){
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,_auditTerm());XLSX.writeFile(wb,`audit_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export ${_auditTerm()} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
-// คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้าอย่างเดียว (ข้ามยอดขาย) + R16.103
+// คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
 function guideHtml(isWh){
   return ''
   +'<div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">'
@@ -2923,7 +2924,7 @@ function guideHtml(isWh){
       ?'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — รับเข้าคลังระหว่างนับ (อัพก่อน Confirm)</strong>'
         +'<ul style="padding-left:16px;margin:0;">'
         +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน</strong> → ส่งออก .CSV</li>'
-        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS/OTFI (รับเข้าคลัง) · <span style="color:var(--text3);">คลังข้ามยอดขาย ORCM/OCTM (ไม่นับ)</span></li>'
+        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS/OTFI (รับเข้าคลัง) · <strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM</li>'
         +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY)</li>'
         +'</ul>'
       :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>'
