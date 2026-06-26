@@ -450,8 +450,8 @@
             <h4 style="margin:0;color:var(--orange);font-size:1rem;">📌 คู่มือการเตรียมไฟล์</h4>
             <button onclick="closeGuideModal()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:1.2rem;">&times;</button>
           </div>
-          <div style="font-size:0.82rem;line-height:1.65;color:var(--text2);">
-
+          <div id="guideContent" style="font-size:0.82rem;line-height:1.65;color:var(--text2);">
+            <!-- เนื้อหา gen โดย guideHtml() ใน openGuideModal (branch-aware: สาขา/WH) — static ด้านล่างเป็น fallback ถูก overwrite -->
             <!-- ขั้นตอน workflow -->
             <div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">
               <strong style="color:var(--accent);display:block;margin-bottom:5px;">⚡ ขั้นตอนการนับสต็อก</strong>
@@ -2862,7 +2862,66 @@ function exportExcel(){
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,_auditTerm());XLSX.writeFile(wb,`audit_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export ${_auditTerm()} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
-function openGuideModal(){document.getElementById('guidePopover').style.display='block';}
+// คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้าอย่างเดียว (ข้ามยอดขาย) + R16.103
+function guideHtml(isWh){
+  return ''
+  +'<div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">'
+    +'<strong style="color:var(--accent);display:block;margin-bottom:5px;">⚡ ขั้นตอนการนับสต็อก'+(isWh?' (คลัง WH)':' (สาขา)')+'</strong>'
+    +'<ol style="padding-left:18px;margin:0;line-height:1.8;">'
+      +'<li>อัพโหลด <strong>R01.102</strong> ตอนเริ่มรอบนับ</li>'
+      +'<li>สแกนสินค้า</li>'
+      +'<li>ก่อนกด Confirm → อัพโหลด <strong>R16.104</strong>'+(isWh?' + <strong>R16.103</strong>':'')+'</li>'
+      +'<li>กด <strong>Confirm</strong> → ระบบประเมินผล</li>'
+      +'<li>'+(isWh?'รายการไม่ตรง → พนักงานรีเช็ค → หัวหน้างานยืนยัน':'Audit (ไม่ตรง) → เภสัชเปิด Audit Verify ตรวจ')+'</li>'
+    +'</ol>'
+  +'</div>'
+  +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid var(--border);">'
+    +'<strong style="color:var(--accent);display:block;margin-bottom:5px;">1. R01.102 — จำนวนสินค้า (อัพได้ทุกเวลา)</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li>รายงาน R01.102 → สร้างรายงาน → '+(isWh?'เลือก WH':'เลือกสาขา')+' → ติ๊กสินค้าทั้งหมด → ส่งออก .CSV</li>'
+      +'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพครั้งเดียวตอนเริ่มรอบ (= baseline systemQty) — ไม่ลบข้อมูลที่นับไว้</li>'
+      +'<li style="margin-top:3px;color:var(--red);">⚠️ ถ้ายังต้องรีเช็ค อย่าอัพ R01 ใหม่ (baseline เลื่อน → รีเช็ค/Confirm เพี้ยน)</li>'
+    +'</ul>'
+  +'</div>'
+  +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
+    +(isWh
+      ?'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — รับเข้าคลังระหว่างนับ (อัพก่อน Confirm)</strong>'
+        +'<ul style="padding-left:16px;margin:0;">'
+        +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน</strong> → ส่งออก .CSV</li>'
+        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS/OTFI (รับเข้าคลัง) · <span style="color:var(--text3);">คลังข้ามยอดขาย ORCM/OCTM (ไม่นับ)</span></li>'
+        +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY)</li>'
+        +'</ul>'
+      :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>'
+        +'<ul style="padding-left:16px;margin:0;">'
+        +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · อัพใหม่ทุกครั้งก่อน Confirm</li>'
+        +'<li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า)</li>'
+        +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>'
+        +'</ul>')
+  +'</div>'
+  +(isWh?'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
+    +'<strong style="color:var(--orange);display:block;margin-bottom:5px;">3. R16.103 — รับเข้าที่ยังไม่ขึ้นชั้น (เฉพาะ WH)</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li>IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN → <strong style="color:var(--green);">บวกกลับ</strong> (อยู่ในระบบแต่ยังไม่ได้นับ)</li>'
+      +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R · ปุ่มแสดงเฉพาะ Desktop WH</li>'
+    +'</ul>'
+  +'</div>':'')
+  +'<div style="background:rgba(107,63,160,0.06);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(107,63,160,0.2);">'
+    +'<strong style="color:var(--purple);display:block;margin-bottom:5px;">🔒 Admin เท่านั้น</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li><strong>R05.106</strong> — Barcode สินค้า (แยกตามสาขา)</li>'
+      +'<li style="margin-top:3px;"><strong>Product Master</strong> — ชื่อสินค้า (ใช้ร่วมทุกสาขา)</li>'
+      +'<li style="margin-top:3px;">Admin mode ปิดการ sync Firestore (local เท่านั้น)</li>'
+    +'</ul>'
+  +'</div>'
+  +'<div style="background:rgba(26,158,92,0.06);padding:9px 12px;border-radius:8px;border:1px solid rgba(26,158,92,0.25);">'
+    +'<strong style="color:var(--green);display:block;margin-bottom:5px;">☁️ Multi-Device</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li>เครื่องแรกอัพโหลดไฟล์ → sync Cloud อัตโนมัติ</li>'
+      +'<li style="margin-top:3px;">เครื่องอื่นกด <strong>"☁️ ดึงข้อมูล"</strong> → ไม่ต้องอัพซ้ำ</li>'
+    +'</ul>'
+  +'</div>';
+}
+function openGuideModal(){var c=document.getElementById('guideContent');if(c)c.innerHTML=guideHtml(currentBranch==='WH');document.getElementById('guidePopover').style.display='block';}
 function closeGuideModal(){document.getElementById('guidePopover').style.display='none';}
 function openScanGuide(){document.getElementById('scanGuidePopover').style.display='block';}
 function closeScanGuide(){document.getElementById('scanGuidePopover').style.display='none';}
