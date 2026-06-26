@@ -4429,7 +4429,7 @@ function exportStockAdjExcel(){
     const unitName=unitInfo?.unitName||'';
     const sysQty=si.systemQty;
     const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
-    const diff=sysQty-rv;
+    const diff=rv-sysQty; // ColG - ColF
     const loc=state.locationMap.get(sku)||'';
     rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',sd.timestamp||'']);
   }
