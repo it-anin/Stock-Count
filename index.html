@@ -3349,6 +3349,20 @@ function handleAuditVerifyScan(){
   document.getElementById('auditVerifyScanInput').focus();
 }
 
+function getPharmacistAuditPendingMap(){
+  const pending=new Map();
+  for(const[sku,qty] of _avMap.entries()){
+    if((qty||0)>0)pending.set(sku,qty);
+  }
+  for(const[sku,entry] of scanListMap.entries()){
+    const sd=state.scanData.get(sku);
+    if(!sd||sd.status!=='audit')continue;
+    const qty=Number(entry?.totalQty||0);
+    if(qty>0)pending.set(sku,qty);
+  }
+  return pending;
+}
+
 // ปุ่ม "ยืนยันรีเช็ค/ยืนยัน Audit" — dispatcher: supervisor ยืนยันจาก recheckQty ที่ sync มา | เภสัช ยืนยันจาก _avMap (สแกนเอง)
 function confirmRecheckBtn(){
   if(currentRole==='supervisor'){confirmAllRecheckSupervisor();return;}
@@ -3431,11 +3445,14 @@ function renderSupervisorRecheckButtons(){
 }
 
 function confirmAllAuditVerify(){
-  if(!_avMap.size){toast('ยังไม่มีรายการที่สแกน','warn');return;}
+  const pending=getPharmacistAuditPendingMap();
+  if(!pending.size){toast('ยังไม่มีรายการที่สแกน','warn');return;}
+  _avMap.clear();
+  for(const[sku,qty] of pending.entries())_avMap.set(sku,qty);
   // WH: ปิด toast per-item แล้วยิง summary เดียว
   const _whSummary=(currentBranch==='WH');
   let nPass=0,nAdj=0;
-  for(const sku of [..._avMap.keys()]){
+  for(const sku of [...pending.keys()]){
     const r=confirmAuditVerifyItem(sku,_whSummary);
     if(_whSummary){if(r==='pass')nPass++;else if(r==='stock_adjustment')nAdj++;}
   }
@@ -3572,7 +3589,10 @@ function updateAuditVerifyPanel(){
   const pdaBtn=document.getElementById('btnPdaAuditVerify');
   if(pdaBtn){
     const isPda=window.innerWidth<=600;
-    pdaBtn.style.display=(isPda&&canVerify)?'inline-flex':'none';
+    // เภสัชบน PDA ใช้ RESULT + ปุ่มยืนยันด้านล่างเป็นหลัก
+    // ซ่อนปุ่ม popup เพื่อกันสับสนกับ flow ของผู้ช่วย
+    const showPdaPopup=isPda&&canVerify&&currentRole!=='pharmacist';
+    pdaBtn.style.display=showPdaPopup?'inline-flex':'none';
   }
   updateAuditVerifyCount();
 }
@@ -3585,7 +3605,7 @@ function updatePharmacistAuditConfirmBtn(){
     let n=0;for(const[,sd]of state.scanData.entries()){if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor)n++;}
     el.textContent=n;
   }else{
-    el.textContent=_avMap.size;
+    el.textContent=getPharmacistAuditPendingMap().size;
   }
   renderSupervisorRecheckButtons();
   renderSupervisorCountButtons();
