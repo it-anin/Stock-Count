@@ -3178,6 +3178,11 @@ function _applyCloudScanData(s){
   if(s.scanData){
     for(const[sku,cloudItem]of Object.entries(s.scanData)){
       const local=state.scanData.get(sku);
+      // Audit จาก cloud เป็น worklist ล่าสุดของเภสัช → ให้ชนะ local pass/stock_adj เก่าที่ค้างจาก session ก่อน
+      if(cloudItem.status==='audit'&&(!local||local.status!=='audit')){
+        state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
+        continue;
+      }
       // WH only: cloud confirmed → apply ถ้า local ยังไม่ confirm และเภสัชยังไม่ verify
       if(_propagateConfirmed&&CONFIRMED.has(cloudItem.status)){
         if(local&&local.auditor)continue;                                  // local verify ที่เครื่องนี้แล้ว → เก็บไว้
