@@ -722,6 +722,7 @@
       <button class="popup-filter" onclick="setPopupFilter('pass',this)"><span>✅</span><span>Pass</span></button>
 
       <button class="popup-filter" onclick="setPopupFilter('audit',this)"><span>⚠️</span><span id="popupFilterAuditLabel">Audit</span></button>
+      <button class="popup-filter" onclick="setPopupFilter('cata',this)"><span>🅰️</span><span>CAT[A]</span></button>
 
       <button class="popup-filter" onclick="setPopupFilter('unknown',this)"><span>❓</span><span>Unknown</span></button>
       <button class="popup-filter" onclick="setPopupFilter('del',this)"><span>🗑️</span><span>DEL</span></button>
@@ -1822,9 +1823,9 @@ function rebuildMaps() {
   const qtyMap=new Map();const r01NameMap=new Map();
   state.r01Data.forEach(r=>{qtyMap.set(r.colE,r.systemQty);if(r.productName)r01NameMap.set(r.colE,r.productName);});
   const skuSource=state.productMasterData.length?state.productMasterData:state.r01Data.map(r=>({sku:r.colE,productName:r.productName}));
-  skuSource.forEach(r=>{if(!state.skuMap.has(r.sku)){const pn=r.productName||r01NameMap.get(r.sku)||r.sku;state.skuMap.set(r.sku,{sku:r.sku,productName:pn,systemQty:qtyMap.get(r.sku)??0,barcodes:[],isDel:false,isP:r.cat==='P'});}});
+  skuSource.forEach(r=>{if(!state.skuMap.has(r.sku)){const pn=r.productName||r01NameMap.get(r.sku)||r.sku;state.skuMap.set(r.sku,{sku:r.sku,productName:pn,systemQty:qtyMap.get(r.sku)??0,barcodes:[],isDel:false,isP:r.cat==='P',cat:r.cat||''});}});
   // R01 items not in Product Master → DEL (ถูกตัดออกจาก PM แต่ยังมีสต็อกจริง)
-  if(state.productMasterData.length&&state.r01Data.length){const pmSet=new Set(state.productMasterData.map(r=>r.sku));state.r01Data.forEach(r=>{if(!pmSet.has(r.colE)&&!state.skuMap.has(r.colE)){state.skuMap.set(r.colE,{sku:r.colE,productName:r.productName||r.colE,systemQty:r.systemQty,barcodes:[],isDel:true});}});}
+  if(state.productMasterData.length&&state.r01Data.length){const pmSet=new Set(state.productMasterData.map(r=>r.sku));state.r01Data.forEach(r=>{if(!pmSet.has(r.colE)&&!state.skuMap.has(r.colE)){state.skuMap.set(r.colE,{sku:r.colE,productName:r.productName||r.colE,systemQty:r.systemQty,barcodes:[],isDel:true,cat:''});}});}
   state.r05Data.forEach(r=>{if(state.skuMap.has(r.colE)){state.skuMap.get(r.colE).barcodes.push({barcode:r.barcode,unitName:r.unitName,unitMultiplier:r.unitMultiplier});state.barcodeMap.set(r.barcode,r.colE);}});
   buildSkuDirectMap();
   const active=[...state.skuMap.keys()];
@@ -2809,7 +2810,7 @@ function schedulePopupRender(){clearTimeout(popupRenderTimer);popupRenderTimer=s
 
 function buildPopupBaseRows(){
   const base=[];
-  getActiveSkus().forEach(sku=>{const info=state.skuMap.get(sku);if(!info)return;const sd=state.scanData.get(sku)||{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:''};base.push({sku,info,sd,barcodes:info.barcodes.map(b=>b.barcode).join(', '),isUnknown:false,isDel:!!info.isDel,isP:!!info.isP});});
+  getActiveSkus().forEach(sku=>{const info=state.skuMap.get(sku);if(!info)return;const sd=state.scanData.get(sku)||{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:''};base.push({sku,info,sd,barcodes:info.barcodes.map(b=>b.barcode).join(', '),isUnknown:false,isDel:!!info.isDel,isP:!!info.isP,cat:(info.cat||'').toUpperCase()});});
   state.unknownScans.forEach(u=>base.push({sku:'—',info:{sku:'—',productName:'ไม่มีในระบบ',systemQty:0,barcodes:[]},sd:{countedQty:u.count,status:'unknown',retries:0,timestamp:u.timestamp,scannedBy:u.scannedBy,auditor:'',auditStatus:'—',barcode:u.barcode,location:u.location||''},barcodes:u.barcode,isUnknown:true}));
   return base;
 }
@@ -2851,7 +2852,7 @@ function renderPopupTable(){
   const colspan=isWhSup?10:9;
   if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
   let rows=popupBaseRowsCache;
-  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='cata')return r.cat==='A';if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
   if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
