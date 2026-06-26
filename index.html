@@ -3363,6 +3363,18 @@ function getPharmacistAuditPendingMap(){
   return pending;
 }
 
+function getPharmacistAuditEffectiveQty(sku,rawQty,scanTimestamp){
+  const soldQty=getSoldQtyBefore(sku,scanTimestamp);
+  const inboundQty=getInboundQtyBefore(sku,scanTimestamp);
+  const r16103Qty=getR16103QtyBefore(sku,scanTimestamp);
+  return {
+    effectiveQty:Number(rawQty||0)+soldQty+r16103Qty-inboundQty,
+    soldQty,
+    inboundQty,
+    r16103Qty,
+  };
+}
+
 // ปุ่ม "ยืนยันรีเช็ค/ยืนยัน Audit" — dispatcher: supervisor ยืนยันจาก recheckQty ที่ sync มา | เภสัช ยืนยันจาก _avMap (สแกนเอง)
 function confirmRecheckBtn(){
   if(currentRole==='supervisor'){confirmAllRecheckSupervisor();return;}
@@ -3469,17 +3481,18 @@ function confirmAuditVerifyItem(sku,silent=false){
   const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
   if(!sd||!si)return;
   const pharmacistQty=_avMap.get(sku)||0;
+  const {effectiveQty,soldQty,inboundQty,r16103Qty}=getPharmacistAuditEffectiveQty(sku,pharmacistQty,sd.timestamp);
   const _d=new Date();
   const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
   let result;
-  if(pharmacistQty===si.systemQty){
+  if(effectiveQty===si.systemQty){
     sd.status='pass';sd.auditStatus='approved';result='pass';
     if(!silent)toast(`✅ ${sku} ผ่าน → Pass`,'success');
   }else{
     sd.status='stock_adjustment';sd.auditStatus='stock_adjustment';result='stock_adjustment';
-    if(!silent)toast(`⚠️ ${sku} ไม่ตรง (สแกน ${pharmacistQty} / ระบบ ${si.systemQty}) → Stock Adjustment`,'warn');
+    if(!silent)toast(`⚠️ ${sku} ไม่ตรง (สแกน ${pharmacistQty} + R16 ${soldQty + r16103Qty - inboundQty} = ${effectiveQty} / ระบบ ${si.systemQty}) → Stock Adjustment`,'warn');
   }
-  sd.auditor=currentUser;sd.timestamp=ts;sd.recheckQty=pharmacistQty;
+  sd.auditor=currentUser;sd.timestamp=ts;sd.recheckQty=pharmacistQty;sd.soldQty=soldQty;sd.inboundQty=inboundQty;sd.r16103Qty=r16103Qty;sd.effectiveQty=effectiveQty;
   if(scanListMap.has(sku))scanListMap.get(sku).status=sd.status;
   _avMap.delete(sku);
   invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();renderScanList();updateStats();renderTable();
