@@ -2388,6 +2388,7 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
   // PDA + WH: ซ่อน audit items จาก RESULT — ยกเว้น warehouse (ใช้ลิสต์นี้รีเช็ค audit)
   const hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH'&&currentRole!=='warehouse';
   const isWh=currentBranch==='WH';
+  const rows=[];
   for(const[sku,sd]of state.scanData.entries()){
     if(sd.status==='pending')continue;
     // WH warehouse PDA: แยก tab — "เริ่มนับ" โชว์ scanning, "รีเช็ค" โชว์ audit (ซ่อน pass/stock_adjustment/audit_check อัตโนมัติ)
@@ -2407,8 +2408,12 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
     // warehouse+supervisor บน WH: audit row โชว์ recheckQty (จำนวนที่ warehouse สแกนรีเช็ค) แทน countedQty
     const showRecheck=isWh&&sd.status==='audit'&&(currentRole==='warehouse'||currentRole==='supervisor');
     const totalQty=showRecheck?(sd.recheckQty||0):sd.countedQty;
-    scanListMap.set(sku,{sku,barcodes,totalQty,status:sd.status,location:'',catLabel:''});
+    rows.push({sku,barcodes,totalQty,status:sd.status,ts:sd.timestamp||''});
   }
+  // sort ตามเวลาสแกน เก่า→ใหม่ → set เข้า map (ใหม่สุดอยู่ท้าย Map → ขึ้นบนสุดหลัง .reverse() ใน renderScanList)
+  // กันบั๊ก: เดิม rebuild วน state.scanData ตามลำดับ catalog (rebuildMaps) → ของที่เพิ่งสแกนเด้งลงล่างทุกครั้งที่ listener/Cloud rebuild
+  rows.sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+  for(const r of rows)scanListMap.set(r.sku,{sku:r.sku,barcodes:r.barcodes,totalQty:r.totalQty,status:r.status,location:'',catLabel:''});
 }
 
 function appendScanRow(sku,barcode,totalQty,unit,status,location='',catLabel=''){
