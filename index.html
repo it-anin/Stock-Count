@@ -1525,7 +1525,11 @@ function loadR16(event) {
     const totalSold=[...state.r16SalesMap.values()].reduce((a,b)=>a+b,0);
     const totalInbound=[...state.r16InboundMap.values()].reduce((a,b)=>a+b,0);
     if(matched>0){
-      toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
+      if(currentRole==='pharmacist'){
+        toast('R16 อัปเดตแล้ว ระบบปรับรายการ Audit ที่ยังไม่ยืนยันให้อัตโนมัติ','success');
+      }else{
+        toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
+      }
       console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch}`);
     } else {
       let msg=`R16.104: ไม่สามารถจับคู่ข้อมูลได้`;
