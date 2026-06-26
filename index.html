@@ -3094,6 +3094,10 @@ async function syncToFirestore(overwrite=false){
             // cloud ถูก verify แล้ว (มี auditor จาก supervisor/เภสัช) แต่ local ยังไม่ verify
             // → ห้าม local audit เก่าทับค่าที่ยืนยันแล้วบน cloud (WH recheck: supervisor ยืนยันบน Desktop แล้ว PDA เผลอ revert)
             if(mergedSd[k]?.auditor&&!localSd[k].auditor)continue;
+            // WH recheck: เครื่องที่ "ไม่ใช่เจ้าของรีเช็ค" ห้ามทับ recheck ของคนอื่นบน cloud
+            // cloud มี recheck รอ verify (audit + recheckQty + ยังไม่มี auditor) + local ไม่มี recheckQty + เราไม่ใช่ recheckBy คนนั้น
+            // → กัน recheckBy สลับ/หายข้ามเครื่อง (PDA ที่ถือ audit ของเพื่อนแบบ recheckBy ว่าง sync ทับ). เจ้าของรีเซ็ต/สแกนเองยังผ่าน (recheckBy===currentUser หรือ recheckQty มีค่า)
+            if(mergedSd[k]?.status==='audit'&&mergedSd[k].recheckQty!==undefined&&!mergedSd[k].auditor&&localSd[k].recheckQty===undefined&&mergedSd[k].recheckBy!==currentUser)continue;
             mergedSd[k]=localSd[k];
           }
         }
