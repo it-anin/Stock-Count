@@ -3345,6 +3345,7 @@ function handleAuditVerifyScan(){
   const addQty=manualQty!==null?manualQty*mult:mult;
   _avMap.set(sku,(_avMap.get(sku)||0)+addQty);
   renderAuditVerifyTable();
+  updatePharmacistAuditConfirmBtn();
   document.getElementById('auditVerifyScanInput').focus();
 }
 
@@ -3466,6 +3467,7 @@ function confirmAuditVerifyItem(sku,silent=false){
   _avMap.delete(sku);
   invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();renderScanList();updateStats();renderTable();
   renderAuditVerifyTable();
+  updatePharmacistAuditConfirmBtn();
   return result;
 }
 
