@@ -732,8 +732,8 @@
     <div class="stock-popup-toolbar" id="popupStaffFilterRow" style="display:none;padding-top:0;"></div>
     <div class="stock-popup-body">
       <table class="ptable">
-        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th id="popupThAudit">Audit</th><th>Timestamp</th><th id="popupThLocation" style="display:none;">Location</th></tr></thead>
-        <tbody id="popupTableBody"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
+        <thead><tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th>Counted Qty</th><th>ผู้ช่วย</th><th>Status</th><th id="popupThAudit">Audit</th><th>Timestamp</th><th id="popupThLocation" style="display:none;">Location</th><th id="popupThAction">Actions</th></tr></thead>
+        <tbody id="popupTableBody"><tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
       </table>
     </div>
     <div class="stock-popup-footer">
@@ -2858,8 +2858,10 @@ function renderPopupTable(){
   const tbody=document.getElementById('popupTableBody');
   const isWhSup=currentRole==='supervisor'&&currentBranch==='WH';
   const thLoc=document.getElementById('popupThLocation');
+  const thAction=document.getElementById('popupThAction');
   if(thLoc)thLoc.style.display=isWhSup?'':'none';
-  const colspan=isWhSup?10:9;
+  if(thAction)thAction.style.display='';
+  const colspan=isWhSup?11:10;
   if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
   let rows=popupBaseRowsCache;
   if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='cata')return r.cat==='A';if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
