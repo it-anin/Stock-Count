@@ -212,5 +212,9 @@ Fix: patch-first logic (ดู drainQueue section)
 1. Admin Mode ค้าง → `syncToFirestore` return ทุก call
 2. `restoreFromFirestore()` early return (แก้ถาวรแล้ว commit 3baa421)
 3. มีใครกด "เริ่มนับใหม่" บนเครื่องนั้น
+4. `syncToFirestore` merge guard เช็ค `status!=='audit'` เฉยๆ โดยไม่เช็ค `_confirmedSet` ก่อน
+   → cloud ที่ยังเป็น scanning (ยังไม่ confirm) ก็เข้าเงื่อนไข "cloud ชนะ" ผิดๆ ด้วย
+   → block ไม่ให้ audit สดจาก Confirm ขึ้น cloud ถาวร (แก้แล้ว commit d7768a5)
+   → **กฎ:** เพิ่ม guard ใหม่ใน syncToFirestore/_applyCloudScanData ต้องเช็ค `_confirmedSet.has(...)` เสมอ ห้ามใช้ `!==` เทียบ status เดี่ยวๆ
 
 `pullFromCloud()` / `_applyCloudScanData()` ไม่ช่วยกรณีนี้ — merge เฉพาะ `pending`/`scanning` เท่านั้น
