@@ -83,6 +83,7 @@ state = {
 ```
 
 `_countResetAt` — module-level ISO timestamp, reset epoch (monotonic). ใช้ `>` เปรียบเทียบ lexicographic
+`_r01BaselineAt` — module-level ISO timestamp, อัพ R01 ล่าสุดบน**สาขายา**เท่านั้น (`_isPharmacyBranch()`) ดู [[SKILL-data-files]] R01 Daily Reset
 
 ### Status Lifecycle
 
@@ -121,13 +122,10 @@ python -m http.server 8080
 ## Skills (โหลดเมื่อ task เกี่ยวข้อง)
 
 - **Scan Engine:** `.claude/skills/SKILL-scan-engine.md`
-  → โหลดเมื่อแก้ไขงานที่เกี่ยวกับ: สแกน barcode, PDA, cloud sync,
-    Firestore listener, WH recheck, role filter, drainQueue, patchScanRow
+  → PDA detection, debounce, scan formats, drainQueue/patchScanRow, role filter, Firestore sync, cloud sync rules
 
 - **Data Files:** `.claude/skills/SKILL-data-files.md`
-  → โหลดเมื่อแก้ไขงานที่เกี่ยวกับ: R01/R05/R16 upload, column mapping,
-    DEL/P items, Export Excel, persistence layers, Location master
-    
+  → R01/R05/R16.104/R16.103 columns, OTFI direction, DEL/P items, exports, persistence layers
 
 ## เมื่องานเสร็จ
 หลังทำ feature หรือ fix bug เสร็จ ให้ propose การอัพเดท CLAUDE.md
