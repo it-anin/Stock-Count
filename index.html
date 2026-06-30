@@ -549,6 +549,10 @@
         <h3 style="margin-bottom:12px;">History</h3>
         <button class="stock-list-btn" onclick="openHistoryStatsPopup()" style="background:linear-gradient(135deg,#4a9eff,#0057b8);box-shadow:0 2px 8px rgba(0,87,184,0.25);"><span>📊 ประวัติการนับ</span><span class="scount" id="historyStatsCount" style="background:rgba(255,255,255,0.25);">0</span></button>
       </div>
+      <div class="panel-card" id="adjustDocPanel" style="padding:14px;display:none;">
+        <h3 style="margin-bottom:12px;">ปรับปรุงสต็อก</h3>
+        <button class="stock-list-btn" onclick="openAdjustDocPopup()" style="background:linear-gradient(135deg,#9b5de5,#6a3cb5);box-shadow:0 2px 8px rgba(106,60,181,0.25);"><span>📦 ปรับปรุงลดสินค้า</span><span class="scount" id="adjustDocCount" style="background:rgba(255,255,255,0.25);">0</span></button>
+      </div>
     </div>
 
     <!-- Center: Scanner -->
@@ -896,6 +900,32 @@
   </div>
 </div>
 
+<!-- ปรับปรุงลดสินค้า (Stock Adjustment Doc — ORDS/IRPS) -->
+<div class="stock-popup-overlay" id="adjustDocPopupOverlay" style="display:none" onclick="handleAdjustDocOverlayClick(event)">
+  <div class="stock-popup" id="adjustDocPopupCard" style="max-width:1100px;">
+    <div class="stock-popup-header">
+      <h2>📦 ปรับปรุงลดสินค้า</h2>
+      <button class="stock-popup-close" onclick="closeAdjustDocPopup()">✕</button>
+    </div>
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="adjBtnOrds" class="popup-filter active" onclick="setAdjDocFilter('ords',this)"><span>🔻</span><span>ORDS (ขาด)</span></button>
+      <button id="adjBtnIrps" class="popup-filter" onclick="setAdjDocFilter('irps',this)"><span>🔺</span><span>IRPS (เกิน)</span></button>
+    </div>
+    <div class="stock-popup-body" style="user-select:text;">
+      <table class="ptable">
+        <thead id="adjustDocThead"></thead>
+        <tbody id="adjustDocBody">
+          <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stock-popup-footer">
+      <span class="popup-row-count" id="adjustDocRowCount">0 รายการ</span>
+      <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+    </div>
+  </div>
+</div>
+
 <!-- PIN Login Modal -->
 <div id="pinModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.75);z-index:10000;align-items:center;justify-content:center;">
   <div id="pinModalCard" style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
@@ -1238,6 +1268,7 @@ function selectEmployee(name,role){
     updateUserDisplay();
     updateAuditVerifyPanel();
     updateHistoryStatsPanel();
+    updateAdjustDocPanel();
     updateScanInputMode();
     applyAuditTerminology();
     if(_employeeCallback)_employeeCallback();
@@ -1356,7 +1387,7 @@ async function selectBranch(branch){
   }
   currentBranch=branch;localStorage.setItem('selectedBranch',branch);
   document.getElementById('branchModal').style.display='none';
-  currentUser='';currentRole='';updateUserDisplay();updateAuditVerifyPanel();updateHistoryStatsPanel();updateScanInputMode();
+  currentUser='';currentRole='';updateUserDisplay();updateAuditVerifyPanel();updateHistoryStatsPanel();updateAdjustDocPanel();updateScanInputMode();
   if(!_pinVerified){
     // ยังไม่ได้ใส่ PIN → แสดง PIN modal
     updateBranchDisplay();
@@ -1859,7 +1890,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -2849,6 +2880,7 @@ function updateStats(){
   if(_apWrap){if(auditTotal>0){_apWrap.style.display='block';if(_apFill){_apFill.style.width=_apct+'%';_apFill.style.background=_apct>=100?'var(--green)':'var(--red)';}if(_apPct)_apPct.textContent=_apct+'%';}else{_apWrap.style.display='none';}}
   updateAuditVerifyCount();
   updateHistoryStatsCount();
+  updateAdjustDocCount();
   updateWhResultTabs();
   updatePharmacistAuditConfirmBtn();
   // WH: ซ่อน Total SKU + SKU BRANCH, เปลี่ยน Counted → Audit ทั้งหมด (auditTotal)
@@ -4248,6 +4280,73 @@ function closeHistoryStatsPopup(){
   _closeModal('historyStatsPopupOverlay','historyStatsPopupCard',()=>document.getElementById('scanInput').focus());
 }
 function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById('historyStatsPopupOverlay'))closeHistoryStatsPopup();}
+
+// ─── ปรับปรุงลดสินค้า (Stock Adjustment Doc — ORDS/IRPS) ──────────────────────
+// แสดงเฉพาะ role ที่ยืนยัน: เภสัช (สาขายา) + supervisor (WH). Panel อยู่ใน .left-panel → desktop-only อัตโนมัติ
+// ดึงเฉพาะ status 'stock_adjustment' (รีเช็คแล้วยังไม่ตรง) ยึด convention เดียวกับ exportStockAdjExcel:
+//   count = recheckQty ?? countedQty, diff = count - systemQty → เกิน(diff>0)=IRPS เขียว, ขาด(diff<0)=ORDS
+// ราคา/LOT/EXP/รวมเงิน = placeholder ('—') ยังไม่มีข้อมูล
+let _adjDocFilter='ords';
+function _buildAdjustDocRows(dir){
+  const rows=[];
+  for(const[sku,sd] of state.scanData.entries()){
+    if(sd.status!=='stock_adjustment')continue;
+    const si=state.skuMap.get(sku);if(!si)continue;
+    const sysQty=Number(si.systemQty||0);
+    const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+    const diff=cnt-sysQty;
+    if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
+    if(dir==='irps'&&diff<=0)continue;   // IRPS = เกิน (count>system)
+    const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
+    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:Math.abs(diff)});
+  }
+  return rows;
+}
+function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')n++;return n;}
+function renderAdjustDocTable(){
+  const thead=document.getElementById('adjustDocThead');
+  const tbody=document.getElementById('adjustDocBody');
+  const rc=document.getElementById('adjustDocRowCount');
+  if(!tbody)return;
+  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th></tr>';
+  const rows=_buildAdjustDocRows(_adjDocFilter);
+  if(rc)rc.textContent=`${rows.length} รายการ`;
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
+  const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
+  tbody.innerHTML=rows.map((r,i)=>`<tr>`
+    +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
+    +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${r.sku}</td>`
+    +`<td class="ptd-name">${r.name}</td>`
+    +`<td style="text-align:center;font-size:0.8rem;color:var(--text2);">${r.unit||'—'}</td>`
+    +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${r.qty}</td>`
+    +`<td style="text-align:center;color:var(--text3);">—</td>`
+    +`<td style="text-align:center;color:var(--text3);">—</td>`
+    +`<td style="text-align:center;color:var(--text3);">—</td>`
+    +`<td style="text-align:center;color:var(--text3);">—</td>`
+    +`</tr>`).join('');
+}
+function setAdjDocFilter(f,btn){
+  _adjDocFilter=f;
+  document.querySelectorAll('#adjustDocPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  renderAdjustDocTable();
+}
+function openAdjustDocPopup(){
+  if(!currentRole){toast('กรุณาเลือกผู้ใช้งานก่อน','warn');return;}
+  _adjDocFilter='ords';
+  const btn=document.getElementById('adjBtnOrds');
+  if(btn){document.querySelectorAll('#adjustDocPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+  _openModal('adjustDocPopupOverlay','adjustDocPopupCard');
+  renderAdjustDocTable();
+}
+function closeAdjustDocPopup(){_closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());}
+function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
+function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();}
+function updateAdjustDocPanel(){
+  const p=document.getElementById('adjustDocPanel');if(!p)return;
+  p.style.display=(currentRole==='pharmacist'||currentRole==='supervisor')?'':'none';
+  updateAdjustDocCount();
+}
 
 function isAssistantFirstAuditShort(sd,si){
   if(!sd||!si)return false;
