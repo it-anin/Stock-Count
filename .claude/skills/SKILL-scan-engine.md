@@ -195,6 +195,8 @@ Shared function ใช้โดย `pullFromCloud()` และ `startScanSession
 await db.doc(getSessionId()+'_r01').delete(); // หลัง syncToFirestore(true)
 ```
 
+**R01 cross-device sync ตอนเริ่มนับใหม่ (แก้แล้ว มิ.ย. 2026):** `startNewCount()` ล้าง `state.r01Data`+badge+timestamp **เฉพาะเครื่องที่กดปุ่ม** เครื่องอื่นรอผ่าน `_r01BaselineAt` (`startNewCount` เซ็ตเป็น `''` ไม่ใช่ timestamp ใหม่กว่า → เครื่องอื่นเทียบ `>` แล้วเห็นว่า "ไม่ใหม่กว่า" เลยไม่ sync ตาม) — เกาะ `_resetLocalR01ToEmpty()` เข้ากับ epoch `countResetAt` (ตัวเดียวกับที่รีเซ็ต scanData) แทน เพราะเดินหน้าทางเดียวจริงเสมอ เรียกคู่กับ `_resetLocalScanDataToPending()` ทุกจุด (`syncToFirestore`, `_applyCloudScanData`, `restoreFromFirestore`)
+
 ---
 
 ## Known Pitfalls

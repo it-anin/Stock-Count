@@ -101,6 +101,8 @@ logic: `isOutbound = !isWhBranch && match(OTFI) && colA==='1'`
 - Col X (23) = SKU
 - TRANDATE = auto-detect จาก header row (case-insensitive match `TRANDATE`)
 
+**Upload date sync (cross-device):** `loadR16()` เขียน `r16UploadedAt`+`r16Loaded` ลง master doc `${branch}_r01` ผ่าน `syncR16MetaToFirestore()` (merge, ไม่ใช่ session doc) — อ่านกลับทุก login ผ่าน `_applyR16MetaFromDoc()` ใน `restoreMasterFromFirestore()` เหมือน pattern ของ R01 ดู Known Pitfalls ด้านล่าง
+
 ### R16.103 (WH only) — Document Types
 
 | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
@@ -201,7 +203,7 @@ J=Recheck / K=DIFF Recheck / L=Check By
 |---|---|---|
 | localStorage | `stockCountSession_${branch}` | ทุก `saveSession()` debounce 400ms |
 | Firestore `stock_sessions/${branch}` | scan data | 3s หลัง localStorage |
-| Firestore `stock_sessions/${branch}_r01/r05` | R01/R05 master | หลัง upload |
+| Firestore `stock_sessions/${branch}_r01/r05` | R01/R05 master + R16 upload metadata | หลัง upload (R01/R05); R16: `r16UploadedAt`/`r16Loaded` merge เข้า `_r01` doc ทุกครั้ง `loadR16()` |
 | Firestore `stock_sessions/global_pm` | Product Master | หลัง PM upload; real-time listener |
 | Firestore `stock_sessions/WH_location` | Location + zone-staff | หลัง Save ใน Location popup |
 | Firestore `stock_audit_log/${branch}_${date}` | Audit log | หลัง evaluatePendingScans + verify + recheck confirm |
@@ -210,8 +212,19 @@ J=Recheck / K=DIFF Recheck / L=Check By
 Strip เฉพาะ: `retries`, `scans`
 
 ⚠️ **ไม่มี history snapshot** — Export Excel ก่อนกด "เริ่มนับใหม่"
-⚠️ `startNewCount()` ต้องลบ `${branch}_r01` master doc ด้วย (ไม่ลบ `_r05`)
+⚠️ `startNewCount()` ต้องลบ `${branch}_r01` master doc ด้วย (ไม่ลบ `_r05`) — ลบทั้ง doc จึงล้าง `r16UploadedAt`/`r16Loaded` ไปด้วยโดยอัตโนมัติ (ถูกต้อง — นับใหม่ควรเคลียร์วันที่ R16 เก่าด้วย)
 ⚠️ ลำดับ: `syncToFirestore(true)` → `rebuildMaps()` (scanData ว่างก่อน)
+
+---
+
+## Known Pitfalls
+
+**R16 upload date ไม่ตรงกันข้ามเครื่อง (มิ.ย. 2026, แก้แล้ว):**
+- **อาการ:** เครื่อง A อัพ R16 วันนี้ badge ขึ้นวันที่ใหม่ แต่เครื่อง B สาขาเดียวกันยังเห็นวันที่เก่าเป็นเดือน
+- **สาเหตุ:** `r16UploadedAt` เดิมเก็บใน session doc (`stock_sessions/${branch}`) ใบเดียวกับ scanData — ทุกเครื่องที่สแกนแล้ว trigger `syncToFirestore()` (ทุก ~3s) ดันค่า `r16UploadedAt` ของตัวเอง (อาจเก่าค้าง) ทับ cloud แบบ last-write-wins ไม่เทียบว่าใหม่กว่าใคร + `restoreFromFirestore()` รีเฟรช badge จาก cloud แค่ครั้งเดียวตอน `r16Loaded` เปลี่ยน false→true เครื่องที่เคยโหลด R16 แล้วจะไม่เช็ค cloud ซ้ำอีกเลย
+- **แก้:** ย้าย `r16UploadedAt`/`r16Loaded` ไปเก็บใน master doc เดียวกับ R01 (`${branch}_r01`) เขียนผ่าน `syncR16MetaToFirestore()` (เรียกจาก `loadR16()` เท่านั้น ไม่ถูก sync รอบสแกนแตะ) + อ่านกลับทุก login ผ่าน `_applyR16MetaFromDoc()` ใน `restoreMasterFromFirestore()` — pattern เดียวกับที่ R01 ใช้อยู่แล้ว
+- **ผลข้างเคียงที่ต้องรู้:** `syncMasterToFirestore()` เปลี่ยนเป็น `.set(...,{merge:true})` ไม่งั้น R01 re-upload จะลบ field r16 ที่เพิ่งเขียนทิ้งไปด้วย
+- **Transitional:** สาขาที่ยังไม่มีใครอัพ R16 ใหม่หลัง deploy fix นี้ — `_r01` doc จะยังไม่มี field `r16UploadedAt` → `_applyR16MetaFromDoc` guard (`r16UploadedAt===undefined`) ข้ามไปเฉยๆ ไม่เด้ง badge ผิด จะ sync ถูกต้องทันทีที่มีคนอัพ R16 ครั้งต่อไปของสาขานั้น
 
 ---
 

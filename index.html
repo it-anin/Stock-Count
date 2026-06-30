@@ -3193,6 +3193,7 @@ async function syncToFirestore(overwrite=false){
         if(s&&s.countResetAt&&s.countResetAt>_countResetAt){
           _countResetAt=s.countResetAt;
           _resetLocalScanDataToPending();
+          _resetLocalR01ToEmpty();
           saveSession();
           if(!_listCleared){rebuildScanListMap(true);renderScanList();}
           invalidatePopupRowsCache();updateStats();renderTable();updateConfirmBtn();
@@ -3247,6 +3248,15 @@ function _resetLocalScanDataToPending(){
   }
   scanListMap.clear();
 }
+// ล้าง R01 ในเครื่องนี้เมื่อรับสัญญาณ "เริ่มนับใหม่" จากเครื่องอื่น (เกาะ epoch countResetAt เดียวกับ scanData)
+// เหตุผลที่ไม่ใช้ _r01BaselineAt: startNewCount() รีเซ็ต baseline เป็นค่าว่าง (ไม่ใช่ timestamp ใหม่กว่า)
+// เครื่องอื่นเทียบ '>' แล้วเห็นว่า "ไม่ใหม่กว่า" ของเก่าที่ตัวเองมี เลยไม่ sync ตาม — countResetAt เดินหน้าทางเดียวจริงเสมอ ใช้แทนได้
+function _resetLocalR01ToEmpty(){
+  state.r01Data=[];
+  document.getElementById('badgeR01').textContent='ยังไม่โหลด';
+  _setR01Ts('');
+  rebuildMaps();
+}
 function _applyCloudScanData(s){
   const UNCONFIRMED=new Set(['pending','scanning']);
   const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
@@ -3256,6 +3266,7 @@ function _applyCloudScanData(s){
   if(s.countResetAt&&s.countResetAt>_countResetAt){
     _countResetAt=s.countResetAt;
     _resetLocalScanDataToPending();
+    _resetLocalR01ToEmpty();
   }
   // ทุกสาขา: propagate cloud confirmed items (audit/pass/stock_adjustment) ลง local
   // - WH: PDA รับสถานะ audit จาก Desktop Confirm → โยกไป Audit Verify popup ตาม WH filter
@@ -3372,6 +3383,7 @@ async function restoreFromFirestore(force=false){
       if(s.countResetAt&&s.countResetAt>_countResetAt){
         _countResetAt=s.countResetAt;
         _resetLocalScanDataToPending();
+        _resetLocalR01ToEmpty();
         saveSession();
       }
       if(s.r01BaselineAt&&s.r01BaselineAt>(_r01BaselineAt||'')&&_isPharmacyBranch()){
