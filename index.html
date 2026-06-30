@@ -1546,6 +1546,7 @@ function loadR16(event) {
     document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
     const _now=new Date();
     _setR16Ts(`${String(_now.getHours()).padStart(2,'0')}:${String(_now.getMinutes()).padStart(2,'0')} น. ${String(_now.getDate()).padStart(2,'0')}/${String(_now.getMonth()+1).padStart(2,'0')}/${_now.getFullYear()}`);
+    syncR16MetaToFirestore(); // เขียนวันที่อัพ R16 ลง master doc (_r01) ทันที — ให้ทุกเครื่องอ่านวันที่เดียวกัน เหมือน R01
     updateConfirmBtn();
     const totalSold=[...state.r16SalesMap.values()].reduce((a,b)=>a+b,0);
     const totalInbound=[...state.r16InboundMap.values()].reduce((a,b)=>a+b,0);
@@ -3079,11 +3080,21 @@ async function syncMasterToFirestore(includeR05=true){
   if(!_db||!currentBranch)return;
   const id=getSessionId();
   try{
-    const writes=[_db.collection('stock_sessions').doc(id+'_r01').set({data_json:JSON.stringify(state.r01Data),r01UploadedAt:state.r01UploadedAt||'',updated_at:firebase.firestore.FieldValue.serverTimestamp()})];
+    // merge:true — กัน field r16UploadedAt/r16Loaded (เขียนโดย syncR16MetaToFirestore) ถูกลบหายตอน R01 re-upload
+    const writes=[_db.collection('stock_sessions').doc(id+'_r01').set({data_json:JSON.stringify(state.r01Data),r01UploadedAt:state.r01UploadedAt||'',updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})];
     // R05 เขียน cloud เฉพาะตอนอัพ R05 จริง (loadR05) — login/loadR01 ไม่ push (กันของเก่าทับ cloud ที่ listener จะ propagate)
     if(includeR05)writes.push(_db.collection('stock_sessions').doc(id+'_r05').set({data_json:JSON.stringify(state.r05Data),updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
     await Promise.all(writes);
   }catch(e){console.warn('Firestore master sync:',e.message);}
+}
+
+// วันที่อัพ R16 — เขียนลง master doc เดียวกับ R01 (ไม่ใช่ session doc ที่ syncToFirestore ทับทุก ~3s จากทุกเครื่อง)
+// กัน race ที่เครื่องอื่น sync สแกนแล้วดันค่า r16UploadedAt เก่าของตัวเองทับวันที่ใหม่ล่าสุด
+async function syncR16MetaToFirestore(){
+  if(!_db||!currentBranch)return;
+  try{
+    await _db.collection('stock_sessions').doc(getSessionId()+'_r01').set({r16UploadedAt:state.r16UploadedAt||'',r16Loaded:state.r16Loaded},{merge:true});
+  }catch(e){console.warn('Firestore r16 meta sync:',e.message);}
 }
 
 async function syncProductMasterToFirestore(){
@@ -3093,6 +3104,13 @@ async function syncProductMasterToFirestore(){
   }catch(e){console.warn('Firestore product master sync:',e.message);}
 }
 
+// badge/วันที่ R16 อ่านจาก _r01 master doc เสมอ (เหมือน R01) — ไม่พึ่ง session doc ที่โดน syncToFirestore ทับด้วยค่าเครื่องอื่นได้
+// guard r16UploadedAt===undefined: doc เก่าก่อนมีฟีเจอร์นี้ยังไม่มี field — ไม่แตะ badge เพื่อไม่ให้เด้งเป็น "ยังไม่โหลด" ผิดๆ
+function _applyR16MetaFromDoc(r01d){
+  if(!r01d||r01d.r16UploadedAt===undefined)return;
+  document.getElementById('badgeR16').textContent=r01d.r16Loaded?'Ready':'ยังไม่โหลด';
+  _setR16Ts(r01d.r16UploadedAt||'');
+}
 async function restoreMasterFromFirestore(force=false){
   if(!_db||!currentBranch)return;
   const id=getSessionId();
@@ -3110,7 +3128,7 @@ async function restoreMasterFromFirestore(force=false){
         _db.collection('stock_sessions').doc(id+'_r01').get(),
         _db.collection('stock_sessions').doc(id+'_r05').get()
       ]);
-      if(r01Doc.exists){state.r01Data=JSON.parse(r01Doc.data().data_json);document.getElementById('badgeR01').textContent='Ready';if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);}
+      if(r01Doc.exists){state.r01Data=JSON.parse(r01Doc.data().data_json);document.getElementById('badgeR01').textContent='Ready';if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
       if(r05Doc.exists){state.r05Data=JSON.parse(r05Doc.data().data_json);document.getElementById('badgeR05').textContent='Ready';}
       if(!state.r01Data.length&&!state.r05Data.length){
         const old=await _db.collection('stock_sessions').doc(id+'_master').get();
@@ -3119,7 +3137,7 @@ async function restoreMasterFromFirestore(force=false){
     } else {
       // มี local data แล้ว — อ่านแค่ timestamp จาก _r01 doc (ไม่โหลด data_json)
       const r01Doc=await _db.collection('stock_sessions').doc(id+'_r01').get();
-      if(r01Doc.exists&&r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);
+      if(r01Doc.exists){if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
     }
   }catch(e){console.warn('Firestore master restore:',e.message);}
   // PM badge/meta: ดึงจาก stock_sessions ที่ rules อนุญาต
@@ -3329,12 +3347,12 @@ async function restoreFromFirestore(force=false){
     const raw=doc.data();
     const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
     if(!s){document.getElementById('dbStatus').textContent='Ready';return;}
-    // อัปเดต r16Loaded จาก Firestore ก่อน early return เสมอ
-    // เพื่อให้ badge R16 ถูกต้องแม้ PDA จะมี local scan data อยู่แล้ว
+    // อัปเดต r16Loaded + maps จาก Firestore ก่อน early return เสมอ
+    // เพื่อให้ข้อมูล R16 ถูกต้องแม้ PDA จะมี local scan data อยู่แล้ว
+    // badge/วันที่ R16 อ่านจาก master doc แล้วใน restoreMasterFromFirestore() ด้านบน (_applyR16MetaFromDoc) — ไม่อ่านซ้ำจาก session doc ที่นี่
+    // เพราะ session doc ถูก syncToFirestore เขียนทับด้วยค่า local ของทุกเครื่องที่สแกน (race ทำให้วันที่ไม่ตรงข้ามเครื่อง)
     if(!state.r16Loaded&&s.r16Loaded){
       state.r16Loaded=true;
-      document.getElementById('badgeR16').textContent='Ready';
-      _setR16Ts(s.r16UploadedAt||'');
       state.r16SalesMap.clear();
       if(s.r16SalesMap){for(const k in s.r16SalesMap)state.r16SalesMap.set(k,s.r16SalesMap[k]);}
       state.r16InboundMap.clear();
@@ -3366,9 +3384,7 @@ async function restoreFromFirestore(force=false){
       document.getElementById('dbStatus').textContent='Synced';return;
     }
     if(s.r01UploadedAt)_setR01Ts(s.r01UploadedAt);
-    state.r16Loaded=!!s.r16Loaded;
-    document.getElementById('badgeR16').textContent=state.r16Loaded?'Ready':'ยังไม่โหลด';
-    _setR16Ts(s.r16UploadedAt||'');
+    state.r16Loaded=!!s.r16Loaded; // badge/วันที่ R16 มาจาก master doc แล้ว (ดูด้านบน) — ที่นี่อัพเดทแค่ flag + maps
     state.r16SalesMap.clear();
     if(s.r16SalesMap){for(const k in s.r16SalesMap)state.r16SalesMap.set(k,s.r16SalesMap[k]);}
     state.r16InboundMap.clear();
