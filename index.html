@@ -556,7 +556,7 @@
       <div class="panel-card" style="padding:0;overflow:hidden;">
         <div class="scan-header-bar" style="padding:14px 16px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
           <h3 style="margin:0;">SCAN</h3>
-          <button class="upload-help-btn" onclick="openScanGuide()">?</button>
+          <button id="scanGuideBtn" class="upload-help-btn" onclick="openScanGuide()">?</button>
         </div>
 
         <div style="padding:12px 16px 12px;">
@@ -618,7 +618,7 @@
 </div>
 
 <!-- Scan Guide -->
-<div id="scanGuidePopover" class="upload-guide-popover" style="top:120px;left:auto;right:16px;display:none;">
+<div id="scanGuidePopover" class="upload-guide-popover" style="position:fixed;left:auto;right:16px;display:none;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
     <h4 style="margin:0;color:var(--accent);font-size:1rem;">📌 คู่มือการสแกนสินค้า</h4>
     <button onclick="closeScanGuide()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:1.2rem;">&times;</button>
@@ -2913,8 +2913,17 @@ function renderPopupStaffButtons(){
   row.style.display='flex';
 }
 
-function renderPopupTable(){
+// filter chain ร่วมกันระหว่างตารางที่แสดงผลกับ Export Excel — ให้ผลลัพธ์ตรงกับปุ่ม filter ที่เลือกอยู่เสมอ
+function getFilteredPopupRows(){
   const search=(document.getElementById('popupSearch').value||'').toLowerCase();
+  if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
+  let rows=popupBaseRowsCache;
+  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='cata')return r.cat==='A';if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
+  if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
+  return rows;
+}
+function renderPopupTable(){
   const tbody=document.getElementById('popupTableBody');
   const isWhSup=currentRole==='supervisor'&&currentBranch==='WH';
   const thLoc=document.getElementById('popupThLocation');
@@ -2922,11 +2931,7 @@ function renderPopupTable(){
   if(thLoc)thLoc.style.display=isWhSup?'':'none';
   if(thAction)thAction.style.display='';
   const colspan=isWhSup?11:10;
-  if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
-  let rows=popupBaseRowsCache;
-  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='cata')return r.cat==='A';if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
-  if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
-  if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
+  const rows=getFilteredPopupRows();
   const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;return;}
   tbody.innerHTML=rows.slice(0,POPUP_MAX_RENDER_ROWS).map((r,i)=>{
@@ -2952,12 +2957,16 @@ function renderTable(){if(document.getElementById('stockPopupOverlay').style.dis
 function updateStockCount(){const el=document.getElementById('stockCount');if(el)el.textContent=getActiveSkus().length;}
 function getStatusPill(s){const m={pass:'<span class="pill pill-pass">✅ Pass</span>',audit:`<span class="pill pill-audit">⚠️ ${_auditTerm()}</span>`,audit_check:'<span class="pill pill-pass">✅ Audit Check</span>',stock_adjustment:'<span class="pill pill-audit">⚠️ Stock Adjustment</span>',pending:'<span class="pill pill-pending">⏳ รอนับ</span>',unknown:'<span class="pill pill-unknown">❓Unknown</span>'};return m[s]||`<span class="pill pill-pending">${s}</span>`;}
 
+// label/ชื่อไฟล์ตามปุ่ม filter ที่เลือกอยู่ในป็อปอัพตอนกด Export — ให้ตรงกับที่ตารางแสดงผลเป๊ะ
+const POPUP_FILTER_LABELS={all:'ทั้งหมด',unknown:'ไม่พบในระบบ',del:'DEL',p:'P',cata:'หมวด A',pending:'รอนับ',pass:'Pass'};
 function exportExcel(){
-  const active=getActiveSkus(),header=['SKU','Barcode','ProductName','SystemQty','CountedQty','Status','Timestamp',_auditTerm()+' Status'],rows=[header];
-  active.forEach(sku=>{const info=state.skuMap.get(sku),sd=state.scanData.get(sku);if(!info||!sd||!['audit','stock_adjustment'].includes(sd.status))return;rows.push([sku,info.barcodes.map(b=>b.barcode).join('; '),info.productName,info.systemQty,sd.countedQty,sd.status,sd.timestamp||'',sd.auditStatus||'pending']);});
-  if(rows.length===1)return;
+  const header=['SKU','Barcode','ProductName','SystemQty','CountedQty','Status','Timestamp',_auditTerm()+' Status'],rows=[header];
+  getFilteredPopupRows().forEach(r=>{rows.push([r.sku,r.barcodes,r.info.productName,r.info.systemQty,r.sd.countedQty,r.sd.status,r.sd.timestamp||'',r.sd.auditStatus||'pending']);});
+  if(rows.length===1){toast('ไม่มีข้อมูลให้ Export ตามตัวกรองที่เลือก','warn');return;}
+  const label=popupFilterState==='audit'?_auditTerm():(POPUP_FILTER_LABELS[popupFilterState]||popupFilterState);
+  const fileTag=popupFilterState==='audit'?'audit':`stock_${popupFilterState}`;
   const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=header.map((_,c)=>{let m=header[c].length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,_auditTerm());XLSX.writeFile(wb,`audit_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export ${_auditTerm()} ${rows.length-1} รายการ สำเร็จ`,'success');
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(popupFilterState==='audit'?_auditTerm():'Stock').slice(0,31));XLSX.writeFile(wb,`${fileTag}_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export ${label} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
 // คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
@@ -3025,7 +3034,12 @@ function guideHtml(isWh){
 }
 function openGuideModal(){var c=document.getElementById('guideContent');if(c)c.innerHTML=guideHtml(currentBranch==='WH');document.getElementById('guidePopover').style.display='block';}
 function closeGuideModal(){document.getElementById('guidePopover').style.display='none';}
-function openScanGuide(){document.getElementById('scanGuidePopover').style.display='block';}
+function openScanGuide(){
+  const btn=document.getElementById('scanGuideBtn');
+  const pop=document.getElementById('scanGuidePopover');
+  if(btn){const r=btn.getBoundingClientRect();pop.style.top=(r.bottom+10)+'px';pop.style.left='auto';pop.style.right='16px';} // เกาะตำแหน่งจริงของปุ่ม "?" แทน top:120px เดิม (เคยห่างเพราะ hardcode ไม่ตรงตำแหน่งจริงที่ขยับตามเนื้อหาแต่ละสาขา/role) — ต้องตั้ง left:auto ด้วย ไม่งั้น left:calc(100%+20px) จาก class เดิมจะ override right นี้
+  pop.style.display='block';
+}
 function closeScanGuide(){document.getElementById('scanGuidePopover').style.display='none';}
 
 function toast(msg,type='info',ms=2500){const c=document.getElementById('toastContainer'),t=document.createElement('div');t.className=`toast toast-${type}`;t.innerHTML=`<span>${msg}</span>`;c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
