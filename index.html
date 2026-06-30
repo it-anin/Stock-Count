@@ -3214,7 +3214,8 @@ async function syncToFirestore(overwrite=false){
             // — ถ้า cloud ไม่มี SKU นี้แล้ว แสดงว่าถูกลบโดย startNewCount → ไม่ re-upload
             if(!mergedSd[k]&&_confirmedSet.has(localSd[k].status))continue;
             // ถ้า cloud ยืนยันแล้วเป็นสถานะที่ไม่ใช่ audit แต่ local ยังเป็น audit เก่า → ให้ cloud ชนะ
-            if(mergedSd[k]&&mergedSd[k].status!=='audit'&&localSd[k].status==='audit'&&!localSd[k].auditor)continue;
+            // (ต้องเช็ค _confirmedSet ด้วย — ถ้า cloud ยังเป็น scanning/pending (ยังไม่ไปถึง audit) ไม่ใช่เคสนี้ ห้าม block local audit สดทับ cloud)
+            if(mergedSd[k]&&_confirmedSet.has(mergedSd[k].status)&&mergedSd[k].status!=='audit'&&localSd[k].status==='audit'&&!localSd[k].auditor)continue;
             // ถ้า cloud ยืนยันแล้ว แต่ local ยังไม่ยืนยัน/ค้าง audit เก่า → ให้ cloud ชนะเสมอ
             if(mergedSd[k]&&_confirmedSet.has(mergedSd[k].status)&&!_confirmedSet.has(localSd[k].status))continue;
             // cloud ถูก verify แล้ว (มี auditor จาก supervisor/เภสัช) แต่ local ยังไม่ verify
