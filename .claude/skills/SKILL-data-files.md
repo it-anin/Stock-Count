@@ -257,6 +257,14 @@ Strip เฉพาะ: `retries`, `scans`
 - **วิธีที่ใช้:** ใบปรับปรุงมีแค่ item `stock_adjustment` (หลักสิบ–ร้อย) → `handleAdjLotFile()` กรองเฉพาะ SKU เหล่านั้น**ตอนอ่าน** เก็บ `_lotMap` in-memory เท่านั้น ไม่ sync ไม่ persist
 - **ถ้าจะเพิ่ม cross-device sync ในอนาคต:** อย่าเก็บทั้งไฟล์ — เก็บแค่ LOT ของ SKU ที่ปรับ (~ร้อยแถว) ลง doc เดียวพอได้ หรือแตก subcollection
 
+**Audit count ไม่ตรงข้ามเครื่อง — badge R16 sync แต่การคำนวณไม่ sync (ก.ค. 2026, แก้บางส่วน):**
+- **อาการ:** เภสัชเปิดหลาย browser/เครื่อง เห็นจำนวน Audit ไม่เท่ากัน (เช่น 36 / 19 / 19) ทั้งที่ badge วันที่ R16 ตรงกันหมด
+- **สาเหตุ:** audit/pass เป็น **derived state คิด local ต่อเครื่อง** ผ่าน `reEvaluateAuditItems()` จาก `r16SalesMap` ของเครื่องนั้น — แต่ที่ sync ข้ามเครื่องคือ **แค่ป้ายวันที่** (`_applyR16MetaFromDoc` เขียน badge + `_setR16Ts` เท่านั้น ไม่โหลดยอด ไม่ re-evaluate). ⚠️ **วันที่บน badge ไม่ได้แปลว่าเครื่องนั้นคิด audit ด้วย R16 นั้นแล้ว**
+- **ทำไมค้าง:** (1) guard `!state.r16Loaded` ใน `restoreFromFirestore` บล็อกไม่ให้เครื่องที่ `r16Loaded=true` รับ R16 ใหม่ (2) listener `_applyCloudScanData` ไม่แตะ R16 เลย (3) merge เป็น **one-way** — cloud audit ดัน local เป็น audit ได้ แต่ cloud pass/pending ไม่เคยดึง local audit กลับ (+ guard `5f8649d` กัน local audit ทับ cloud pass) → เครื่องที่คิด audit เกินไว้ไม่มีทางกลับ
+- **แก้ (ขอบเขต "ข้อ 2" เท่านั้น):** ใน `restoreFromFirestore` early-return path **เฉพาะสาขายา (`_isPharmacyBranch`)** → refresh `r16SalesMap`/`r16InboundMap` จาก cloud แม้ `r16Loaded` แล้ว + เรียก `reEvaluateAuditItems({silent:true})` (ข้าม item ที่มี `auditor` → ไม่ revert งาน verify) — เครื่องแก้เองตอน **login/reload** (deploy ครั้งถัดไป PWA reload → หายรอบแรก)
+- **ข้อจำกัดที่ยังเหลือ:** (1) **ไม่ live** — ถ้าอัป R16 ใหม่กลางวันตอนเภสัชเปิดจอค้าง จอนั้นหายต่อเมื่อ reload (2) ใช้ **ยอดรวม** ไม่กรอง TRANDATE เพราะ `r16RawMap` ไม่ sync (in-memory) → เครื่องที่รับ R16 ผ่าน sync คิดจากยอดขายรวม ส่วนเครื่องที่อัปไฟล์เองกรองเวลา (ถ้าต้องเป๊ะทุกเครื่องต้อง sync `r16RawMap` ผ่าน master doc — "ข้อ 3")
+- **WH ไม่แตะ** — gate `_isPharmacyBranch()` ทั้งหมด flow ยืนยัน/รีเช็ค WH เหมือนเดิม
+
 ---
 
 ## CSV/Excel Parsing
