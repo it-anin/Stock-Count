@@ -551,7 +551,7 @@
       </div>
       <div class="panel-card" id="adjustDocPanel" style="padding:14px;display:none;">
         <h3 style="margin-bottom:12px;">ปรับปรุงสต็อก</h3>
-        <button class="stock-list-btn" onclick="openAdjustDocPopup()" style="background:linear-gradient(135deg,#9b5de5,#6a3cb5);box-shadow:0 2px 8px rgba(106,60,181,0.25);"><span>📦 ปรับปรุงลดสินค้า</span><span class="scount" id="adjustDocCount" style="background:rgba(255,255,255,0.25);">0</span></button>
+        <button class="stock-list-btn" onclick="openAdjustDocPopup()" style="background:linear-gradient(135deg,#9b5de5,#6a3cb5);box-shadow:0 2px 8px rgba(106,60,181,0.25);"><span>📦 ปรับปรุงสินค้า</span><span class="scount" id="adjustDocCount" style="background:rgba(255,255,255,0.25);">0</span></button>
       </div>
     </div>
 
@@ -908,8 +908,8 @@
       <button class="stock-popup-close" onclick="closeAdjustDocPopup()">✕</button>
     </div>
     <div style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
-      <button id="adjBtnOrds" class="popup-filter active" onclick="setAdjDocFilter('ords',this)"><span>🔻</span><span>ORDS (ขาด)</span></button>
-      <button id="adjBtnIrps" class="popup-filter" onclick="setAdjDocFilter('irps',this)"><span>🔺</span><span>IRPS (เกิน)</span></button>
+      <button id="adjBtnOrds" class="popup-filter active" onclick="setAdjDocFilter('ords',this)"><span>🔻</span><span>ORDS (ใบปรับปรุงลดสินค้า)</span></button>
+      <button id="adjBtnIrps" class="popup-filter" onclick="setAdjDocFilter('irps',this)"><span>🔺</span><span>IRPS (ใบปรับปรุงเพิ่มสินค้า)</span></button>
     </div>
     <div style="padding:8px 22px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <input type="file" id="adjLotFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjLotFile(event)">
