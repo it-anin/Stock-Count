@@ -911,10 +911,12 @@
       <button id="adjBtnOrds" class="popup-filter active" onclick="setAdjDocFilter('ords',this)"><span>🔻</span><span>ORDS (ขาด)</span></button>
       <button id="adjBtnIrps" class="popup-filter" onclick="setAdjDocFilter('irps',this)"><span>🔺</span><span>IRPS (เกิน)</span></button>
     </div>
-    <div style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="padding:8px 22px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <input type="file" id="adjLotFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjLotFile(event)">
       <button onclick="document.getElementById('adjLotFileInput').click()" style="padding:7px 14px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;">📂 แนบไฟล์ LOT</button>
       <span id="adjLotInfo" style="font-size:0.76rem;color:var(--text3);">ยังไม่ได้แนบไฟล์ LOT (ColA=LOT, ColB=SKU) · เก็บเฉพาะเครื่องนี้ ไม่ sync ข้ามเครื่อง</span>
+    </div>
+    <div style="padding:0 22px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <input type="file" id="adjPriceFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjPriceFile(event)">
       <button onclick="document.getElementById('adjPriceFileInput').click()" style="padding:7px 14px;border-radius:7px;border:none;background:var(--green);color:#fff;font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;">💵 แนบไฟล์ราคา (R05.105)</button>
       <span id="adjPriceInfo" style="font-size:0.76rem;color:var(--text3);">ยังไม่ได้แนบไฟล์ราคา (R05.105) · ColB=SKU, ColE=หน่วย, ColH=ราคา (กรอง ColF=4) · local</span>
