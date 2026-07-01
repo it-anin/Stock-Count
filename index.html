@@ -915,6 +915,9 @@
       <input type="file" id="adjLotFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjLotFile(event)">
       <button onclick="document.getElementById('adjLotFileInput').click()" style="padding:7px 14px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;">📂 แนบไฟล์ LOT</button>
       <span id="adjLotInfo" style="font-size:0.76rem;color:var(--text3);">ยังไม่ได้แนบไฟล์ LOT (ColA=LOT, ColB=SKU) · เก็บเฉพาะเครื่องนี้ ไม่ sync ข้ามเครื่อง</span>
+      <input type="file" id="adjPriceFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjPriceFile(event)">
+      <button onclick="document.getElementById('adjPriceFileInput').click()" style="padding:7px 14px;border-radius:7px;border:none;background:var(--green);color:#fff;font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;">💵 แนบไฟล์ราคา (R05.105)</button>
+      <span id="adjPriceInfo" style="font-size:0.76rem;color:var(--text3);">ยังไม่ได้แนบไฟล์ราคา (R05.105) · ColB=SKU, ColE=หน่วย, ColH=ราคา (กรอง ColF=4) · local</span>
     </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
@@ -4295,11 +4298,13 @@ let _adjDocFilter='ords';
 // LOT lookup — local only (ไม่ sync/ไม่ persist). กรองเฉพาะ SKU ที่ stock_adjustment ตอนแนบไฟล์ → ไม่เก็บทั้ง 200k แถว
 let _lotMap=new Map();      // SKU → [LOT, ...]
 let _lotSelected=new Map(); // SKU → LOT ที่เลือกจาก dropdown (คงไว้ข้าม re-render/สลับแท็บ)
+let _priceMap=new Map();    // SKU → {unit, price} จาก R05.105 (เฉพาะแถว ColF===4) — local only
+// set ของ SKU ที่ต้องใช้จริง (เฉพาะ stock_adjustment) — ใช้กรองไฟล์ใหญ่ตอนอ่าน เก็บเฉพาะที่เกี่ยว
+function _adjustDocSkuSet(){const s=new Set();for(const[sku,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')s.add(sku);return s;}
+function _fmtMoney(n){return Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function handleAdjLotFile(event){
   const file=event.target.files[0];if(!file)return;
-  // set ของ SKU ที่ต้องใช้จริง (เฉพาะ stock_adjustment) — แถวที่ SKU ไม่อยู่ในนี้ ทิ้งทันทีระหว่างอ่าน
-  const need=new Set();
-  for(const[sku,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')need.add(sku);
+  const need=_adjustDocSkuSet(); // แถวที่ SKU ไม่อยู่ในนี้ ทิ้งทันทีระหว่างอ่าน
   if(!need.size){toast('ยังไม่มีรายการ Stock Adjustment ให้จับคู่ LOT','warn');return;}
   parseFile(file,rows=>{
     _lotMap=new Map();_lotSelected=new Map();
@@ -4319,6 +4324,30 @@ function handleAdjLotFile(event){
   });
 }
 function onAdjLotSelect(sku,val){_lotSelected.set(sku,val);}
+function handleAdjPriceFile(event){
+  const file=event.target.files[0];if(!file)return;
+  const need=_adjustDocSkuSet();
+  if(!need.size){toast('ยังไม่มีรายการ Stock Adjustment ให้จับคู่ราคา','warn');return;}
+  parseFile(file,rows=>{
+    _priceMap=new Map();
+    let matched=0;
+    for(let i=0;i<rows.length;i++){                 // ไม่ skip header — SKU ใน header ไม่ตรง need เลยถูกกรองทิ้งเอง
+      const r=rows[i];if(!r||!r.length)continue;
+      if(Number((r[5]??'').toString().trim())!==4)continue;   // ColF filter = 4
+      const sku=(r[1]??'').toString().trim();        // ColB = SKU
+      if(!sku||!need.has(sku)||_priceMap.has(sku))continue;   // 1 SKU เอาแถว ColF=4 แถวแรก
+      const unit=(r[4]??'').toString().trim();        // ColE = หน่วย
+      const pRaw=(r[7]??'').toString().replace(/,|\s/g,'').trim(); // ColH = ราคา
+      const price=pRaw!==''&&isFinite(+pRaw)?+pRaw:null;
+      _priceMap.set(sku,{unit,price});
+      matched++;
+    }
+    const info=document.getElementById('adjPriceInfo');
+    if(info)info.textContent=`แนบแล้ว · ได้ราคา/หน่วย ${matched}/${need.size} SKU`;
+    toast(`โหลดราคา R05.105 สำเร็จ · ${matched}/${need.size} SKU`,'success');
+    renderAdjustDocTable();
+  });
+}
 function _buildAdjustDocRows(dir){
   const rows=[];
   for(const[sku,sd] of state.scanData.entries()){
@@ -4355,16 +4384,22 @@ function renderAdjustDocTable(){
       const opts=['<option value="">— เลือก —</option>'].concat(lots.map(l=>`<option value="${l}"${l===sel?' selected':''}>${l}</option>`)).join('');
       lotCell=`<select onchange="onAdjLotSelect('${r.sku}',this.value)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'Inter',sans-serif;font-size:0.75rem;cursor:pointer;max-width:140px;">${opts}</select>`;
     }
+    const pr=_priceMap.get(r.sku);
+    const unit=(pr&&pr.unit)||r.unit||'';                  // R05.105 หน่วยก่อน, fallback skuDirectMap (R05.106)
+    const hasPrice=pr&&pr.price!=null;
+    const priceCell=hasPrice?_fmtMoney(pr.price):'—';
+    const totalCell=hasPrice?_fmtMoney(pr.price*r.qty):'—'; // รวมเงิน = ราคา × จำนวน(ปรับ)
+    const moneyColor=hasPrice?'var(--text)':'var(--text3)';
     return`<tr>`
       +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${r.sku}</td>`
       +`<td class="ptd-name">${r.name}</td>`
-      +`<td style="text-align:center;font-size:0.8rem;color:var(--text2);">${r.unit||'—'}</td>`
+      +`<td style="text-align:center;font-size:0.8rem;color:var(--text2);">${unit||'—'}</td>`
       +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${r.qty}</td>`
-      +`<td style="text-align:center;color:var(--text3);">—</td>`
+      +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;color:${moneyColor};">${priceCell}</td>`
       +`<td style="text-align:center;">${lotCell}</td>`
       +`<td style="text-align:center;color:var(--text3);">—</td>`
-      +`<td style="text-align:center;color:var(--text3);">—</td>`
+      +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:700;color:${moneyColor};">${totalCell}</td>`
       +`</tr>`;
   }).join('');
 }
@@ -4389,7 +4424,7 @@ function updateAdjustDocPanel(){
   const p=document.getElementById('adjustDocPanel');if(!p)return;
   const canSee=currentRole==='pharmacist'||currentRole==='supervisor';
   p.style.display=canSee?'':'none';
-  if(!canSee){_lotMap.clear();_lotSelected.clear();} // logout/เปลี่ยน role ที่ไม่มีสิทธิ์ → ล้าง LOT ที่แนบไว้ (local)
+  if(!canSee){_lotMap.clear();_lotSelected.clear();_priceMap.clear();} // logout/เปลี่ยน role ที่ไม่มีสิทธิ์ → ล้างไฟล์ที่แนบไว้ (local)
   updateAdjustDocCount();
 }
 
