@@ -931,7 +931,10 @@
     </div>
     <div class="stock-popup-footer">
       <span class="popup-row-count" id="adjustDocRowCount">0 รายการ</span>
-      <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="exportAdjustDocText()" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
+        <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4433,6 +4436,25 @@ function openAdjustDocPopup(){
 }
 function closeAdjustDocPopup(){_closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
+// Export ไฟล์ Text ตาม tab ที่เลือก (ORDS/IRPS) — format: SKU \t จำนวน \t ราคา \t\t\t\t\t\t(6 TAB) LOT
+// ราคา = ยอดจาก R05.105 (raw ไม่ใส่ comma เพื่อให้ ERP import ได้), LOT = ค่าที่เลือกจาก dropdown (ว่างถ้ายังไม่เลือก)
+function exportAdjustDocText(){
+  const rows=_buildAdjustDocRows(_adjDocFilter);
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก','warn');return;}
+  const lines=rows.map(r=>{
+    const pr=_priceMap.get(r.sku);
+    const price=pr&&pr.price!=null?pr.price:'';
+    const lot=_lotSelected.get(r.sku)||'';
+    return `${r.sku}\t${r.qty}\t${price}\t\t\t\t\t\t${lot}`; // 1 TAB, 1 TAB, 6 TAB
+  });
+  const text=lines.join('\r\n')+'\r\n'; // CRLF + ปิดท้ายด้วย newline สำหรับ import ฝั่ง Windows/ERP
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`stockadj_${_adjDocFilter}_${new Date().toISOString().slice(0,10)}.txt`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
+}
 function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();}
 function updateAdjustDocPanel(){
   const p=document.getElementById('adjustDocPanel');if(!p)return;
