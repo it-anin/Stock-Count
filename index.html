@@ -932,6 +932,7 @@
     <div class="stock-popup-footer">
       <span class="popup-row-count" id="adjustDocRowCount">0 รายการ</span>
       <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="saveAdjustDocToCloud()" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">💾 บันทึก LOT</button>
         <button onclick="exportAdjustDocText()" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
         <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
@@ -4426,13 +4427,15 @@ function setAdjDocFilter(f,btn){
   if(btn)btn.classList.add('active');
   renderAdjustDocTable();
 }
-function openAdjustDocPopup(){
+async function openAdjustDocPopup(){
   if(!currentRole){toast('กรุณาเลือกผู้ใช้งานก่อน','warn');return;}
   _adjDocFilter='ords';
   const btn=document.getElementById('adjBtnOrds');
   if(btn){document.querySelectorAll('#adjustDocPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
   _openModal('adjustDocPopupOverlay','adjustDocPopupCard');
   renderAdjustDocTable();
+  // ดึง LOT/ราคา ที่บันทึกไว้จาก cloud — เฉพาะเมื่อเครื่องนี้ยังไม่มีข้อมูล local (กันทับงานที่กำลังแนบค้างในเครื่องนี้)
+  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){await loadAdjustDocFromCloud();renderAdjustDocTable();}
 }
 function closeAdjustDocPopup(){_closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
@@ -4454,6 +4457,41 @@ function exportAdjustDocText(){
   a.href=url;a.download=`stockadj_${_adjDocFilter}_${new Date().toISOString().slice(0,10)}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
+}
+// ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────
+// เก็บใน doc แยก ${id}_adjlot เขียน "ตอนกดบันทึกเท่านั้น" (ไม่ใช่ทุก 3 วิ เหมือน session doc)
+// เก็บเฉพาะ LOT+ราคาของ SKU ที่ปรับ (กรองแล้ว = เล็ก หลักสิบ–ร้อย) — ไฟล์ raw 200k ไม่เคยขึ้น cloud (กัน 1MB limit)
+function _adjLotRef(){return _db.collection('stock_sessions').doc(getSessionId()+'_adjlot');}
+async function saveAdjustDocToCloud(){
+  if(!_db||!currentBranch){toast('ไม่ได้เชื่อมต่อ Cloud','warn');return;}
+  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){toast('ยังไม่มี LOT/ราคา ให้บันทึก — แนบไฟล์ก่อน','warn');return;}
+  const lotObj={};for(const[k,v]of _lotMap.entries())lotObj[k]=v;
+  const selObj={};for(const[k,v]of _lotSelected.entries())selObj[k]=v;
+  const priceObj={};for(const[k,v]of _priceMap.entries())priceObj[k]=v;
+  try{
+    await _adjLotRef().set({
+      lotMap_json:JSON.stringify(lotObj),
+      lotSelected_json:JSON.stringify(selObj),
+      priceMap_json:JSON.stringify(priceObj),
+      updatedBy:currentUser||'',
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast(`บันทึก LOT/ราคาขึ้น Cloud สำเร็จ (${_lotMap.size} SKU) — เครื่องอื่นเปิดจะเห็นข้อมูลนี้`,'success');
+  }catch(e){console.warn('[adjlot save]',e.message);toast('บันทึกไม่สำเร็จ: '+e.message,'error');}
+}
+async function loadAdjustDocFromCloud(){
+  if(!_db||!currentBranch)return;
+  try{
+    const doc=await _adjLotRef().get();
+    if(!doc.exists)return;
+    const d=doc.data();
+    if(d.lotMap_json){_lotMap=new Map();const o=JSON.parse(d.lotMap_json);for(const k in o)_lotMap.set(k,o[k]);}
+    if(d.lotSelected_json){_lotSelected=new Map();const o=JSON.parse(d.lotSelected_json);for(const k in o)_lotSelected.set(k,o[k]);}
+    if(d.priceMap_json){_priceMap=new Map();const o=JSON.parse(d.priceMap_json);for(const k in o)_priceMap.set(k,o[k]);}
+    const by=d.updatedBy?` (โดย ${d.updatedBy})`:'';
+    const li=document.getElementById('adjLotInfo');if(li&&_lotMap.size)li.textContent=`โหลดจาก Cloud · LOT ${_lotMap.size} SKU`+by;
+    const pi=document.getElementById('adjPriceInfo');if(pi&&_priceMap.size)pi.textContent=`โหลดจาก Cloud · ราคา ${_priceMap.size} SKU`+by;
+  }catch(e){console.warn('[adjlot load]',e.message);}
 }
 function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();}
 function updateAdjustDocPanel(){
