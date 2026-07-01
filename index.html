@@ -1787,6 +1787,7 @@ async function startNewCount(){
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
+  _lotMap.clear();_lotSelected.clear();_priceMap.clear(); // ล้าง LOT/ราคา ที่แนบไว้ในป็อปอัพปรับปรุงลดสินค้า (local)
   document.getElementById('badgeR01').textContent='ยังไม่โหลด';
   document.getElementById('badgeR16').textContent='ยังไม่โหลด';document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
   const _b103n=document.getElementById('badgeR16_103');if(_b103n)_b103n.textContent='ยังไม่โหลด';
@@ -1801,7 +1802,8 @@ async function startNewCount(){
   await syncToFirestore(true);
   // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
   // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
-  if(_db&&currentBranch&&!_adminMode){try{await _db.collection('stock_sessions').doc(getSessionId()+'_r01').delete();}catch(e){console.warn('[startNewCount] clear _r01:',e.message);}}
+  // ล้าง _r01 + _adjlot (LOT/ราคาที่บันทึก sync ไว้) — เริ่มนับใหม่ = LOT รอบเก่าใช้ไม่ได้แล้ว. _r05 ไม่ลบ
+  if(_db&&currentBranch&&!_adminMode){try{await Promise.all([_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()]);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
