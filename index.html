@@ -3443,6 +3443,15 @@ async function restoreFromFirestore(force=false){
         _resetLocalR01ToEmpty();
         saveSession();
       }
+      // [ขอบเขตข้อ 2 — สาขายาเท่านั้น] refresh ยอด R16 จาก cloud แม้เครื่องนี้ r16Loaded แล้ว
+      // guard เดิม !state.r16Loaded (~บรรทัด 3423) บล็อกการรับ R16 ใหม่ → badge sync แต่ยอด/การคำนวณ audit ไม่เคย sync
+      // ทำก่อน baseline เพื่อให้ re-eval ทุกจุดใช้ R16 ล่าสุด. ใช้ "ยอดรวม" (r16RawMap ไม่ sync → ไม่กรอง TRANDATE) ตามขอบเขตข้อ 2
+      // จำกัดเฉพาะสาขายา (_isPharmacyBranch) — ไม่แตะ flow ยืนยัน/รีเช็คของ WH
+      if(_isPharmacyBranch()&&s.r16Loaded&&s.r16SalesMap){
+        state.r16Loaded=true;
+        state.r16SalesMap.clear();for(const k in s.r16SalesMap)state.r16SalesMap.set(k,s.r16SalesMap[k]);
+        state.r16InboundMap.clear();if(s.r16InboundMap)for(const k in s.r16InboundMap)state.r16InboundMap.set(k,s.r16InboundMap[k]);
+      }
       if(s.r01BaselineAt&&s.r01BaselineAt>(_r01BaselineAt||'')&&_isPharmacyBranch()){
         await _applyR01BaselineUpdate(s.r01BaselineAt);
       }
@@ -3450,6 +3459,9 @@ async function restoreFromFirestore(force=false){
       const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
       let merged=false;
       if(s.scanData){for(const k in s.scanData){const ci=s.scanData[k];if(CONFIRMED.has(ci.status)){const local=state.scanData.get(k);if(!local||!CONFIRMED.has(local.status)){state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...ci});merged=true;}}}}
+      // คิด audit/pass ใหม่ด้วย R16 ล่าสุด (สาขายา) — ข้าม item ที่เภสัช verify แล้ว (auditor set) → ไม่ revert งานที่ยืนยัน
+      // reEvaluateAuditItems ทำ render/update ครบในตัวเมื่อมีการเปลี่ยน (rebuildScanListMap/renderScanList/updateStats/updateAuditVerifyCount)
+      if(_isPharmacyBranch())reEvaluateAuditItems({silent:true});
       if(merged){invalidatePopupRowsCache();rebuildScanListMap(true);renderScanList();updateStats();renderTable();updateConfirmBtn();}
       document.getElementById('dbStatus').textContent='Synced';return;
     }
