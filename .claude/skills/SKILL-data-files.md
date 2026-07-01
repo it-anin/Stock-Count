@@ -197,6 +197,29 @@ J=Recheck / K=DIFF Recheck / L=Check By
 
 ---
 
+## ปรับปรุงลดสินค้า — ORDS/IRPS popup (เภสัช + WH supervisor)
+
+Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดงเฉพาะ role ที่ยืนยัน
+(`currentRole==='pharmacist' || 'supervisor'`) อยู่ใน `.left-panel` → **desktop-only** อัตโนมัติ (PDA ซ่อนทั้งคอลัมน์)
+
+**รายการที่แสดง:** เฉพาะ `status==='stock_adjustment'` แยก 2 แท็บด้วยทิศของ diff (`_buildAdjustDocRows(dir)`):
+- **ORDS** = ขาด (count < systemQty) → ตัวเลขแดง
+- **IRPS** = เกิน (count > systemQty) → ตัวเลขเขียว
+
+⚠️ **diff convention ต้องตรงกับ `exportStockAdjExcel()`:** count = `recheckQty ?? countedQty`, diff = `count − systemQty`,
+จำนวนที่แสดง = `Math.abs(diff)` — ถ้าแก้ convention ที่ `exportStockAdjExcel` **ต้องแก้ที่นี่ด้วย** ไม่งั้นตัวเลข 2 ที่ไม่ตรงกัน
+
+**คอลัมน์:** ลำดับ / รหัสสินค้า(SKU) / ชื่อสินค้า / หน่วย(`skuDirectMap`) / จำนวน / ราคา / LOT / EXP / รวมเงิน
+→ ราคา/EXP/รวมเงิน = placeholder `—` (ยังไม่มีข้อมูลในไฟล์)
+
+**ปุ่ม 📂 แนบไฟล์ LOT (`handleAdjLotFile`):**
+- ไฟล์ **ColA=LOT, ColB=SKU** (ไม่ skip header — ค่า SKU ในแถว header ไม่ตรง adjustment set เลยถูกกรองทิ้งเอง)
+- อ่านผ่าน `parseFile` แล้วกรอง **เฉพาะ SKU ที่ `stock_adjustment` ตอนอ่าน** → `_lotMap: Map<SKU, LOT[]>` (ไฟล์ 200k แถวเหลือหลักสิบ–ร้อย)
+- คอลัมน์ LOT = `<select>` ต่อ SKU (1 SKU หลาย LOT), ค่าที่เลือกเก็บใน `_lotSelected` → คงข้าม re-render/สลับแท็บ
+- **local-only:** `_lotMap`/`_lotSelected` in-memory เท่านั้น, ล้างตอน logout ใน `updateAdjustDocPanel()` — **ห้าม sync/persist** ดู Known Pitfalls
+
+---
+
 ## Persistence Layers
 
 | Layer | Key/Path | เมื่อไหร่เขียน |
@@ -214,6 +237,7 @@ Strip เฉพาะ: `retries`, `scans`
 ⚠️ **ไม่มี history snapshot** — Export Excel ก่อนกด "เริ่มนับใหม่"
 ⚠️ `startNewCount()` ต้องลบ `${branch}_r01` master doc ด้วย (ไม่ลบ `_r05`) — ลบทั้ง doc จึงล้าง `r16UploadedAt`/`r16Loaded` ไปด้วยโดยอัตโนมัติ (ถูกต้อง — นับใหม่ควรเคลียร์วันที่ R16 เก่าด้วย)
 ⚠️ ลำดับ: `syncToFirestore(true)` → `rebuildMaps()` (scanData ว่างก่อน)
+⚠️ **LOT ในใบปรับปรุง (`_lotMap`/`_lotSelected`) ไม่ persist โดยตั้งใจ** — in-memory เท่านั้น (ไฟล์ 200k แถวทะลุ Firestore 1MB/localStorage quota) ดู Known Pitfalls
 
 ---
 
@@ -225,6 +249,13 @@ Strip เฉพาะ: `retries`, `scans`
 - **แก้:** ย้าย `r16UploadedAt`/`r16Loaded` ไปเก็บใน master doc เดียวกับ R01 (`${branch}_r01`) เขียนผ่าน `syncR16MetaToFirestore()` (เรียกจาก `loadR16()` เท่านั้น ไม่ถูก sync รอบสแกนแตะ) + อ่านกลับทุก login ผ่าน `_applyR16MetaFromDoc()` ใน `restoreMasterFromFirestore()` — pattern เดียวกับที่ R01 ใช้อยู่แล้ว
 - **ผลข้างเคียงที่ต้องรู้:** `syncMasterToFirestore()` เปลี่ยนเป็น `.set(...,{merge:true})` ไม่งั้น R01 re-upload จะลบ field r16 ที่เพิ่งเขียนทิ้งไปด้วย
 - **Transitional:** สาขาที่ยังไม่มีใครอัพ R16 ใหม่หลัง deploy fix นี้ — `_r01` doc จะยังไม่มี field `r16UploadedAt` → `_applyR16MetaFromDoc` guard (`r16UploadedAt===undefined`) ข้ามไปเฉยๆ ไม่เด้ง badge ผิด จะ sync ถูกต้องทันทีที่มีคนอัพ R16 ครั้งต่อไปของสาขานั้น
+
+**ไฟล์ LOT 200k+ แถว — ห้ามยัดเข้า pattern sync เดิม (ก.ค. 2026):**
+- ไฟล์ LOT จริงมี **200,000+ แถว** (ทุก LOT ทั้งระบบ)
+- master file เดิม (R01/R05) เก็บเป็น JSON string ก้อนเดียวใน 1 Firestore doc (`data_json`) — Firestore จำกัด **1 MB/doc ตายตัว**, localStorage ~5–10 MB
+- 200k แถวเป็น JSON ~10–40 MB → `.set()` **throw ทั้งก้อน** / `QuotaExceededError` + stringify ทุก `saveSession` = แอปค้าง
+- **วิธีที่ใช้:** ใบปรับปรุงมีแค่ item `stock_adjustment` (หลักสิบ–ร้อย) → `handleAdjLotFile()` กรองเฉพาะ SKU เหล่านั้น**ตอนอ่าน** เก็บ `_lotMap` in-memory เท่านั้น ไม่ sync ไม่ persist
+- **ถ้าจะเพิ่ม cross-device sync ในอนาคต:** อย่าเก็บทั้งไฟล์ — เก็บแค่ LOT ของ SKU ที่ปรับ (~ร้อยแถว) ลง doc เดียวพอได้ หรือแตก subcollection
 
 ---
 
