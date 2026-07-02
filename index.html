@@ -2136,6 +2136,15 @@ function _setR01Ts(tsStr){
 function formatThaiDateTime(date){
   return `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')} น. ${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}`;
 }
+// แปลง timestamp "YYYY-MM-DD[ HH:MM:SS]" → "DD/MM/YYYY[ HH:MM:SS]" สำหรับ cell วันที่ใน Excel export (คงเวลาไว้ถ้ามี)
+function _fmtDateDMY(ts){
+  if(!ts)return '';
+  const s=String(ts).trim();const sp=s.indexOf(' ');
+  const datePart=sp>=0?s.slice(0,sp):s;const rest=sp>=0?s.slice(sp):'';
+  const m=datePart.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(!m)return s; // format ไม่ตรง → คืนค่าเดิม
+  return `${m[3].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[1]}${rest}`;
+}
 function _setPmTs(tsStr){
   state.productMasterUploadedAt=tsStr||'';
   const el=document.getElementById('pmTimestamp');
@@ -3029,7 +3038,7 @@ function getStatusPill(s){const m={pass:'<span class="pill pill-pass">✅ Pass</
 const POPUP_FILTER_LABELS={all:'ทั้งหมด',unknown:'ไม่พบในระบบ',del:'DEL',p:'P',cata:'หมวด A',pending:'รอนับ',pass:'Pass'};
 function exportExcel(){
   const header=['SKU','Barcode','ProductName','SystemQty','CountedQty','Status','Timestamp',_auditTerm()+' Status'],rows=[header];
-  getFilteredPopupRows().forEach(r=>{rows.push([r.sku,r.barcodes,r.info.productName,r.info.systemQty,r.sd.countedQty,r.sd.status,r.sd.timestamp||'',r.sd.auditStatus||'pending']);});
+  getFilteredPopupRows().forEach(r=>{rows.push([r.sku,r.barcodes,r.info.productName,r.info.systemQty,r.sd.countedQty,r.sd.status,_fmtDateDMY(r.sd.timestamp),r.sd.auditStatus||'pending']);});
   if(rows.length===1){toast('ไม่มีข้อมูลให้ Export ตามตัวกรองที่เลือก','warn');return;}
   const label=popupFilterState==='audit'?_auditTerm():(POPUP_FILTER_LABELS[popupFilterState]||popupFilterState);
   const fileTag=popupFilterState==='audit'?'audit':`stock_${popupFilterState}`;
@@ -4765,7 +4774,7 @@ function exportCountReportExcel(){
   if(!rows.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
   const header=['วันที่สแกน','Location','SKU','Barcode','Name','SystemQty','หน่วย','Count','DIFF','Recheck','DIFF(Recheck)','Check By'];
   const aoa=[header];
-  rows.forEach(r=>aoa.push([r.scanAt,r.location,r.sku,r.barcode,r.name,r.systemQty,r.unit,r.count,r.diffCount,r.recheck===null?'':r.recheck,r.diffRecheck===null?'':r.diffRecheck,r.checkBy]));
+  rows.forEach(r=>aoa.push([_fmtDateDMY(r.scanAt),r.location,r.sku,r.barcode,r.name,r.systemQty,r.unit,r.count,r.diffCount,r.recheck===null?'':r.recheck,r.diffRecheck===null?'':r.diffRecheck,r.checkBy]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(rr=>{const v=rr[c]==null?'':String(rr[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
@@ -4849,7 +4858,7 @@ function exportHsCountExcel(){
       ?(sd?.scannedBy||fsItem?.scannedBy||'')
       :(currentBranch==='WH'?(sd?.recheckBy||fsItem?.recheckBy||''):(sd?.auditor||fsItem?.auditor||''));
     const ts=sd?.timestamp||fsItem?.timestamp||''; // เวลาที่พนักงานสแกน/นับ
-    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff,ts]);
+    rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff,_fmtDateDMY(ts)]);
   });
   if(rows.length===1){toast('ไม่มีรายการที่ Diff ≠ 0 ให้ Export','warn');return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
@@ -4878,7 +4887,7 @@ function exportStockAdjExcel(){
     const diff=rv-sysQty; // ColG - ColF
     if(diff===0)continue;
     const loc=state.locationMap.get(sku)||'';
-    rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',sd.timestamp||'']);
+    rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',_fmtDateDMY(sd.timestamp)]);
   }
   if(rows.length===1){toast('ไม่มีข้อมูล Stock Adjustment','warn');return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
