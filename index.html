@@ -913,8 +913,8 @@
     </div>
     <div style="padding:8px 22px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <input type="file" id="adjLotFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjLotFile(event)">
-      <button onclick="document.getElementById('adjLotFileInput').click()" style="padding:7px 14px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;">📂 แนบไฟล์ LOT</button>
-      <span id="adjLotInfo" style="font-size:0.76rem;color:var(--text3);">ยังไม่ได้แนบไฟล์ LOT (ColA=LOT, ColB=SKU) · เก็บเฉพาะเครื่องนี้ ไม่ sync ข้ามเครื่อง</span>
+      <button onclick="document.getElementById('adjLotFileInput').click()" style="padding:7px 14px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;">📂 แนบไฟล์ LOT/EXP (R14.102)</button>
+      <span id="adjLotInfo" style="font-size:0.76rem;color:var(--text3);">ยังไม่ได้แนบไฟล์ LOT/EXP (R14.102) · ColJ=SKU, ColL=LOT, ColB=EXP</span>
     </div>
     <div style="padding:0 22px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <input type="file" id="adjPriceFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjPriceFile(event)">
@@ -4316,7 +4316,7 @@ function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById
 // ราคา/LOT/EXP/รวมเงิน = placeholder ('—') ยังไม่มีข้อมูล
 let _adjDocFilter='ords';
 // LOT lookup — local only (ไม่ sync/ไม่ persist). กรองเฉพาะ SKU ที่ stock_adjustment ตอนแนบไฟล์ → ไม่เก็บทั้ง 200k แถว
-let _lotMap=new Map();      // SKU → [LOT, ...]
+let _lotMap=new Map();      // SKU → [{lot, exp}, ...] (R14.102: ColL=LOT, ColB=EXP)
 let _lotSelected=new Map(); // SKU → LOT ที่เลือกจาก dropdown (คงไว้ข้าม re-render/สลับแท็บ)
 let _priceMap=new Map();    // SKU → {unit, price} จาก R05.105 (เฉพาะแถว ColF===4) — local only
 // set ของ SKU ที่ต้องใช้จริง (เฉพาะ stock_adjustment) — ใช้กรองไฟล์ใหญ่ตอนอ่าน เก็บเฉพาะที่เกี่ยว
@@ -4329,21 +4329,22 @@ function handleAdjLotFile(event){
   parseFile(file,rows=>{
     _lotMap=new Map();_lotSelected=new Map();
     let matched=0;
-    for(let i=0;i<rows.length;i++){                 // ไม่ skip header — ถ้ามี header ค่า SKU จะไม่อยู่ใน need เลยถูกกรองทิ้งเอง
+    for(let i=0;i<rows.length;i++){                 // ไม่ skip header — SKU ใน header ไม่ตรง need เลยถูกกรองทิ้งเอง
       const r=rows[i];if(!r||!r.length)continue;
-      const lot=(r[0]??'').toString().trim();       // ColA = LOT
-      const sku=(r[1]??'').toString().trim();       // ColB = SKU
+      const sku=(r[9]??'').toString().trim();        // ColJ = SKU
+      const lot=(r[11]??'').toString().trim();       // ColL = LOT
+      const exp=(r[1]??'').toString().trim();        // ColB = EXP (ผูกกับ LOT ในแถวเดียวกัน)
       if(!sku||!lot||!need.has(sku))continue;
       let arr=_lotMap.get(sku);if(!arr){arr=[];_lotMap.set(sku,arr);}
-      if(!arr.includes(lot)){arr.push(lot);matched++;}
+      if(!arr.some(e=>e.lot===lot)){arr.push({lot,exp});matched++;} // เก็บเป็น {lot, exp}
     }
     const info=document.getElementById('adjLotInfo');
     if(info)info.textContent=`แนบแล้ว · พบ LOT ${matched} รายการ สำหรับ ${_lotMap.size}/${need.size} SKU ที่ต้องปรับ`;
-    toast(`โหลด LOT สำเร็จ · จับคู่ได้ ${_lotMap.size}/${need.size} SKU`,'success');
+    toast(`โหลด LOT/EXP สำเร็จ · จับคู่ได้ ${_lotMap.size}/${need.size} SKU`,'success');
     renderAdjustDocTable();
   });
 }
-function onAdjLotSelect(sku,val){_lotSelected.set(sku,val);}
+function onAdjLotSelect(sku,val){_lotSelected.set(sku,val);renderAdjustDocTable();} // re-render เพื่ออัพเดทคอลัมน์ EXP ตาม LOT ที่เลือก
 function handleAdjPriceFile(event){
   const file=event.target.files[0];if(!file)return;
   const need=_adjustDocSkuSet();
@@ -4395,15 +4396,17 @@ function renderAdjustDocTable(){
   if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   tbody.innerHTML=rows.map((r,i)=>{
-    const lots=_lotMap.get(r.sku)||[];
+    const lotEntries=(_lotMap.get(r.sku)||[]).map(e=>typeof e==='string'?{lot:e,exp:''}:e); // รองรับ format เก่า (string) ที่อาจ sync มาจาก cloud เดิม
+    const sel=_lotSelected.get(r.sku)||'';
     let lotCell;
-    if(!lots.length){
+    if(!lotEntries.length){
       lotCell='<span style="color:var(--text3);">—</span>';   // ยังไม่แนบไฟล์ หรือ SKU นี้ไม่มี LOT ในไฟล์
     }else{
-      const sel=_lotSelected.get(r.sku)||'';
-      const opts=['<option value="">— เลือก —</option>'].concat(lots.map(l=>`<option value="${l}"${l===sel?' selected':''}>${l}</option>`)).join('');
+      const opts=['<option value="">— เลือก —</option>'].concat(lotEntries.map(e=>`<option value="${e.lot}"${e.lot===sel?' selected':''}>${e.lot}</option>`)).join('');
       lotCell=`<select onchange="onAdjLotSelect('${r.sku}',this.value)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'Inter',sans-serif;font-size:0.75rem;cursor:pointer;max-width:140px;">${opts}</select>`;
     }
+    const selEntry=lotEntries.find(e=>e.lot===sel);
+    const expVal=(selEntry&&selEntry.exp)||'';             // EXP (ColB) ของ LOT ที่เลือก
     const pr=_priceMap.get(r.sku);
     const unit=(pr&&pr.unit)||r.unit||'';                  // R05.105 หน่วยก่อน, fallback skuDirectMap (R05.106)
     const hasPrice=pr&&pr.price!=null;
@@ -4418,7 +4421,7 @@ function renderAdjustDocTable(){
       +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${r.qty}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;color:${moneyColor};">${priceCell}</td>`
       +`<td style="text-align:center;">${lotCell}</td>`
-      +`<td style="text-align:center;color:var(--text3);">—</td>`
+      +`<td style="text-align:center;font-size:0.78rem;color:${expVal?'var(--text2)':'var(--text3)'};">${expVal||'—'}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:700;color:${moneyColor};">${totalCell}</td>`
       +`</tr>`;
   }).join('');
