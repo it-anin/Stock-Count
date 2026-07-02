@@ -110,6 +110,8 @@
     .upload-file-item::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--green); border-radius:2px 0 0 2px; opacity:0; transition:opacity 0.2s; }
     .upload-file-item:hover { border-color:#b4b2a9; transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.06); }
     .upload-file-item:hover::before { opacity:1; }
+    .upload-file-item.adj-card-done { background:rgba(26,158,92,0.09); border-color:rgba(26,158,92,0.35); } /* การ์ดแนบไฟล์แล้ว = พื้นเขียวอ่อน */
+    .upload-file-item.adj-card-done::before { opacity:1; }
     .upload-file-info { display:flex; align-items:center; gap:10px; }
     .upload-file-icon { width:32px; height:32px; border-radius:8px; background:#e1f5ee; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     .upload-file-icon-optional { background:#f1efe8; }
@@ -917,8 +919,8 @@
         <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
           <div class="upload-file-icon upload-file-icon-optional" id="adjLotIcon" style="font-size:1rem;">📄</div>
           <div style="min-width:0;">
-            <div class="upload-file-name">LOT / EXP (R14.102)</div>
-            <div class="upload-file-sub" id="adjLotInfo">ColJ=SKU · ColL=LOT · ColB=EXP</div>
+            <div class="upload-file-name">R14.102</div>
+            <div class="upload-file-sub" id="adjLotInfo">ดึงข้อมูล (LOT / EXP)</div>
           </div>
         </div>
         <div class="upload-file-badge upload-file-badge-optional" id="adjLotBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
@@ -928,8 +930,8 @@
         <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
           <div class="upload-file-icon upload-file-icon-optional" id="adjPriceIcon" style="font-size:1rem;">💵</div>
           <div style="min-width:0;">
-            <div class="upload-file-name">ราคา (R05.105)</div>
-            <div class="upload-file-sub" id="adjPriceInfo">ColB=SKU · ColE=หน่วย · ColH=ราคา (ColF=4)</div>
+            <div class="upload-file-name">R05.105</div>
+            <div class="upload-file-sub" id="adjPriceInfo">ดึงข้อมูลราคาสินค้า (Price Level 4)</div>
           </div>
         </div>
         <div class="upload-file-badge upload-file-badge-optional" id="adjPriceBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
@@ -4344,6 +4346,8 @@ function _setAdjCard(which,attached,subText){
   if(sub&&subText!=null)sub.textContent=subText;
   if(icon)icon.classList.toggle('upload-file-icon-optional',!attached);
   if(badge){badge.classList.toggle('upload-file-badge-optional',!attached);const s=badge.querySelector('span');if(s)s.textContent=attached?'แนบแล้ว':'ยังไม่แนบ';}
+  const card=icon&&icon.closest('.upload-file-item');
+  if(card)card.classList.toggle('adj-card-done',!!attached); // พื้นการ์ดเขียวอ่อนเมื่อแนบแล้ว
 }
 function _refreshAdjCards(){ // สะท้อนสถานะการ์ดตามขนาด map ปัจจุบัน (ใช้ตอนเปิด popup)
   const need=_adjustDocSkuSet().size;
