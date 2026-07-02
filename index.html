@@ -882,6 +882,11 @@
       <button onclick="document.getElementById('hsFileInput').click()" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">📂 เลือกไฟล์</button>
       <span id="hsUploadInfo" style="font-size:0.8rem;color:var(--text3);">รองรับ CSV / Excel · ต้องมีคอลัมน์ SKU และ จำนวนที่นับ</span>
     </div>
+    <div id="hsReportToolbar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:10px;flex-wrap:wrap;">
+      <label style="font-size:0.82rem;color:var(--text2);font-weight:600;white-space:nowrap;">เลือกวันที่:</label>
+      <select id="hsReportDateSelect" onchange="onCountReportDateChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:0.82rem;cursor:pointer;outline:none;"></select>
+      <span style="font-size:0.72rem;color:var(--text3);">บันทึกอัตโนมัติทุกครั้งที่เปิดแท็บนี้ · เก็บย้อนหลัง 30 วัน</span>
+    </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="historyStatsThead"></thead>
@@ -4293,6 +4298,7 @@ function setHsFilter(f,btn){
   if(exportCountBtn)exportCountBtn.style.display=(f==='assistant'||f==='pharmacist')?'':'none';
   const exportReportBtn=document.getElementById('btnExportCountReport');
   if(exportReportBtn)exportReportBtn.style.display=f==='countreport'?'':'none';
+  if(f==='countreport')_enterCountReportTab(); // auto-save snapshot วันนี้ + populate dropdown วันที่
   renderHistoryStatsTable();
 }
 function onHsAssistantChange(){
@@ -4590,6 +4596,8 @@ function renderHistoryStatsTable(){
   if(!tbody)return;
   if(uploadToolbar)uploadToolbar.style.display=_hsFilter==='upload'?'flex':'none';
   if(assistantToolbar)assistantToolbar.style.display=_hsFilter==='assistant'?'flex':'none';
+  const reportToolbar=document.getElementById('hsReportToolbar');
+  if(reportToolbar)reportToolbar.style.display=_hsFilter==='countreport'?'flex':'none';
 
   if(_hsFilter==='assistant'){
     _buildAssistantDropdown();
@@ -4718,7 +4726,7 @@ function renderHistoryStatsTable(){
     if(cnt)cnt.textContent=`${_hsUploadData.length} รายการ · ตรง ${matched} / ไม่ตรง ${_hsUploadData.length-matched}`;
   }
   else if(_hsFilter==='countreport'){
-    const rows=_buildCountReportRows();
+    const rows=_countReportRowsForSelected();
     if(thead)thead.innerHTML=`<tr><th>วันที่สแกน</th><th>Location</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">SystemQty</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Count</th><th style="text-align:center;">DIFF</th><th style="text-align:center;">Recheck</th><th style="text-align:center;">DIFF<br>(Recheck)</th><th>Check By</th></tr>`;
     if(cnt)cnt.textContent=rows.length+' รายการ';
     if(!rows.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีรายการที่ Confirm</td></tr>';return;}
@@ -4771,8 +4779,52 @@ function _buildCountReportRows(){
   return rows;
 }
 
+// ── รายงานผลลัพธ์การนับ: บันทึกวันต่อวัน (WH supervisor) เก็บย้อนหลัง 30 วัน ──────
+// doc ต่อวัน stock_countreport/${branch}_${YYYY-MM-DD} (mirror pattern stock_audit_log)
+let _reportSelectedDate=''; // '' / วันนี้ = ข้อมูลสด | 'YYYY-MM-DD' = snapshot ย้อนหลัง
+let _reportSnapshotRows=null; // cache rows ของ snapshot ที่เลือก
+function _crToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function _crRef(dateStr){return _db.collection('stock_countreport').doc(`${currentBranch}_${dateStr}`);}
+function _countReportRowsForSelected(){ // rows ที่ใช้ render/export ตามวันที่เลือก
+  const today=_crToday();
+  if(!_reportSelectedDate||_reportSelectedDate===today)return _buildCountReportRows(); // สด
+  return _reportSnapshotRows||[];
+}
+async function saveCountReportSnapshot(){ // ทับ doc วันนี้ + ลบเก่ากว่า 30 วัน (single-field query กัน composite index)
+  if(_adminMode||!_db||currentBranch!=='WH'||currentRole!=='supervisor')return;
+  const today=_crToday();
+  try{
+    await _crRef(today).set({branch:currentBranch,date:today,updatedAt:new Date().toISOString(),rows_json:JSON.stringify(_buildCountReportRows())});
+    const c=new Date();c.setDate(c.getDate()-30);
+    const cutoff=`${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-${String(c.getDate()).padStart(2,'0')}`;
+    const snap=await _db.collection('stock_countreport').where('branch','==',currentBranch).get();
+    snap.forEach(d=>{const dt=d.data().date;if(dt&&dt<cutoff)d.ref.delete().catch(()=>{});});
+  }catch(e){console.warn('[countreport save]',e.message);}
+}
+async function loadCountReportDates(){ // populate dropdown จากวันที่ที่บันทึกไว้ (+ วันนี้เสมอ)
+  const sel=document.getElementById('hsReportDateSelect');if(!sel)return;
+  const today=_crToday();const set=new Set([today]);
+  if(_db&&currentBranch){try{const snap=await _db.collection('stock_countreport').where('branch','==',currentBranch).get();snap.forEach(d=>{if(d.data().date)set.add(d.data().date);});}catch(e){console.warn('[countreport dates]',e.message);}}
+  const sorted=[...set].sort().reverse(); // ใหม่→เก่า
+  sel.innerHTML=sorted.map(d=>`<option value="${d}">${_fmtDateDMY(d)}${d===today?' (วันนี้)':''}</option>`).join('');
+  _reportSelectedDate=today;_reportSnapshotRows=null;sel.value=today;
+}
+async function onCountReportDateChange(){
+  const sel=document.getElementById('hsReportDateSelect');if(!sel)return;
+  _reportSelectedDate=sel.value;
+  if(_reportSelectedDate===_crToday()){_reportSnapshotRows=null;renderHistoryStatsTable();return;}
+  _reportSnapshotRows=[]; // โหลด snapshot ย้อนหลัง
+  try{const doc=await _crRef(_reportSelectedDate).get();if(doc.exists&&doc.data().rows_json)_reportSnapshotRows=JSON.parse(doc.data().rows_json);}catch(e){console.warn('[countreport load]',e.message);}
+  renderHistoryStatsTable();
+}
+async function _enterCountReportTab(){ // เรียกจาก setHsFilter เมื่อเข้าแท็บ report
+  await saveCountReportSnapshot();
+  await loadCountReportDates();
+  renderHistoryStatsTable();
+}
+
 function exportCountReportExcel(){
-  const rows=_buildCountReportRows();
+  const rows=_countReportRowsForSelected();
   if(!rows.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
   const header=['วันที่สแกน','Location','SKU','Barcode','Name','SystemQty','หน่วย','Count','DIFF','Recheck','DIFF(Recheck)','Check By'];
   const aoa=[header];
@@ -4781,9 +4833,10 @@ function exportCountReportExcel(){
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(rr=>{const v=rr[c]==null?'':String(rr[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'รายงานผลการนับ');
-  const dateStr=_fileDateDMY();
+  const selDate=(_reportSelectedDate&&_reportSelectedDate!==_crToday())?_reportSelectedDate:_crToday();
+  const dateStr=_fmtDateDMY(selDate).replace(/\//g,'-'); // DD-MM-YYYY ของวันที่เลือก
   XLSX.writeFile(wb,`count_report_${currentBranch||'all'}_${dateStr}.xlsx`);
-  toast(`Export รายงานผลลัพธ์การนับ ${rows.length} รายการ สำเร็จ`,'success');
+  toast(`Export รายงานผลลัพธ์การนับ (${_fmtDateDMY(selDate)}) ${rows.length} รายการ สำเร็จ`,'success');
 }
 
 function handleHsUploadFile(e){
