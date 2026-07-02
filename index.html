@@ -2145,6 +2145,8 @@ function _fmtDateDMY(ts){
   if(!m)return s; // format ไม่ตรง → คืนค่าเดิม
   return `${m[3].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[1]}${rest}`;
 }
+// วันที่วันนี้สำหรับชื่อไฟล์ export → "DD-MM-YYYY" (ใช้ '-' ไม่ใช่ '/' เพราะ '/' ใช้ในชื่อไฟล์ไม่ได้ — คนไทยอ่านง่ายกว่า YYYY-MM-DD)
+function _fileDateDMY(){const d=new Date();return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;}
 function _setPmTs(tsStr){
   state.productMasterUploadedAt=tsStr||'';
   const el=document.getElementById('pmTimestamp');
@@ -3043,7 +3045,7 @@ function exportExcel(){
   const label=popupFilterState==='audit'?_auditTerm():(POPUP_FILTER_LABELS[popupFilterState]||popupFilterState);
   const fileTag=popupFilterState==='audit'?'audit':`stock_${popupFilterState}`;
   const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=header.map((_,c)=>{let m=header[c].length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(popupFilterState==='audit'?_auditTerm():'Stock').slice(0,31));XLSX.writeFile(wb,`${fileTag}_${new Date().toISOString().slice(0,10)}.xlsx`);toast(`Export ${label} ${rows.length-1} รายการ สำเร็จ`,'success');
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(popupFilterState==='audit'?_auditTerm():'Stock').slice(0,31));XLSX.writeFile(wb,`${fileTag}_${_fileDateDMY()}.xlsx`);toast(`Export ${label} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
 // คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
@@ -4500,7 +4502,7 @@ function exportAdjustDocText(){
   const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url;a.download=`stockadj_${_adjDocFilter}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
 }
@@ -4525,7 +4527,7 @@ function exportAdjustDocExcel(){
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(row=>{const v=row[c]==null?'':String(row[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,_adjDocFilter==='ords'?'ORDS':'IRPS');
-  XLSX.writeFile(wb,`stockadj_${_adjDocFilter}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb,`stockadj_${_adjDocFilter}_${_fileDateDMY()}.xlsx`);
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ`,'success');
 }
 // ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────
@@ -4779,7 +4781,7 @@ function exportCountReportExcel(){
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(rr=>{const v=rr[c]==null?'':String(rr[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'รายงานผลการนับ');
-  const dateStr=new Date().toISOString().slice(0,10);
+  const dateStr=_fileDateDMY();
   XLSX.writeFile(wb,`count_report_${currentBranch||'all'}_${dateStr}.xlsx`);
   toast(`Export รายงานผลลัพธ์การนับ ${rows.length} รายการ สำเร็จ`,'success');
 }
@@ -4866,7 +4868,7 @@ function exportHsCountExcel(){
   const wb=XLSX.utils.book_new();
   const sheetName=isAssistant?'นับครั้งแรก':'รีเช็คสินค้า';
   XLSX.utils.book_append_sheet(wb,ws,sheetName);
-  const dateStr=new Date().toISOString().slice(0,10);
+  const dateStr=_fileDateDMY();
   const tag=isAssistant?'count':'recheck';
   XLSX.writeFile(wb,`${tag}_${currentBranch||'all'}_${dateStr}.xlsx`);
   toast(`Export ${sheetName} ${rows.length-1} รายการ สำเร็จ`,'success');
@@ -4893,7 +4895,7 @@ function exportStockAdjExcel(){
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'StockAdj');
-  const dateStr=new Date().toISOString().slice(0,10);
+  const dateStr=_fileDateDMY();
   XLSX.writeFile(wb,`stockadj_${currentBranch||'all'}_${dateStr}.xlsx`);
   toast(`Export Stock Adj ${rows.length-1} รายการ สำเร็จ`,'success');
 }
