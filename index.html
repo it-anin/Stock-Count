@@ -4351,8 +4351,8 @@ function _setAdjCard(which,attached,subText){
 }
 function _refreshAdjCards(){ // สะท้อนสถานะการ์ดตามขนาด map ปัจจุบัน (ใช้ตอนเปิด popup)
   const need=_adjustDocSkuSet().size;
-  _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`${_lotMap.size}${need?'/'+need:''} SKU มี LOT/EXP`:'ColJ=SKU · ColL=LOT · ColB=EXP');
-  _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`${_priceMap.size}${need?'/'+need:''} SKU มีราคา`:'ColB=SKU · ColE=หน่วย · ColH=ราคา (ColF=4)');
+  _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`${_lotMap.size}${need?'/'+need:''} SKU มี LOT/EXP`:'ดึงข้อมูล (LOT / EXP)');
+  _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`${_priceMap.size}${need?'/'+need:''} SKU มีราคา`:'ดึงข้อมูลราคาสินค้า (Price Level 4)');
 }
 function handleAdjLotFile(event){
   const file=event.target.files[0];if(!file)return;
@@ -4525,8 +4525,8 @@ async function loadAdjustDocFromCloud(){
     if(d.lotSelected_json){_lotSelected=new Map();const o=JSON.parse(d.lotSelected_json);for(const k in o)_lotSelected.set(k,o[k]);}
     if(d.priceMap_json){_priceMap=new Map();const o=JSON.parse(d.priceMap_json);for(const k in o)_priceMap.set(k,o[k]);}
     const by=d.updatedBy?` · โดย ${d.updatedBy}`:'';
-    _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`โหลดจาก Cloud · ${_lotMap.size} SKU มี LOT${by}`:'ColJ=SKU · ColL=LOT · ColB=EXP');
-    _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`โหลดจาก Cloud · ${_priceMap.size} SKU มีราคา${by}`:'ColB=SKU · ColE=หน่วย · ColH=ราคา (ColF=4)');
+    _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`โหลดจาก Cloud · ${_lotMap.size} SKU มี LOT${by}`:'ดึงข้อมูล (LOT / EXP)');
+    _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`โหลดจาก Cloud · ${_priceMap.size} SKU มีราคา${by}`:'ดึงข้อมูลราคาสินค้า (Price Level 4)');
   }catch(e){console.warn('[adjlot load]',e.message);}
 }
 function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();}
