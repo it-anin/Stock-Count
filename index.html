@@ -4817,6 +4817,7 @@ function exportHsCountExcel(){
     const sysQty=Number(si?.systemQty||0);
     const cnt=Number(countQty)||0;
     const diff=cnt-sysQty;
+    if(diff===0)return; // ตัดแถว Diff ดิบ (นับได้−ระบบ) = 0 ออกจากไฟล์ — แสดงเฉพาะแถวที่นับ≠ระบบ
     // นับครั้งแรก=ผู้สแกน | รีเช็ค: WH=พนักงานที่สแกนรีเช็คจริง (recheckBy) ไม่ใช่หัวหน้างานที่แค่กดยืนยัน (auditor)
     //                            สาขา=เภสัช (auditor — เป็นคนสแกน audit verify + ยืนยันเอง คนเดียวกัน)
     const staff=isAssistant
@@ -4825,6 +4826,7 @@ function exportHsCountExcel(){
     const ts=sd?.timestamp||fsItem?.timestamp||''; // เวลาที่พนักงานสแกน/นับ
     rows.push([location,sku,barcode,name,unitName,cnt,sysQty,diff,staff,ts]);
   });
+  if(rows.length===1){toast('ไม่มีรายการที่ Diff ≠ 0 ให้ Export','warn');return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
