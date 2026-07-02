@@ -949,6 +949,7 @@
       <span class="popup-row-count" id="adjustDocRowCount">0 รายการ</span>
       <div style="display:flex;gap:8px;align-items:center;">
         <button onclick="saveAdjustDocToCloud()" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">💾 บันทึก LOT</button>
+        <button onclick="exportAdjustDocExcel()" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">📊 Export Excel</button>
         <button onclick="exportAdjustDocText()" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
         <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
@@ -4493,6 +4494,30 @@ function exportAdjustDocText(){
   a.href=url;a.download=`stockadj_${_adjDocFilter}_${new Date().toISOString().slice(0,10)}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
+}
+// Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
+function exportAdjustDocExcel(){
+  const rows=_buildAdjustDocRows(_adjDocFilter);
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก','warn');return;}
+  const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'];
+  const aoa=[header];
+  rows.forEach((r,i)=>{
+    const lotEntries=(_lotMap.get(r.sku)||[]).map(e=>typeof e==='string'?{lot:e,exp:''}:e);
+    const sel=_lotSelected.get(r.sku)||'';
+    const selEntry=lotEntries.find(e=>e.lot===sel);
+    const exp=(selEntry&&selEntry.exp)||'';
+    const pr=_priceMap.get(r.sku);
+    const unit=(pr&&pr.unit)||r.unit||'';
+    const price=pr&&pr.price!=null?pr.price:'';           // ราคา raw (number) เพื่อให้ Excel รวมยอดได้
+    const total=pr&&pr.price!=null?pr.price*r.qty:'';      // รวมเงิน = ราคา × จำนวน
+    aoa.push([i+1,r.sku,r.name,unit,r.qty,price,sel,exp,total]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(row=>{const v=row[c]==null?'':String(row[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,_adjDocFilter==='ords'?'ORDS':'IRPS');
+  XLSX.writeFile(wb,`stockadj_${_adjDocFilter}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ`,'success');
 }
 // ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────
 // เก็บใน doc แยก ${id}_adjlot เขียน "ตอนกดบันทึกเท่านั้น" (ไม่ใช่ทุก 3 วิ เหมือน session doc)
