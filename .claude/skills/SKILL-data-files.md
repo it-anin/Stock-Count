@@ -149,13 +149,13 @@ Debug: `console.log('[R16] TRANDATE col index:')` ใน browser Console
 SKU อยู่ใน R01 แต่ไม่อยู่ใน Product Master → `isDel: true` ใน `skuMap`
 - แสดงใน popup ด้วย badge แดง **DEL** + ปุ่ม filter **🗑️ DEL**
 - นับ + evaluate ปกติ
-- **filter `'pending'`** ใน popup ไม่รวม DEL → ดู DEL รอนับผ่านปุ่ม **🗑️ DEL**
+- **filter `'pending'`** ใน popup รวม DEL ด้วย (July 2026 — เดิม exclude) → DEL ที่ยังไม่นับ (รวม qty ติดลบ/0) โผล่ใน "รอนับ" พร้อม badge; ปุ่ม **🗑️ DEL** ใช้กรองดูเฉพาะ DEL
 
 ## P Items (หมวด P)
 
 Product Master Col D = `P` → เก็บด้วย `cat:'P'`, flag `skuMap[sku].isP = true`
 - แสดง badge **P สีม่วง** (`.tag-p`) ในป็อปอัพ + ปุ่ม filter **🏷️ P**
-- โผล่ใน filter "รอนับ" ด้วย (ต่างจาก DEL ที่ถูก exclude)
+- โผล่ใน filter "รอนับ" ด้วย (เหมือน DEL)
 - ต้องอัพ PM ใหม่ 1 ครั้งหลัง deploy เพื่อให้ของเก่าใน cloud มี `cat`
 
 Col D filter: `REVIEW` → ข้าม; `A` → `cat:'A'`; `P` → `cat:'P'`; อื่น → ไม่มี field `cat`

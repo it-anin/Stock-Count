@@ -3006,7 +3006,7 @@ function getFilteredPopupRows(){
   const search=(document.getElementById('popupSearch').value||'').toLowerCase();
   if(!popupBaseRowsCache)popupBaseRowsCache=buildPopupBaseRows();
   let rows=popupBaseRowsCache;
-  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='cata')return r.cat==='A';if(popupFilterState==='pending')return r.sd.status==='pending'&&!r.isDel;if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel;if(popupFilterState==='p')return r.isP;if(popupFilterState==='cata')return r.cat==='A';if(popupFilterState==='pending')return r.sd.status==='pending';if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
   if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   return rows;
