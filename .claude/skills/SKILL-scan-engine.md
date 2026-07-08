@@ -68,6 +68,19 @@ location,SKU,qty
 
 ---
 
+## negSys — ระบบติดลบ (สาขายาเท่านั้น, July 2026)
+
+`rebuildMaps`: สาขายา (`_isPharmacyBranch()`) systemQty < 0 → clamp เป็น `0` + flag `skuMap[sku].negSys=true`
+(ข้อมูลดิบใน `r01Data` เก็บค่าติดลบจริง — WH ไม่ clamp เห็นค่าจริง)
+
+- `evaluatePendingScans`: item `negSys` ที่ effectiveCnt ≠ 0 → **`stock_adjustment` ทันที** (`auditStatus='stock_adjustment'`) ข้ามคิวเภสัช verify; effectiveCnt = 0 → pass
+- `reEvaluateAuditItems`: rule เดียวกัน — negSys ไม่ตรง → `stock_adjustment` ไม่หลุดกลับเข้า `audit`
+- Diff ในตาราง Stock Adj + เอกสารปรับสต็อก = `countedQty − 0` = ยอดนับจริง (IRPS ของเกิน) เพราะไม่มี `recheckQty`
+- `resetUnverifiedAuditForNewR01` ไม่แตะ (เช็คเฉพาะ status `audit`) → อัพ R01 ใหม่ item เหล่านี้คงสถานะ
+- ศูนย์จริง (systemQty = 0 ใน R01) **ไม่เข้า rule นี้** — ยังผ่าน audit → เภสัช verify ตามปกติ
+
+---
+
 ## drainQueue & Render Decision
 
 ⚠️ **อย่าใช้ `size>prevSize || _pendingPatches.size>0`** — จะ full render ทุกสแกน

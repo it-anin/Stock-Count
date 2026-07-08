@@ -91,10 +91,12 @@ state = {
 pending → scanning → pass
                    → audit → (verify pass)  → pass
                            → (verify fail)  → stock_adjustment
+                   → stock_adjustment  (สาขายา: negSys — ระบบติดลบ clamp เป็น 0, ข้ามเภสัช verify)
 ```
 
 `unknown` = barcode ไม่พบในระบบ (parallel track)
 `audit_check` = legacy, ยังอยู่ใน codebase แต่ไม่ถูกผลิตใหม่แล้ว
+`negSys` = สาขายาเท่านั้น: systemQty < 0 ใน R01 → skuMap เก็บ 0 + flag (ดู SKILL-scan-engine)
 
 ### Roles & Branches
 

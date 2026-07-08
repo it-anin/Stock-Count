@@ -1770,10 +1770,10 @@ function reEvaluateAuditItems(opts={}){
     const inboundQty=getInboundQtyBefore(sku,sd.timestamp);
     const r16103Qty=getR16103QtyBefore(sku,sd.timestamp);
     const effectiveCnt=sd.countedQty+soldQty+r16103Qty-inboundQty;
-    const newStatus=effectiveCnt===si.systemQty?'pass':'audit';
+    const newStatus=effectiveCnt===si.systemQty?'pass':(si.negSys?'stock_adjustment':'audit');
     if(newStatus===sd.status)continue; // ไม่เปลี่ยน ข้ามไป
     sd.status=newStatus;
-    sd.auditStatus=newStatus==='pass'?'approved':'pending';
+    sd.auditStatus=newStatus==='pass'?'approved':(newStatus==='stock_adjustment'?'stock_adjustment':'pending');
     sd.initialStatus=newStatus; // แก้ initialStatus ให้ตรงกับ R16 ใหม่
     if(soldQty>0){sd.soldQty=soldQty;sd.rawCountedQty=sd.countedQty;}
     if(inboundQty>0)sd.inboundQty=inboundQty;
@@ -1962,9 +1962,11 @@ function rebuildMaps() {
   const qtyMap=new Map();const r01NameMap=new Map();
   state.r01Data.forEach(r=>{qtyMap.set(r.colE,r.systemQty);if(r.productName)r01NameMap.set(r.colE,r.productName);});
   const skuSource=state.productMasterData.length?state.productMasterData:state.r01Data.map(r=>({sku:r.colE,productName:r.productName}));
-  skuSource.forEach(r=>{if(!state.skuMap.has(r.sku)){const pn=r.productName||r01NameMap.get(r.sku)||r.sku;state.skuMap.set(r.sku,{sku:r.sku,productName:pn,systemQty:qtyMap.get(r.sku)??0,barcodes:[],isDel:false,isP:r.cat==='P',cat:r.cat||''});}});
+  // สาขายา: systemQty ติดลบ → มองเป็น 0 + flag negSys (Confirm แล้วเข้า stock_adjustment ตรง ไม่รอเภสัช verify) — WH เก็บค่าติดลบจริง
+  const _clampNeg=_isPharmacyBranch();
+  skuSource.forEach(r=>{if(!state.skuMap.has(r.sku)){const pn=r.productName||r01NameMap.get(r.sku)||r.sku;const q0=qtyMap.get(r.sku)??0;const neg=_clampNeg&&q0<0;state.skuMap.set(r.sku,{sku:r.sku,productName:pn,systemQty:neg?0:q0,negSys:neg,barcodes:[],isDel:false,isP:r.cat==='P',cat:r.cat||''});}});
   // R01 items not in Product Master → DEL (ถูกตัดออกจาก PM แต่ยังมีสต็อกจริง)
-  if(state.productMasterData.length&&state.r01Data.length){const pmSet=new Set(state.productMasterData.map(r=>r.sku));state.r01Data.forEach(r=>{if(!pmSet.has(r.colE)&&!state.skuMap.has(r.colE)){state.skuMap.set(r.colE,{sku:r.colE,productName:r.productName||r.colE,systemQty:r.systemQty,barcodes:[],isDel:true,cat:''});}});}
+  if(state.productMasterData.length&&state.r01Data.length){const pmSet=new Set(state.productMasterData.map(r=>r.sku));state.r01Data.forEach(r=>{if(!pmSet.has(r.colE)&&!state.skuMap.has(r.colE)){const neg=_clampNeg&&r.systemQty<0;state.skuMap.set(r.colE,{sku:r.colE,productName:r.productName||r.colE,systemQty:neg?0:r.systemQty,negSys:neg,barcodes:[],isDel:true,cat:''});}});}
   state.r05Data.forEach(r=>{if(state.skuMap.has(r.colE)){state.skuMap.get(r.colE).barcodes.push({barcode:r.barcode,unitName:r.unitName,unitMultiplier:r.unitMultiplier});state.barcodeMap.set(r.barcode,r.colE);}});
   buildSkuDirectMap();
   const active=[...state.skuMap.keys()];
@@ -2504,6 +2506,11 @@ function evaluatePendingScans(staffFilter=null){
       st = 'pass';
       sd.status = 'pass';
       sd.auditStatus = 'approved';
+    } else if(si.negSys){
+      // สาขายา: ระบบติดลบ (clamp เป็น 0 แล้ว) → เข้า stock_adjustment ทันที ไม่ต้องรอเภสัช verify — Diff = ยอดนับจริง
+      st = 'stock_adjustment';
+      sd.status = 'stock_adjustment';
+      sd.auditStatus = 'stock_adjustment';
     } else {
       // ❌ ไม่ตรง → Audit
       st = 'audit';
