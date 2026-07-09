@@ -194,6 +194,11 @@ Shared function ใช้โดย `pullFromCloud()` และ `startScanSession
 5. local `pass`/`audit`/`stock_adjustment` ที่ไม่มีใน cloud → ไม่ re-upload
 6. cloud มี `auditor` แต่ local ยังไม่มี → ไม่ overwrite cloud (guard WH recheck race)
 
+**Day-rollover guard (July 2026):**
+เครื่องเปิดค้างข้ามคืนไม่ login ใหม่ → `resetStaleScanningItems` (ผูกกับ login) ไม่ทำงาน → sync พาของค้าง `scanning` เมื่อวาน resurrect ขึ้น cloud → เครื่องอื่นเห็น "รอยืนยัน" โผล่
+- `runStaleGuard()` (gate วันละครั้งผ่าน `_staleGuardDay`): เรียกต้น `syncToFirestore` ทุกครั้ง + `visibilitychange` resume (push ผ่าน merge — **ห้าม overwrite=true** local ที่หลับมาทั้งคืนอาจเก่ากว่า cloud)
+- scrub `mergedSd` ก่อนเขียน: cloud-side `scanning` ที่ timestamp ข้ามวัน → reset เป็น pending ใน payload (จำเป็น — rule 3 ทำให้ local pending ไม่ทับ cloud scanning ของค้างจะไม่หายเอง)
+
 ---
 
 ## Cloud Sync — startScanSessionListener() (onSnapshot)

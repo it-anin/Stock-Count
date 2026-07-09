@@ -1347,6 +1347,31 @@ function resetStaleScanningItems(){
   }
   return n;
 }
+// day-rollover guard: เครื่องเปิดค้างข้ามคืนไม่ได้ login ใหม่ → reset ตอน login ไม่เคยทำงาน
+// เครื่องนั้นถือ scanning ค้างเมื่อวานแล้ว sync กลับขึ้น cloud (resurrect) → เครื่องอื่นเห็น "รอยืนยัน" โผล่
+// เรียกก่อน syncToFirestore push ทุกครั้ง + ตอนแอป resume จาก background
+let _staleGuardDay='';
+function runStaleGuard(){
+  const _d=new Date();
+  const day=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  if(day===_staleGuardDay)return 0; // เช็ควันละครั้งพอ — stale ใหม่เกิดระหว่างวันเดียวกันไม่ได้
+  _staleGuardDay=day;
+  const n=resetStaleScanningItems();
+  if(n>0){
+    saveSession();
+    invalidatePopupRowsCache();
+    if(!_listCleared){rebuildScanListMap(true);renderScanList();}
+    updateStats();renderTable();updateConfirmBtn();
+    toast(`♻️ รีเซ็ตของค้างข้ามวัน ${n} รายการ — กรุณานับใหม่`,'info',4000);
+  }
+  return n;
+}
+// แอป resume จาก background (เช้าวันใหม่พนักงานหยิบ PDA ที่เปิดค้างคืน) → ล้างของค้างแล้ว push ผ่าน merge
+// ไม่ใช้ overwrite=true — local ที่หลับมาทั้งคืนอาจเก่ากว่า cloud ห้ามทับข้อมูลใหม่จากเครื่องอื่น
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden||!currentUser)return;
+  if(runStaleGuard()>0)syncToFirestore();
+});
 async function initAfterLogin(){
   _progressMode=(currentBranch!=='WH'&&localStorage.getItem('progressMode_'+currentBranch)==='catA')?'catA':'all';
   const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
@@ -3350,6 +3375,7 @@ function saveAuditLogToFirestore(){
 
 async function syncToFirestore(overwrite=false){
   if(_adminMode||!_db||!currentBranch)return;
+  runStaleGuard(); // day-rollover: ล้าง scanning ค้างข้ามวันใน local ก่อนสร้าง payload (วันละครั้ง)
   const ref=_db.collection('stock_sessions').doc(getSessionId());
   const localSd={};for(const[k,v]of state.scanData.entries()){const{retries,scans,...keep}=v;localSd[k]=keep;}
   const localSl={};for(const[k,v]of scanListMap.entries())localSl[k]=v;
@@ -3408,6 +3434,14 @@ async function syncToFirestore(overwrite=false){
       }
     }catch(e){}
   }
+  // day-rollover: ล้าง scanning ค้างข้ามวันที่ติดมาจากฝั่ง cloud ด้วย (เครื่องอื่นเปิดค้างคืนเคย push ไว้)
+  // — local ถูก runStaleGuard ล้างแล้ว แต่ merge rule "local pending ไม่ทับ cloud scanning" จะพาของค้างกลับมาถ้าไม่ scrub ตรงนี้
+  {const _d2=new Date();const _today=`${_d2.getFullYear()}-${String(_d2.getMonth()+1).padStart(2,'0')}-${String(_d2.getDate()).padStart(2,'0')}`;
+  for(const k in mergedSd){const it=mergedSd[k];
+    if(!it||it.status!=='scanning'||!it.timestamp||it.timestamp.substring(0,10)>=_today)continue;
+    const{soldQty,rawCountedQty,initialStatus,recheckQty,recheckBy,...rest}=it;
+    mergedSd[k]={...rest,countedQty:0,status:'pending',timestamp:'',barcode:'',scannedBy:'',auditor:'',auditStatus:'pending'};
+  }}
   const data={r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
   try{
     await ref.set({session_data_json:JSON.stringify(data),updated_at:firebase.firestore.FieldValue.serverTimestamp()});
