@@ -1013,6 +1013,24 @@
   </div>
 </div>
 
+<!-- สาขายา: สแกนสินค้าที่ระบบ = 0/ติดลบ ครั้งแรก → ถามว่ามีของจริงไหม (นับ 0 บน PDA ได้โดยไม่ต้องพิมพ์ ,0) -->
+<div id="zeroSysModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10003;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:16px;padding:28px 32px;min-width:340px;max-width:440px;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid var(--yellow);">
+    <div style="font-size:2.2rem;margin-bottom:8px;">🏷️</div>
+    <div id="zeroSysTitle" style="font-size:1.05rem;font-weight:700;color:var(--yellow);margin-bottom:10px;">สินค้านี้ระบบ = 0</div>
+    <div style="font-size:0.85rem;color:var(--text2);margin-bottom:6px;line-height:1.5;">มีสินค้าจริงบนชั้นไหม?</div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:14px 0 18px;text-align:left;font-size:0.82rem;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:var(--text3);">SKU</span><strong id="zeroSysSku" style="color:var(--text);">—</strong></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text3);">ชื่อสินค้า</span><strong id="zeroSysName" style="color:var(--text);font-size:0.78rem;text-align:right;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</strong></div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;">⚠️ ต้องเลือกก่อนถึงจะสแกนรายการต่อไปได้</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="confirmZeroSys(false)" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--red),#c0392b);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;line-height:1.3;">🚫 ไม่มีของ<br><span style="font-size:0.72rem;font-weight:600;">บันทึกนับ 0</span></button>
+      <button onclick="confirmZeroSys(true)" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--green),#1e8449);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;line-height:1.3;">✅ มีของ<br><span style="font-size:0.72rem;font-weight:600;">นับตามสแกน</span></button>
+    </div>
+  </div>
+</div>
+
 <div id="r16MismatchModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border-radius:16px;padding:28px 32px;min-width:340px;max-width:460px;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid var(--yellow);">
     <div style="font-size:2.2rem;margin-bottom:8px;">⚠️</div>
@@ -1928,7 +1946,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -2041,10 +2059,13 @@ function resetScanRuntimeState(){
   scanProcessing=false;
   _pendingPatches.clear();
   _scanGapHold=null;
+  _zeroSysHold=null;
   _lastKeystrokeTime=0;_pdaMode=false;
   document.getElementById('scanInput')?.classList.remove('pda-receiving');
   const gapModal=document.getElementById('scanGapModal');
   if(gapModal)gapModal.style.display='none';
+  const zsModal=document.getElementById('zeroSysModal');
+  if(zsModal)zsModal.style.display='none';
   const scanInput=document.getElementById('scanInput');
   if(scanInput)scanInput.value='';
 }
@@ -2068,7 +2089,7 @@ function receiveBarcode(barcode){
   el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true}));
 }
 function handleScanKey(e){
-  if(_scanGapHold){e.preventDefault();return;}
+  if(_scanGapHold||_zeroSysHold){e.preventDefault();return;}
   if(e.key==='Enter'||e.keyCode===13||e.which===13){
     e.preventDefault();
     clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;
@@ -2077,14 +2098,14 @@ function handleScanKey(e){
   }
 }
 function submitScanManual(){
-  if(_scanGapHold)return;
+  if(_scanGapHold||_zeroSysHold)return;
   clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;
   _lastKeystrokeTime=0;_pdaMode=false;
   processScan();
   setTimeout(()=>document.getElementById('scanInput').focus(),50);
 }
 function handleScanInput(e){
-  if(_scanGapHold){e.target.value='';return;}
+  if(_scanGapHold||_zeroSysHold){e.target.value='';return;}
   // PDA บางรุ่น inject newline เป็น character แทน Enter key → process ทันทีเมื่อเจอ \r\n
   if(/[\r\n]/.test(e.target.value)){
     clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;
@@ -2208,6 +2229,45 @@ function renderSupervisorCountButtons(){
 }
 
 let _scanGapHold=null;
+let _zeroSysHold=null;
+
+// สาขายา: modal ถาม "มีของจริงไหม" ตอนสแกนสินค้าระบบ = 0/negSys ครั้งแรก — เลือก "ไม่มีของ" = นับ 0 → Confirm แล้ว pass เข้า progress
+function showZeroSysModal(sku){
+  const info=state.skuMap.get(sku);
+  document.getElementById('zeroSysTitle').textContent=info&&info.negSys?'สินค้านี้ระบบติดลบ (มองเป็น 0)':'สินค้านี้ระบบ = 0';
+  document.getElementById('zeroSysSku').textContent=sku;
+  document.getElementById('zeroSysName').textContent=info?.productName||'—';
+  document.getElementById('zeroSysModal').style.display='flex';
+  document.getElementById('scanInput').blur();
+  beepWarn();
+  if(navigator.vibrate)navigator.vibrate([200,100,200]);
+}
+
+function confirmZeroSys(hasStock){
+  if(!_zeroSysHold){document.getElementById('zeroSysModal').style.display='none';return;}
+  const{sku,addQty,scannedBy,now,resolvedBarcode,location,unitName,resolvedFromSku}=_zeroSysHold;
+  const sd=state.scanData.get(sku);
+  if(sd){
+    const q=hasStock?addQty:0;
+    sd.countedQty+=q;
+    sd.scannedBy=scannedBy;sd.auditor='';sd.timestamp=now;sd.barcode=resolvedBarcode;
+    if(!sd.firstScanAt)sd.firstScanAt=now;
+    if(location)sd.location=location;
+    sd.scans.push({barcode:resolvedBarcode,qty:q,unitName,timestamp:now,location,fromSku:resolvedFromSku});
+    if(!['pass','audit'].includes(sd.status))sd.status='scanning';
+    appendScanRow(sku,resolvedBarcode,sd.countedQty,unitName,'scanning',location);
+    _pendingPatches.add(sku);
+    beepSuccess();
+    if(!hasStock)toast(`${sku}: บันทึกนับ 0 (ไม่มีของ)`,'info');
+    scheduleSave();scheduleScanListRender();scheduleStats();scheduleRender();
+    invalidatePopupRowsCache();
+  }
+  _zeroSysHold=null;
+  document.getElementById('zeroSysModal').style.display='none';
+  const _zi=document.getElementById('scanInput');_zi.value='';_zi.focus(); // เคลียร์ค่าค้างจาก Intent mode ระหว่าง modal เปิด
+  // resume drainQueue ถ้ายังมี items ค้างใน queue
+  if(scanQueue.length)requestAnimationFrame(drainQueue);
+}
 
 function showScanGapModal(sku,oldQty,addQty){
   const info=state.skuMap.get(sku);
@@ -2244,7 +2304,7 @@ function confirmScanGap(){
 }
 
 function processScan(){
-  if(_scanGapHold)return;
+  if(_scanGapHold||_zeroSysHold)return;
   if(currentRole==='pharmacist'){processPharmacistAuditScan();return;}
   const _ph=new Date().getHours();if(_ph<8||_ph>=21){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
   const inp=document.getElementById('scanInput');
@@ -2297,7 +2357,7 @@ function drainQueue(){
   _pendingPatches.clear();
   const prevSize=scanListMap.size;
   while(scanQueue.length){
-    if(_scanGapHold)break; // หยุดประมวลผลถ้า gap modal เปิด — items ที่เหลือค้างไว้ใน queue
+    if(_scanGapHold||_zeroSysHold)break; // หยุดประมวลผลถ้า gap/zeroSys modal เปิด — items ที่เหลือค้างไว้ใน queue
     const i=scanQueue.shift();
     handleBarcode(typeof i==='string'?parseScanLine(i):i,false);
   }
@@ -2384,6 +2444,14 @@ function handleBarcode(parsed,immediateRender=true){
     }
     toast(_hideAuditPdaWh?'สินค้านี้อยู่ใน Recheck — เปิด Recheck popup เพื่อรีเช็ค':'สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','warn');
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}return;
+  }
+
+  // สาขายา: สแกนครั้งแรกของสินค้าที่ระบบ = 0/ติดลบ (negSys) → ถามก่อนว่ามีของจริงไหม
+  // "ไม่มีของ" = บันทึกนับ 0 → Confirm แล้ว pass เข้า progress (PDA พิมพ์ ,0 ไม่ได้) | qty!==null (พิมพ์ bc,qty เอง) ข้าม modal
+  if(_isPharmacyBranch()&&state.r01Data.length&&qty===null&&sd.status==='pending'&&sd.countedQty===0&&!(sd.scans&&sd.scans.length)&&(skuInfo.negSys||skuInfo.systemQty===0)){
+    _zeroSysHold={sku,addQty:mult,scannedBy,now,resolvedBarcode,location,unitName,resolvedFromSku};
+    showZeroSysModal(sku);
+    return;
   }
 
   // WH: ข้าม gap 2 นาที — นับสต็อกของจำนวนเยอะ สแกน SKU เดิมซ้ำได้นานเกิน 2 นาทีโดยไม่ reset

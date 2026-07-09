@@ -73,6 +73,13 @@ location,SKU,qty
 `rebuildMaps`: สาขายา (`_isPharmacyBranch()`) systemQty < 0 → clamp เป็น `0` + flag `skuMap[sku].negSys=true`
 (ข้อมูลดิบใน `r01Data` เก็บค่าติดลบจริง — WH ไม่ clamp เห็นค่าจริง)
 
+**zeroSysModal — ถาม "มีของจริงไหม" (นับ 0 บน PDA):**
+สแกน**ครั้งแรก**ของสินค้า `negSys || systemQty===0` (plain scan, `qty===null`) → `handleBarcode` เซ็ต `_zeroSysHold` + `showZeroSysModal()` แล้ว return — ยังไม่บันทึกอะไร
+- "🚫 ไม่มีของ" → `confirmZeroSys(false)`: countedQty += 0, status `scanning` → Confirm แล้ว **pass** (0===0) เข้า progress
+- "✅ มีของ" → `confirmZeroSys(true)`: บวก addQty ตามสแกนปกติ — สแกนถัดไปของ SKU เดิมไม่ถามซ้ำ (`sd.scans.length>0`)
+- `_zeroSysHold` เป็น hold state คู่กับ `_scanGapHold` — **ทุก guard ต้องเช็คทั้งคู่**: `handleScanKey`, `handleScanInput`, `submitScanManual`, `processScan`, `drainQueue`, `resetScanRuntimeState`, `_loginModalOpen` (refocus list)
+- พิมพ์ `bc,qty` เอง (qty ไม่ null รวม `,0`) → ข้าม modal บันทึกตรง
+
 - `evaluatePendingScans`: item `negSys` ที่ effectiveCnt ≠ 0 → **`stock_adjustment` ทันที** (`auditStatus='stock_adjustment'`) ข้ามคิวเภสัช verify; effectiveCnt = 0 → pass
 - `reEvaluateAuditItems`: rule เดียวกัน — negSys ไม่ตรง → `stock_adjustment` ไม่หลุดกลับเข้า `audit`
 - Diff ในตาราง Stock Adj + เอกสารปรับสต็อก = `countedQty − 0` = ยอดนับจริง (IRPS ของเกิน) เพราะไม่มี `recheckQty`
