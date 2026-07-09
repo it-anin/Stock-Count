@@ -81,6 +81,19 @@ location,SKU,qty
 - พิมพ์ `bc,qty` เอง (qty ไม่ null รวม `,0`) → ข้าม modal บันทึกตรง
 
 - `evaluatePendingScans`: item `negSys` ที่ effectiveCnt ≠ 0 → **`stock_adjustment` ทันที** (`auditStatus='stock_adjustment'`) ข้ามคิวเภสัช verify; effectiveCnt = 0 → pass
+
+## noStock — ไม่มีของจริง ระบบมีสต็อค (สาขายาเท่านั้น, July 2026)
+
+เคสกลับด้านของ negSys: systemQty > 0 แต่ชั้นว่าง (สแกนไม่ได้ พิมพ์ `,0` บน PDA ไม่ได้)
+ปุ่ม **🚫 นับ 0** ในป็อปอัพสต็อค (gate: `_isPharmacyBranch() && currentRole==='assistant' && status==='pending' && systemQty>0`)
+→ `showNoStockModal(sku)` → `confirmNoStock()` — **popup path ไม่ใช่ scan path** (pattern เดียวกับ `updatePopupQty` ไม่แตะ `_zeroSysHold`/`drainQueue`):
+- เซ็ต `countedQty=0, status='scanning', noStock=true, scannedBy, timestamp/firstScanAt` + `scanListMap.set` ตรงๆ → ขึ้น RESULT qty 0
+- re-guard `status==='pending'` ตอน confirm (กัน cloud listener เปลี่ยน status ระหว่าง modal เปิด)
+- `evaluatePendingScans`: `sd.noStock && effectiveCnt===0 && sys>0` → **`stock_adjustment` ทันที** ข้ามคิวเภสัช (branch ถัดจาก rule negSys) → ORDS ขาด diff = 0−systemQty
+- สแกนของจริงภายหลัง (effectiveCnt ≠ 0) → flag เป็นหมัน ตกลง rule ปกติ — ไม่ต้องล้างใน `handleBarcode`
+- **flag hygiene 3 จุด** (mutate in place ต้องล้างเอง): `removeScanItem` (✕ undo), `resetStaleScanningItems` (ข้ามวัน), day-rollover scrub ใน `syncToFirestore` (destructure exclusion) — `_resetLocalScanDataToPending` สร้าง object ใหม่ flag หลุดเอง
+- persist ครบทุก layer (localStorage / Firestore / ข้ามเครื่อง) เพราะ sync strip แค่ `retries`/`scans`
+- known gap (ตั้งใจยังไม่แก้ ก.ค. 2026): เภสัชยืนยัน qty=0 ในคิว audit ไม่ได้ (`getPharmacistAuditPendingMap` กรอง `>0`) — item audit ที่นับ 0 ค้างตลอด; noStock ไม่ผ่าน audit เลยไม่ชนบั๊กนี้
 - `reEvaluateAuditItems`: rule เดียวกัน — negSys ไม่ตรง → `stock_adjustment` ไม่หลุดกลับเข้า `audit`
 - Diff ในตาราง Stock Adj + เอกสารปรับสต็อก = `countedQty − 0` = ยอดนับจริง (IRPS ของเกิน) เพราะไม่มี `recheckQty`
 - `resetUnverifiedAuditForNewR01` ไม่แตะ (เช็คเฉพาะ status `audit`) → อัพ R01 ใหม่ item เหล่านี้คงสถานะ

@@ -14,7 +14,7 @@ No build system. No framework.
 `evaluatePendingScans`, `validateAndProcess`,
 `appendScanRow`, `removeScanItem`, `resetRecheckItem`, `clearScanList`, `rebuildScanListMap`, `renderScanList`, `patchScanRow`,
 `_applyCloudScanData`, `syncToFirestore` (scan data), `pullFromCloud`, `startScanSessionListener`, `restoreFromFirestore`,
-`confirmScanGap`, `showScanGapModal`, `_scanGapHold`,
+`confirmScanGap`, `showScanGapModal`, `_scanGapHold`, `confirmNoStock` (flag `noStock` — ดู SKILL-scan-engine),
 `handleAuditVerifyScan`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`, `confirmRecheckBtn`, `confirmAllRecheckSupervisor`,
 `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`,
 time gates ใน scan, role check ใน `rebuildScanListMap`

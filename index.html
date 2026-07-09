@@ -1033,6 +1033,25 @@
   </div>
 </div>
 
+<!-- สาขายา: ระบบมีสต็อคแต่ชั้นว่าง → ผู้ช่วยกด 🚫 จากลิสต์ "รอนับ" บันทึกนับ 0 (Confirm แล้วเข้า stock_adjustment ทันที) -->
+<div id="noStockModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10003;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:16px;padding:28px 32px;min-width:340px;max-width:440px;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid var(--red);">
+    <div style="font-size:2.2rem;margin-bottom:8px;">🚫</div>
+    <div style="font-size:1.05rem;font-weight:700;color:var(--red);margin-bottom:10px;">ยืนยันไม่มีของจริง (นับ 0)</div>
+    <div style="font-size:0.85rem;color:var(--text2);margin-bottom:6px;line-height:1.5;">ระบบมีสต็อค แต่ไม่พบสินค้าจริงบนชั้น?</div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:14px 0 18px;text-align:left;font-size:0.82rem;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:var(--text3);">SKU</span><strong id="noStockSku" style="color:var(--text);">—</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:var(--text3);">ชื่อสินค้า</span><strong id="noStockName" style="color:var(--text);font-size:0.78rem;text-align:right;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</strong></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text3);">สต็อคในระบบ</span><strong id="noStockSysQty" style="color:var(--red);">—</strong></div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;">หลังกด Confirm รายการนี้จะเข้าเอกสารปรับสต็อก (ขาด) ทันที</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeNoStockModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">✕ ยกเลิก</button>
+      <button onclick="confirmNoStock()" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--red),#c0392b);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;line-height:1.3;">🚫 ไม่มีของจริง<br><span style="font-size:0.72rem;font-weight:600;">บันทึกนับ 0</span></button>
+    </div>
+  </div>
+</div>
+
 <div id="r16MismatchModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border-radius:16px;padding:28px 32px;min-width:340px;max-width:460px;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid var(--yellow);">
     <div style="font-size:2.2rem;margin-bottom:8px;">⚠️</div>
@@ -1342,7 +1361,7 @@ function resetStaleScanningItems(){
     if(sd.timestamp.substring(0,10)>=today)continue; // สแกนวันนี้ → ไม่แตะ
     sd.countedQty=0;sd.status='pending';sd.timestamp='';sd.barcode='';
     sd.scans=[];sd.scannedBy='';sd.auditor='';sd.auditStatus='pending';
-    delete sd.soldQty;delete sd.rawCountedQty;delete sd.initialStatus;delete sd.recheckQty;delete sd.recheckBy;
+    delete sd.soldQty;delete sd.rawCountedQty;delete sd.initialStatus;delete sd.recheckQty;delete sd.recheckBy;delete sd.noStock;
     n++;
   }
   return n;
@@ -1973,7 +1992,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -2296,6 +2315,38 @@ function confirmZeroSys(hasStock){
   if(scanQueue.length)requestAnimationFrame(drainQueue);
 }
 
+// สาขายา: ระบบมีสต็อคแต่ชั้นว่าง — ผู้ช่วยกด 🚫 จากลิสต์ "รอนับ" บันทึกนับ 0 (flag noStock → Confirm แล้วเข้า stock_adjustment ทันที)
+// เริ่มจาก popup ไม่ใช่ scan path — ไม่ยุ่ง _zeroSysHold/drainQueue (ยึด pattern updatePopupQty)
+let _noStockSku=null;
+function showNoStockModal(sku){
+  const sd=state.scanData.get(sku);const info=state.skuMap.get(sku);
+  if(!sd||sd.status!=='pending'||!info)return;
+  _noStockSku=sku;
+  document.getElementById('noStockSku').textContent=sku;
+  document.getElementById('noStockName').textContent=info.productName||'—';
+  document.getElementById('noStockSysQty').textContent=info.systemQty;
+  document.getElementById('noStockModal').style.display='flex';
+}
+function closeNoStockModal(){_noStockSku=null;document.getElementById('noStockModal').style.display='none';}
+function confirmNoStock(){
+  const sku=_noStockSku;closeNoStockModal();if(!sku)return;
+  const sd=state.scanData.get(sku);
+  if(!sd||sd.status!=='pending')return; // re-guard: cloud listener อาจเปลี่ยน status ระหว่าง modal เปิด
+  const d=new Date();
+  const now=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  sd.countedQty=0;sd.noStock=true;sd.status='scanning';
+  sd.scannedBy=currentUser;sd.timestamp=now;
+  if(!sd.firstScanAt)sd.firstScanAt=now;
+  const skuInfo=state.skuMap.get(sku);
+  sd.barcode=skuInfo?.barcodes[0]?.barcode||'';
+  const barcode=sd.barcode||sku;
+  const unit=skuInfo?.barcodes[0]?.unitName||'';
+  scanListMap.set(sku,{sku,barcodes:[{barcode,unit}],totalQty:0,status:'scanning',location:'',catLabel:''});
+  toast(`${sku}: บันทึกไม่มีของจริง (นับ 0)`,'info');
+  invalidatePopupRowsCache();
+  scheduleSave();scheduleScanListRender();scheduleStats();schedulePopupRender();
+}
+
 function showScanGapModal(sku,oldQty,addQty){
   const info=state.skuMap.get(sku);
   document.getElementById('scanGapSku').textContent=sku;
@@ -2606,6 +2657,11 @@ function evaluatePendingScans(staffFilter=null){
       st = 'stock_adjustment';
       sd.status = 'stock_adjustment';
       sd.auditStatus = 'stock_adjustment';
+    } else if(sd.noStock && effectiveCnt === 0 && sys > 0){
+      // สาขายา: ผู้ช่วยกด 🚫 ยืนยันไม่มีของจริง (ระบบมีสต็อค) → stock_adjustment ทันที — ถ้าสแกนจริงภายหลัง (effectiveCnt≠0) flag เป็นหมัน ตกลง rule ปกติ
+      st = 'stock_adjustment';
+      sd.status = 'stock_adjustment';
+      sd.auditStatus = 'stock_adjustment';
     } else {
       // ❌ ไม่ตรง → Audit
       st = 'audit';
@@ -2883,7 +2939,7 @@ function removeScanItem(sku){
   const sd=state.scanData.get(sku);if(!sd)return;
   sd.countedQty=0;sd.status='pending';sd.timestamp='';sd.barcode='';
   sd.scans=[];sd.scannedBy='';sd.auditor='';sd.auditStatus='pending';
-  delete sd.soldQty;delete sd.rawCountedQty;delete sd.initialStatus;delete sd.recheckQty;
+  delete sd.soldQty;delete sd.rawCountedQty;delete sd.initialStatus;delete sd.recheckQty;delete sd.noStock;
   scanListMap.delete(sku);
   // ยกเลิก debounce + ล้าง scanInput เพื่อป้องกัน barcode ที่ค้างใน input จาก PDA ถูก submit หลัง remove
   clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;
@@ -3116,6 +3172,8 @@ function renderPopupTable(){
   if(thSysQty)thSysQty.style.display=isWhSup?'':'none';
   if(thAction)thAction.style.display='';
   const colspan=isWhSup?12:10;
+  // สาขายา + ผู้ช่วย: ปุ่ม 🚫 "ไม่มีของจริง (นับ 0)" บนแถว pending ที่ระบบมีสต็อค
+  const canNoStock=_isPharmacyBranch()&&currentRole==='assistant';
   const rows=getFilteredPopupRows();
   const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;return;}
@@ -3135,7 +3193,10 @@ function renderPopupTable(){
     const scannedByCell=sd.scannedBy?`<span style="font-size:0.74rem;color:var(--text2);font-weight:600;">${sd.scannedBy}</span>`:'<span style="color:var(--text3);">—</span>';
     const locCell=isWhSup?`<td style="font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--text2);text-align:center;">${state.locationMap.get(sku)||'—'}</td>`:'';
     const sysQtyCell=isWhSup?`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;font-weight:700;color:var(--text2);">${info.systemQty}</td>`:'';
-    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}${pt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td>${sysQtyCell}<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.timestamp||'—'}</td>${locCell}</tr>`;
+    const actionCell=canNoStock&&!r.isUnknown&&sd.status==='pending'&&(info.systemQty||0)>0
+      ?`<td style="text-align:center;"><button onclick="showNoStockModal('${sku}')" title="ไม่มีของจริง — บันทึกนับ 0" style="border:1px solid rgba(230,70,70,0.4);background:rgba(230,70,70,0.08);color:var(--red);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">🚫 นับ 0</button></td>`
+      :'<td style="text-align:center;color:var(--text3);">—</td>';
+    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}${pt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td>${sysQtyCell}<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.timestamp||'—'}</td>${locCell}${actionCell}</tr>`;
   }).join('');
 }
 
@@ -3439,7 +3500,7 @@ async function syncToFirestore(overwrite=false){
   {const _d2=new Date();const _today=`${_d2.getFullYear()}-${String(_d2.getMonth()+1).padStart(2,'0')}-${String(_d2.getDate()).padStart(2,'0')}`;
   for(const k in mergedSd){const it=mergedSd[k];
     if(!it||it.status!=='scanning'||!it.timestamp||it.timestamp.substring(0,10)>=_today)continue;
-    const{soldQty,rawCountedQty,initialStatus,recheckQty,recheckBy,...rest}=it;
+    const{soldQty,rawCountedQty,initialStatus,recheckQty,recheckBy,noStock,...rest}=it;
     mergedSd[k]={...rest,countedQty:0,status:'pending',timestamp:'',barcode:'',scannedBy:'',auditor:'',auditStatus:'pending'};
   }}
   const data={r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
