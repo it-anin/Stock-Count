@@ -2009,6 +2009,92 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(!currentUser)return;
     document.getElementById('scanInput').focus();
   });
+
+  // ═══ Auto-refresh: ตรวจ deploy ใหม่ (ETag) + ข้ามวัน (day rollover) — อ่าน scan state อย่างเดียว ไม่แตะ ═══
+  // deploy ใหม่ → reload ไม่หลุด login (stash _autoUpdate เดิม) | ข้ามวัน → reload ไร้ stash บังคับ login ใหม่ทุกเช้า
+  const VCHK_INTERVAL_MS=15*60*1000; // heartbeat 15 นาที
+  const VCHK_MIN_GAP_MS=5*60*1000;   // กัน visibilitychange ยิง ETag ถี่เกิน
+  let _bootEtag=null,_vchkDisabled=false,_reloadArmed=false,_lastVchkAt=0;
+  // idle tracker แยกของตัวเอง — ห้ามใช้ _lastKeystrokeTime (scan-related, ถูก reset เป็น 0 ตลอด)
+  let _lastActivityTs=Date.now();
+  const _dayStr=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+  const _bootDay=_dayStr();
+  document.addEventListener('keydown',()=>{_lastActivityTs=Date.now();},true);
+  document.addEventListener('pointerdown',()=>{_lastActivityTs=Date.now();},true);
+
+  async function _fetchIndexEtag(){
+    // ?_vchk=<ts> → sw.js ใหม่ปล่อยผ่านตรง; sw.js เก่า (transition) ตกเข้า branch cache-first ที่ไม่มี cache.put → ไม่ poison cache ทั้งคู่
+    const res=await fetch(location.pathname+'?_vchk='+Date.now(),{method:'HEAD',cache:'no-store'});
+    if(!res.ok)return undefined;              // server error ชั่วคราว → ข้าม ไม่ปิดฟีเจอร์
+    return res.headers.get('ETag')||null;     // null = host ไม่ส่ง ETag → ปิดฟีเจอร์เงียบๆ
+  }
+
+  function _reloadGateOk(minIdleMs){
+    if(scanQueue.length||scanProcessing||_pendingPatches.size)return false;
+    if(_scanDebounceTimer)return false;       // มี scan ค้างใน debounce
+    const si=document.getElementById('scanInput');
+    if(si&&si.value.trim())return false;
+    if(Date.now()-_lastActivityTs<minIdleMs)return false;
+    if(currentUser&&_loginModalOpen())return false; // popup/modal เปิดระหว่างใช้งาน
+    return true;
+  }
+
+  async function _safeReload(withStash,minIdleMs){
+    if(_reloadArmed)return;
+    if(!_reloadGateOk(minIdleMs))return;      // ไม่ผ่าน → เงียบ รอ tick หน้า
+    if(!currentUser)withStash=false;          // ค้างหน้า login → reload ไร้ stash ปลอดภัยเสมอ
+    _reloadArmed=true;
+    try{
+      if(currentUser){                        // flush — pattern เดียวกับ selectBranch
+        clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
+        saveSession();
+        clearTimeout(_firestoreSyncTimer);    // saveSession ตั้ง sync timer ใหม่ — เคลียร์ทิ้ง
+        // race 8s: offline → Firestore SDK คิว write ไม่ resolve จนกว่าจะ online — ห้ามรอไม่งั้น heartbeat ค้างถาวร
+        // ปลอดภัย: saveSession เขียน localStorage แบบ sync แล้ว + หลัง reload แอป sync ขึ้น cloud ใหม่เอง
+        await Promise.race([syncToFirestore(),new Promise(r=>setTimeout(r,8000))]);
+      }
+      if(withStash){                          // deploy case → restore path _autoUpdate พาเข้า initAfterLogin ไม่หลุด login
+        sessionStorage.setItem('_autoUpdateUser',currentUser);
+        sessionStorage.setItem('_autoUpdateRole',currentRole||'');
+        sessionStorage.setItem('_autoUpdate','1');
+        const b=document.createElement('div');
+        b.style='position:fixed;top:0;left:0;right:0;z-index:99999;background:#0072c6;color:#fff;text-align:center;padding:10px 16px;font-size:0.85rem;font-weight:700;letter-spacing:0.3px;';
+        b.textContent='🔄 พบเวอร์ชันใหม่ กำลังอัพเดท...';
+        document.body.prepend(b);
+        setTimeout(()=>window.location.reload(),1500);
+      }else{                                  // day rollover → เช้ามาเจอหน้า login (resetStaleScanningItems ตอน login จัดการของค้าง)
+        sessionStorage.removeItem('_autoUpdate');
+        sessionStorage.removeItem('_autoUpdateUser');
+        sessionStorage.removeItem('_autoUpdateRole');
+        window.location.reload();
+      }
+    }catch(e){_reloadArmed=false;}            // sync fail (offline) → ปลดล็อก รอรอบหน้า
+  }
+
+  async function _updateHeartbeat(){
+    if(_reloadArmed)return;
+    // (1) ข้ามวัน: หลัง 04:00 + idle ≥10 นาที (กัน WH นับข้ามคืน) → reload ไร้ stash
+    if(_dayStr()!==_bootDay&&new Date().getHours()>=4){
+      await _safeReload(false,10*60*1000);
+      if(_reloadArmed)return;
+    }
+    // (2) deploy ใหม่: เทียบ ETag กับตอน boot
+    if(_vchkDisabled)return;
+    const now=Date.now();
+    if(now-_lastVchkAt<VCHK_MIN_GAP_MS)return;
+    _lastVchkAt=now;
+    try{
+      const t=await _fetchIndexEtag();
+      if(t===undefined)return;
+      if(t===null){_vchkDisabled=true;return;}
+      if(!_bootEtag){_bootEtag=t;return;}     // capture ครั้งแรก (boot ตอน offline → capture ใน tick ถัดไป)
+      if(t!==_bootEtag)await _safeReload(true,60*1000);
+    }catch(e){/* offline → ข้ามเงียบๆ */}
+  }
+  window._updateHeartbeat=_updateHeartbeat;   // expose สำหรับ manual test
+  _updateHeartbeat();                         // capture _bootEtag ทันทีตอนโหลด
+  setInterval(_updateHeartbeat,VCHK_INTERVAL_MS);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)_updateHeartbeat();});
 });
 
 let _cachedBranchSku=null;

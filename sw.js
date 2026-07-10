@@ -1,4 +1,4 @@
-const CACHE = 'stock-count-v3';
+const CACHE = 'stock-count-v4';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './icon-192.svg', './icon-512.svg',
@@ -22,7 +22,9 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return; // HEAD/POST ปล่อยผ่าน ไม่แตะ cache (Cache API put non-GET จะ throw)
   const url = e.request.url;
+  if (url.includes('_vchk=')) return; // version-check probe (auto-refresh heartbeat) → network ตรงเสมอ
   // Firestore/Firebase/Google APIs: network only
   if (url.includes('firestore') || url.includes('firebase') || url.includes('googleapis') || url.includes('gstatic')) return;
 
