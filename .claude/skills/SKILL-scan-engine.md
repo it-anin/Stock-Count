@@ -175,6 +175,28 @@ if (scanListMap.size > prevSize) {
 
 ---
 
+## Stale Audit vs R01 Baseline (สาขายา, July 2026)
+
+**บั๊กที่แก้:** อัพ R01 ใหม่ → `resetUnverifiedAuditForNewR01` รีเซ็ต audit→pending เฉพาะ local แต่ cloud ไม่เคยถูกล้าง
+(merge rule "local pending ไม่ทับ cloud non-pending" บล็อค) → snapshot echo ~6 วิ resurrect audit กลับมา **แม้เครื่องเดียว**
+
+**Fix:** `_isStaleAuditVsBaseline(item)` — audit ที่ `!auditor` และ `timestamp||firstScanAt` เก่ากว่า `_r01BaselineAt` เกิน 5 นาที (`_R01_STALE_TOL_MS` กัน clock skew) = stale
+- เทียบผ่าน Date object เท่านั้น (`replace(' ','T')` ก่อน — iOS) **ห้ามเทียบ string** (timestamp = local 'YYYY-MM-DD HH:mm:ss', baseline = UTC ISO)
+- gate `_isPharmacyBranch() && _r01BaselineAt` → WH + baseline ว่าง (startNewCount) = inert
+
+**5 จุดที่ใช้:**
+1. `_applyCloudScanData` — `continue` บรรทัดแรกของ loop (ต้องมาก่อน rule audit-wins **และ** CONFIRMED block)
+2. `syncToFirestore` — scrub mergedSd หลัง day-rollover scrub (fresh object, drop `firstScanAt` ด้วย + `delete mergedSl[k]`) รันทั้ง merge/overwrite
+3. `restoreFromFirestore` merge path — skip adopt
+4. `restoreFromFirestore` full-replace — `scrubStaleLocalAudits()` หลังโหลด scanListMap
+5. `initAfterLogin` หลัง `loadSession()` — `scrubStaleLocalAudits()` (stale ค้างใน localStorage)
+
+`scrubStaleLocalAudits()` ต้องล้าง `scanListMap` + `_avMap` ด้วย (กัน ghost row — full-replace โหลด scanListMap จาก cloud ตรงๆ แล้ว `rebuildScanListMap` early-return เมื่อ map ไม่ว่าง)
+
+**Collateral ที่ยอมรับ:** audit ที่ `reEvaluateAuditItems` flip จาก pass เก่า (timestamp ก่อน baseline) โดน scrub เป็น pending บน cloud = บังคับนับใหม่ — ตรงเจตนา baseline (ยอดก่อน restock เทียบระบบหลัง restock ไม่ได้)
+
+---
+
 ## Cloud Sync — _applyCloudScanData()
 
 Shared function ใช้โดย `pullFromCloud()` และ `startScanSessionListener()`

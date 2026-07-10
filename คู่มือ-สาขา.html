@@ -139,6 +139,120 @@
 
 <div class="container">
 
+  <!-- ========== OVERVIEW ========== -->
+  <div class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:#0a8a8a;">🗺️</div>
+      <div class="phase-info">
+        <h2>ภาพรวม — โปรแกรมนี้ทำงานยังไง</h2>
+        <p>อ่านหน้านี้ก่อน จะเข้าใจทุกขั้นตอนที่เหลือ</p>
+      </div>
+    </div>
+    <div class="phase-body">
+
+      <p style="margin-bottom:14px;">
+        โปรแกรมนี้มีหน้าที่เดียว: <strong>เทียบ "ของจริงบนชั้น" กับ "ตัวเลขในระบบ"</strong>
+        ให้รู้ว่าสินค้าตัวไหนตรง ตัวไหนขาด ตัวไหนเกิน — โดยแบ่งงานกันชัดเจน:
+        <strong>ผู้ช่วยเป็นคนนับ เภสัชเป็นคนตรวจและยืนยัน</strong>
+      </p>
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">📦 เส้นทางของสินค้า 1 ตัว (ตั้งแต่เช้าจนจบ)</p>
+      <ol class="steps">
+        <li class="step">
+          <div class="step-n">1</div>
+          <div class="step-c">
+            <strong>เช้า — อัพไฟล์ยอดคงเหลือ (R01)</strong>
+            <p>เป็นการ "ตั้งต้นวันใหม่" ระบบจะรู้ว่าวันนี้แต่ละตัวควรมีกี่ชิ้น สินค้าทุกตัวเริ่มที่สถานะ <span class="b b-blue">⏳ รอนับ</span></p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">2</div>
+          <div class="step-c">
+            <strong>ระหว่างวัน — ผู้ช่วยสแกนนับของจริง</strong>
+            <p>ยิงบาร์โค้ดทีละชิ้น ระบบบวกจำนวนให้เอง ร้าน<strong>ขายของต่อได้ตามปกติ</strong> —
+            ตอนเทียบจำนวนระบบจะเอายอดที่ขายไประหว่างวันมาชดเชยให้ ไม่ต้องกลัวนับเพี้ยน</p>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">3</div>
+          <div class="step-c">
+            <strong>จบวัน — อัพไฟล์ยอดขาย (R16) แล้วเภสัชกด Confirm</strong>
+            <p>ระบบเทียบให้อัตโนมัติทีละตัว: จำนวนที่นับได้ (+ ที่ขายไป) กับตัวเลขในระบบ</p>
+            <ul>
+              <li>ตรงกัน → <span class="b b-green">✅ ผ่าน</span> จบเลย</li>
+              <li>ไม่ตรง → <span class="b b-yellow">⚠️ Audit</span> เข้าคิวให้เภสัชตรวจซ้ำ</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-n">4</div>
+          <div class="step-c">
+            <strong>เภสัชตรวจซ้ำ (Audit Verify)</strong>
+            <p>เภสัชเดินไปนับตัวที่ไม่ตรง<strong>ด้วยตัวเอง</strong>อีกรอบ แล้วกดยืนยัน</p>
+            <ul>
+              <li>รอบนี้ตรง → <span class="b b-green">✅ ผ่าน</span> (รอบแรกอาจนับพลาด)</li>
+              <li>ยังไม่ตรง → <span class="b b-red">🔴 ปรับสต็อก</span> ระบบออกเอกสารปรับยอดให้ (ขาด/เกิน)</li>
+            </ul>
+          </div>
+        </li>
+      </ol>
+
+      <hr class="div">
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">⚙️ สิ่งที่ระบบจัดการให้เอง (ไม่ต้องทำอะไร)</p>
+
+      <div class="note" style="margin-bottom:10px">
+        <span class="ci">💾</span>
+        <div>
+          <strong>ข้อมูลไม่มีวันหาย</strong> — ทุกการสแกนบันทึกอัตโนมัติทันที
+          ปิดแอป จอดับ เน็ตหลุด ไฟดับ เปิดกลับมาข้อมูลอยู่ครบ
+        </div>
+      </div>
+      <div class="note" style="margin-bottom:10px">
+        <span class="ci">🔗</span>
+        <div>
+          <strong>ทุกเครื่องเห็นข้อมูลเดียวกัน</strong> — PDA กับคอมพิวเตอร์เชื่อมถึงกันตลอด
+          ผู้ช่วยสแกนที่ PDA ไม่กี่วินาทีเภสัชก็เห็นบนจอคอม
+        </div>
+      </div>
+      <div class="note" style="margin-bottom:10px">
+        <span class="ci">🔄</span>
+        <div>
+          <strong>แอปอัพเดทตัวเอง</strong> — มีเวอร์ชั่นใหม่เมื่อไหร่ เครื่องโหลดเองภายใน ~15 นาที ไม่หลุดจากงานที่ทำอยู่
+          และ<strong>ทุกเช้าแอปจะกลับมาหน้า login เอง</strong> — แค่เลือกชื่อตัวเองแล้วเริ่มงานได้เลย
+        </div>
+      </div>
+
+      <hr class="div">
+
+      <p style="font-weight:700;margin-bottom:10px;color:var(--gray);">🔀 กรณีพิเศษที่ควรรู้</p>
+
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">🚫</span>
+        <div>
+          <strong>ชั้นว่าง แต่ระบบบอกว่ามีของ</strong> — ไม่มีของให้สแกน ให้ใช้ปุ่ม <strong>🚫 นับ 0</strong>
+          ในรายการ "รอนับ" (ดูวิธีในหัวข้อสแกนสินค้า) รายการจะเข้าเอกสารปรับสต็อกทันที ไม่ต้องรอเภสัชตรวจ
+        </div>
+      </div>
+      <div class="warn" style="margin-bottom:10px">
+        <span class="ci">🏷️</span>
+        <div>
+          <strong>สแกนแล้วเจอหน้าต่างถาม "มีของจริงไหม"</strong> — เกิดกับสินค้าที่ระบบบอกว่าเหลือ 0
+          แต่มีของอยู่บนชั้นจริง ตอบตามความจริงได้เลย ระบบจัดการต่อให้เอง
+        </div>
+      </div>
+      <div class="warn">
+        <span class="ci">📅</span>
+        <div>
+          <strong>Audit ของเมื่อวานที่เภสัชยังไม่ได้ตรวจ</strong> — พออัพไฟล์ยอดคงเหลือ (R01) ของวันใหม่
+          รายการพวกนั้นจะถูกล้างกลับเป็น "รอนับ" ให้นับใหม่ (เพราะยอดเมื่อวานเทียบกับตัวเลขวันนี้ไม่ได้แล้ว)<br>
+          👉 <strong>ถ้าอยากให้เภสัชตรวจของเมื่อวาน ต้องตรวจให้เสร็จก่อนอัพ R01 ใหม่</strong>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ========== PHASE 1: LOGIN ========== -->
   <div class="phase">
     <div class="phase-head">

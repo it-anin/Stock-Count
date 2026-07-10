@@ -134,7 +134,8 @@ Debug: `console.log('[R16] TRANDATE col index:')` ใน browser Console
 
 ## R16 Date Mismatch Warning
 
-หลังโหลด R16: เปรียบเทียบ TRANDATE กับ scan dates (รวม +1 วันสำหรับ cross-night)
+หลังโหลด R16: เปรียบเทียบ TRANDATE กับ scan dates (รวม +1 วันสำหรับ cross-night / อัพ R16 เช้าก่อนสแกน)
+⚠️ การคำนวณ +1 วัน**ห้ามใช้ `toISOString()`** — UTC ถอย 7 ชม. ทำให้วัน+1 กลายเป็นวันเดิม (บั๊กเดิม แก้แล้ว ก.ค. 2026 — ใช้ local format)
 ถ้าไม่ overlap:
 1. Toast warn 7 วินาที
 2. Badge เปลี่ยน "Ready" → "⚠️ ตรวจสอบวันที่" (class `upload-file-badge-warn`)
