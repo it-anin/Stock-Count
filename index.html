@@ -1578,14 +1578,14 @@ function loadR01(event) {
     document.getElementById('fileR01').nextElementSibling.style.borderColor='var(--green)';
     _setR01Ts(formatThaiDateTime(new Date()));
     rebuildMaps();
-    let resetN=0;
     if(_isPharmacyBranch()){
       _r01BaselineAt=new Date().toISOString();
-      resetN=resetUnverifiedAuditForNewR01();
-      reEvaluateAuditItems({silent:true});
+      // flow ใหม่ (July 2026): ไม่ล้าง audit — คงไว้ให้เภสัชรีเช็คเทียบ systemQty ใหม่ · ล้าง R16 เมื่อวานแทน (กันบวกยอดขายเก่าซ้ำ)
+      _clearR16ForNewBaseline();
+      syncR16MetaToFirestore(); // เขียน r16Loaded=false + r16UploadedAt='' ลง _r01 doc → เครื่องอื่นได้ badge "ยังไม่โหลด"
     }
     let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'');
-    if(resetN>0)r01Msg+=` · รีเซ็ต Audit ${resetN} รายการให้นับใหม่`;
+    if(_isPharmacyBranch())r01Msg+=' · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)';
     toast(r01Msg,'success'); saveSession(); syncMasterToFirestore(false);
   });
 }
@@ -1685,7 +1685,7 @@ function loadR16(event) {
     const totalInbound=[...state.r16InboundMap.values()].reduce((a,b)=>a+b,0);
     if(matched>0){
       if(currentRole==='pharmacist'){
-        toast('R16 อัปเดตแล้ว ระบบปรับรายการ Audit ที่ยังไม่ยืนยันให้อัตโนมัติ','success');
+        toast('R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (Audit ค้างจากวันก่อนเทียบตรงกับยอดระบบ)','success');
       }else{
         toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
       }
@@ -1784,21 +1784,35 @@ function loadR16_103(event){
   });
 }
 
-// สาขายา: audit ที่ยังไม่ verify และนับ "ก่อน" R01 baseline ปัจจุบัน = stale by definition
-// (การรีเซ็ต baseline ควรล้างมันไปแล้ว — แต่สำเนาใน cloud ไม่เคยถูกล้าง ทำให้ resurrect กลับมา)
-// ใช้ guard ฝั่ง adopt (_applyCloudScanData/restoreFromFirestore) + scrub ฝั่ง push (syncToFirestore) + scrub local ตอน login
-const _R01_STALE_TOL_MS=5*60*1000; // กัน clock skew ข้ามเครื่อง — audit ที่เกิดภายใน 5 นาทีก่อน baseline ไม่ถือว่า stale
-function _isStaleAuditVsBaseline(item){
-  if(!_isPharmacyBranch()||!_r01BaselineAt)return false;
-  if(!item||item.status!=='audit'||item.auditor)return false;
-  const ts=item.timestamp||item.firstScanAt;
+const _R01_STALE_TOL_MS=5*60*1000; // กัน clock skew ข้ามเครื่อง — item ที่เกิดภายใน 5 นาทีก่อน baseline ไม่ถือว่านับก่อน baseline
+// July 2026 (flow ใหม่): audit ที่เภสัชยังไม่ verify ต้อง "อยู่รอด" ข้ามการอัพ R01 เพื่อให้เภสัชสแกนรีเช็ควันถัดไป
+// จึง neuter stale-scrub ทั้งระบบ (return false เสมอ) — คง call sites 5 จุดใน merge loop ที่ order-sensitive ไว้ ลด diff risk + revert ง่าย
+// (เดิม: audit เก่ากว่า baseline = stale → ล้างเป็น pending — คือต้นเหตุเคส Audit 500+ รายการหาย 11/07/2026)
+function _isStaleAuditVsBaseline(item){return false;}
+// item ที่นับ "ก่อน" R01 baseline ปัจจุบัน = งานที่ carry ข้ามวัน (audit รอเภสัชรีเช็ค / pass จบแล้ว)
+// ใช้ freeze สถานะใน reEvaluateAuditItems + บังคับเทียบตรงใน getPharmacistAuditEffectiveQty
+// (countedQty ของ item พวกนี้นับกับ systemQty เก่า — ห้าม re-evaluate ด้วย systemQty ใหม่ + ห้ามบวก R16 ชุดใหม่)
+function _isPreBaselineItem(sd){
+  if(!_isPharmacyBranch()||!_r01BaselineAt||!sd)return false;
+  const ts=sd.timestamp||sd.firstScanAt;
   if(!ts)return false;
-  // replace(' ','T') — iOS Safari parse 'YYYY-MM-DD HH:mm:ss' ไม่ได้ (pattern เดียวกับ getR16103QtyBefore)
+  // replace(' ','T') — iOS Safari parse 'YYYY-MM-DD HH:mm:ss' ไม่ได้ · เทียบผ่าน Date เท่านั้น ห้ามเทียบ string (timestamp=local, baseline=UTC ISO)
   const t=new Date(String(ts).replace(' ','T')),b=new Date(_r01BaselineAt);
-  if(isNaN(t)||isNaN(b))return false; // parse ไม่ได้ → conservative ไม่ถือว่า stale
+  if(isNaN(t)||isNaN(b))return false; // parse ไม่ได้ → conservative
   return t.getTime()<b.getTime()-_R01_STALE_TOL_MS;
 }
-// ล้าง stale audit ใน state.scanData ของเครื่องนี้ (จาก localStorage/cloud เก่า) — เรียกตอน login + restore full-replace
+// สาขายา: อัพ R01 ใหม่ = baseline วันใหม่ → R16 เมื่อวานใช้ไม่ได้แล้ว (systemQty ใหม่รวมยอดขายเมื่อวานแล้ว — บวกซ้ำ = ผิด)
+// ล้าง R16 local + ล็อคปุ่ม Confirm จนกว่าอัพ R16 วันใหม่ · ไม่แตะ r16_103 (WH-only) · caller ทั้งหมด gate _isPharmacyBranch() แล้ว
+function _clearR16ForNewBaseline(){
+  state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();
+  state.r16InboundMap.clear();state.r16InboundRawMap.clear();
+  state.r16Loaded=false;state.r16DateMismatch=false;
+  const _b16=document.getElementById('badgeR16');
+  if(_b16){_b16.textContent='ยังไม่โหลด';_b16.parentElement.classList.remove('upload-file-badge-warn');}
+  _setR16Ts('');
+  updateConfirmBtn();
+}
+// [neutered July 2026] no-op ถาวร (_isStaleAuditVsBaseline คืน false เสมอ) — คง call sites ตอน login + restore full-replace ไว้ revert ง่าย
 function scrubStaleLocalAudits(){
   let n=0;
   for(const[sku,sd] of state.scanData.entries()){
@@ -1812,30 +1826,7 @@ function scrubStaleLocalAudits(){
   }
   return n;
 }
-// สาขายา: รีเซ็ต Audit ที่เภสัชยังไม่ยืนยัน → pending ให้สแกนนับใหม่หลังอัพ R01 (baseline หลัง restock)
-function resetUnverifiedAuditForNewR01(){
-  if(!_isPharmacyBranch())return 0;
-  let n=0;
-  for(const[sku,sd] of state.scanData.entries()){
-    if(sd.status!=='audit'||sd.auditor)continue;
-    state.scanData.set(sku,{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:sd.location||'',scans:[]});
-    scanListMap.delete(sku);
-    _avMap.delete(sku);
-    n++;
-  }
-  if(n>0){
-    invalidatePopupRowsCache();
-    rebuildScanListMap(true);
-    renderScanList();
-    updateStats();
-    renderTable();
-    updatePharmacistAuditConfirmBtn();
-    updateAuditVerifyCount();
-    const auditPopup=document.getElementById('auditVerifyPopupOverlay');
-    if(auditPopup&&auditPopup.style.display==='flex')renderAuditVerifyTable();
-  }
-  return n;
-}
+// resetUnverifiedAuditForNewR01 ถูกลบ (July 2026) — flow ใหม่: audit ที่ยังไม่ verify อยู่รอดข้ามการอัพ R01 ให้เภสัชรีเช็ค (ดู _isPreBaselineItem)
 async function _applyR01BaselineUpdate(baselineAt){
   if(!_isPharmacyBranch()||!baselineAt||baselineAt<=(_r01BaselineAt||''))return 0;
   _r01BaselineAt=baselineAt;
@@ -1850,10 +1841,11 @@ async function _applyR01BaselineUpdate(baselineAt){
     }catch(e){console.warn('[R01 baseline]',e.message);}
   }
   if(state.r05Data.length&&(state.productMasterData.length||state.r01Data.length))rebuildMaps();
-  const n=resetUnverifiedAuditForNewR01();
-  reEvaluateAuditItems({silent:true});
-  if(n>0)toast(`R01 ใหม่จากเครื่องอื่น: รีเซ็ต Audit ${n} รายการให้นับใหม่`,'info');
-  return n;
+  // flow ใหม่ (July 2026): ไม่ล้าง audit — ล้าง R16 เมื่อวานตาม baseline ใหม่แทน (cross-device propagation หลักของการล้าง R16)
+  // ไม่เรียก saveSession/syncR16MetaToFirestore ที่นี่ — listener handler ห้าม saveSession (กัน sync loop), meta เครื่องอัพ R01 เขียนแล้ว
+  _clearR16ForNewBaseline();
+  toast('R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','info');
+  return 1;
 }
 function reEvaluateAuditItems(opts={}){
   const REEVALUATE=new Set(['audit','pass']);
@@ -1861,6 +1853,7 @@ function reEvaluateAuditItems(opts={}){
   for(const[sku,sd] of state.scanData.entries()){
     if(!REEVALUATE.has(sd.status))continue;
     if(sd.auditor)continue; // เภสัชยืนยันแล้ว ไม่แตะ
+    if(_isPreBaselineItem(sd))continue; // item นับก่อน R01 baseline: freeze สถานะ (audit รอเภสัชรีเช็ค / pass จบแล้ว) — countedQty เป็นของ baseline เก่า เทียบ systemQty/R16 ใหม่ไม่ได้
     const si=state.skuMap.get(sku);if(!si)continue;
     const soldQty=getSoldQtyBefore(sku,sd.timestamp);
     const inboundQty=getInboundQtyBefore(sku,sd.timestamp);
@@ -3350,9 +3343,10 @@ function guideHtml(isWh){
       +(isWh
       ?'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพครั้งเดียวตอนเริ่มรอบ (= baseline systemQty) — ไม่ลบข้อมูลที่นับไว้</li>'
         +'<li style="margin-top:3px;color:var(--red);">⚠️ ถ้ายังต้องรีเช็ค อย่าอัพ R01 ใหม่ (baseline เลื่อน → รีเช็ค/Confirm เพี้ยน)</li>'
-      :'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพทุกวันก่อน Confirm (= baseline หลัง restock)</li>'
-        +'<li style="margin-top:3px;color:var(--orange);">รายการ <strong>Audit ที่เภสัชยังไม่ยืนยัน</strong> จะรีเซ็ตเป็นรอนับใหม่ — Pass/Stock Adj ที่ยืนยันแล้วไม่กระทบ</li>'
-        +'<li style="margin-top:3px;">หลังอัพ R01 → อัพ R16 สะสม → Confirm</li>')
+      :'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพทุกเช้าวันใหม่ (= baseline หลัง restock)</li>'
+        +'<li style="margin-top:3px;color:var(--orange);">รายการ <strong>Audit ที่เภสัชยังไม่ยืนยัน</strong> คงอยู่ให้เภสัชสแกนรีเช็ค เทียบกับยอดระบบใหม่ได้เลย</li>'
+        +'<li style="margin-top:3px;color:var(--orange);">อัพ R01 แล้ว <strong>R16 เดิมถูกล้าง</strong> — ต้องอัพ R16 ของวันใหม่ก่อนถึงจะ Confirm ได้</li>'
+        +'<li style="margin-top:3px;">หลังอัพ R01 → สแกนนับ → อัพ R16 เย็น → Confirm</li>')
     +'</ul>'
   +'</div>'
   +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
@@ -3554,9 +3548,6 @@ async function syncToFirestore(overwrite=false){
   const ref=_db.collection('stock_sessions').doc(getSessionId());
   const localSd={};for(const[k,v]of state.scanData.entries()){const{retries,scans,...keep}=v;localSd[k]=keep;}
   const localSl={};for(const[k,v]of scanListMap.entries())localSl[k]=v;
-  const r16Obj={};for(const[k,v]of state.r16SalesMap.entries())r16Obj[k]=v;
-  const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
-  const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
   let mergedSd=localSd;let mergedSl=localSl;
   if(!overwrite){
     try{
@@ -3617,7 +3608,7 @@ async function syncToFirestore(overwrite=false){
     const{soldQty,rawCountedQty,initialStatus,recheckQty,recheckBy,noStock,...rest}=it;
     mergedSd[k]={...rest,countedQty:0,status:'pending',timestamp:'',barcode:'',scannedBy:'',auditor:'',auditStatus:'pending'};
   }}
-  // สาขายา: scrub stale audit (เก่ากว่า R01 baseline, ยังไม่ verify) ออกจาก payload → cloud ถูกล้างตาม local
+  // [neutered July 2026] เดิม: scrub stale audit ออกจาก payload — ปัจจุบัน _isStaleAuditVsBaseline คืน false เสมอ (audit อยู่รอดข้าม baseline) block นี้ inert
   // จำเป็นเพราะ merge rule "local pending ไม่ทับ cloud non-pending" บล็อคการ push รีเซ็ตขึ้นไปตรงๆ
   // ใช้ fresh object (ไม่ spread ...rest) — ต้อง drop firstScanAt ด้วย ไม่งั้น fallback ใน helper trigger ซ้ำ
   // หมายเหตุ: audit ที่ reEvaluateAuditItems flip จาก pass เก่า (timestamp ก่อน baseline) ก็โดน scrub = บังคับนับใหม่ — ตรงเจตนา baseline
@@ -3628,6 +3619,10 @@ async function syncToFirestore(overwrite=false){
       if(mergedSl[k])delete mergedSl[k];
     }
   }
+  // serialize R16 หลัง merge/baseline adoption ทั้งหมด — ถ้าเพิ่ง adopt baseline ใหม่ (R16 ถูกล้าง) payload ต้องพา maps ว่างขึ้นไป ไม่ใช่ maps เก่าที่ serialize ค้างไว้ก่อน fetch
+  const r16Obj={};for(const[k,v]of state.r16SalesMap.entries())r16Obj[k]=v;
+  const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
+  const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
   const data={r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
   try{
     await ref.set({session_data_json:JSON.stringify(data),updated_at:firebase.firestore.FieldValue.serverTimestamp()});
@@ -3670,8 +3665,7 @@ function _applyCloudScanData(s){
   let scanned=0;
   if(s.scanData){
     for(const[sku,cloudItem]of Object.entries(s.scanData)){
-      // สาขายา: audit เก่ากว่า R01 baseline = stale → ห้าม adopt เด็ดขาด (ต้องมาก่อนทั้ง rule audit-wins และ CONFIRMED block)
-      // กัน resurrect หลังอัพ R01: cloud ยังถือ audit เก่าที่ resetUnverifiedAuditForNewR01 ล้างไปแล้วฝั่ง local
+      // [neutered July 2026] เดิม: audit เก่ากว่า R01 baseline ห้าม adopt (กัน resurrect หลังอัพ R01) — ปัจจุบัน audit อยู่รอดข้าม baseline, guard นี้ inert (คืน false เสมอ)
       if(_isStaleAuditVsBaseline(cloudItem))continue;
       const local=state.scanData.get(sku);
       // Audit จาก cloud เป็น worklist ล่าสุดของเภสัช → ให้ชนะ local pass/stock_adj เก่าที่ค้างจาก session ก่อน
@@ -3913,6 +3907,9 @@ function getPharmacistAuditPendingMap(){
 }
 
 function getPharmacistAuditEffectiveQty(sku,rawQty,scanTimestamp){
+  // audit ที่ carry ข้าม R01 baseline: เทียบ recheckQty กับ systemQty ใหม่ตรงๆ ไม่บวก R16
+  // (R01 ใหม่รวมยอดขายเก่าแล้ว + กัน getSoldQtyBefore fallback คืนยอดรวมบนเครื่องที่รับ R16 ผ่าน sync ไม่มี rawMap)
+  if(_isPreBaselineItem({timestamp:scanTimestamp}))return{effectiveQty:Number(rawQty||0),soldQty:0,inboundQty:0,r16103Qty:0};
   const soldQty=getSoldQtyBefore(sku,scanTimestamp);
   const inboundQty=getInboundQtyBefore(sku,scanTimestamp);
   const r16103Qty=getR16103QtyBefore(sku,scanTimestamp);

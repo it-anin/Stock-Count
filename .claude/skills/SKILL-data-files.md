@@ -49,23 +49,24 @@ DEL/P items, Export Excel, Firestore persistence layers, หรือ Location m
 - ⚠️ WH: อย่า re-upload R01 กลางรอบ / ในวันรีเช็ค (cross-day) — baseline จะเลื่อน
 - **สาขายา (SRC/KKL/SSS): re-upload R01 ทุกวันได้ตั้งใจ** (baseline หลัง restock) — ดู "R01 Daily Reset" ด้านล่าง
 
-### R01 Daily Reset (สาขายา เท่านั้น)
+### R01 Daily Baseline (สาขายา เท่านั้น — เปลี่ยนพฤติกรรม July 2026)
 
-Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SSS) trigger `resetUnverifiedAuditForNewR01()`:
-- ทุก `scanData` entry ที่ `status==='audit' && !sd.auditor` → กลับเป็น `pending` (ล้าง countedQty, ลบจาก scanListMap + `_avMap`)
-- ไม่แตะ `pass`/`stock_adjustment` ที่มี `auditor` (เภสัชยืนยันแล้ว = final)
-- หลังรีเซ็ต → `reEvaluateAuditItems({silent:true})` ปรับ `pass` ที่ยังไม่ยืนยันตาม baseline ใหม่
-- **WH ไม่มีพฤติกรรมนี้** — WH re-upload R01 ไม่รีเซ็ต audit
+Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SSS):
+- **audit ที่เภสัชยังไม่ verify อยู่รอด** (ไม่รีเซ็ต — `resetUnverifiedAuditForNewR01` ถูกลบแล้ว) เภสัชสแกนรีเช็คเทียบ systemQty ใหม่ได้เลย
+- **ล้าง R16 เมื่อวานทันที** ผ่าน `_clearR16ForNewBaseline()` (maps + `r16Loaded=false` + badge + `updateConfirmBtn()`) — ปุ่ม Confirm ผู้ช่วยล็อคจนอัพ R16 วันใหม่ · เหตุผล: systemQty ใหม่รวมยอดขายเมื่อวานแล้ว บวก R16 เก่าซ้ำ = ผิด
+- item ที่นับก่อน baseline (`_isPreBaselineItem` — timestamp เก่ากว่า `_r01BaselineAt` เกิน `_R01_STALE_TOL_MS` 5 นาที) ถูก **freeze**: `reEvaluateAuditItems` ข้าม (audit ไม่ flip, pass เก่าคง pass ถาวร) และ `getPharmacistAuditEffectiveQty` คืน recheckQty ตรงๆ ไม่บวก R16
+- ไม่แตะ item ที่มี `auditor` (เภสัชยืนยันแล้ว = final) — เหมือนเดิม
+- **WH ไม่มีพฤติกรรมนี้** — ทุกจุด gate `_isPharmacyBranch()`
 
-**Cross-device sync:** `_r01BaselineAt` (module-level, ไม่ใช่ใน state) persist ใน `r01BaselineAt` field — ทุกเครื่องเช็ค `cloud.r01BaselineAt > local._r01BaselineAt` ใน `startScanSessionListener`/`syncToFirestore`/`pullFromCloud`/`restoreFromFirestore` → ถ้าใหม่กว่า เรียก `_applyR01BaselineUpdate()` โหลด R01 จาก `${branch}_r01` master doc + รัน reset เดียวกัน
+**Cross-device sync:** `_r01BaselineAt` (module-level, ไม่ใช่ใน state) persist ใน `r01BaselineAt` field — ทุกเครื่องเช็ค `cloud.r01BaselineAt > local._r01BaselineAt` ใน `startScanSessionListener`/`syncToFirestore`/`pullFromCloud`/`restoreFromFirestore` → ถ้าใหม่กว่า เรียก `_applyR01BaselineUpdate()` โหลด R01 จาก `${branch}_r01` master doc + `_clearR16ForNewBaseline()` (นี่คือกลไกล้าง R16 ข้ามเครื่อง — จุด adopt R16 จาก session doc ทั้งหมด gate ด้วย `s.r16Loaded===true` เครื่องอื่นจึงไม่มีทาง "ล้างตาม" เอง) · เครื่องอัพ R01 เรียก `syncR16MetaToFirestore()` เขียน `r16Loaded:false` ลง `_r01` doc ด้วย
 
 **Workflow รายวัน:**
 | วัน | ขั้นตอน |
 |---|---|
-| Day 1 | อัพ R01 → สแกน → อัพ R16 → Confirm → ติด Audit (ถ้าไม่ตรง) |
-| Day 2 | อัพ R01 ใหม่ (Audit ค้างรีเซ็ตเป็น pending) → สแกนใหม่ → อัพ R16 วันนั้น → Confirm → เภสัช Audit Verify |
+| Day 1 | อัพ R01 → ผู้ช่วยสแกน → อัพ R16 เย็น → Confirm → ไม่ตรง = Audit |
+| Day 2 | อัพ R01 ใหม่ (Audit ค้าง**คงอยู่** · R16 ถูกล้าง) → เภสัชสแกนรีเช็ค Audit เทียบ systemQty ใหม่ → ยืนยัน (ตรง=pass / ไม่ตรง=stock_adjustment) · ผู้ช่วยสแกนนับวันใหม่คู่ขนาน → อัพ R16 เย็น → Confirm |
 
-⚠️ **อัพ R01 ทำให้ audit ที่รอเภสัชตรวจกลับเป็น pending ทันที** — ถ้าต้องการให้เภสัชตรวจ Audit ของเมื่อวานก่อน **อย่าอัพ R01 ใหม่จนกว่าจะ Verify เสร็จ**
+⚠️ ของที่รอรีเช็คแล้วถูก**ขายระหว่างวัน**ก่อนเภสัชสแกน จะไม่ถูกชดเชย R16 (by design — เทียบตรง) → แนะนำรีเช็คให้เสร็จก่อนอัพ R16 เย็น
 
 ### R05.106
 | Col | Index | Field |

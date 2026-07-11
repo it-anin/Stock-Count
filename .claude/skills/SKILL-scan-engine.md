@@ -175,25 +175,21 @@ if (scanListMap.size > prevSize) {
 
 ---
 
-## Stale Audit vs R01 Baseline (สาขายา, July 2026)
+## Audit ข้าม R01 Baseline (สาขายา — flow ใหม่ July 2026, แทน stale-scrub เดิม)
 
-**บั๊กที่แก้:** อัพ R01 ใหม่ → `resetUnverifiedAuditForNewR01` รีเซ็ต audit→pending เฉพาะ local แต่ cloud ไม่เคยถูกล้าง
-(merge rule "local pending ไม่ทับ cloud non-pending" บล็อค) → snapshot echo ~6 วิ resurrect audit กลับมา **แม้เครื่องเดียว**
+**เปลี่ยนพฤติกรรม:** audit ที่เภสัชยังไม่ verify **อยู่รอดข้ามการอัพ R01** ให้เภสัชสแกนรีเช็ควันถัดไป
+(เดิม: `resetUnverifiedAuditForNewR01` + stale-scrub ล้างเป็น pending — คือต้นเหตุเคส "Audit 500+ หาย" 11/07/2026 · ฟังก์ชัน reset ถูก**ลบแล้ว**)
 
-**Fix:** `_isStaleAuditVsBaseline(item)` — audit ที่ `!auditor` และ `timestamp||firstScanAt` เก่ากว่า `_r01BaselineAt` เกิน 5 นาที (`_R01_STALE_TOL_MS` กัน clock skew) = stale
+**กลไกปัจจุบัน — `_isPreBaselineItem(sd)`:** item ที่ `timestamp||firstScanAt` เก่ากว่า `_r01BaselineAt` เกิน 5 นาที (`_R01_STALE_TOL_MS`)
 - เทียบผ่าน Date object เท่านั้น (`replace(' ','T')` ก่อน — iOS) **ห้ามเทียบ string** (timestamp = local 'YYYY-MM-DD HH:mm:ss', baseline = UTC ISO)
 - gate `_isPharmacyBranch() && _r01BaselineAt` → WH + baseline ว่าง (startNewCount) = inert
+- **2 จุดที่ใช้:**
+  1. `reEvaluateAuditItems` — `continue` (freeze: audit เก่าไม่ flip ตอนอัพ R16 วันใหม่, **pass เก่าที่ไม่มี auditor คง pass ถาวร** — behavior change ที่จงใจ กัน audit ผี pollute คิวเภสัชทุกเย็น)
+  2. `getPharmacistAuditEffectiveQty` — คืน `effectiveQty=rawQty` ตรงๆ (sold/inbound/r16103 = 0) — R01 ใหม่รวมยอดขายเก่าแล้ว + กัน `getSoldQtyBefore` fallback คืนยอดรวมบนเครื่องที่ไม่มี rawMap
 
-**5 จุดที่ใช้:**
-1. `_applyCloudScanData` — `continue` บรรทัดแรกของ loop (ต้องมาก่อน rule audit-wins **และ** CONFIRMED block)
-2. `syncToFirestore` — scrub mergedSd หลัง day-rollover scrub (fresh object, drop `firstScanAt` ด้วย + `delete mergedSl[k]`) รันทั้ง merge/overwrite
-3. `restoreFromFirestore` merge path — skip adopt
-4. `restoreFromFirestore` full-replace — `scrubStaleLocalAudits()` หลังโหลด scanListMap
-5. `initAfterLogin` หลัง `loadSession()` — `scrubStaleLocalAudits()` (stale ค้างใน localStorage)
+**อัพ R01 (สาขายา) ทำอะไร:** `_clearR16ForNewBaseline()` (ล้าง R16 maps + `r16Loaded=false` + ล็อค Confirm) + `syncR16MetaToFirestore()` · เครื่องอื่นล้าง R16 ตามผ่าน `_applyR01BaselineUpdate` (จุด adopt R16 จาก session doc gate `s.r16Loaded===true` — ล้างเองไม่ได้ ต้องพ่วง baseline adoption) · `syncToFirestore` serialize `r16Obj/r16InbObj/r16_103Obj` **หลัง** merge/baseline adoption (ห้ามย้ายกลับขึ้นก่อน fetch — laggard จะพา maps เก่าขึ้น cloud)
 
-`scrubStaleLocalAudits()` ต้องล้าง `scanListMap` + `_avMap` ด้วย (กัน ghost row — full-replace โหลด scanListMap จาก cloud ตรงๆ แล้ว `rebuildScanListMap` early-return เมื่อ map ไม่ว่าง)
-
-**Collateral ที่ยอมรับ:** audit ที่ `reEvaluateAuditItems` flip จาก pass เก่า (timestamp ก่อน baseline) โดน scrub เป็น pending บน cloud = บังคับนับใหม่ — ตรงเจตนา baseline (ยอดก่อน restock เทียบระบบหลัง restock ไม่ได้)
+**ซาก stale machinery (neutered, ห้ามลบ call sites):** `_isStaleAuditVsBaseline` คืน `false` เสมอ → `scrubStaleLocalAudits` = no-op · call sites 5 จุด (`_applyCloudScanData`, `syncToFirestore` scrub block, `restoreFromFirestore` ×2, `initAfterLogin`) คงไว้เพราะฝังใน merge loop ที่ order-sensitive — inert แต่ revert ง่าย (แก้ 1 บรรทัด)
 
 ---
 
