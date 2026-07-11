@@ -60,11 +60,11 @@ location,SKU,qty
 **WH recheck branch (warehouse role สแกน SKU ที่ `status==='audit'`):**
 - สะสม `sd.recheckQty`, `sd.recheckBy = currentUser`
 - status คง `audit` ไม่เปลี่ยน
-- ไม่ผ่าน scan gap check (WH ข้าม gap ทั้งหมด)
 
-**2-minute scan gap (สาขายา SRC/KKL/SSS เท่านั้น):**
-- SKU เดิมสแกนซ้ำหลัง 2 นาที → `showScanGapModal()` + `beepWarn()` + vibrate
-- กด confirm → `confirmScanGap()` reset `countedQty=0`, `sd.scans=[]`, barcode ที่ trigger ไม่นับ
+**2-minute scan gap — ถอดออกแล้ว (July 2026, ทุก branch):**
+- เดิมสาขายา: SKU เดิมสแกนซ้ำหลัง 2 นาที → `showScanGapModal()` ถามรีเซ็ต — **ลบ block ออกจาก `processScan` แล้ว** สแกนซ้ำ = บวกสะสม ไม่ reset/ไม่เตือน
+- `showScanGapModal`/`confirmScanGap`/modal HTML = **dead code** (จงใจทิ้งไว้ ไม่ลบ) — แต่ `_scanGapHold` ยังถูกเช็คใน hold-guard ทุกจุด (คู่กับ `_zeroSysHold`) **ห้ามลบ guard พวกนั้น** ถ้าจะ reintroduce gap ต้องเช็คทั้งคู่เหมือนเดิม
+- ⚠️ operational: เผลอสแกนของที่นับไปนานแล้วซ้ำ = ยอดบวกเพิ่มเงียบๆ — ทางแก้ของ user คือปุ่ม ✕ (`removeScanItem`) นับใหม่
 
 ---
 
@@ -96,7 +96,7 @@ location,SKU,qty
 - known gap (ตั้งใจยังไม่แก้ ก.ค. 2026): เภสัชยืนยัน qty=0 ในคิว audit ไม่ได้ (`getPharmacistAuditPendingMap` กรอง `>0`) — item audit ที่นับ 0 ค้างตลอด; noStock ไม่ผ่าน audit เลยไม่ชนบั๊กนี้
 - `reEvaluateAuditItems`: rule เดียวกัน — negSys ไม่ตรง → `stock_adjustment` ไม่หลุดกลับเข้า `audit`
 - Diff ในตาราง Stock Adj + เอกสารปรับสต็อก = `countedQty − 0` = ยอดนับจริง (IRPS ของเกิน) เพราะไม่มี `recheckQty`
-- `resetUnverifiedAuditForNewR01` ไม่แตะ (เช็คเฉพาะ status `audit`) → อัพ R01 ใหม่ item เหล่านี้คงสถานะ
+- อัพ R01 ใหม่ item เหล่านี้คงสถานะ (flow July 2026: อัพ R01 ไม่รีเซ็ตอะไรใน scanData เลย — ดู "Audit ข้าม R01 Baseline")
 - ศูนย์จริง (systemQty = 0 ใน R01) **ไม่เข้า rule นี้** — ยังผ่าน audit → เภสัช verify ตามปกติ
 
 ---
@@ -140,21 +140,23 @@ if (scanListMap.size > prevSize) {
 
 ## Scan List QTY Masking
 
+**Threshold inline qty input (July 2026): `_isPharmacyBranch()?10:100`** — สาขายา >10, WH >100 (3 จุดต้องตรงกัน: `renderScanList`, `patchScanRow`, popup `canEdit`)
+
 | Status | เงื่อนไข | แสดง |
 |---|---|---|
-| scanning | systemQty > 100 | inline `<input>` → `updateInlineQty` |
-| scanning | systemQty ≤ 100 | `countedQty` (bold) |
+| scanning | systemQty > threshold (10 สาขายา / 100 WH) | inline `<input>` → `updateInlineQty` |
+| scanning | systemQty ≤ threshold | `countedQty` (bold) |
 | unknown | — | `countedQty` (bold) เสมอ |
 | audit | pharmacist/supervisor | `totalQty` (bold, read-only) |
-| pass/audit/etc | countedQty > 100 | แสดง (re-check warning) |
+| pass/audit/etc | countedQty > 100 | แสดง (re-check warning) — **ยังใช้ 100 คงเดิม ไม่ใช่ threshold ใหม่** |
 | pass/audit/etc | countedQty ≤ 100 | ซ่อน (กันเกิด counter bias) |
 
 **WH warehouse override:**
 - WH PDA (`noEditPda`): scanning ที่ systemQty > 100 → ได้ inline input; ≤100 + audit → `<span>` scan only
 - WH Desktop: scanning → ได้ input เสมอ; audit (recheck) → `updateRecheckInlineQty()` เขียน `recheckQty`+`recheckBy`
 
-เงื่อนไข: `sysQty > 100 || (whStaffEdit && !noEditPda)`
-ทั้ง `renderScanList()` และ `patchScanRow()` ต้องเช็คเหมือนกัน
+เงื่อนไข: `sysQty > (_isPharmacyBranch()?10:100) || (whStaffEdit && !noEditPda)`
+ทั้ง `renderScanList()` และ `patchScanRow()` ต้องเช็คเหมือนกัน · in-app guide (`guideQtyRule`) แสดงเลข threshold ตาม branch อัตโนมัติ
 
 ---
 
@@ -276,3 +278,11 @@ Fix: patch-first logic (ดู drainQueue section)
    → **กฎ:** เพิ่ม guard ใหม่ใน syncToFirestore/_applyCloudScanData ต้องเช็ค `_confirmedSet.has(...)` เสมอ ห้ามใช้ `!==` เทียบ status เดี่ยวๆ
 
 `pullFromCloud()` / `_applyCloudScanData()` ไม่ช่วยกรณีนี้ — merge เฉพาะ `pending`/`scanning` เท่านั้น
+
+**เคส Audit 500+ รายการหาย (11 ก.ค. 2026):**
+`resetUnverifiedAuditForNewR01` + stale-scrub ออกแบบเป็น "อัพ R01 = ล้าง audit บังคับนับใหม่" แต่ flow งานจริงคือ "อัพ R01 → เภสัชรีเช็ค audit เมื่อวาน" — audit ที่หมดอายุตั้งแต่อัพ R01 เช้าวันก่อน ค้างบน PDA ที่ไม่ sync จนตัว trigger `visibilitychange→syncToFirestore` (เพิ่ง deploy) บังคับ scrub ตอนเช้า → หายพร้อมกัน 500+ ทุกเครื่อง
+- **บทเรียน 1:** logic scrub/reset ใน payload ของ `syncToFirestore` จะระเบิดพร้อมกันทั้ง fleet ตอนเช้าหลัง deploy trigger ใหม่ (ทุกเครื่อง resume ไล่เลี่ยกัน) — เพิ่ม trigger sync ใหม่ต้องนึกถึง scrub ทุกตัวที่พ่วงมาด้วย
+- **บทเรียน 2:** ก่อนเขียน logic "ล้างข้อมูลอัตโนมัติ" ต้องยืนยัน workflow จริงของหน้างานก่อน — แก้แล้ว (July 2026): audit อยู่รอดข้าม baseline, stale-scrub neutered
+
+**`getSoldQtyBefore` fallback ไม่กรองเวลา (กับดักข้ามเครื่อง):**
+`if(!state.r16RawMap.size||!scanTimestamp)return state.r16SalesMap.get(sku)||0;` — เครื่องที่**รับ R16 ผ่าน cloud sync ไม่มี rawMap** (sync เฉพาะ salesMap/inboundMap) → fallback คืน**ยอดรวมทั้งก้อนไม่กรอง TRANDATE** ขณะที่เครื่องอัพไฟล์เองกรองตาม timestamp ได้ → การคำนวณ effectiveQty **ให้ผลต่างกันตามเครื่อง** สำหรับ item timestamp เก่า (เจอตอนออกแบบ recheck ข้าม baseline — กันด้วย `_isPreBaselineItem` guard ใน `getPharmacistAuditEffectiveQty`) — logic ใหม่ที่พึ่ง `getSoldQtyBefore/getInboundQtyBefore/getR16103QtyBefore` ต้องเช็คเคสเครื่องไม่มี rawMap เสมอ
