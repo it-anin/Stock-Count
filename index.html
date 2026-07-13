@@ -1121,6 +1121,7 @@ function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE
 function getSessionId(){return currentBranch;}
 function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
 function getProductMasterMetaRef(){return _db.collection('stock_sessions').doc('global_pm');}
+function getR05Ref(){return _db.collection('stock_sessions').doc('global_r05');}
 const BRANCH_COLORS={SRC:'#0072c6',KKL:'#0072c6',SSS:'#0072c6',WH:'#d97706'};
 const BRANCH_PINS={SRC:'1234',KKL:'4567',SSS:'9999',WH:'0000'};
 const EMPLOYEE_PROFILES={
@@ -1253,7 +1254,7 @@ function startProductMasterListener(){
     _pmListenerReady=true;
   },err=>console.warn('Firestore product master listen:',err.message));
 }
-// ─── R05 real-time sync (per-branch, mirror PM) — อัพ R05 เครื่องนึง → ทุกเครื่องในสาขาเห็นทันที ───
+// ─── R05 real-time sync (global — ใช้ร่วมทุกสาขา, mirror PM) — อัพ R05 เครื่องนึง → ทุกสาขาเห็นทันที ───
 let _r05Unsubscribe=null,_r05ListenerReady=false,_lastAppliedR05Json='';
 function stopR05Listener(){
   if(_r05Unsubscribe){_r05Unsubscribe();_r05Unsubscribe=null;}
@@ -1262,7 +1263,7 @@ function stopR05Listener(){
 function startR05Listener(){
   if(!_db||!_pinVerified||!currentBranch)return;
   stopR05Listener();
-  _r05Unsubscribe=_db.collection('stock_sessions').doc(getSessionId()+'_r05').onSnapshot(doc=>{
+  _r05Unsubscribe=getR05Ref().onSnapshot(doc=>{
     if(!doc.exists){_r05ListenerReady=true;return;}
     const dj=doc.data().data_json;
     if(!dj||dj===_lastAppliedR05Json){_r05ListenerReady=true;return;} // ไม่เปลี่ยน/own-write → ข้าม
@@ -1929,7 +1930,8 @@ async function clearAllData() {
   clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
   resetScanRuntimeState();
   localStorage.removeItem(lsKey());
-  if(_db&&currentBranch){const id=getSessionId();try{await Promise.all([_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete(),_db.collection('stock_sessions').doc(id+'_r05').delete()]);}catch(e){console.warn('Firestore delete:',e.message);}}
+  // _r05 ไม่ลบ cloud — global doc ใช้ร่วมทุกสาขาแล้ว (เหมือน global_pm ที่ก็ไม่ลบตรงนี้), ล้างแค่ local เดี๋ยว resync กลับตอน reload
+  if(_db&&currentBranch){const id=getSessionId();try{await Promise.all([_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()]);}catch(e){console.warn('Firestore delete:',e.message);}}
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r05Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
@@ -3376,7 +3378,7 @@ function guideHtml(isWh){
   +'<div style="background:rgba(107,63,160,0.06);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(107,63,160,0.2);">'
     +'<strong style="color:var(--purple);display:block;margin-bottom:5px;">🔒 Admin เท่านั้น</strong>'
     +'<ul style="padding-left:16px;margin:0;">'
-      +'<li><strong>R05.106</strong> — Barcode สินค้า (แยกตามสาขา)</li>'
+      +'<li><strong>R05.106</strong> — Barcode สินค้า (ใช้ร่วมทุกสาขา)</li>'
       +'<li style="margin-top:3px;"><strong>Product Master</strong> — ชื่อสินค้า (ใช้ร่วมทุกสาขา)</li>'
       +'<li style="margin-top:3px;">Admin mode ปิดการ sync Firestore (local เท่านั้น)</li>'
     +'</ul>'
@@ -3454,7 +3456,8 @@ async function syncMasterToFirestore(includeR05=true){
     // merge:true — กัน field r16UploadedAt/r16Loaded (เขียนโดย syncR16MetaToFirestore) ถูกลบหายตอน R01 re-upload
     const writes=[_db.collection('stock_sessions').doc(id+'_r01').set({data_json:JSON.stringify(state.r01Data),r01UploadedAt:state.r01UploadedAt||'',updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})];
     // R05 เขียน cloud เฉพาะตอนอัพ R05 จริง (loadR05) — login/loadR01 ไม่ push (กันของเก่าทับ cloud ที่ listener จะ propagate)
-    if(includeR05)writes.push(_db.collection('stock_sessions').doc(id+'_r05').set({data_json:JSON.stringify(state.r05Data),updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
+    // global doc (ไม่ผูก branch) — สาขาไหนอัพก็ได้ ทุกสาขาเห็นร่วมกัน (mirror global_pm)
+    if(includeR05)writes.push(getR05Ref().set({data_json:JSON.stringify(state.r05Data),updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
     await Promise.all(writes);
   }catch(e){console.warn('Firestore master sync:',e.message);}
 }
@@ -3497,7 +3500,7 @@ async function restoreMasterFromFirestore(force=false){
       }
       const[r01Doc,r05Doc]=await Promise.all([
         _db.collection('stock_sessions').doc(id+'_r01').get(),
-        _db.collection('stock_sessions').doc(id+'_r05').get()
+        getR05Ref().get() // global doc — ไม่ผูก branch
       ]);
       if(r01Doc.exists){state.r01Data=JSON.parse(r01Doc.data().data_json);document.getElementById('badgeR01').textContent='Ready';if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
       if(r05Doc.exists){state.r05Data=JSON.parse(r05Doc.data().data_json);document.getElementById('badgeR05').textContent='Ready';}
