@@ -1989,6 +1989,18 @@ function loadSession() {
   } catch(e){console.warn(e);}
 }
 window.addEventListener('DOMContentLoaded',async()=>{
+  // ปิดปรับปรุงชั่วคราว — เช็ค maintenance.json ก่อนทำอะไรทั้งหมด (fail-open ถ้า fetch ล้มเหลว/ออฟไลน์ → เข้าแอปตามปกติ)
+  // เปิดใช้: แก้ maintenance.json → enabled:true + message → commit/push (Vercel auto-deploy)
+  try{
+    const _mRes=await fetch('./maintenance.json?_vchk='+Date.now(),{cache:'no-store'});
+    if(_mRes.ok){
+      const _m=await _mRes.json();
+      if(_m&&_m.enabled){
+        document.body.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;padding:24px;text-align:center;"><div><div style="font-size:2.5rem;margin-bottom:12px;">🛠️</div><div style="font-size:1.15rem;font-weight:700;">${_m.message||'ระบบปิดปรับปรุงชั่วคราว'}</div></div></div>`;
+        return;
+      }
+    }
+  }catch(e){/* offline/error → ปล่อยผ่าน ไม่ block การใช้งานปกติ */}
   // แสดงปุ่ม ⚙ Settings เฉพาะเมื่อรันใน PDA app (WebView)
   if(navigator.userAgent.includes('StockCountPDA')){
     const btn=document.getElementById('btnPdaSettings');
