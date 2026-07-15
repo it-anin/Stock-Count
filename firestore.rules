@@ -1,0 +1,20 @@
+// Firestore Security Rules — เก็บไว้ track ใน git เท่านั้น
+// deploy จริงทำผ่าน Firebase Console → Firestore Database → Rules → Publish (ไม่มี Firebase CLI/auto-deploy ผูกไว้)
+// แก้ไฟล์นี้แล้วอย่าลืม copy ไป publish ใน Console ด้วย — ไม่งั้นจะไม่ตรงกับของจริง
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /stock_sessions/{document} {
+      allow read, write: if true;
+    }
+    match /stock_audit_log/{document} {
+      allow read, write: if true;
+    }
+    match /stock_countreport/{document} {
+      allow read, write: if true;
+    }
+    match /stock_login_log/{document} {
+      allow read, write: if true;
+    }
+  }
+}
