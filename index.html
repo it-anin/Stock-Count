@@ -416,6 +416,7 @@
         <button class="btn" id="btnAdmin" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(107,63,160,0.35);color:var(--purple);background:rgba(107,63,160,0.08);flex:none;width:auto;" onclick="toggleAdmin()">🔒 Administrator</button>
         <button class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(250,168,0,0.4);color:#e09000;background:rgba(250,168,0,0.08);flex:none;width:auto;" onclick="startNewCount()">🔄 เริ่มนับใหม่</button>
         <button id="btnClearAll" class="btn btn-clear" style="padding:6px 12px;font-size:0.75rem;border-color:var(--red);color:var(--red);display:none;" onclick="clearAllData()">🗑️ ล้างข้อมูลทั้งหมด</button>
+        <button id="btnLoginLog" class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(107,63,160,0.35);color:var(--purple);background:rgba(107,63,160,0.08);flex:none;width:auto;display:none;" onclick="openLoginLogPopup()">🧾 Login Log</button>
       </div>
       <div id="pmStatusBadge" style="display:none;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:rgba(124,111,247,0.1);border:1px solid rgba(124,111,247,0.3);font-size:0.45rem;font-weight:600;color:var(--purple);white-space:nowrap;">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--purple);display:inline-block;flex-shrink:0;"></span>
@@ -803,6 +804,27 @@
     </div>
     <div class="stock-popup-body" id="dashboardBody" style="padding:18px 22px;">
       <div style="text-align:center;padding:60px;color:var(--text3);">กำลังโหลด...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Login Log Popup (Admin เท่านั้น) -->
+<div class="stock-popup-overlay" id="loginLogPopupOverlay" style="display:none" onclick="handleLoginLogOverlayClick(event)">
+  <div class="stock-popup" id="loginLogPopupCard" style="max-width:1000px;">
+    <div class="stock-popup-header">
+      <h2>🧾 Login Log</h2>
+      <button class="stock-popup-close" onclick="closeLoginLogPopup()">✕</button>
+    </div>
+    <div class="stock-popup-toolbar" style="gap:10px;align-items:center;">
+      <button id="loginLogRefreshBtn" onclick="refreshLoginLog()" style="padding:6px 14px;border-radius:7px;border:1px solid var(--accent);background:rgba(0,114,198,0.08);color:var(--accent);font-family:inherit;font-size:0.82rem;font-weight:600;cursor:pointer;">🔄 โหลดข้อมูล</button>
+      <select id="loginLogBranchFilter" onchange="renderLoginLogTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text);font-size:0.82rem;font-family:inherit;cursor:pointer;">
+        <option value="">ทุกสาขา</option>
+        <option value="SRC">SRC</option><option value="KKL">KKL</option><option value="SSS">SSS</option><option value="WH">WH</option>
+      </select>
+      <span id="loginLogStatus" style="font-size:0.78rem;color:var(--text3);"></span>
+    </div>
+    <div class="stock-popup-body" id="loginLogBody" style="padding:18px 22px;">
+      <div style="text-align:center;padding:60px;color:var(--text3);">กด "โหลดข้อมูล" เพื่อดึง Login Log ล่าสุด (200 รายการ)</div>
     </div>
   </div>
 </div>
@@ -1339,6 +1361,7 @@ function showEmployeeSelector(callback){
 }
 function selectEmployee(name,role){
   currentUser=name;currentRole=role;
+  logLoginEvent(); // fire-and-forget — ไม่ await ไม่บล็อก login UX
   _closeModal('employeeModal','employeeModalCard',()=>{
     updateUserDisplay();
     updateAuditVerifyPanel();
@@ -1349,6 +1372,18 @@ function selectEmployee(name,role){
     if(_employeeCallback)_employeeCallback();
     _employeeCallback=null;
   });
+}
+// บันทึก log การ login (สำเร็จเท่านั้น) พร้อม IP — สำหรับ Admin ดูใน Login Log popup
+// IP ดึงจาก /api/ip.js (Vercel serverless function อ่าน x-forwarded-for) — ล้มเหลว/ออฟไลน์ = ip ว่าง ไม่ block login
+async function logLoginEvent(){
+  if(!_db||!currentBranch)return;
+  let ip='';
+  try{const r=await fetch('/api/ip.js',{cache:'no-store'});if(r.ok)ip=(await r.json()).ip||'';}catch(e){}
+  _db.collection('stock_login_log').add({
+    branch:currentBranch,user:currentUser,role:currentRole,ip,
+    userAgent:navigator.userAgent,loginAt:formatThaiDateTime(new Date()),
+    ts:firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(e=>console.warn('[LoginLog]',e.message));
 }
 // รีเซ็ตของค้าง scanning ที่สแกนไว้ข้ามวัน (timestamp ก่อนวันนี้) → บังคับนับใหม่ในวันถัดไป
 // แตะเฉพาะ status==='scanning' เท่านั้น — pass/audit/stock_adjustment (confirm แล้ว) ไม่ยุ่ง
@@ -2031,7 +2066,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -3444,6 +3479,7 @@ function applyAdminUI(){
   const btn=document.getElementById('btnAdmin');
   const pmSection=document.getElementById('pmUploadSection');
   const clearBtn=document.getElementById('btnClearAll');
+  const loginLogBtn=document.getElementById('btnLoginLog');
   if(_adminMode){
     btn.textContent='🔓 Administrator ON';
     btn.style.borderColor='rgba(224,140,0,0.5)';btn.style.color='var(--yellow)';btn.style.background='rgba(224,140,0,0.12)';
@@ -3451,12 +3487,14 @@ function applyAdminUI(){
     if(pmSection)pmSection.style.display='';
     const r05Section=document.getElementById('r05UploadSection');if(r05Section)r05Section.style.display='';
     if(clearBtn)clearBtn.style.display='';
+    if(loginLogBtn)loginLogBtn.style.display='';
   } else {
     btn.textContent='🔒 Administrator';
     btn.style.borderColor='rgba(107,63,160,0.35)';btn.style.color='var(--purple)';btn.style.background='rgba(107,63,160,0.08)';
     if(pmSection)pmSection.style.display='none';
     const r05Section=document.getElementById('r05UploadSection');if(r05Section)r05Section.style.display='none';
     if(clearBtn)clearBtn.style.display='none';
+    if(loginLogBtn)loginLogBtn.style.display='none';
   }
 }
 
@@ -5286,6 +5324,51 @@ function updateHistoryStatsPanel(){
   const p=document.getElementById('historyStatsPanel');if(!p)return;
   p.style.display=currentRole?'':'none';
   updateHistoryStatsCount();
+}
+
+// ===================== Login Log (Admin เท่านั้น) =====================
+// เขียนโดย logLoginEvent() ตอน login สำเร็จ — ที่นี่แค่อ่าน/แสดงผลให้ Admin ดู
+let _loginLogData=[];
+function openLoginLogPopup(){
+  _openModal('loginLogPopupOverlay','loginLogPopupCard');
+  refreshLoginLog();
+}
+function closeLoginLogPopup(){_closeModal('loginLogPopupOverlay','loginLogPopupCard',null);}
+function handleLoginLogOverlayClick(e){if(e.target===document.getElementById('loginLogPopupOverlay'))closeLoginLogPopup();}
+async function refreshLoginLog(){
+  const body=document.getElementById('loginLogBody');
+  const status=document.getElementById('loginLogStatus');
+  if(!_db){body.innerHTML='<div style="text-align:center;padding:60px;color:var(--red);">Firestore ไม่พร้อมใช้งาน</div>';return;}
+  status.textContent='กำลังโหลด...';
+  try{
+    // ไม่ .where('branch',...) ร่วมกับ .orderBy('ts',...) — เลี่ยงต้องสร้าง composite index ใน Firestore console
+    // กรองสาขาฝั่ง client แทน (volume ต่ำ — login ไม่กี่ครั้ง/วัน/สาขา)
+    const snap=await _db.collection('stock_login_log').orderBy('ts','desc').limit(200).get();
+    _loginLogData=snap.docs.map(d=>d.data());
+    status.textContent=`อัปเดต: ${formatThaiDateTime(new Date())}`;
+    renderLoginLogTable();
+  }catch(e){
+    body.innerHTML=`<div style="text-align:center;padding:60px;color:var(--red);">โหลดไม่สำเร็จ: ${e.message}</div>`;
+    status.textContent='';
+  }
+}
+function renderLoginLogTable(){
+  const body=document.getElementById('loginLogBody');
+  const filter=document.getElementById('loginLogBranchFilter').value;
+  const rows=filter?_loginLogData.filter(r=>r.branch===filter):_loginLogData;
+  if(!rows.length){body.innerHTML='<div style="text-align:center;padding:60px;color:var(--text3);">ไม่มีข้อมูล</div>';return;}
+  body.innerHTML=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+    <thead><tr style="text-align:left;border-bottom:2px solid var(--border);color:var(--text3);">
+      <th style="padding:8px;">เวลา</th><th style="padding:8px;">สาขา</th><th style="padding:8px;">ชื่อ</th><th style="padding:8px;">Role</th><th style="padding:8px;">IP</th>
+    </tr></thead>
+    <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;color:var(--text2);">${r.loginAt||''}</td>
+      <td style="padding:8px;font-weight:700;color:var(--accent);">${r.branch||''}</td>
+      <td style="padding:8px;">${r.user||''}</td>
+      <td style="padding:8px;color:var(--text2);">${r.role||''}</td>
+      <td style="padding:8px;font-family:'Inter',sans-serif;color:var(--text2);">${r.ip||'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 }
 
 // ─── Location Master (WH only) ───────────────────────────────────────────────
