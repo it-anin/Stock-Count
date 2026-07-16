@@ -2987,7 +2987,7 @@ function renderScanList(){
   const visible=entries.slice(0,SCAN_LIST_MAX);
   const showSysQty=currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600;
   const showLoc=showSysQty;
-  // WH warehouse: QTY แก้ไขผ่าน inline input — ยกเว้น WH PDA (noEditPda) ที่ปิดการแก้ไข นับด้วยการสแกนอย่างเดียว
+  // WH warehouse: QTY แก้ไขผ่าน inline input — บน PDA จะแก้ได้เฉพาะ SKU ที่มีจำนวนมากพอให้แสดงช่องกรอก
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
   const noEditPda=whStaffEdit&&window.innerWidth<=600;
   let tpl;
@@ -3004,7 +3004,7 @@ function renderScanList(){
       <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&currentRole==='warehouse'&&currentBranch==='WH')?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
-      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((((si?.systemQty||0)>(_isPharmacyBranch()?10:100))||(whStaffEdit&&!noEditPda))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&whStaffEdit&&(!noEditPda||(si?.systemQty||0)>100))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>100?`${entry.totalQty}`:'')}</div>
+      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((((si?.systemQty||0)>10)||(whStaffEdit&&!noEditPda))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&whStaffEdit&&(!noEditPda||(si?.systemQty||0)>10))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>10?`${entry.totalQty}`:'')}</div>
       ${showSysQty?`<div class="scan-row-sysqty" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 6px;">${si?.systemQty??''}</div>`:''}
       ${showLoc?`<div class="scan-row-loc" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.locationMap.get(entry.sku)||'—'}</div>`:''}
       <div class="scan-row-status"><span class="pill ${getPillClass(entry.status)}">${label}</span></div>
@@ -3033,21 +3033,20 @@ function patchScanRow(key){
     }
   }
   if(entry.status==='scanning'){
-    if(sysQty>(_isPharmacyBranch()?10:100)||(whStaffEdit&&!noEditPda)){
+    if(whStaffEdit&&!noEditPda){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`;}
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
     if(entry.status==='unknown')qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
-    else if(entry.status==='audit'&&whStaffEdit&&(!noEditPda||sysQty>100)){
+    else if(entry.status==='audit'&&whStaffEdit&&!noEditPda){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`;}
     }
     else if(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
-    else if(entry.totalQty>100)qtyCell.textContent=entry.totalQty;
-    else qtyCell.innerHTML='';
+    else qtyCell.textContent=entry.totalQty;
   }
   return true;
 }
@@ -3172,8 +3171,8 @@ function applyAuditTerminology(){
     ?'รายการ <strong style="color:var(--yellow);">⚠️ Recheck</strong> → <strong>warehouse</strong> สแกนรีเช็คที่ช่อง scan หลัก → <strong>หัวหน้างาน</strong>กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'
     :'รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong>');
   set('guideRulePill',isWh?'Pass / Recheck / Stock Adj':'Pass / Audit / Stock Adj');
-  // threshold แสดงช่อง Qty: สาขายา > 10, WH > 100 (ตรงกับ _isPharmacyBranch()?10:100 ใน render/patchScanRow/popup)
-  {const _qt=isWh?100:10;setHtml('guideQtyRule',`คอลัม <strong>Qty ซ่อน</strong> ถ้าจำนวน ≤ ${_qt} (ป้องกัน bias) — แสดงเมื่อ &gt; ${_qt}`);}
+  // threshold แสดงช่อง Qty: ทุกสาขา/WH > 10
+  {const _qt=10;setHtml('guideQtyRule',`คอลัม <strong>Qty ซ่อน</strong> ถ้าจำนวน ≤ ${_qt} (ป้องกัน bias) — แสดงเมื่อ &gt; ${_qt}`);}
   set('guideAuditPill',isWh?'⚠️ Recheck':'⚠️ Audit');
   set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':'จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify');
 }
@@ -3346,7 +3345,7 @@ function renderPopupTable(){
     const dt=r.isDel?'<span class="tag-del">DEL</span>':'';const pt=r.isP?'<span class="tag-p">P</span>':'';
     const qc=sd.status==='pass'||sd.status==='audit_check'?'var(--green)':'var(--text)';
     const bcs=barcodes.length>22?barcodes.slice(0,22)+'…':barcodes;
-    const canEdit=(info.systemQty||0)>(_isPharmacyBranch()?10:100)&&(sd.status==='pending'||sd.status==='scanning');
+    const canEdit=(sd.status==='pending'||sd.status==='scanning');
     const qtyCell=canEdit?`<input type="number" class="popup-qty-input" value="${sd.countedQty}" min="0" onchange="updatePopupQty('${sku}',this.value)"/>`:`<span style="color:${qc};font-weight:700">${sd.countedQty}</span>`;
     const scannedByCell=sd.scannedBy?`<span style="font-size:0.74rem;color:var(--text2);font-weight:600;">${sd.scannedBy}</span>`:'<span style="color:var(--text3);">—</span>';
     const locCell=isWhSup?`<td style="font-family:'Inter',sans-serif;font-size:0.78rem;color:var(--text2);text-align:center;">${state.locationMap.get(sku)||'—'}</td>`:'';
