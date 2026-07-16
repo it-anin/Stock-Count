@@ -2254,6 +2254,7 @@ function beepWarn(){
 let _scanDebounceTimer=null;
 const SCAN_DEBOUNCE_MS=80; // PDA ส่ง barcode ทั้งหมดใน ~20-50ms; 80ms ปลอดภัย (1.5x margin) และสั้นกว่าช่วงห่างระหว่างสแกน 2 ชิ้น (~500ms+)
 const PDA_KEYSTROKE_THRESHOLD_MS=150; // gap ระหว่าง keystroke < 150ms = PDA scanner; >= 150ms = manual typing (ขยายจาก 50ms รองรับ scanner ช้า)
+const MANUAL_EDIT_PROTECT_MS=10000; // กันแก้ไข inline qty ถูก cloud snapshot เก่าทับ (scheduleSave 400ms + Firestore write + listener merge debounce 3000ms — ดู _applyCloudScanData)
 let _lastKeystrokeTime=0; // ใช้ตรวจจับ PDA vs manual
 let _pdaMode=false;       // true = PDA scanner กำลัง inject → ใช้ debounce; false = manual → ต้องกด Enter
 function resetScanRuntimeState(){
@@ -3054,7 +3055,7 @@ function patchScanRow(key){
 function updateInlineQty(sku,v){
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='scanning')return;
-  sd.countedQty=q;
+  sd.countedQty=q;sd.manualEditAt=Date.now();
   if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
   scheduleSave();scheduleStats();scheduleRender();
 }
@@ -3072,7 +3073,7 @@ function updatePopupQty(sku,v){
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd)return;
   if(['pass','audit','audit_check','stock_adjustment'].includes(sd.status))return;
-  sd.countedQty=q;
+  sd.countedQty=q;sd.manualEditAt=Date.now();
   if(sd.status==='pending'){
     const d=new Date();
     sd.status='scanning';
@@ -3600,7 +3601,7 @@ async function syncToFirestore(overwrite=false){
   if(_adminMode||!_db||!currentBranch)return;
   runStaleGuard(); // day-rollover: ล้าง scanning ค้างข้ามวันใน local ก่อนสร้าง payload (วันละครั้ง)
   const ref=_db.collection('stock_sessions').doc(getSessionId());
-  const localSd={};for(const[k,v]of state.scanData.entries()){const{retries,scans,...keep}=v;localSd[k]=keep;}
+  const localSd={};for(const[k,v]of state.scanData.entries()){const{retries,scans,manualEditAt,...keep}=v;localSd[k]=keep;}
   const localSl={};for(const[k,v]of scanListMap.entries())localSl[k]=v;
   let mergedSd=localSd;let mergedSl=localSl;
   if(!overwrite){
@@ -3750,6 +3751,9 @@ function _applyCloudScanData(s){
       // ป้องกัน cloud pending ทับ local scanning (local เพิ่งสแกน, cloud ยังไม่ได้ sync)
       if(local&&local.status==='scanning'){
         if(cloudItem.status==='pending')continue;
+        // เพิ่งแก้ไข qty มือ (inline/popup) ภายใน window ล่าสุด → ห้าม cloud snapshot เก่า (ยังไม่เห็นค่าที่แก้) ทับ
+        // กันอาการเด้งกลับเลขเดิม เช่น แก้ 500→400 แล้วโดน cloud snapshot เก่าที่ยังเป็น 500 ทับกลับ (race กับ syncToFirestore)
+        if(local.manualEditAt&&(Date.now()-local.manualEditAt)<MANUAL_EDIT_PROTECT_MS)continue;
         // ทั้งคู่ scanning: ใช้ตัวที่ countedQty สูงกว่า (มีการสแกนสะสมมากกว่า)
         if(cloudItem.status==='scanning'&&(local.countedQty||0)>=(cloudItem.countedQty||0))continue;
       }
