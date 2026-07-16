@@ -3022,7 +3022,7 @@ function patchScanRow(key){
   const si=state.skuMap.get(key);
   const sysQty=(si?.systemQty||0);
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
-  const noEditPda=whStaffEdit&&window.innerWidth<=600; // WH PDA: ปิด inline QTY (นับด้วยการสแกนอย่างเดียว)
+  const noEditPda=whStaffEdit&&window.innerWidth<=600; // WH PDA: แก้ได้เฉพาะ SKU ที่ sysQty>10 (ตรงกับ renderScanList)
   // ย้ายแถวที่สแกนซ้ำขึ้นบนสุด (ตรงกับลำดับ reverse ของ renderScanList) โดยไม่ rebuild ทั้งก้อน → ไม่กระพริบ
   const body=document.getElementById('scanListBody');
   if(body){
@@ -3033,20 +3033,20 @@ function patchScanRow(key){
     }
   }
   if(entry.status==='scanning'){
-    if(whStaffEdit&&!noEditPda){
+    if((sysQty>10)||(whStaffEdit&&!noEditPda)){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`;}
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
     if(entry.status==='unknown')qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
-    else if(entry.status==='audit'&&whStaffEdit&&!noEditPda){
+    else if(entry.status==='audit'&&whStaffEdit&&(!noEditPda||sysQty>10)){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`;}
     }
     else if(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
-    else qtyCell.textContent=entry.totalQty;
+    else qtyCell.textContent=entry.totalQty>10?entry.totalQty:'';
   }
   return true;
 }
