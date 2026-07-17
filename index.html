@@ -2667,6 +2667,9 @@ function handleBarcode(parsed,immediateRender=true){
     const addQty=qty!==null?qty*mult:mult;
     sd.recheckQty=(sd.recheckQty||0)+addQty;
     sd.recheckBy=currentUser;
+    // เก็บเวลารีเช็คแยกจาก timestamp เดิมของการนับรอบแรก
+    // เพื่อให้รายการที่เพิ่งพบขยับขึ้นบนสุด โดยไม่กระทบการคำนวณ Audit/R16
+    sd.recheckAt=now;
     let e=scanListMap.get(sku);
     if(e){e.totalQty=sd.recheckQty;e.status='audit';}
     else{const barcodes=skuInfo.barcodes.length?skuInfo.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:resolvedBarcode,unit:unitName}];e={sku,barcodes,totalQty:sd.recheckQty,status:'audit',location:'',catLabel:''};scanListMap.set(sku,e);}
@@ -2894,7 +2897,9 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
     // warehouse+supervisor บน WH: audit row โชว์ recheckQty (จำนวนที่ warehouse สแกนรีเช็ค) แทน countedQty
     const showRecheck=isWh&&sd.status==='audit'&&(currentRole==='warehouse'||currentRole==='supervisor');
     const totalQty=showRecheck?(sd.recheckQty||0):sd.countedQty;
-    rows.push({sku,barcodes,totalQty,status:sd.status,ts:sd.timestamp||''});
+    // WH Recheck เรียงตามเวลาที่รีเช็คล่าสุด ไม่ใช่เวลานับรอบแรก
+    const sortTs=isWh&&sd.status==='audit'?(sd.recheckAt||sd.timestamp||''):(sd.timestamp||'');
+    rows.push({sku,barcodes,totalQty,status:sd.status,ts:sortTs});
   }
   // sort ตามเวลาสแกน เก่า→ใหม่ → set เข้า map (ใหม่สุดอยู่ท้าย Map → ขึ้นบนสุดหลัง .reverse() ใน renderScanList)
   // กันบั๊ก: เดิม rebuild วน state.scanData ตามลำดับ catalog (rebuildMaps) → ของที่เพิ่งสแกนเด้งลงล่างทุกครั้งที่ listener/Cloud rebuild
