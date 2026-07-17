@@ -2996,7 +2996,7 @@ function renderScanList(){
   const visible=entries.slice(0,SCAN_LIST_MAX);
   const showSysQty=currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600;
   const showLoc=showSysQty;
-  // WH warehouse: QTY แก้ไขผ่าน inline input — บน PDA จะแก้ได้เฉพาะ SKU ที่มีจำนวนมากพอให้แสดงช่องกรอก
+  // WH warehouse: QTY แก้ไขผ่าน inline input — Recheck บน PDA แก้จำนวนได้ทุกรายการ
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
   const noEditPda=whStaffEdit&&window.innerWidth<=600;
   let tpl;
@@ -3013,7 +3013,7 @@ function renderScanList(){
       <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&currentRole==='warehouse'&&currentBranch==='WH')?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
-      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((((si?.systemQty||0)>10)||(whStaffEdit&&!noEditPda))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&whStaffEdit&&(!noEditPda||(si?.systemQty||0)>10))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>10?`${entry.totalQty}`:'')}</div>
+      <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((((si?.systemQty||0)>10)||(whStaffEdit&&!noEditPda))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&whStaffEdit)?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>10?`${entry.totalQty}`:'')}</div>
       ${showSysQty?`<div class="scan-row-sysqty" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 6px;">${si?.systemQty??''}</div>`:''}
       ${showLoc?`<div class="scan-row-loc" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.locationMap.get(entry.sku)||'—'}</div>`:''}
       <div class="scan-row-status"><span class="pill ${getPillClass(entry.status)}">${label}</span></div>
@@ -3031,7 +3031,7 @@ function patchScanRow(key){
   const si=state.skuMap.get(key);
   const sysQty=(si?.systemQty||0);
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
-  const noEditPda=whStaffEdit&&window.innerWidth<=600; // WH PDA: แก้ได้เฉพาะ SKU ที่ sysQty>10 (ตรงกับ renderScanList)
+  const noEditPda=whStaffEdit&&window.innerWidth<=600;
   // ย้ายแถวที่สแกนซ้ำขึ้นบนสุด (ตรงกับลำดับ reverse ของ renderScanList) โดยไม่ rebuild ทั้งก้อน → ไม่กระพริบ
   const body=document.getElementById('scanListBody');
   if(body){
@@ -3049,7 +3049,7 @@ function patchScanRow(key){
     }else{qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;}
   }else{
     if(entry.status==='unknown')qtyCell.innerHTML=`<span style="font-weight:700">${entry.totalQty}</span>`;
-    else if(entry.status==='audit'&&whStaffEdit&&(!noEditPda||sysQty>10)){
+    else if(entry.status==='audit'&&whStaffEdit){
       const input=qtyCell.querySelector('.inline-qty-input');
       if(input){if(document.activeElement!==input)input.value=entry.totalQty;}
       else{qtyCell.innerHTML=`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateRecheckInlineQty('${entry.sku}',this.value)"/>`;}
@@ -3072,7 +3072,7 @@ function updateInlineQty(sku,v){
 function updateRecheckInlineQty(sku,v){
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
-  sd.recheckQty=q;sd.recheckBy=currentUser;
+  sd.recheckQty=q;sd.recheckBy=currentUser;sd.recheckAt=new Date().toISOString();
   if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
   scheduleSave();scheduleStats();scheduleRender();
 }
