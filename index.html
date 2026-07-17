@@ -1236,6 +1236,7 @@ function startScanSessionListener(){
           await _applyR01BaselineUpdate(s.r01BaselineAt);
         }
         _applyCloudScanData(s);
+        updatePharmacistAuditConfirmBtn();
         if(!_listCleared){
           rebuildScanListMap(true);
           invalidatePopupRowsCache();
@@ -3733,6 +3734,18 @@ function _applyCloudScanData(s){
       // [neutered July 2026] เดิม: audit เก่ากว่า R01 baseline ห้าม adopt (กัน resurrect หลังอัพ R01) — ปัจจุบัน audit อยู่รอดข้าม baseline, guard นี้ inert (คืน false เสมอ)
       if(_isStaleAuditVsBaseline(cloudItem))continue;
       const local=state.scanData.get(sku);
+      // WH Supervisor: รับผลรีเช็คจาก PDA แม้เครื่องนี้จะมี Audit เดิมอยู่แล้ว
+      // ใช้ !== undefined เพื่อรองรับการรีเช็คได้ค่า 0 และกัน local Audit ที่ยังไม่มี recheckQty บังข้อมูล Cloud
+      const cloudHasWhRecheck=currentBranch==='WH'&&currentRole==='supervisor'&&
+        cloudItem.status==='audit'&&cloudItem.recheckQty!==undefined&&!cloudItem.auditor;
+      if(cloudHasWhRecheck&&!local?.auditor){
+        state.scanData.set(sku,{...(local||{}),...cloudItem,
+          recheckQty:cloudItem.recheckQty,
+          recheckBy:cloudItem.recheckBy||'',
+          recheckAt:cloudItem.recheckAt||''
+        });
+        continue;
+      }
       // Audit จาก cloud เป็น worklist ล่าสุดของเภสัช → ให้ชนะ local pass/stock_adj เก่าที่ค้างจาก session ก่อน
       if(cloudItem.status==='audit'&&(!local||local.status!=='audit')){
         state.scanData.set(sku,{scannedBy:'',auditor:'',retries:0,scans:[],...cloudItem});
