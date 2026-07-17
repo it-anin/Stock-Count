@@ -1131,6 +1131,8 @@ let _pinVerified = false;
 let _pmUnsubscribe = null;
 let _pmListenerReady = false;
 let _scanSessionUnsubscribe = null;
+let _whRecheckUnsubscribe = null;
+let _whRecheckInboxData = {};
 let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
@@ -1144,6 +1146,7 @@ function getSessionId(){return currentBranch;}
 function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
 function getProductMasterMetaRef(){return _db.collection('stock_sessions').doc('global_pm');}
 function getR05Ref(){return _db.collection('stock_sessions').doc('global_r05');}
+function getWhRecheckInboxRef(){return _db.collection('stock_sessions').doc('WH_rechecks');}
 const BRANCH_COLORS={SRC:'#0072c6',KKL:'#0072c6',SSS:'#0072c6',WH:'#d97706'};
 const BRANCH_PINS={SRC:'1234',KKL:'4567',SSS:'9999',WH:'0000'};
 const EMPLOYEE_PROFILES={
@@ -1220,6 +1223,67 @@ function stopScanSessionListener(){
   if(_scanSessionUnsubscribe){_scanSessionUnsubscribe();_scanSessionUnsubscribe=null;}
   clearTimeout(_snapshotMergeTimer);_snapshotMergeTimer=null;
 }
+function stopWhRecheckInboxListener(){
+  if(_whRecheckUnsubscribe){_whRecheckUnsubscribe();_whRecheckUnsubscribe=null;}
+  _whRecheckInboxData={};
+}
+function _applyWhRecheckInboxToState(){
+  if(currentBranch!=='WH'||currentRole!=='supervisor')return false;
+  let changed=false;
+  for(const[sku,item]of Object.entries(_whRecheckInboxData||{})){
+    if(!item||item.recheckQty==null)continue;
+    if((item.countResetAt||'')!==(_countResetAt||''))continue;
+    const sd=state.scanData.get(sku);
+    if(!sd||sd.status!=='audit'||sd.auditor)continue;
+    if(sd.recheckAt&&item.recheckAt&&String(item.recheckAt)<String(sd.recheckAt))continue;
+    if(sd.recheckQty===item.recheckQty&&sd.recheckBy===(item.recheckBy||'')&&sd.recheckAt===(item.recheckAt||''))continue;
+    sd.recheckQty=Number(item.recheckQty);
+    sd.recheckBy=item.recheckBy||'';
+    sd.recheckAt=item.recheckAt||'';
+    changed=true;
+  }
+  return changed;
+}
+function startWhRecheckInboxListener(){
+  stopWhRecheckInboxListener();
+  if(!_db||_adminMode||currentBranch!=='WH')return;
+  if(currentRole==='warehouse'){_backfillWhRecheckInbox();return;}
+  if(currentRole!=='supervisor')return;
+  _whRecheckUnsubscribe=getWhRecheckInboxRef().onSnapshot(doc=>{
+    _whRecheckInboxData=doc.exists?(doc.data()||{}):{};
+    if(!_applyWhRecheckInboxToState())return;
+    rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();
+    updateStats();renderTable();updatePharmacistAuditConfirmBtn();
+  },e=>console.warn('[WH recheck inbox listener]',e.message));
+}
+function _writeWhRecheckInboxItem(sku){
+  if(_adminMode||!_db||currentBranch!=='WH'||currentRole!=='warehouse')return;
+  const sd=state.scanData.get(sku);
+  if(!sd||sd.status!=='audit'||sd.recheckQty==null)return;
+  const item={
+    recheckQty:Number(sd.recheckQty),recheckBy:sd.recheckBy||currentUser||'',
+    recheckAt:sd.recheckAt||new Date().toISOString(),countResetAt:_countResetAt||''
+  };
+  getWhRecheckInboxRef().set({[sku]:item},{merge:true})
+    .catch(e=>{document.getElementById('dbStatus').textContent='Sync Error';console.warn('[WH recheck inbox write]',e.message);});
+}
+function _backfillWhRecheckInbox(){
+  if(_adminMode||!_db||currentBranch!=='WH'||currentRole!=='warehouse')return;
+  const payload={};
+  for(const[sku,sd]of state.scanData.entries()){
+    if(!sd||sd.status!=='audit'||sd.recheckQty==null||(sd.recheckBy||'')!==currentUser)continue;
+    payload[sku]={recheckQty:Number(sd.recheckQty),recheckBy:currentUser,
+      recheckAt:sd.recheckAt||new Date().toISOString(),countResetAt:_countResetAt||''};
+  }
+  if(!Object.keys(payload).length)return;
+  getWhRecheckInboxRef().set(payload,{merge:true})
+    .catch(e=>console.warn('[WH recheck inbox backfill]',e.message));
+}
+function _removeWhRecheckInboxItems(skus){
+  if(!_db||currentBranch!=='WH'||!skus||!skus.length)return;
+  const patch={};for(const sku of skus)patch[sku]=firebase.firestore.FieldValue.delete();
+  getWhRecheckInboxRef().set(patch,{merge:true}).catch(e=>console.warn('[WH recheck inbox remove]',e.message));
+}
 function startScanSessionListener(){
   if(!_db||!currentBranch||_adminMode)return;
   stopScanSessionListener();
@@ -1236,6 +1300,7 @@ function startScanSessionListener(){
           await _applyR01BaselineUpdate(s.r01BaselineAt);
         }
         _applyCloudScanData(s);
+        _applyWhRecheckInboxToState();
         updatePharmacistAuditConfirmBtn();
         if(!_listCleared){
           rebuildScanListMap(true);
@@ -1370,6 +1435,7 @@ function selectEmployee(name,role){
     updateAdjustDocPanel();
     updateScanInputMode();
     applyAuditTerminology();
+    startWhRecheckInboxListener();
     if(_employeeCallback)_employeeCallback();
     _employeeCallback=null;
   });
@@ -1453,6 +1519,7 @@ async function initAfterLogin(){
     startProductMasterListener();
     startR05Listener();
     startScanSessionListener();
+    startWhRecheckInboxListener();
     // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
     rebuildScanListMap(currentRole==='pharmacist');
     renderScanList();updateStats();renderTable();
@@ -1515,6 +1582,7 @@ function requestBranchChange(){
 async function selectBranch(branch){
   stopProductMasterListener();
   stopScanSessionListener();
+  stopWhRecheckInboxListener();
   stopLocationListener();
   stopR05Listener();
   if(_pinVerified){
@@ -1951,7 +2019,7 @@ async function startNewCount(){
   // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
   // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
   // ล้าง _r01 + _adjlot (LOT/ราคาที่บันทึก sync ไว้) — เริ่มนับใหม่ = LOT รอบเก่าใช้ไม่ได้แล้ว. _r05 ไม่ลบ
-  if(_db&&currentBranch&&!_adminMode){try{await Promise.all([_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()]);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot:',e.message);}}
+  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(currentBranch==='WH')deletes.push(getWhRecheckInboxRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/rechecks:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
@@ -1967,7 +2035,7 @@ async function clearAllData() {
   resetScanRuntimeState();
   localStorage.removeItem(lsKey());
   // _r05 ไม่ลบ cloud — global doc ใช้ร่วมทุกสาขาแล้ว (เหมือน global_pm ที่ก็ไม่ลบตรงนี้), ล้างแค่ local เดี๋ยว resync กลับตอน reload
-  if(_db&&currentBranch){const id=getSessionId();try{await Promise.all([_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()]);}catch(e){console.warn('Firestore delete:',e.message);}}
+  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(currentBranch==='WH')deletes.push(getWhRecheckInboxRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r05Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
@@ -2678,6 +2746,7 @@ function handleBarcode(parsed,immediateRender=true){
     scanListMap.delete(sku);scanListMap.set(sku,e);
     _pendingPatches.add(sku);
     beepSuccess();
+    _writeWhRecheckInboxItem(sku);
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}
     return;
   }
@@ -3074,6 +3143,7 @@ function updateRecheckInlineQty(sku,v){
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
   sd.recheckQty=q;sd.recheckBy=currentUser;sd.recheckAt=new Date().toISOString();
   if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
+  _writeWhRecheckInboxItem(sku);
   saveSession();
   clearTimeout(_firestoreSyncTimer);
   _firestoreSyncTimer=setTimeout(syncToFirestore,500);
@@ -3130,7 +3200,8 @@ function removeScanItem(sku){
 // warehouse: รีเซ็ตจำนวนรีเช็คของ audit item กลับเป็นว่าง → สแกนนับใหม่ (status คงเป็น audit)
 function resetRecheckItem(sku){
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
-  delete sd.recheckQty;delete sd.recheckBy;
+  delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;
+  _removeWhRecheckInboxItems([sku]);
   const e=scanListMap.get(sku);if(e)e.totalQty=0;
   // ยกเลิก debounce + ล้าง scanInput กัน barcode ที่ PDA เพิ่งยิงก่อนกด ✕ ถูก auto-submit หลังรีเซ็ต
   clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;_lastKeystrokeTime=0;_pdaMode=false;
@@ -3475,13 +3546,14 @@ function toggleAdmin(){
     _adminMode=false;
     applyAdminUI();
     toast('ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','info');
-    syncToFirestore(true).then(()=>startScanSessionListener());
+    syncToFirestore(true).then(()=>{startScanSessionListener();startWhRecheckInboxListener();});
     return;
   }
   const pin=prompt('🔒 กรุณาใส่รหัส PIN เพื่อเข้าโหมด Administrator:');
   if(pin===null)return;
   if(pin!==ADMIN_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
   _adminMode=true;
+  stopWhRecheckInboxListener();
   applyAdminUI();
   toast('เข้าโหมด Administrator (ไม่ sync Firestore)','success');
 }
@@ -4035,6 +4107,7 @@ function confirmAllRecheckSupervisor(){
   if(nPass>0)parts.push(`✅ ผ่าน ${nPass} รายการ`);
   if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj} รายการ`);
   if(parts.length)toast(parts.join(', '),nAdj>0?'warn':'success');
+  _removeWhRecheckInboxItems(items);
   invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();
   rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
 }
@@ -4062,6 +4135,7 @@ function confirmRecheckByStaff(staffName){
   if(nPass>0)parts.push(`✅ ผ่าน ${nPass}`);
   if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj}`);
   toast(parts.join(', '),nAdj>0?'warn':'success');
+  _removeWhRecheckInboxItems(items);
   invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();
   rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
 }
