@@ -3658,7 +3658,7 @@ async function syncToFirestore(overwrite=false){
             // WH recheck: เครื่องที่ "ไม่ใช่เจ้าของรีเช็ค" ห้ามทับ recheck ของคนอื่นบน cloud
             // cloud มี recheck รอ verify (audit + recheckQty + ยังไม่มี auditor) + local ไม่มี recheckQty + เราไม่ใช่ recheckBy คนนั้น
             // → กัน recheckBy สลับ/หายข้ามเครื่อง (PDA ที่ถือ audit ของเพื่อนแบบ recheckBy ว่าง sync ทับ). เจ้าของรีเซ็ต/สแกนเองยังผ่าน (recheckBy===currentUser หรือ recheckQty มีค่า)
-            if(mergedSd[k]?.status==='audit'&&mergedSd[k].recheckQty!==undefined&&!mergedSd[k].auditor&&localSd[k].recheckQty===undefined&&mergedSd[k].recheckBy!==currentUser)continue;
+            if(mergedSd[k]?.status==='audit'&&mergedSd[k].recheckQty!=null&&!mergedSd[k].auditor&&localSd[k].recheckQty==null&&mergedSd[k].recheckBy!==currentUser)continue;
             mergedSd[k]=localSd[k];
           }
         }
@@ -3737,7 +3737,7 @@ function _applyCloudScanData(s){
       // WH Supervisor: รับผลรีเช็คจาก PDA แม้เครื่องนี้จะมี Audit เดิมอยู่แล้ว
       // ใช้ !== undefined เพื่อรองรับการรีเช็คได้ค่า 0 และกัน local Audit ที่ยังไม่มี recheckQty บังข้อมูล Cloud
       const cloudHasWhRecheck=currentBranch==='WH'&&currentRole==='supervisor'&&
-        cloudItem.status==='audit'&&cloudItem.recheckQty!==undefined&&!cloudItem.auditor;
+        cloudItem.status==='audit'&&cloudItem.recheckQty!=null&&!cloudItem.auditor;
       if(cloudHasWhRecheck&&!local?.auditor){
         state.scanData.set(sku,{...(local||{}),...cloudItem,
           recheckQty:cloudItem.recheckQty,
@@ -4014,7 +4014,7 @@ function confirmRecheckBtn(){
 function confirmAllRecheckSupervisor(){
   const items=[];
   for(const[sku,sd]of state.scanData.entries()){
-    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor)items.push(sku);
+    if(sd.status==='audit'&&sd.recheckQty!=null&&!sd.auditor)items.push(sku);
   }
   if(!items.length){toast('ยังไม่มีรายการที่รีเช็ค (รอ warehouse สแกนบน PDA)','warn');return;}
   let nPass=0,nAdj=0;
@@ -4041,7 +4041,7 @@ function confirmAllRecheckSupervisor(){
 function confirmRecheckByStaff(staffName){
   const items=[];
   for(const[sku,sd]of state.scanData.entries()){
-    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor&&(sd.recheckBy||'(ไม่ระบุ)')===staffName)items.push(sku);
+    if(sd.status==='audit'&&sd.recheckQty!=null&&!sd.auditor&&(sd.recheckBy||'(ไม่ระบุ)')===staffName)items.push(sku);
   }
   if(!items.length){toast(`ไม่มีรายการรีเช็คของ ${staffName} (อาจยืนยันไปแล้ว)`,'warn');return;}
   let nPass=0,nAdj=0;
@@ -4071,7 +4071,7 @@ function renderSupervisorRecheckButtons(){
   if(currentRole!=='supervisor'){box.style.display='none';box.innerHTML='';return;}
   const counts=new Map();
   for(const[,sd]of state.scanData.entries()){
-    if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor){const who=sd.recheckBy||'(ไม่ระบุ)';counts.set(who,(counts.get(who)||0)+1);}
+    if(sd.status==='audit'&&sd.recheckQty!=null&&!sd.auditor){const who=sd.recheckBy||'(ไม่ระบุ)';counts.set(who,(counts.get(who)||0)+1);}
   }
   // แสดงพนักงานคลังครบทุกคน + ชื่ออื่นที่มีงาน; disable ถ้า count=0
   const names=[...(EMPLOYEE_PROFILES[currentBranch]?.warehouse||[])];
@@ -4243,7 +4243,7 @@ function updatePharmacistAuditConfirmBtn(){
   if(!el)return;
   if(currentRole==='supervisor'){
     // นับ audit item ที่ warehouse รีเช็คมาแล้ว (มี recheckQty, ยังไม่ยืนยัน) — sync มาจาก PDA
-    let n=0;for(const[,sd]of state.scanData.entries()){if(sd.status==='audit'&&sd.recheckQty!==undefined&&!sd.auditor)n++;}
+    let n=0;for(const[,sd]of state.scanData.entries()){if(sd.status==='audit'&&sd.recheckQty!=null&&!sd.auditor)n++;}
     el.textContent=n;
   }else{
     el.textContent=getPharmacistAuditPendingMap().size;
