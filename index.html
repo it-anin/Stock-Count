@@ -1133,6 +1133,11 @@ let _pmListenerReady = false;
 let _scanSessionUnsubscribe = null;
 let _whCountUnsubscribe = null;
 let _whCountInboxData = {};
+let _whCountConfirmationUnsubscribe = null;
+let _whCountConfirmationData = {};
+let _whCountConfirming = false;
+let _whR16TimelineReady = false;
+let _whR16103TimelineReady = false;
 let _whRecheckUnsubscribe = null;
 let _whRecheckInboxData = {};
 let _whRecheckConfirmationUnsubscribe = null;
@@ -1152,8 +1157,61 @@ function lsKey(){return`stockCountSession_${currentBranch||'default'}`;}
 function getProductMasterMetaRef(){return _db.collection('stock_sessions').doc('global_pm');}
 function getR05Ref(){return _db.collection('stock_sessions').doc('global_r05');}
 function getWhCountInboxRef(){return _db.collection('stock_sessions').doc('WH_counts');}
+function getWhCountConfirmationRef(){return _db.collection('stock_sessions').doc('WH_count_confirmations');}
 function getWhRecheckInboxRef(){return _db.collection('stock_sessions').doc('WH_rechecks');}
 function getWhRecheckConfirmationRef(){return _db.collection('stock_sessions').doc('WH_recheck_confirmations');}
+const WH_R16_CACHE_DB='stock-count-cache';
+const WH_R16_CACHE_STORE='r16Snapshots';
+function _openWhR16Cache(){
+  return new Promise((resolve,reject)=>{
+    if(!window.indexedDB){reject(new Error('IndexedDB unavailable'));return;}
+    const req=indexedDB.open(WH_R16_CACHE_DB,1);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(WH_R16_CACHE_STORE))db.createObjectStore(WH_R16_CACHE_STORE,{keyPath:'branch'});};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('IndexedDB open failed'));
+  });
+}
+function _mapToPlainObject(map){const out={};for(const[k,v]of map.entries())out[k]=v;return out;}
+function _plainObjectToMap(obj,map){map.clear();if(obj)for(const k in obj)map.set(k,obj[k]);}
+async function _saveWhR16TimelineSnapshot(){
+  if(currentBranch!=='WH')return;
+  const db=await _openWhR16Cache();
+  const record={branch:'WH',countResetAt:_countResetAt||'',r16DetailVersion:state.r16DetailVersion||'',
+    r16_103DetailVersion:state.r16_103DetailVersion||'',r16Ready:!!_whR16TimelineReady,
+    r16_103Ready:!!_whR16103TimelineReady,r16RawMap:_mapToPlainObject(state.r16RawMap),
+    r16InboundRawMap:_mapToPlainObject(state.r16InboundRawMap),r16_103RawMap:_mapToPlainObject(state.r16_103RawMap)};
+  await new Promise((resolve,reject)=>{const tx=db.transaction(WH_R16_CACHE_STORE,'readwrite');tx.objectStore(WH_R16_CACHE_STORE).put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('IndexedDB write failed'));tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'));});
+  db.close();
+}
+async function _restoreWhR16TimelineSnapshot(){
+  _whR16TimelineReady=false;_whR16103TimelineReady=false;
+  state.r16RawMap.clear();state.r16InboundRawMap.clear();state.r16_103RawMap.clear();
+  if(currentBranch!=='WH')return;
+  try{
+    const db=await _openWhR16Cache();
+    const record=await new Promise((resolve,reject)=>{const tx=db.transaction(WH_R16_CACHE_STORE,'readonly');const req=tx.objectStore(WH_R16_CACHE_STORE).get('WH');req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error||new Error('IndexedDB read failed'));});
+    db.close();
+    if(!record||(record.countResetAt||'')!==(_countResetAt||''))return;
+    if(state.r16Loaded&&record.r16Ready&&(record.r16DetailVersion||'')===(state.r16DetailVersion||'')){
+      _plainObjectToMap(record.r16RawMap,state.r16RawMap);
+      _plainObjectToMap(record.r16InboundRawMap,state.r16InboundRawMap);
+      _whR16TimelineReady=true;
+    }
+    if(state.r16_103Loaded&&record.r16_103Ready&&(record.r16_103DetailVersion||'')===(state.r16_103DetailVersion||'')){
+      _plainObjectToMap(record.r16_103RawMap,state.r16_103RawMap);
+      _whR16103TimelineReady=true;
+    }
+  }catch(e){console.warn('[WH R16 timeline restore]',e.message);}
+}
+async function _clearWhR16TimelineSnapshot(){
+  _whR16TimelineReady=false;_whR16103TimelineReady=false;
+  try{const db=await _openWhR16Cache();await new Promise((resolve,reject)=>{const tx=db.transaction(WH_R16_CACHE_STORE,'readwrite');tx.objectStore(WH_R16_CACHE_STORE).delete('WH');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('IndexedDB delete failed'));});db.close();}catch(e){console.warn('[WH R16 timeline clear]',e.message);}
+}
+function _ensureWhR16TimelineReady(){
+  if(currentBranch!=='WH')return true;
+  if(!_whR16TimelineReady){toast('ข้อมูลรายละเอียด R16.104 ไม่อยู่ในเครื่องนี้ — กรุณาอัปโหลด R16.104 ใหม่ก่อน Confirm','warn',5000);return false;}
+  if(state.r16_103Loaded&&!_whR16103TimelineReady){toast('ข้อมูลรายละเอียด R16.103 ไม่อยู่ในเครื่องนี้ — กรุณาอัปโหลด R16.103 ใหม่ก่อน Confirm','warn',5000);return false;}
+  return true;
+}
 const BRANCH_COLORS={SRC:'#0072c6',KKL:'#0072c6',SSS:'#0072c6',WH:'#d97706'};
 const BRANCH_PINS={SRC:'1234',KKL:'4567',SSS:'9999',WH:'0000'};
 const EMPLOYEE_PROFILES={
@@ -1234,6 +1292,71 @@ function stopWhCountInboxListener(){
   if(_whCountUnsubscribe){_whCountUnsubscribe();_whCountUnsubscribe=null;}
   _whCountInboxData={};
 }
+function stopWhCountConfirmationListener(){
+  if(_whCountConfirmationUnsubscribe){_whCountConfirmationUnsubscribe();_whCountConfirmationUnsubscribe=null;}
+  _whCountConfirmationData={};
+}
+function _getWhCountConfirmation(sku){
+  const marker=_whCountConfirmationData?.[sku];
+  if(!marker||!marker.confirmedAt)return null;
+  if((marker.countResetAt||'')!==(_countResetAt||''))return null;
+  return marker;
+}
+function _applyWhCountConfirmationsToState(){
+  if(currentBranch!=='WH'||(currentRole!=='supervisor'&&currentRole!=='warehouse'))return [];
+  const changed=[];
+  for(const[sku,marker]of Object.entries(_whCountConfirmationData||{})){
+    if(!marker||!marker.confirmedAt||!['pass','audit','stock_adjustment'].includes(marker.status))continue;
+    if((marker.countResetAt||'')!==(_countResetAt||''))continue;
+    let sd=state.scanData.get(sku);
+    if(!sd&&state.skuMap.has(sku)){
+      sd={countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:'',scans:[]};
+      state.scanData.set(sku,sd);
+    }
+    if(!sd||sd.auditor||sd.recheckConfirmedAt)continue;
+    if(sd.countConfirmedAt&&String(sd.countConfirmedAt)>String(marker.confirmedAt))continue;
+    const same=sd.countConfirmedAt===marker.confirmedAt&&sd.status===marker.status&&
+      Number(sd.countedQty||0)===Number(marker.countedQty||0)&&sd.scannedBy===(marker.scannedBy||'');
+    if(same)continue;
+    const isNewConfirmation=sd.countConfirmedAt!==marker.confirmedAt;
+    sd.countedQty=Number(marker.countedQty||0);
+    sd.status=marker.status;
+    sd.auditStatus=marker.auditStatus||(marker.status==='pass'?'approved':marker.status==='audit'?'pending':'stock_adjustment');
+    sd.scannedBy=marker.scannedBy||'';
+    sd.auditor='';
+    sd.timestamp=marker.timestamp||sd.timestamp||'';
+    sd.firstScanAt=marker.firstScanAt||sd.firstScanAt||sd.timestamp;
+    sd.barcode=marker.barcode||sd.barcode||'';
+    sd.location=marker.location||sd.location||'';
+    sd.countAt=marker.countAt||sd.countAt||'';
+    sd.soldQty=Number(marker.soldQty||0);
+    sd.inboundQty=Number(marker.inboundQty||0);
+    sd.r16103Qty=Number(marker.r16103Qty||0);
+    sd.effectiveQty=Number(marker.effectiveQty||0);
+    sd.initialStatus=marker.status;
+    sd.countConfirmedAt=marker.confirmedAt;
+    sd.countConfirmedBy=marker.confirmedBy||'';
+    if(isNewConfirmation&&marker.status==='audit'){
+      delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;
+    }
+    changed.push(sku);
+  }
+  return changed;
+}
+function _renderWhCountConfirmationChanges(changed){
+  if(!changed.length)return;
+  _removeWhCountInboxItems(changed);
+  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();
+  updateStats();renderTable();updatePharmacistAuditConfirmBtn();updateConfirmBtn();
+}
+function startWhCountConfirmationListener(){
+  stopWhCountConfirmationListener();
+  if(!_db||_adminMode||currentBranch!=='WH'||(currentRole!=='supervisor'&&currentRole!=='warehouse'))return;
+  _whCountConfirmationUnsubscribe=getWhCountConfirmationRef().onSnapshot(doc=>{
+    _whCountConfirmationData=doc.exists?(doc.data()||{}):{};
+    _renderWhCountConfirmationChanges(_applyWhCountConfirmationsToState());
+  },e=>console.warn('[WH count confirmation listener]',e.message));
+}
 function _applyWhCountInboxToState(){
   if(currentBranch!=='WH'||currentRole!=='supervisor')return false;
   const _d=new Date();
@@ -1242,6 +1365,7 @@ function _applyWhCountInboxToState(){
   for(const[sku,item]of Object.entries(_whCountInboxData||{})){
     if(!item||item.countedQty==null)continue;
     if((item.countResetAt||'')!==(_countResetAt||''))continue;
+    if(_getWhCountConfirmation(sku))continue;
     if(item.timestamp&&item.timestamp.substring(0,10)<today)continue;
     const qty=Number(item.countedQty);if(!Number.isFinite(qty)||qty<0)continue;
     const sd=state.scanData.get(sku);
@@ -1267,6 +1391,8 @@ function startWhCountInboxListener(){
   if(currentRole!=='supervisor')return;
   _whCountUnsubscribe=getWhCountInboxRef().onSnapshot(doc=>{
     _whCountInboxData=doc.exists?(doc.data()||{}):{};
+    const alreadyConfirmed=Object.keys(_whCountInboxData).filter(sku=>_getWhCountConfirmation(sku));
+    if(alreadyConfirmed.length)_removeWhCountInboxItems(alreadyConfirmed);
     if(!_applyWhCountInboxToState())return;
     if(!_listCleared){rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();}
     updateStats();renderTable();updatePharmacistAuditConfirmBtn();updateConfirmBtn();
@@ -1274,6 +1400,7 @@ function startWhCountInboxListener(){
 }
 function _writeWhCountInboxItem(sku){
   if(_adminMode||!_db||currentBranch!=='WH'||currentRole!=='warehouse')return;
+  if(_getWhCountConfirmation(sku))return;
   const sd=state.scanData.get(sku);
   if(!sd||sd.status!=='scanning'||sd.countedQty==null)return;
   sd.countAt=new Date().toISOString();
@@ -1291,6 +1418,7 @@ function _backfillWhCountInbox(){
   const payload={};
   for(const[sku,sd]of state.scanData.entries()){
     if(!sd||sd.status!=='scanning'||sd.countedQty==null||(sd.scannedBy||'')!==currentUser)continue;
+    if(_getWhCountConfirmation(sku))continue;
     if(!sd.countAt)sd.countAt=new Date().toISOString();
     payload[sku]={countedQty:Number(sd.countedQty),scannedBy:currentUser,
       timestamp:sd.timestamp||'',firstScanAt:sd.firstScanAt||sd.timestamp||'',
@@ -1440,6 +1568,7 @@ function startScanSessionListener(){
           await _applyR01BaselineUpdate(s.r01BaselineAt);
         }
         _applyCloudScanData(s);
+        _renderWhCountConfirmationChanges(_applyWhCountConfirmationsToState());
         _applyWhCountInboxToState();
         _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());
         _applyWhRecheckInboxToState();
@@ -1577,6 +1706,7 @@ function selectEmployee(name,role){
     updateAdjustDocPanel();
     updateScanInputMode();
     applyAuditTerminology();
+    startWhCountConfirmationListener();
     startWhCountInboxListener();
     startWhRecheckConfirmationListener();
     startWhRecheckInboxListener();
@@ -1658,12 +1788,14 @@ async function initAfterLogin(){
     if(_isPharmacyBranch())scrubStaleLocalAudits();
     updateBranchDisplay();
     await restoreFromFirestore();
+    if(currentBranch==='WH')await _restoreWhR16TimelineSnapshot();
     // รีเซ็ตของค้างข้ามวัน → ดันขึ้น cloud เป็น authoritative ก่อนเริ่ม listener (กัน listener ดึงของค้างกลับมา resurrect)
     const _staleReset=resetStaleScanningItems();
     if(_staleReset>0){saveSession();await syncToFirestore(true);toast(`♻️ รีเซ็ตของค้างข้ามวัน ${_staleReset} รายการ — กรุณานับใหม่`,'info',4000);}
     startProductMasterListener();
     startR05Listener();
     startScanSessionListener();
+    startWhCountConfirmationListener();
     startWhCountInboxListener();
     startWhRecheckConfirmationListener();
     startWhRecheckInboxListener();
@@ -1729,6 +1861,7 @@ function requestBranchChange(){
 async function selectBranch(branch){
   stopProductMasterListener();
   stopScanSessionListener();
+  stopWhCountConfirmationListener();
   stopWhCountInboxListener();
   stopWhRecheckConfirmationListener();
   stopWhRecheckInboxListener();
@@ -1757,10 +1890,11 @@ async function selectBranch(branch){
   state.r01Data=[];state.r05Data=[];
   state.skuMap.clear();state.barcodeMap.clear();state.skuDirectMap.clear();
   state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
+  state.r16DetailVersion='';state.r16_103DetailVersion='';_whR16TimelineReady=false;_whR16103TimelineReady=false;
   ['ProductMaster','R01','R05','R16'].forEach(k=>{document.getElementById('badge'+k).textContent='ยังไม่โหลด';});document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
   _setR01Ts('');_setR16Ts('');_setPmTs('');
   rebuildMaps();renderScanList();updateStats();renderTable();updateConfirmBtn();
-  loadSession();await restoreFromFirestore(true);
+  loadSession();await restoreFromFirestore(true);if(currentBranch==='WH')await _restoreWhR16TimelineSnapshot();
   startProductMasterListener();
   startR05Listener();
   showEmployeeSelector();  // branch switch: no initAfterLogin callback (data already loaded)
@@ -1770,8 +1904,8 @@ async function selectBranch(branch){
 const state = {
   productMasterData:[], productMasterMap:new Map(), productMasterUploadedAt:'',
   r01Data:[], r01UploadedAt:'', r05Data:[],
-  r16Data:[], r16SalesMap:new Map(), r16RawMap:new Map(), r16InboundMap:new Map(), r16InboundRawMap:new Map(), r16Loaded:false, r16DateMismatch:false, r16UploadedAt:'',
-  r16_103Map:new Map(), r16_103RawMap:new Map(), r16_103Loaded:false, r16_103UploadedAt:'',
+  r16Data:[], r16SalesMap:new Map(), r16RawMap:new Map(), r16InboundMap:new Map(), r16InboundRawMap:new Map(), r16Loaded:false, r16DateMismatch:false, r16UploadedAt:'',r16DetailVersion:'',
+  r16_103Map:new Map(), r16_103RawMap:new Map(), r16_103Loaded:false, r16_103UploadedAt:'',r16_103DetailVersion:'',
   skuMap:new Map(), barcodeMap:new Map(), skuDirectMap:new Map(), scanData:new Map(), unknownScans:[], locationMap:new Map(), zoneStaffMap:new Map(),
   currentFilter:'all',
 };
@@ -1932,7 +2066,12 @@ function loadR16(event) {
     document.getElementById('badgeR16').textContent='Ready';
     document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
     const _now=new Date();
+    state.r16DetailVersion=_now.toISOString();
     _setR16Ts(`${String(_now.getHours()).padStart(2,'0')}:${String(_now.getMinutes()).padStart(2,'0')} น. ${String(_now.getDate()).padStart(2,'0')}/${String(_now.getMonth()+1).padStart(2,'0')}/${_now.getFullYear()}`);
+    if(currentBranch==='WH'){
+      _whR16TimelineReady=true;
+      _saveWhR16TimelineSnapshot().catch(e=>{_whR16TimelineReady=false;console.warn('[WH R16 timeline save]',e.message);toast('บันทึกรายละเอียด R16 ในเครื่องไม่สำเร็จ — กรุณาอย่า reload ก่อน Confirm','warn',5000);});
+    }
     syncR16MetaToFirestore(); // เขียนวันที่อัพ R16 ลง master doc (_r01) ทันที — ให้ทุกเครื่องอ่านวันที่เดียวกัน เหมือน R01
     updateConfirmBtn();
     const totalSold=[...state.r16SalesMap.values()].reduce((a,b)=>a+b,0);
@@ -2023,9 +2162,15 @@ function loadR16_103(event){
     state.r16_103Loaded=true;
     document.getElementById('badgeR16_103').textContent='Ready';
     const _now=new Date();
+    state.r16_103DetailVersion=_now.toISOString();
     const ts=`${String(_now.getHours()).padStart(2,'0')}:${String(_now.getMinutes()).padStart(2,'0')} น. ${String(_now.getDate()).padStart(2,'0')}/${String(_now.getMonth()+1).padStart(2,'0')}/${_now.getFullYear()}`;
     state.r16_103UploadedAt=ts;
     const tsEl=document.getElementById('r16_103Timestamp');if(tsEl){tsEl.textContent=ts;tsEl.style.display='block';}
+    if(currentBranch==='WH'){
+      _whR16103TimelineReady=true;
+      _saveWhR16TimelineSnapshot().catch(e=>{_whR16103TimelineReady=false;console.warn('[WH R16.103 timeline save]',e.message);toast('บันทึกรายละเอียด R16.103 ในเครื่องไม่สำเร็จ — กรุณาอย่า reload ก่อน Confirm','warn',5000);});
+    }
+    syncR16MetaToFirestore();
     const total103=[...state.r16_103Map.values()].reduce((a,b)=>a+b,0);
     if(matched>0){
       toast(`R16.103: จับคู่ได้ ${matched} SKU / ${total103} ชิ้น (รับเข้ายังไม่ขึ้นชั้น)`,'success');
@@ -2060,7 +2205,7 @@ function _isPreBaselineItem(sd){
 function _clearR16ForNewBaseline(){
   state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();
   state.r16InboundMap.clear();state.r16InboundRawMap.clear();
-  state.r16Loaded=false;state.r16DateMismatch=false;
+  state.r16Loaded=false;state.r16DateMismatch=false;state.r16DetailVersion='';
   const _b16=document.getElementById('badgeR16');
   if(_b16){_b16.textContent='ยังไม่โหลด';_b16.parentElement.classList.remove('upload-file-badge-warn');}
   _setR16Ts('');
@@ -2152,6 +2297,8 @@ async function startNewCount(){
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
+  state.r16DetailVersion='';state.r16_103DetailVersion='';
+  if(currentBranch==='WH'){_whCountConfirmationData={};await _clearWhR16TimelineSnapshot();}
   _lotMap.clear();_lotSelected.clear();_priceMap.clear(); // ล้าง LOT/ราคา ที่แนบไว้ในป็อปอัพปรับปรุงลดสินค้า (local)
   document.getElementById('badgeR01').textContent='ยังไม่โหลด';
   document.getElementById('badgeR16').textContent='ยังไม่โหลด';document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
@@ -2168,7 +2315,7 @@ async function startNewCount(){
   // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
   // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
   // ล้าง _r01 + _adjlot (LOT/ราคาที่บันทึก sync ไว้) — เริ่มนับใหม่ = LOT รอบเก่าใช้ไม่ได้แล้ว. _r05 ไม่ลบ
-  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/WH inboxes:',e.message);}}
+  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/WH inboxes:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
@@ -2184,10 +2331,12 @@ async function clearAllData() {
   resetScanRuntimeState();
   localStorage.removeItem(lsKey());
   // _r05 ไม่ลบ cloud — global doc ใช้ร่วมทุกสาขาแล้ว (เหมือน global_pm ที่ก็ไม่ลบตรงนี้), ล้างแค่ local เดี๋ยว resync กลับตอน reload
-  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
+  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r05Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
+  state.r16DetailVersion='';state.r16_103DetailVersion='';
+  if(currentBranch==='WH'){_whCountConfirmationData={};await _clearWhR16TimelineSnapshot();}
   _countResetAt='';
   ['R01','R05','R16'].forEach(k=>{document.getElementById('badge'+k).textContent='ยังไม่โหลด';});document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
   const _b103c=document.getElementById('badgeR16_103');if(_b103c)_b103c.textContent='ยังไม่โหลด';
@@ -2210,7 +2359,7 @@ function saveSession() {
     const r16Obj={};for(const[k,v]of state.r16SalesMap.entries())r16Obj[k]=v;
     const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
     const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
-    localStorage.setItem(lsKey(),JSON.stringify({r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj}));
+    localStorage.setItem(lsKey(),JSON.stringify({r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16DetailVersion:state.r16DetailVersion||'',r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,r16_103DetailVersion:state.r16_103DetailVersion||'',countResetAt:_countResetAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj}));
   } catch(e){toast('แบ็คอัพล้มเหลว','warn');}
   if(!_adminMode){
     clearTimeout(_firestoreSyncTimer);
@@ -2225,10 +2374,12 @@ function loadSession() {
     if(s.r01UploadedAt)_setR01Ts(s.r01UploadedAt);
     if(s.r16Loaded){state.r16Loaded=true;document.getElementById('badgeR16').textContent='Ready';}
     if(s.r16UploadedAt)_setR16Ts(s.r16UploadedAt);
+    state.r16DetailVersion=s.r16DetailVersion||'';
     if(s.r16SalesMap){state.r16SalesMap.clear();for(const k in s.r16SalesMap)state.r16SalesMap.set(k,s.r16SalesMap[k]);}
     if(s.r16InboundMap){state.r16InboundMap.clear();for(const k in s.r16InboundMap)state.r16InboundMap.set(k,s.r16InboundMap[k]);}
     if(s.r16_103Loaded){state.r16_103Loaded=true;const b=document.getElementById('badgeR16_103');if(b)b.textContent='Ready';}
     if(s.r16_103UploadedAt){state.r16_103UploadedAt=s.r16_103UploadedAt;const tsEl=document.getElementById('r16_103Timestamp');if(tsEl){tsEl.textContent=s.r16_103UploadedAt;tsEl.style.display='block';}}
+    state.r16_103DetailVersion=s.r16_103DetailVersion||'';
     if(s.r16_103Map){state.r16_103Map.clear();for(const k in s.r16_103Map)state.r16_103Map.set(k,s.r16_103Map[k]);}
     if(s.countResetAt)_countResetAt=s.countResetAt;
     if(s.r01BaselineAt)_r01BaselineAt=s.r01BaselineAt;
@@ -2621,18 +2772,108 @@ function updateConfirmBtn(){
 function validateAndProcess(){
   if(!state.r16Loaded){toast('กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน','warn');return;}
   if(state.r16DateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
+  if(currentBranch==='WH'&&currentRole==='supervisor'){
+    processScan();
+    _confirmWhCountItems();
+    return;
+  }
   processScan();evaluatePendingScans();
 }
 
 // Confirm นับครั้งแรก "ทีละพนักงาน" (group key = scannedBy) — มายด์ confirm ของคนที่นับโซนเสร็จได้เลย ไม่ต้องรอครบทุกคน
-// เงื่อนไขเดียวกับ validateAndProcess (ต้องอัพ R16 + ไม่ติด date mismatch) แค่ evaluate เฉพาะ scanning ของคนนั้น
-function confirmCountByStaff(staffName){
+// ใช้ transaction อ่าน WH_counts ล่าสุดจาก server แล้วเขียน marker + ลบ pending พร้อมกัน
+function _setWhCountConfirming(v){
+  _whCountConfirming=!!v;
+  const btn=document.getElementById('btnConfirm');if(btn&&currentRole==='supervisor')btn.disabled=_whCountConfirming||!state.r16Loaded;
+  renderSupervisorCountButtons();
+}
+function _localWhCountCandidates(staffName=null){
+  const out={};
+  const _d=new Date();const today=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  for(const[sku,sd]of state.scanData.entries()){
+    if(!sd||sd.status!=='scanning'||sd.countedQty==null)continue;
+    if(sd.timestamp&&sd.timestamp.substring(0,10)<today)continue;
+    if(staffName&&(sd.scannedBy||'(ไม่ระบุ)')!==staffName)continue;
+    out[sku]={countedQty:Number(sd.countedQty),scannedBy:sd.scannedBy||'',countAt:sd.countAt||'',
+      timestamp:sd.timestamp||'',firstScanAt:sd.firstScanAt||sd.timestamp||'',barcode:sd.barcode||'',
+      location:sd.location||'',countResetAt:_countResetAt||''};
+  }
+  return out;
+}
+async function _confirmWhCountItems(staffName=null){
+  if(_whCountConfirming)return;
+  if(!_db||currentBranch!=='WH'||currentRole!=='supervisor')return;
   if(!state.r16Loaded){toast('กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน','warn');return;}
   if(state.r16DateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
-  let n=0;for(const[,sd]of state.scanData.entries()){if(sd.status==='scanning'&&(sd.scannedBy||'(ไม่ระบุ)')===staffName)n++;}
-  if(!n){toast(`ไม่มีรายการที่ ${staffName} นับค้างอยู่`,'warn');return;}
-  evaluatePendingScans(staffName);
-  toast(`Confirm ของ ${staffName} ${n} รายการ`,'success');
+  if(!_ensureWhR16TimelineReady())return;
+  const localCandidates=_localWhCountCandidates(staffName);
+  const _todayDate=new Date();const today=`${_todayDate.getFullYear()}-${String(_todayDate.getMonth()+1).padStart(2,'0')}-${String(_todayDate.getDate()).padStart(2,'0')}`;
+  _setWhCountConfirming(true);
+  document.getElementById('dbStatus').textContent='Confirming...';
+  try{
+    const confirmed=await _db.runTransaction(async tx=>{
+      const pendingRef=getWhCountInboxRef();const confirmationRef=getWhCountConfirmationRef();
+      const pendingDoc=await tx.get(pendingRef);const confirmationDoc=await tx.get(confirmationRef);
+      const pending=pendingDoc.exists?(pendingDoc.data()||{}):{};
+      const existing=confirmationDoc.exists?(confirmationDoc.data()||{}):{};
+      const candidateSkus=new Set(Object.keys(localCandidates));
+      for(const[sku,item]of Object.entries(pending)){
+        if(!item||item.countedQty==null||(item.countResetAt||'')!==(_countResetAt||''))continue;
+        if(item.timestamp&&item.timestamp.substring(0,10)<today)continue;
+        if(staffName&&(item.scannedBy||'(ไม่ระบุ)')!==staffName)continue;
+        candidateSkus.add(sku);
+      }
+      const confirmationPatch={};const pendingPatch={};const result={};
+      const confirmedAt=new Date().toISOString();
+      for(const sku of candidateSkus){
+        const oldMarker=existing[sku];
+        if(oldMarker?.confirmedAt&&(oldMarker.countResetAt||'')===(_countResetAt||'')){
+          result[sku]=oldMarker;pendingPatch[sku]=firebase.firestore.FieldValue.delete();continue;
+        }
+        const localItem=localCandidates[sku];const serverItem=pending[sku];
+        let item=localItem||null;
+        if(serverItem&&serverItem.countedQty!=null&&(serverItem.countResetAt||'')===(_countResetAt||'')&&(!serverItem.timestamp||serverItem.timestamp.substring(0,10)>=today)){
+          if(!item||String(serverItem.countAt||'')>=String(item.countAt||''))item=serverItem;
+        }
+        if(!item||item.countedQty==null)continue;
+        if(staffName&&(item.scannedBy||'(ไม่ระบุ)')!==staffName)continue;
+        const si=state.skuMap.get(sku);const countedQty=Number(item.countedQty);
+        if(!si||!Number.isFinite(countedQty)||countedQty<0)continue;
+        const soldQty=getSoldQtyBefore(sku,item.timestamp||'');
+        const inboundQty=getInboundQtyBefore(sku,item.timestamp||'');
+        const r16103Qty=getR16103QtyBefore(sku,item.timestamp||'');
+        const effectiveQty=countedQty+soldQty+r16103Qty-inboundQty;
+        const status=effectiveQty===si.systemQty?'pass':'audit';
+        const marker={status,auditStatus:status==='pass'?'approved':'pending',countedQty,
+          scannedBy:item.scannedBy||'',countAt:item.countAt||'',timestamp:item.timestamp||'',
+          firstScanAt:item.firstScanAt||item.timestamp||'',barcode:item.barcode||'',location:item.location||'',
+          soldQty,inboundQty,r16103Qty,effectiveQty,confirmedAt,confirmedBy:currentUser||'',
+          countResetAt:_countResetAt||''};
+        confirmationPatch[sku]=marker;pendingPatch[sku]=firebase.firestore.FieldValue.delete();result[sku]=marker;
+      }
+      if(Object.keys(confirmationPatch).length)tx.set(confirmationRef,confirmationPatch,{merge:true});
+      if(Object.keys(pendingPatch).length)tx.set(pendingRef,pendingPatch,{merge:true});
+      return result;
+    });
+    const items=Object.entries(confirmed||{});
+    if(!items.length){toast(staffName?`ไม่มีรายการที่ ${staffName} นับค้างอยู่`:'ไม่มีรายการรอยืนยัน','warn');return;}
+    _whCountConfirmationData={..._whCountConfirmationData,...confirmed};
+    _renderWhCountConfirmationChanges(_applyWhCountConfirmationsToState());
+    clearTimeout(_firestoreSyncTimer);await syncToFirestore();saveAuditLogToFirestore();
+    let nPass=0,nAudit=0;for(const[,m]of items){if(m.status==='pass')nPass++;else if(m.status==='audit')nAudit++;}
+    const parts=staffName?[`ยืนยันของ ${staffName}`]:['ยืนยันทั้งหมด'];
+    if(nPass)parts.push(`✅ ผ่าน ${nPass}`);if(nAudit)parts.push(`🔍 รีเช็ค ${nAudit}`);
+    toast(parts.join(', '),nAudit?'warn':'success');
+  }catch(e){
+    document.getElementById('dbStatus').textContent='Sync Error';
+    console.warn('[WH count confirm transaction]',e.message);
+    toast('ยืนยันการนับไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','error',4500);
+  }finally{
+    _setWhCountConfirming(false);
+  }
+}
+function confirmCountByStaff(staffName){
+  return _confirmWhCountItems(staffName);
 }
 // render ปุ่ม Confirm นับครั้งแรกต่อพนักงาน (เฉพาะ supervisor Desktop) — group scanning ตาม scannedBy
 // เรียกใน updatePharmacistAuditConfirmBtn → refresh สดตอน PDA สแกน (snapshot → updateStats)
@@ -2650,7 +2891,7 @@ function renderSupervisorCountButtons(){
   if(!names.length){box.style.display='none';box.innerHTML='';return;}
   box.style.display='flex';
   box.innerHTML=names.map(who=>{
-    const cnt=counts.get(who)||0;const esc=String(who).replace(/'/g,"\\'");const dis=cnt===0;
+    const cnt=counts.get(who)||0;const esc=String(who).replace(/'/g,"\\'");const dis=cnt===0||_whCountConfirming;
     return`<button onclick="confirmCountByStaff('${esc}')" ${dis?'disabled':''} title="Confirm: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};opacity:${dis?'0.38':'1'};display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
   }).join('');
 }
@@ -2765,7 +3006,7 @@ function confirmScanGap(){
 function processScan(){
   if(_scanGapHold||_zeroSysHold)return;
   if(currentRole==='pharmacist'){processPharmacistAuditScan();return;}
-  const _ph=new Date().getHours();if(_ph<8||_ph>=21){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
+  const _ph=new Date().getHours();if(_isPharmacyBranch()&&(_ph<8||_ph>=21)){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
   const inp=document.getElementById('scanInput');
   const raw=inp.value.trim();if(!raw)return;
   inp.value='';inp.classList.remove('pda-receiving');
@@ -3706,13 +3947,14 @@ function toggleAdmin(){
     _adminMode=false;
     applyAdminUI();
     toast('ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','info');
-    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();});
+    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();});
     return;
   }
   const pin=prompt('🔒 กรุณาใส่รหัส PIN เพื่อเข้าโหมด Administrator:');
   if(pin===null)return;
   if(pin!==ADMIN_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
   _adminMode=true;
+  stopWhCountConfirmationListener();
   stopWhCountInboxListener();
   stopWhRecheckConfirmationListener();
   stopWhRecheckInboxListener();
@@ -3762,7 +4004,7 @@ async function syncMasterToFirestore(includeR05=true){
 async function syncR16MetaToFirestore(){
   if(!_db||!currentBranch)return;
   try{
-    await _db.collection('stock_sessions').doc(getSessionId()+'_r01').set({r16UploadedAt:state.r16UploadedAt||'',r16Loaded:state.r16Loaded},{merge:true});
+    await _db.collection('stock_sessions').doc(getSessionId()+'_r01').set({r16UploadedAt:state.r16UploadedAt||'',r16Loaded:state.r16Loaded,r16DetailVersion:state.r16DetailVersion||'',r16_103UploadedAt:state.r16_103UploadedAt||'',r16_103Loaded:state.r16_103Loaded,r16_103DetailVersion:state.r16_103DetailVersion||''},{merge:true});
   }catch(e){console.warn('Firestore r16 meta sync:',e.message);}
 }
 
@@ -3777,8 +4019,24 @@ async function syncProductMasterToFirestore(){
 // guard r16UploadedAt===undefined: doc เก่าก่อนมีฟีเจอร์นี้ยังไม่มี field — ไม่แตะ badge เพื่อไม่ให้เด้งเป็น "ยังไม่โหลด" ผิดๆ
 function _applyR16MetaFromDoc(r01d){
   if(!r01d||r01d.r16UploadedAt===undefined)return;
-  document.getElementById('badgeR16').textContent=r01d.r16Loaded?'Ready':'ยังไม่โหลด';
-  _setR16Ts(r01d.r16UploadedAt||'');
+  const incoming16Version=r01d.r16DetailVersion||'';
+  const keepNewerLocal16=!!state.r16DetailVersion&&(!incoming16Version||state.r16DetailVersion>incoming16Version);
+  if(!keepNewerLocal16){
+    document.getElementById('badgeR16').textContent=r01d.r16Loaded?'Ready':'ยังไม่โหลด';
+    _setR16Ts(r01d.r16UploadedAt||'');
+    state.r16DetailVersion=incoming16Version;
+  }
+  if(r01d.r16_103Loaded!==undefined){
+    const incoming103Version=r01d.r16_103DetailVersion||'';
+    const keepNewerLocal103=!!state.r16_103DetailVersion&&(!incoming103Version||state.r16_103DetailVersion>incoming103Version);
+    if(!keepNewerLocal103){
+      state.r16_103Loaded=!!r01d.r16_103Loaded;
+      state.r16_103UploadedAt=r01d.r16_103UploadedAt||'';
+      state.r16_103DetailVersion=incoming103Version;
+      const b=document.getElementById('badgeR16_103');if(b)b.textContent=state.r16_103Loaded?'Ready':'ยังไม่โหลด';
+      const ts=document.getElementById('r16_103Timestamp');if(ts){ts.textContent=state.r16_103UploadedAt;ts.style.display=state.r16_103UploadedAt?'block':'none';}
+    }
+  }
 }
 async function restoreMasterFromFirestore(force=false){
   if(!_db||!currentBranch)return;
@@ -3926,7 +4184,7 @@ async function syncToFirestore(overwrite=false){
   const r16Obj={};for(const[k,v]of state.r16SalesMap.entries())r16Obj[k]=v;
   const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
   const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
-  const data={r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,countResetAt:_countResetAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
+  const data={r01UploadedAt:state.r01UploadedAt,r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16DetailVersion:state.r16DetailVersion||'',r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,r16_103DetailVersion:state.r16_103DetailVersion||'',countResetAt:_countResetAt,scanData:mergedSd,unknownScans:state.unknownScans,scanListMap:mergedSl};
   try{
     await ref.set({session_data_json:JSON.stringify(data),updated_at:firebase.firestore.FieldValue.serverTimestamp()});
     document.getElementById('dbStatus').textContent='Synced';
@@ -3968,6 +4226,8 @@ function _applyCloudScanData(s){
   let scanned=0;
   if(s.scanData){
     for(const[sku,cloudItem]of Object.entries(s.scanData)){
+      // WH count confirmation marker เป็นผลยืนยันรอบแรกที่ authoritative กว่า session snapshot เก่า
+      if(_getWhCountConfirmation(sku))continue;
       // [neutered July 2026] เดิม: audit เก่ากว่า R01 baseline ห้าม adopt (กัน resurrect หลังอัพ R01) — ปัจจุบัน audit อยู่รอดข้าม baseline, guard นี้ inert (คืน false เสมอ)
       if(_isStaleAuditVsBaseline(cloudItem))continue;
       const local=state.scanData.get(sku);
@@ -4083,8 +4343,9 @@ async function restoreFromFirestore(force=false){
       state.r16InboundMap.clear();
       if(s.r16InboundMap){for(const k in s.r16InboundMap)state.r16InboundMap.set(k,s.r16InboundMap[k]);}
     }
-    if(!state.r16_103Loaded&&s.r16_103Loaded){
+    if(s.r16_103Loaded&&!state.r16_103Map.size){
       state.r16_103Loaded=true;
+      if(!state.r16_103DetailVersion)state.r16_103DetailVersion=s.r16_103DetailVersion||'';
       const b=document.getElementById('badgeR16_103');if(b)b.textContent='Ready';
       if(s.r16_103UploadedAt){state.r16_103UploadedAt=s.r16_103UploadedAt;const tsEl=document.getElementById('r16_103Timestamp');if(tsEl){tsEl.textContent=s.r16_103UploadedAt;tsEl.style.display='block';}}
       state.r16_103Map.clear();
@@ -4129,6 +4390,7 @@ async function restoreFromFirestore(force=false){
     state.r16InboundMap.clear();
     if(s.r16InboundMap){for(const k in s.r16InboundMap)state.r16InboundMap.set(k,s.r16InboundMap[k]);}
     state.r16_103Loaded=!!s.r16_103Loaded;
+    state.r16_103DetailVersion=s.r16_103DetailVersion||'';
     const _b103=document.getElementById('badgeR16_103');if(_b103)_b103.textContent=state.r16_103Loaded?'Ready':'ยังไม่โหลด';
     if(s.r16_103UploadedAt){state.r16_103UploadedAt=s.r16_103UploadedAt;const tsEl=document.getElementById('r16_103Timestamp');if(tsEl){tsEl.textContent=s.r16_103UploadedAt;tsEl.style.display='block';}}
     state.r16_103Map.clear();

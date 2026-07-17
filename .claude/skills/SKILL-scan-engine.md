@@ -160,6 +160,17 @@ if (scanListMap.size > prevSize) {
 
 ---
 
+## WH Count Confirmation Workflow (July 2026)
+
+- WH warehouse PDA writes each live `scanning` SKU to `stock_sessions/WH_counts` with `countAt` and `countResetAt`.
+- Supervisor per-staff/all count confirmation uses a Firestore transaction: read latest `WH_counts`, compute the R16-adjusted result, write `stock_sessions/WH_count_confirmations`, and delete pending fields atomically.
+- Count confirmation marker fields include `status`, `countedQty`, `scannedBy`, `countAt`, `confirmedAt`, `confirmedBy`, R16 components, `effectiveQty`, and `countResetAt`.
+- A same-epoch count confirmation marker is authoritative over stale session JSON and `WH_counts`; PDA backfill/write must skip confirmed SKUs. Failed/offline transactions must not mutate local state.
+- Marker `audit` starts WH recheck with no `recheckQty`; warehouse scans recheck while status remains `audit`, then Supervisor performs the separate recheck confirmation.
+- WH raw R16.104/R16.103 timelines are cached in IndexedDB for the current `countResetAt`. On the same Desktop after reload, exact TRANDATE filtering is restored. If the matching local snapshot is unavailable, WH count confirmation is blocked and the Supervisor must upload the relevant R16 file again; never silently fall back to aggregate totals for WH confirmation.
+- `startNewCount()` and full clear delete `WH_counts`, `WH_count_confirmations`, `WH_rechecks`, `WH_recheck_confirmations`, and the local WH R16 timeline snapshot.
+- Scan-hour gate 08:00-21:00 applies only to pharmacy branches; WH scanning is available 24 hours.
+
 ## WH Recheck Workflow
 
 **warehouse PDA:**
