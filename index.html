@@ -2668,11 +2668,13 @@ function handleBarcode(parsed,immediateRender=true){
     sd.recheckQty=(sd.recheckQty||0)+addQty;
     sd.recheckBy=currentUser;
     // เก็บเวลารีเช็คแยกจาก timestamp เดิมของการนับรอบแรก
-    // เพื่อให้รายการที่เพิ่งพบขยับขึ้นบนสุด โดยไม่กระทบการคำนวณ Audit/R16
-    sd.recheckAt=now;
+    // ใช้ millisecond เพื่อแยกลำดับการยิงสแกนที่เกิดติดกัน และไม่กระทบ Audit/R16
+    sd.recheckAt=new Date().toISOString();
     let e=scanListMap.get(sku);
     if(e){e.totalQty=sd.recheckQty;e.status='audit';}
     else{const barcodes=skuInfo.barcodes.length?skuInfo.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName})):[{barcode:resolvedBarcode,unit:unitName}];e={sku,barcodes,totalQty:sd.recheckQty,status:'audit',location:'',catLabel:''};scanListMap.set(sku,e);}
+    // ท้าย Map จะแสดงเป็นบรรทัดบนสุดหลัง renderScanList().reverse()
+    scanListMap.delete(sku);scanListMap.set(sku,e);
     _pendingPatches.add(sku);
     beepSuccess();
     scheduleSave();if(immediateRender){scheduleScanListRender();scheduleStats();scheduleRender();}
