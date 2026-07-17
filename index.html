@@ -1135,6 +1135,9 @@ let _whCountUnsubscribe = null;
 let _whCountInboxData = {};
 let _whRecheckUnsubscribe = null;
 let _whRecheckInboxData = {};
+let _whRecheckConfirmationUnsubscribe = null;
+let _whRecheckConfirmationData = {};
+let _whRecheckConfirming = false;
 let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
@@ -1150,6 +1153,7 @@ function getProductMasterMetaRef(){return _db.collection('stock_sessions').doc('
 function getR05Ref(){return _db.collection('stock_sessions').doc('global_r05');}
 function getWhCountInboxRef(){return _db.collection('stock_sessions').doc('WH_counts');}
 function getWhRecheckInboxRef(){return _db.collection('stock_sessions').doc('WH_rechecks');}
+function getWhRecheckConfirmationRef(){return _db.collection('stock_sessions').doc('WH_recheck_confirmations');}
 const BRANCH_COLORS={SRC:'#0072c6',KKL:'#0072c6',SSS:'#0072c6',WH:'#d97706'};
 const BRANCH_PINS={SRC:'1234',KKL:'4567',SSS:'9999',WH:'0000'};
 const EMPLOYEE_PROFILES={
@@ -1302,6 +1306,58 @@ function _removeWhCountInboxItems(skus){
   const patch={};for(const sku of skus)patch[sku]=firebase.firestore.FieldValue.delete();
   getWhCountInboxRef().set(patch,{merge:true}).catch(e=>console.warn('[WH count inbox remove]',e.message));
 }
+function stopWhRecheckConfirmationListener(){
+  if(_whRecheckConfirmationUnsubscribe){_whRecheckConfirmationUnsubscribe();_whRecheckConfirmationUnsubscribe=null;}
+  _whRecheckConfirmationData={};
+}
+function _getWhRecheckConfirmation(sku){
+  const marker=_whRecheckConfirmationData?.[sku];
+  if(!marker||!marker.confirmedAt)return null;
+  if((marker.countResetAt||'')!==(_countResetAt||''))return null;
+  return marker;
+}
+function _applyWhRecheckConfirmationsToState(){
+  if(currentBranch!=='WH'||(currentRole!=='supervisor'&&currentRole!=='warehouse'))return [];
+  const changed=[];
+  for(const[sku,marker]of Object.entries(_whRecheckConfirmationData||{})){
+    if(!marker||!marker.confirmedAt||!['pass','stock_adjustment'].includes(marker.status))continue;
+    if((marker.countResetAt||'')!==(_countResetAt||''))continue;
+    let sd=state.scanData.get(sku);
+    if(!sd&&state.skuMap.has(sku)){
+      sd={countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:'',scans:[]};
+      state.scanData.set(sku,sd);
+    }
+    if(!sd)continue;
+    if(sd.recheckConfirmedAt&&String(sd.recheckConfirmedAt)>String(marker.confirmedAt))continue;
+    const same=sd.status===marker.status&&sd.auditor===(marker.auditor||'')&&
+      sd.recheckConfirmedAt===marker.confirmedAt&&sd.recheckQty===Number(marker.recheckQty);
+    if(same)continue;
+    sd.status=marker.status;
+    sd.auditStatus=marker.auditStatus||(marker.status==='pass'?'approved':'stock_adjustment');
+    sd.auditor=marker.auditor||'';
+    sd.timestamp=marker.timestamp||sd.timestamp||'';
+    sd.recheckQty=Number(marker.recheckQty||0);
+    sd.recheckBy=marker.recheckBy||'';
+    sd.recheckAt=marker.recheckAt||'';
+    sd.recheckConfirmedAt=marker.confirmedAt;
+    changed.push(sku);
+  }
+  return changed;
+}
+function _renderWhRecheckConfirmationChanges(changed){
+  if(!changed.length)return;
+  _removeWhRecheckInboxItems(changed);
+  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();
+  updateStats();renderTable();updatePharmacistAuditConfirmBtn();
+}
+function startWhRecheckConfirmationListener(){
+  stopWhRecheckConfirmationListener();
+  if(!_db||_adminMode||currentBranch!=='WH'||(currentRole!=='supervisor'&&currentRole!=='warehouse'))return;
+  _whRecheckConfirmationUnsubscribe=getWhRecheckConfirmationRef().onSnapshot(doc=>{
+    _whRecheckConfirmationData=doc.exists?(doc.data()||{}):{};
+    _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());
+  },e=>console.warn('[WH recheck confirmation listener]',e.message));
+}
 function stopWhRecheckInboxListener(){
   if(_whRecheckUnsubscribe){_whRecheckUnsubscribe();_whRecheckUnsubscribe=null;}
   _whRecheckInboxData={};
@@ -1312,6 +1368,7 @@ function _applyWhRecheckInboxToState(){
   for(const[sku,item]of Object.entries(_whRecheckInboxData||{})){
     if(!item||item.recheckQty==null)continue;
     if((item.countResetAt||'')!==(_countResetAt||''))continue;
+    if(_getWhRecheckConfirmation(sku))continue;
     const sd=state.scanData.get(sku);
     if(!sd||sd.status!=='audit'||sd.auditor)continue;
     if(sd.recheckAt&&item.recheckAt&&String(item.recheckAt)<String(sd.recheckAt))continue;
@@ -1330,6 +1387,8 @@ function startWhRecheckInboxListener(){
   if(currentRole!=='supervisor')return;
   _whRecheckUnsubscribe=getWhRecheckInboxRef().onSnapshot(doc=>{
     _whRecheckInboxData=doc.exists?(doc.data()||{}):{};
+    const alreadyConfirmed=Object.keys(_whRecheckInboxData).filter(sku=>_getWhRecheckConfirmation(sku));
+    if(alreadyConfirmed.length)_removeWhRecheckInboxItems(alreadyConfirmed);
     if(!_applyWhRecheckInboxToState())return;
     rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();
     updateStats();renderTable();updatePharmacistAuditConfirmBtn();
@@ -1337,6 +1396,7 @@ function startWhRecheckInboxListener(){
 }
 function _writeWhRecheckInboxItem(sku){
   if(_adminMode||!_db||currentBranch!=='WH'||currentRole!=='warehouse')return;
+  if(_getWhRecheckConfirmation(sku))return;
   const sd=state.scanData.get(sku);
   if(!sd||sd.status!=='audit'||sd.recheckQty==null)return;
   const item={
@@ -1351,6 +1411,7 @@ function _backfillWhRecheckInbox(){
   const payload={};
   for(const[sku,sd]of state.scanData.entries()){
     if(!sd||sd.status!=='audit'||sd.recheckQty==null||(sd.recheckBy||'')!==currentUser)continue;
+    if(_getWhRecheckConfirmation(sku))continue;
     payload[sku]={recheckQty:Number(sd.recheckQty),recheckBy:currentUser,
       recheckAt:sd.recheckAt||new Date().toISOString(),countResetAt:_countResetAt||''};
   }
@@ -1361,7 +1422,7 @@ function _backfillWhRecheckInbox(){
 function _removeWhRecheckInboxItems(skus){
   if(!_db||currentBranch!=='WH'||!skus||!skus.length)return;
   const patch={};for(const sku of skus)patch[sku]=firebase.firestore.FieldValue.delete();
-  getWhRecheckInboxRef().set(patch,{merge:true}).catch(e=>console.warn('[WH recheck inbox remove]',e.message));
+  return getWhRecheckInboxRef().set(patch,{merge:true}).catch(e=>console.warn('[WH recheck inbox remove]',e.message));
 }
 function startScanSessionListener(){
   if(!_db||!currentBranch||_adminMode)return;
@@ -1380,6 +1441,7 @@ function startScanSessionListener(){
         }
         _applyCloudScanData(s);
         _applyWhCountInboxToState();
+        _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());
         _applyWhRecheckInboxToState();
         updatePharmacistAuditConfirmBtn();
         if(!_listCleared){
@@ -1516,6 +1578,7 @@ function selectEmployee(name,role){
     updateScanInputMode();
     applyAuditTerminology();
     startWhCountInboxListener();
+    startWhRecheckConfirmationListener();
     startWhRecheckInboxListener();
     if(_employeeCallback)_employeeCallback();
     _employeeCallback=null;
@@ -1602,6 +1665,7 @@ async function initAfterLogin(){
     startR05Listener();
     startScanSessionListener();
     startWhCountInboxListener();
+    startWhRecheckConfirmationListener();
     startWhRecheckInboxListener();
     // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
     rebuildScanListMap(currentRole==='pharmacist');
@@ -1666,6 +1730,7 @@ async function selectBranch(branch){
   stopProductMasterListener();
   stopScanSessionListener();
   stopWhCountInboxListener();
+  stopWhRecheckConfirmationListener();
   stopWhRecheckInboxListener();
   stopLocationListener();
   stopR05Listener();
@@ -2103,7 +2168,7 @@ async function startNewCount(){
   // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
   // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
   // ล้าง _r01 + _adjlot (LOT/ราคาที่บันทึก sync ไว้) — เริ่มนับใหม่ = LOT รอบเก่าใช้ไม่ได้แล้ว. _r05 ไม่ลบ
-  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhRecheckInboxRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/WH inboxes:',e.message);}}
+  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/WH inboxes:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
@@ -2119,7 +2184,7 @@ async function clearAllData() {
   resetScanRuntimeState();
   localStorage.removeItem(lsKey());
   // _r05 ไม่ลบ cloud — global doc ใช้ร่วมทุกสาขาแล้ว (เหมือน global_pm ที่ก็ไม่ลบตรงนี้), ล้างแค่ local เดี๋ยว resync กลับตอน reload
-  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhRecheckInboxRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
+  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r05Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
@@ -3641,7 +3706,7 @@ function toggleAdmin(){
     _adminMode=false;
     applyAdminUI();
     toast('ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','info');
-    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountInboxListener();startWhRecheckInboxListener();});
+    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();});
     return;
   }
   const pin=prompt('🔒 กรุณาใส่รหัส PIN เพื่อเข้าโหมด Administrator:');
@@ -3649,6 +3714,7 @@ function toggleAdmin(){
   if(pin!==ADMIN_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
   _adminMode=true;
   stopWhCountInboxListener();
+  stopWhRecheckConfirmationListener();
   stopWhRecheckInboxListener();
   applyAdminUI();
   toast('เข้าโหมด Administrator (ไม่ sync Firestore)','success');
@@ -3905,6 +3971,8 @@ function _applyCloudScanData(s){
       // [neutered July 2026] เดิม: audit เก่ากว่า R01 baseline ห้าม adopt (กัน resurrect หลังอัพ R01) — ปัจจุบัน audit อยู่รอดข้าม baseline, guard นี้ inert (คืน false เสมอ)
       if(_isStaleAuditVsBaseline(cloudItem))continue;
       const local=state.scanData.get(sku);
+      // ผล verify ที่มี auditor แล้วเป็น authoritative — audit เก่าจาก PDA/session ห้ามย้อนกลับมาล้างผลยืนยัน
+      if(local?.auditor&&cloudItem.status==='audit'&&!cloudItem.auditor)continue;
       // WH Supervisor: รับผลรีเช็คจาก PDA แม้เครื่องนี้จะมี Audit เดิมอยู่แล้ว
       // ใช้ !== undefined เพื่อรองรับการรีเช็คได้ค่า 0 และกัน local Audit ที่ยังไม่มี recheckQty บังข้อมูล Cloud
       const cloudHasWhRecheck=currentBranch==='WH'&&currentRole==='supervisor'&&
@@ -4180,61 +4248,93 @@ function confirmRecheckBtn(){
   confirmAllAuditVerify();
 }
 
-// supervisor (มายด์) บน Desktop: ยืนยันทุก audit item ที่ warehouse รีเช็คมาแล้ว (มี recheckQty, ยังไม่มี auditor)
-// เทียบ recheckQty vs systemQty → Pass / Stock Adjustment, ตั้ง auditor = มายด์
-function confirmAllRecheckSupervisor(){
-  const items=[];
+function _setWhRecheckConfirming(v){
+  _whRecheckConfirming=!!v;
+  const btn=document.getElementById('pharmacistAuditBtn');
+  if(btn&&currentRole==='supervisor')btn.disabled=_whRecheckConfirming;
+  renderSupervisorRecheckButtons();
+}
+function _localWhRecheckCandidates(staffName=null){
+  const out={};
   for(const[sku,sd]of state.scanData.entries()){
-    if(sd.status==='audit'&&sd.recheckQty!=null&&!sd.auditor)items.push(sku);
+    if(sd.status!=='audit'||sd.recheckQty==null||sd.auditor)continue;
+    if(staffName&&(sd.recheckBy||'(ไม่ระบุ)')!==staffName)continue;
+    out[sku]={recheckQty:Number(sd.recheckQty),recheckBy:sd.recheckBy||'',
+      recheckAt:sd.recheckAt||'',countResetAt:_countResetAt||''};
   }
-  if(!items.length){toast('ยังไม่มีรายการที่รีเช็ค (รอ warehouse สแกนบน PDA)','warn');return;}
-  let nPass=0,nAdj=0;
-  const _d=new Date();
-  const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
-  for(const sku of items){
-    const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);if(!sd||!si)continue;
-    const rq=sd.recheckQty||0;
-    if(rq===si.systemQty){sd.status='pass';sd.auditStatus='approved';nPass++;}
-    else{sd.status='stock_adjustment';sd.auditStatus='stock_adjustment';nAdj++;}
-    sd.auditor=currentUser;sd.timestamp=ts;
-    if(scanListMap.has(sku))scanListMap.get(sku).status=sd.status;
+  return out;
+}
+// ยืนยัน WH recheck ผ่าน transaction: อ่าน pending ล่าสุดจาก server แล้วเขียน marker + ลบ pending พร้อมกัน
+async function _confirmWhRecheckItems(staffName=null){
+  if(_whRecheckConfirming)return;
+  if(!_db||currentBranch!=='WH'||currentRole!=='supervisor')return;
+  const localCandidates=_localWhRecheckCandidates(staffName);
+  _setWhRecheckConfirming(true);
+  document.getElementById('dbStatus').textContent='Confirming...';
+  try{
+    const confirmed=await _db.runTransaction(async tx=>{
+      const pendingRef=getWhRecheckInboxRef();const confirmationRef=getWhRecheckConfirmationRef();
+      const pendingDoc=await tx.get(pendingRef);
+      const confirmationDoc=await tx.get(confirmationRef);
+      const pending=pendingDoc.exists?(pendingDoc.data()||{}):{};
+      const existing=confirmationDoc.exists?(confirmationDoc.data()||{}):{};
+      const candidateSkus=new Set(Object.keys(localCandidates));
+      for(const[sku,item]of Object.entries(pending)){
+        if(!item||item.recheckQty==null||(item.countResetAt||'')!==(_countResetAt||''))continue;
+        if(staffName&&(item.recheckBy||'(ไม่ระบุ)')!==staffName)continue;
+        candidateSkus.add(sku);
+      }
+      const confirmationPatch={};const pendingPatch={};const result={};
+      const _d=new Date();
+      const confirmedAt=_d.toISOString();
+      const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
+      for(const sku of candidateSkus){
+        const oldMarker=existing[sku];
+        if(oldMarker?.confirmedAt&&(oldMarker.countResetAt||'')===(_countResetAt||'')){
+          result[sku]=oldMarker;pendingPatch[sku]=firebase.firestore.FieldValue.delete();continue;
+        }
+        const localItem=localCandidates[sku];const serverItem=pending[sku];
+        let item=localItem||null;
+        if(serverItem&&serverItem.recheckQty!=null&&(serverItem.countResetAt||'')===(_countResetAt||'')){
+          if(!item||String(serverItem.recheckAt||'')>=String(item.recheckAt||''))item=serverItem;
+        }
+        if(!item||item.recheckQty==null)continue;
+        if(staffName&&(item.recheckBy||'(ไม่ระบุ)')!==staffName)continue;
+        const si=state.skuMap.get(sku);const rq=Number(item.recheckQty);
+        if(!si||!Number.isFinite(rq)||rq<0)continue;
+        const status=rq===si.systemQty?'pass':'stock_adjustment';
+        const marker={status,auditStatus:status==='pass'?'approved':'stock_adjustment',
+          auditor:currentUser||'',confirmedAt,timestamp:ts,recheckQty:rq,
+          recheckBy:item.recheckBy||'',recheckAt:item.recheckAt||'',countResetAt:_countResetAt||''};
+        confirmationPatch[sku]=marker;pendingPatch[sku]=firebase.firestore.FieldValue.delete();result[sku]=marker;
+      }
+      if(Object.keys(confirmationPatch).length)tx.set(confirmationRef,confirmationPatch,{merge:true});
+      if(Object.keys(pendingPatch).length)tx.set(pendingRef,pendingPatch,{merge:true});
+      return result;
+    });
+    const items=Object.entries(confirmed||{});
+    if(!items.length){toast(staffName?`ไม่มีรายการรีเช็คของ ${staffName}`:'ยังไม่มีรายการที่รีเช็ค','warn');return;}
+    _whRecheckConfirmationData={..._whRecheckConfirmationData,...confirmed};
+    _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());
+    await syncToFirestore();saveAuditLogToFirestore();
+    let nPass=0,nAdj=0;for(const[,m]of items){if(m.status==='pass')nPass++;else if(m.status==='stock_adjustment')nAdj++;}
+    const parts=staffName?[`ยืนยันของ ${staffName}`]:[];
+    if(nPass)parts.push(`✅ ผ่าน ${nPass}`);if(nAdj)parts.push(`⚠️ ปรับสต็อก ${nAdj}`);
+    toast(parts.join(', '),nAdj?'warn':'success');
+  }catch(e){
+    document.getElementById('dbStatus').textContent='Sync Error';
+    console.warn('[WH recheck confirm transaction]',e.message);
+    toast('ยืนยันรีเช็คไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','error',4500);
+  }finally{
+    _setWhRecheckConfirming(false);
   }
-  const parts=[];
-  if(nPass>0)parts.push(`✅ ผ่าน ${nPass} รายการ`);
-  if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj} รายการ`);
-  if(parts.length)toast(parts.join(', '),nAdj>0?'warn':'success');
-  _removeWhRecheckInboxItems(items);
-  invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();
-  rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
 }
 
-// ยืนยันรีเช็ค "ทีละพนักงาน" (group key = recheckBy) — มายด์กดยืนยันของคนที่สแกนเสร็จได้เลย ไม่ต้องรอครบทุกคน
-// logic เดียวกับ confirmAllRecheckSupervisor ทุกประการ ต่างแค่ filter เพิ่ม recheckBy === staffName
-function confirmRecheckByStaff(staffName){
-  const items=[];
-  for(const[sku,sd]of state.scanData.entries()){
-    if(sd.status==='audit'&&sd.recheckQty!=null&&!sd.auditor&&(sd.recheckBy||'(ไม่ระบุ)')===staffName)items.push(sku);
-  }
-  if(!items.length){toast(`ไม่มีรายการรีเช็คของ ${staffName} (อาจยืนยันไปแล้ว)`,'warn');return;}
-  let nPass=0,nAdj=0;
-  const _d=new Date();
-  const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
-  for(const sku of items){
-    const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);if(!sd||!si)continue;
-    const rq=sd.recheckQty||0;
-    if(rq===si.systemQty){sd.status='pass';sd.auditStatus='approved';nPass++;}
-    else{sd.status='stock_adjustment';sd.auditStatus='stock_adjustment';nAdj++;}
-    sd.auditor=currentUser;sd.timestamp=ts;
-    if(scanListMap.has(sku))scanListMap.get(sku).status=sd.status;
-  }
-  const parts=[`ยืนยันของ ${staffName}`];
-  if(nPass>0)parts.push(`✅ ผ่าน ${nPass}`);
-  if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj}`);
-  toast(parts.join(', '),nAdj>0?'warn':'success');
-  _removeWhRecheckInboxItems(items);
-  invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();
-  rebuildScanListMap(true);renderScanList();updateStats();renderTable();updatePharmacistAuditConfirmBtn();
-}
+// supervisor (มายด์) บน Desktop: transaction ยืนยันทุก audit item ที่ warehouse รีเช็คมาแล้ว
+function confirmAllRecheckSupervisor(){return _confirmWhRecheckItems();}
+
+// ยืนยันรีเช็คทีละพนักงาน โดย server pending ล่าสุดเป็นค่าที่ใช้ตัดสิน
+function confirmRecheckByStaff(staffName){return _confirmWhRecheckItems(staffName);}
 
 // render ปุ่มยืนยันรีเช็คต่อพนักงาน (เฉพาะ supervisor) — group audit ที่รอยืนยันตาม recheckBy แล้วสร้างปุ่มต่อคน
 // เรียกใน updatePharmacistAuditConfirmBtn → refresh สดตอน PDA sync (snapshot → updateStats)
@@ -4252,7 +4352,7 @@ function renderSupervisorRecheckButtons(){
   if(!names.length){box.style.display='none';box.innerHTML='';return;}
   box.style.display='flex';
   box.innerHTML=names.map(who=>{
-    const cnt=counts.get(who)||0;const esc=String(who).replace(/'/g,"\\'");const dis=cnt===0;
+    const cnt=counts.get(who)||0;const esc=String(who).replace(/'/g,"\\'");const dis=cnt===0||_whRecheckConfirming;
     return`<button onclick="confirmRecheckByStaff('${esc}')" ${dis?'disabled':''} title="ยืนยันรีเช็ค: ${who} (${cnt})" style="width:40px;height:40px;border:none;border-radius:8px;background:var(--green);color:#fff;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};opacity:${dis?'0.38':'1'};display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:2px;gap:1px;"><span style="font-size:0.5rem;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}</span><span style="font-size:0.78rem;font-weight:700;">${cnt}</span></button>`;
   }).join('');
 }

@@ -172,6 +172,13 @@ if (scanListMap.size > prevSize) {
 - **ยืนยันรีเช็คทีละคน:** `renderSupervisorRecheckButtons()` → ปุ่มเขียว per staff → `confirmRecheckByStaff(name)`
 - **ยืนยันรีเช็คทั้งหมด:** `confirmAllRecheckSupervisor()` → วน audit ที่มี `recheckQty && !auditor` → pass/stock_adjustment + `auditor=มายด์`
 
+**WH recheck confirmation marker (July 2026):**
+- `stock_sessions/WH_recheck_confirmations` เก็บผลยืนยันต่อ SKU (`status`, `auditor`, `confirmedAt`, `recheckQty`, `recheckAt`, `countResetAt`) และเป็น authoritative เหนือ `WH_rechecks` กับ session JSON
+- `confirmRecheckByStaff` / `confirmAllRecheckSupervisor` ใช้ Firestore transaction อ่าน pending ล่าสุด แล้วเขียน marker + ลบ pending พร้อมกัน; transaction fail = ห้ามเปลี่ยน local state
+- Supervisor และ warehouse PDA ฟัง marker; marker รอบ epoch เดียวกันต้องชนะ audit snapshot เก่า และล้าง pending ที่ PDA เขียนกลับมาช้า
+- หลังมี marker ห้าม `_writeWhRecheckInboxItem` / backfill ส่ง SKU เดิมซ้ำ; เริ่มนับใหม่/ล้างข้อมูลทั้งหมดต้องลบ marker doc
+- `_applyCloudScanData`: local ที่มี `auditor` ห้ามถูก cloud `audit` ที่ไม่มี auditor ทับ แต่ cloud audit ยังชนะ local unverified state ได้ตาม flow เภสัชเดิม
+
 `canVerify = currentRole === 'pharmacist' || currentRole === 'supervisor'`
 (warehouse ไม่มีสิทธิ์ verify — ใช้ช่อง scan หลักแทน)
 
