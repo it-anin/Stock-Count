@@ -121,6 +121,7 @@
     .upload-file-name-muted { color:#888780; }
     .upload-file-sub { font-size:0.7rem; color:#b4b2a9; margin-top:1px; }
     .upload-file-ts { font-size:0.62rem; color:#a09e96; margin-top:3px; }
+    .upload-file-ts.r01-upload-latest { font-size:0.7rem; color:#0f6e56; font-weight:700; margin-top:4px; }
     .upload-file-badge { display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; font-size:0.7rem; font-weight:600; background:#e1f5ee; color:#0f6e56; flex-shrink:0; }
     .upload-file-badge-optional { background:#f1efe8; color:#888780; }
     .upload-file-badge-dot { width:5px; height:5px; border-radius:50%; background:var(--green); animation:pulseDot 2s infinite; }
@@ -241,6 +242,11 @@
     .progress-bar { height:8px; background:var(--surface3); border-radius:4px; margin-top:8px; overflow:hidden; }
     .progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--green)); background-size:200% 100%; border-radius:4px; transition:width 0.4s ease; animation:progressShimmer 2s linear infinite; }
     @keyframes progressShimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
+    body.pda-power-save .upload-file-badge-dot,
+    body.pda-power-save .scan-dots span,
+    body.pda-power-save .sl-barcode::after,
+    body.pda-power-save .progress-fill { animation:none!important; }
+    body.pda-power-save .progress-fill { background-size:100% 100%; }
     .progress-count { font-size:0.72rem; color:var(--text3); margin-top:4px; font-weight:600; }
     .db-status { display:flex; align-items:center; gap:6px; font-size:0.72rem; }
     .db-dot { width:6px; height:6px; border-radius:50%; background:var(--text3); }
@@ -518,7 +524,7 @@
         </div>
         <input type="file" id="fileR01" accept=".csv,.xlsx,.xls" style="display:none" onchange="loadR01(event)">
         <div class="upload-file-item" onclick="var _f=document.getElementById('fileR01');_f.value='';_f.click()">
-          <div class="upload-file-info"><div class="upload-file-icon"><svg viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="9" height="12" rx="1.5" fill="#5DCAA5"/><rect x="4" y="4" width="5" height="1" rx="0.5" fill="white" opacity="0.8"/><rect x="4" y="6" width="5" height="1" rx="0.5" fill="white" opacity="0.8"/><rect x="4" y="8" width="3" height="1" rx="0.5" fill="white" opacity="0.8"/><path d="M9 1l3 3h-3V1z" fill="#1D9E75"/></svg></div><div><div class="upload-file-name">R01.102</div><div class="upload-file-sub">จำนวนสินค้า</div><div id="r01Timestamp" class="upload-file-ts" style="display:none"></div></div></div>
+          <div class="upload-file-info"><div class="upload-file-icon"><svg viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="9" height="12" rx="1.5" fill="#5DCAA5"/><rect x="4" y="4" width="5" height="1" rx="0.5" fill="white" opacity="0.8"/><rect x="4" y="6" width="5" height="1" rx="0.5" fill="white" opacity="0.8"/><rect x="4" y="8" width="3" height="1" rx="0.5" fill="white" opacity="0.8"/><path d="M9 1l3 3h-3V1z" fill="#1D9E75"/></svg></div><div><div class="upload-file-name">R01.102</div><div class="upload-file-sub">จำนวนสินค้า</div><div id="r01Timestamp" class="upload-file-ts r01-upload-latest" style="display:none"></div></div></div>
           <div class="upload-file-badge"><div class="upload-file-badge-dot"></div><span id="badgeR01">ยังไม่โหลด</span></div>
         </div>
         <div id="r05UploadSection" style="display:none">
@@ -1425,13 +1431,19 @@ function _parseR01RowsFromDocData(data){
 function _r01SystemQtyMapFromDocData(data){
   const map=new Map();for(const row of _parseR01RowsFromDocData(data)){const sku=String(row?.colE||'');const qty=Number(row?.systemQty);if(sku&&Number.isFinite(qty))map.set(sku,qty);}return map;
 }
+function _r01UploadedAtFromDocData(data){
+  if(!data)return'';if(data.r01UploadedAt)return data.r01UploadedAt;
+  try{if(data.updated_at?.toDate)return formatThaiDateTime(data.updated_at.toDate());if(data.updated_at instanceof Date)return formatThaiDateTime(data.updated_at);}catch(e){}
+  return'';
+}
 function _applyWhR01Doc(data,{allowSame=false}={}){
   if(currentBranch!=='WH'||!data?.data_json)return false;
+  const uploadedAt=_r01UploadedAtFromDocData(data);if(uploadedAt)_setR01Ts(uploadedAt);
   const incomingVersion=data.r01Version||'';
   if(!allowSame&&state.r01Version&&(!incomingVersion||incomingVersion<=state.r01Version))return false;
   const rows=_parseR01RowsFromDocData(data);
   if(!rows.length)return false;
-  state.r01Data=rows;state.r01Version=incomingVersion;document.getElementById('badgeR01').textContent='Ready';_setR01Ts(data.r01UploadedAt||'');
+  state.r01Data=rows;state.r01Version=incomingVersion;document.getElementById('badgeR01').textContent='Ready';
   rebuildMaps();
   _renderWhCountConfirmationChanges(_applyWhCountConfirmationsToState());_applyWhCountInboxToState();
   _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());_applyWhRecheckInboxToState();
@@ -1444,7 +1456,14 @@ function _scheduleWhR16CloudReload(notify=false){
 }
 function startWhMasterListeners(){
   stopWhMasterListeners();
-  if(!_db||_adminMode||currentBranch!=='WH')return;
+  if(!_db||_adminMode||!currentBranch)return;
+  if(currentBranch!=='WH'){
+    _whMasterUnsubscribe=_db.collection('stock_sessions').doc(getSessionId()+'_r01').onSnapshot(doc=>{
+      if(!doc.exists){document.getElementById('badgeR01').textContent='ยังไม่โหลด';_setR01Ts('');return;}
+      const data=doc.data()||{};if(data.data_json)document.getElementById('badgeR01').textContent='Ready';const uploadedAt=_r01UploadedAtFromDocData(data);if(uploadedAt)_setR01Ts(uploadedAt);
+    },e=>console.warn('[R01 meta listener]',e.message));
+    return;
+  }
   _whMasterUnsubscribe=_db.collection('stock_sessions').doc('WH_r01').onSnapshot(doc=>{
     if(!doc.exists){if(state.r01Version){state.r01Version='';_resetLocalR01ToEmpty();saveSession();renderScanList();updateStats();renderTable();updateConfirmBtn();}return;}
     try{if(_applyWhR01Doc(doc.data()))toast('R01 อัปเดตจาก Cloud แล้ว','info');}catch(e){console.warn('[WH R01 listener]',e.message);}
@@ -2432,7 +2451,7 @@ async function _applyR01BaselineUpdate(baselineAt){
       if(r01Doc.exists&&r01Doc.data().data_json){
         state.r01Data=JSON.parse(r01Doc.data().data_json);state.r01Version=r01Doc.data().r01Version||'';
         document.getElementById('badgeR01').textContent='Ready';
-        if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);
+        {const uploadedAt=_r01UploadedAtFromDocData(r01Doc.data());if(uploadedAt)_setR01Ts(uploadedAt);}
       }
     }catch(e){console.warn('[R01 baseline]',e.message);}
   }
@@ -2607,6 +2626,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   }catch(e){/* offline/error → ปล่อยผ่าน ไม่ block การใช้งานปกติ */}
   // แสดงปุ่ม ⚙ Settings เฉพาะเมื่อรันใน PDA app (WebView)
   if(navigator.userAgent.includes('StockCountPDA')){
+    document.body.classList.add('pda-power-save');
     const btn=document.getElementById('btnPdaSettings');
     if(btn)btn.style.display='inline-block';
   }
@@ -2777,9 +2797,18 @@ function scheduleRender(){clearTimeout(renderDebounceTimer);renderDebounceTimer=
 function scheduleStats(){clearTimeout(statsDebounceTimer);statsDebounceTimer=setTimeout(updateStats,80);}
 function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,20);}
 // ─── Scan Sound System (Web Audio API — ไม่ต้องมีไฟล์เสียง) ──────────────────
-let _audioCtx=null;
+let _audioCtx=null,_audioSuspendTimer=null;
+function _scheduleAudioSuspend(){
+  if(!navigator.userAgent.includes('StockCountPDA')||!_audioCtx)return;
+  clearTimeout(_audioSuspendTimer);
+  _audioSuspendTimer=setTimeout(()=>{
+    if(_audioCtx&&_audioCtx.state==='running')_audioCtx.suspend().catch(()=>{});
+  },1500);
+}
 function _ac(){
   if(!_audioCtx)try{_audioCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}
+  clearTimeout(_audioSuspendTimer);
+  if(_audioCtx&&_audioCtx.state==='suspended')_audioCtx.resume().catch(()=>{});
   return _audioCtx;
 }
 function beepSuccess(){
@@ -2792,6 +2821,7 @@ function beepSuccess(){
   g.gain.setValueAtTime(0.35,ac.currentTime);
   g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.12);
   o.start(ac.currentTime);o.stop(ac.currentTime+0.12);
+  _scheduleAudioSuspend();
 }
 function beepError(){
   const ac=_ac();if(!ac)return;
@@ -2804,6 +2834,7 @@ function beepError(){
     g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d+0.13);
     o.start(ac.currentTime+d);o.stop(ac.currentTime+d+0.13);
   });
+  _scheduleAudioSuspend();
 }
 function beepWarn(){
   const ac=_ac();if(!ac)return;
@@ -2817,7 +2848,11 @@ function beepWarn(){
     g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d+0.18);
     o.start(ac.currentTime+d);o.stop(ac.currentTime+d+0.18);
   }
+  _scheduleAudioSuspend();
 }
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&navigator.userAgent.includes('StockCountPDA')&&_audioCtx){clearTimeout(_audioSuspendTimer);_audioCtx.suspend().catch(()=>{});}
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _scanDebounceTimer=null;
@@ -2934,7 +2969,7 @@ function _setR01Ts(tsStr){
   state.r01UploadedAt=tsStr||'';
   const el=document.getElementById('r01Timestamp');
   if(!el)return;
-  if(tsStr){el.textContent=tsStr;el.style.display='';}
+  if(tsStr){el.textContent='อัปโหลดล่าสุด: '+tsStr;el.style.display='';}
   else{el.textContent='';el.style.display='none';}
 }
 function formatThaiDateTime(date){
@@ -3740,6 +3775,7 @@ function updateInlineQty(sku,v){
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='scanning')return;
   sd.countedQty=q;sd.manualEditAt=Date.now();
   if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
+  beepSuccess();
   _writeWhCountInboxItem(sku);
   scheduleSave();scheduleStats();scheduleRender();
 }
@@ -3748,8 +3784,10 @@ function updateInlineQty(sku,v){
 function updateRecheckInlineQty(sku,v){
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
+  const qtyChanged=Number(sd.recheckQty)!==q;
   sd.recheckQty=q;sd.recheckBy=currentUser;sd.recheckAt=new Date().toISOString();
   if(scanListMap.has(sku))scanListMap.get(sku).totalQty=q;
+  if(qtyChanged)beepSuccess();
   _writeWhRecheckInboxItem(sku);
   saveSession();
   clearTimeout(_firestoreSyncTimer);
@@ -4268,7 +4306,7 @@ async function restoreMasterFromFirestore(force=false){
         _db.collection('stock_sessions').doc(id+'_r01').get(),
         getR05Ref().get() // global doc — ไม่ผูก branch
       ]);
-      if(r01Doc.exists&&r01Doc.data().data_json){state.r01Data=JSON.parse(r01Doc.data().data_json);state.r01Version=r01Doc.data().r01Version||'';document.getElementById('badgeR01').textContent='Ready';if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
+      if(r01Doc.exists&&r01Doc.data().data_json){state.r01Data=JSON.parse(r01Doc.data().data_json);state.r01Version=r01Doc.data().r01Version||'';document.getElementById('badgeR01').textContent='Ready';const uploadedAt=_r01UploadedAtFromDocData(r01Doc.data());if(uploadedAt)_setR01Ts(uploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
       if(r05Doc.exists){state.r05Data=JSON.parse(r05Doc.data().data_json);document.getElementById('badgeR05').textContent='Ready';}
       if(!state.r01Data.length&&!state.r05Data.length){
         const old=await _db.collection('stock_sessions').doc(id+'_master').get();
@@ -4277,7 +4315,7 @@ async function restoreMasterFromFirestore(force=false){
     } else {
       // มี local data แล้ว — อ่านแค่ timestamp จาก _r01 doc (ไม่โหลด data_json)
       const r01Doc=await _db.collection('stock_sessions').doc(id+'_r01').get();
-      if(r01Doc.exists){state.r01Version=r01Doc.data().r01Version||state.r01Version||'';if(r01Doc.data().r01UploadedAt)_setR01Ts(r01Doc.data().r01UploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
+      if(r01Doc.exists){state.r01Version=r01Doc.data().r01Version||state.r01Version||'';const uploadedAt=_r01UploadedAtFromDocData(r01Doc.data());if(uploadedAt)_setR01Ts(uploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
     }
   }catch(e){console.warn('Firestore master restore:',e.message);}
   // PM badge/meta: ดึงจาก stock_sessions ที่ rules อนุญาต

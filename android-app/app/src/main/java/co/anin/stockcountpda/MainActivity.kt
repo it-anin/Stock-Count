@@ -14,9 +14,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.View
+import android.view.WindowManager
 import android.webkit.*
 import android.widget.Button
 import android.widget.ProgressBar
@@ -43,6 +45,7 @@ class MainActivity : AppCompatActivity() {
         const val KEY_EXTRA_FALLBACKS    = "extra_fallbacks_enabled"
         const val DEFAULT_ACTION         = "com.kte.scan.result"
         const val DEFAULT_EXTRA_KEY      = "code"
+        const val SCREEN_IDLE_TIMEOUT_MS = 2 * 60 * 1000L
 
         val FALLBACK_EXTRA_KEYS = listOf(
             "barcode_string", "data", "SCAN_BARCODE_1", "scanResult",
@@ -59,7 +62,10 @@ class MainActivity : AppCompatActivity() {
     private var scanReceiver: BroadcastReceiver? = null
     private var downloadId: Long = -1
     private var pendingInstallFile: File? = null
-    private var wakeLock: PowerManager.WakeLock? = null
+    private val screenIdleHandler = Handler(Looper.getMainLooper())
+    private val releaseScreenOnRunnable = Runnable {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
 
     // ---- Lifecycle --------------------------------------------------------
 
@@ -81,7 +87,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        acquireWakeLock()
+        keepScreenOnForActiveUse()
         registerScanReceiver()
         // กลับมาจากหน้า "อนุญาตติดตั้งแอป" → ลองติดตั้งอีกครั้ง
         pendingInstallFile?.let { file ->
@@ -97,29 +103,31 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterScanReceiver()
-        releaseWakeLock()
+        releaseScreenOnHold()
     }
 
     override fun onDestroy() {
+        releaseScreenOnHold()
         webView.destroy()
         super.onDestroy()
     }
 
-    // ---- WakeLock (keep screen on during scanning) ------------------------
-
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        @Suppress("DEPRECATION")
-        wakeLock = pm.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
-            "StockCountPDA:ScanWakeLock"
-        ).also { it.acquire(4 * 60 * 60 * 1000L) } // max 4 hours
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        keepScreenOnForActiveUse()
     }
 
-    private fun releaseWakeLock() {
-        wakeLock?.takeIf { it.isHeld }?.release()
-        wakeLock = null
+    // ---- Screen idle policy -----------------------------------------------
+
+    private fun keepScreenOnForActiveUse() {
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        screenIdleHandler.removeCallbacks(releaseScreenOnRunnable)
+        screenIdleHandler.postDelayed(releaseScreenOnRunnable, SCREEN_IDLE_TIMEOUT_MS)
+    }
+
+    private fun releaseScreenOnHold() {
+        screenIdleHandler.removeCallbacks(releaseScreenOnRunnable)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     // ---- WebView ----------------------------------------------------------
@@ -221,7 +229,10 @@ class MainActivity : AppCompatActivity() {
                 }));
             })($quoted)
         """.trimIndent()
-        runOnUiThread { webView.evaluateJavascript(js, null) }
+        runOnUiThread {
+            keepScreenOnForActiveUse()
+            webView.evaluateJavascript(js, null)
+        }
     }
 
     // ---- Self-Update System -----------------------------------------------

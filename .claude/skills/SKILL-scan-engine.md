@@ -28,6 +28,12 @@ const SCAN_DEBOUNCE_MS = 80;
 
 State: `_lastKeystrokeTime`, `_pdaMode` reset ใน `resetScanRuntimeState()`, `handleScanKey()` (Enter), debounce callback, `\r\n` path, `removeScanItem()`
 
+### PDA battery policy
+
+- Android wrapper ใช้ `FLAG_KEEP_SCREEN_ON` ระหว่างมีการใช้งาน และปล่อย flag หลังไม่มีการแตะหรือรับ Intent barcode 2 นาที; ห้ามเปลี่ยนกลับไปใช้ `SCREEN_BRIGHT_WAKE_LOCK` เพราะจะบังคับจอสว่างตลอดกะ
+- Web Audio บน PDA suspend หลังเสียงสุดท้าย 1.5 วินาทีและ resume อัตโนมัติก่อนเสียงถัดไป โดยไม่เปลี่ยนจังหวะเรียก `beepSuccess`/`beepError`/`beepWarn`
+- `body.pda-power-save` ปิดเฉพาะ decorative infinite animations; Desktop และ Firestore Realtime listeners ไม่ได้รับผลกระทบ
+
 ### CSS ซ่อนตัวอักษรระหว่างรับ barcode
 
 ```css
@@ -154,6 +160,7 @@ if (scanListMap.size > prevSize) {
 **WH warehouse override:**
 - WH PDA (`noEditPda`): scanning ที่ systemQty > 100 → ได้ inline input; ≤100 + audit → `<span>` scan only
 - WH Desktop: scanning → ได้ input เสมอ; audit (recheck) → `updateRecheckInlineQty()` เขียน `recheckQty`+`recheckBy`
+- ช่องจำนวน inline บน PDA เรียก `beepSuccess()` หนึ่งครั้งหลังบันทึกค่าที่ถูกต้อง; `updateRecheckInlineQty()` ส่งเสียงเฉพาะเมื่อจำนวนเปลี่ยนจริง เพื่อไม่ให้ดังจากการแตะแล้ว blur โดยไม่แก้ค่า
 
 เงื่อนไข: `sysQty > (_isPharmacyBranch()?10:100) || (whStaffEdit && !noEditPda)`
 ทั้ง `renderScanList()` และ `patchScanRow()` ต้องเช็คเหมือนกัน · in-app guide (`guideQtyRule`) แสดงเลข threshold ตาม branch อัตโนมัติ

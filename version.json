@@ -1,6 +1,6 @@
 {
-  "versionCode": 11,
-  "versionName": "1.10",
+  "versionCode": 12,
+  "versionName": "1.11",
   "downloadUrl": "https://github.com/it-anin/Stock-Count/releases/latest/download/StockCountPDA.apk",
-  "releaseNotes": "- แก้บั๊ก: รายการสแกนหายไปหลังสแกน 1-2 วินาที (cloud listener ทับ local scanning ด้วย cloud pending)"
+  "releaseNotes": "- ประหยัดแบต PDA: ปล่อยหน้าจอดับตามระบบหลังไม่มีการสแกนหรือแตะ 2 นาที\n- ลดการใช้พลังงานของเสียงและแอนิเมชัน โดยไม่กระทบการ Sync Realtime"
 }
