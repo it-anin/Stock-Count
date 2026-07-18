@@ -1,7 +1,12 @@
 # CLAUDE.md — Anin Stock Count
 
-Single-file PWA (`index.html`, ~2400+ JS lines) + Android WebView wrapper (`android-app/`).
+อ่าน `AGENTS.md` เป็นไฟล์แรกก่อนเริ่มงานทุกครั้ง แล้วจึงอ่านไฟล์นี้และ skill ที่เกี่ยวข้อง
+
+Single-file PWA (`index.html`, ~6,600+ บรรทัดรวม HTML/CSS/JS) + Android WebView wrapper (`android-app/`).
 No build system. No framework.
+
+**Current baseline:** `30c57ca` (`Move pharmacy confirmation to desktop`) · APK `1.11` (`versionCode 12`, tag `v1.11`)
+ระบบผ่าน technical verification เบื้องต้นแล้ว แต่ยังรอ User Acceptance Test (UAT) จากผู้ใช้งานจริง ห้ามเปลี่ยน business flow จากการคาดเดา
 
 ---
 
@@ -9,13 +14,15 @@ No build system. No framework.
 
 ฟังก์ชัน / logic ต่อไปนี้ถือเป็น **scan-related** — ต้องอธิบาย change + impact ให้ user approve ก่อนทุกครั้ง:
 
-`handleScanInput`, `handleScanKey`, `processScan`, `processPharmacistAuditScan`, `submitScanManual`,
+`receiveBarcode`, `handleScanInput`, `handleScanKey`, `processScan`, `processPharmacistAuditScan`, `submitScanManual`,
 `handleBarcode`, `parseScanLine`, `drainQueue`, `scanQueue`,
-`evaluatePendingScans`, `validateAndProcess`,
+`evaluatePendingScans`, `_buildPendingScanEvaluation`, `validateAndProcess`, `_confirmPharmacyBatched`,
 `appendScanRow`, `removeScanItem`, `resetRecheckItem`, `clearScanList`, `rebuildScanListMap`, `renderScanList`, `patchScanRow`,
 `_applyCloudScanData`, `syncToFirestore` (scan data), `pullFromCloud`, `startScanSessionListener`, `restoreFromFirestore`,
 `confirmScanGap`, `showScanGapModal` (dead code ก.ค. 2026 — gap 2 นาทีถูกถอด แต่ `_scanGapHold` ยังเป็น hold-guard ทุกจุด ห้ามลบ), `confirmNoStock` (flag `noStock` — ดู SKILL-scan-engine),
 `handleAuditVerifyScan`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`, `confirmRecheckBtn`, `confirmAllRecheckSupervisor`,
+`_confirmWhCountItems`, `confirmCountByStaff`, `confirmRecheckByStaff`, WH Count/Recheck inbox + confirmation listeners,
+branch confirm lock (`_acquireBranchConfirmLock`, `_releaseBranchConfirmLock`, lock listener และ scan guards),
 `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`,
 time gates ใน scan, role check ใน `rebuildScanListMap`
 
@@ -42,18 +49,37 @@ APK เป็นแค่ WebView wrapper — แก้ `index.html` → Vercel 
 2. sync `version.json` (versionCode, versionName, releaseNotes ภาษาไทย)
 3. commit → `git tag v<X.Y>` → `git push origin main --tags`
 
+**Current native policy (APK 1.11):** ใช้ `FLAG_KEEP_SCREEN_ON` เฉพาะช่วงใช้งานและปล่อยหลัง idle 2 นาที ห้ามนำ `SCREEN_BRIGHT_WAKE_LOCK`, `ON_AFTER_RELEASE` หรือ permission `WAKE_LOCK` กลับมา
+
+---
+
+## ⚠️ กฎ 3 — Cloud confirmation เป็น authoritative
+
+- WH Supervisor ใช้ Cloud เป็น source of truth; localStorage เป็น cache เท่านั้น
+- Precedence ต้องคงเป็น R01/R16 master → session base → Count marker → `WH_counts` → Recheck marker → `WH_rechecks`
+- marker ใน `countResetAt` เดียวกันต้องชนะ session/PDA snapshot เก่า และ Recheck marker ต้องชนะ Count marker ที่ยังเป็น `audit`
+- Count/Recheck Confirm ต้องอ่าน server ล่าสุดและเขียน marker + ลบ pending ใน Firestore transaction เดียว เปลี่ยน local state หลัง transaction สำเร็จเท่านั้น
+- generic `audit` ที่ไม่มี `auditor` ห้ามทับ `pass`/`stock_adjustment` ที่ Supervisor ยืนยันแล้ว
+- ห้าม simplify `_applyCloudScanData()`/`syncToFirestore()` หรือเปลี่ยน merge order โดยไม่ทดสอบ stale snapshot, delayed PDA write, offline และสอง Desktop พร้อมกัน
+- Pharmacy Confirm ต้องทำบน Desktop ผ่าน branch lock + batch processing PDA ห้ามเรียก Confirm โดยตรง
+
 ---
 
 ## Architecture
 
 ```
-index.html          ← ทุกอย่าง (HTML + CSS + JS รวมไฟล์เดียว ~2400+ บรรทัด)
+AGENTS.md           ← entrypoint + ข้อห้าม/invariant/bug ledger สำหรับผู้ดูแลและ AI agent
+CLAUDE.md           ← architecture + กฎ critical path (ไฟล์นี้)
+index.html          ← runtime เว็บทั้งหมด (HTML + CSS + JS รวมไฟล์เดียว ~6,600+ บรรทัด)
 sw.js               ← Service Worker (cache-first static, network-first HTML)
 libs/
   papaparse.min.js  ← CSV parsing
   xlsx.full.min.js  ← Excel read/write
 android-app/        ← WebView wrapper (Kotlin)
 version.json        ← APK self-update manifest
+firestore.rules     ← สำเนา rules; deploy จริงต้อง Publish ผ่าน Firebase Console
+auto-r01/           ← R01 auto import สำหรับ SRC/KKL/SSS (Windows Task Scheduler)
+api/ip.js           ← Vercel function สำหรับ login log IP
 ```
 
 **Stack:** Vanilla JS/CSS, Firebase Firestore v10.12.0 (compat CDN), no bundler
@@ -69,17 +95,20 @@ version.json        ← APK self-update manifest
 ```js
 state = {
   productMasterData, productMasterMap,   // Product catalog
-  r01Data,                               // Inventory qty (R01.102)
+  r01Data, r01Version,                   // Inventory qty + cloud master version (R01.102)
   r05Data,                               // Barcode mapping (R05.106)
   r16Data, r16SalesMap, r16RawMap,       // Sales during count (R16.104)
   r16InboundMap, r16InboundRawMap,       // Inbound during count (R16.104)
+  r16DetailVersion,                      // active R16.104 generation/version
   r16DateMismatch,                       // true = R16 TRANDATE ไม่ overlap scan dates
   r16_103Map, r16_103RawMap,             // WH only: รับเข้ายังไม่ขึ้นชั้น (R16.103)
+  r16_103DetailVersion,                  // active R16.103 generation/version
   skuMap,       // SKU → { productName, systemQty, barcodes[], isDel, isP }
   barcodeMap,   // barcode → SKU
   skuDirectMap, // SKU → { barcode, unitName }
   scanData,     // Map<SKU, { countedQty, status, timestamp, scannedBy, auditor,
-                //             recheckQty, recheckBy, initialStatus, firstScanAt, ... }>
+                //             countAt, recheckQty, recheckBy, recheckAt,
+                //             initialStatus, firstScanAt, noStock, ... }>
   unknownScans,
   locationMap,  // WH only: Map<SKU, string> e.g. "A1-01"
   zoneStaffMap  // WH only: Map<zone, staff> e.g. "A" → "มุก"
@@ -88,6 +117,8 @@ state = {
 
 `_countResetAt` — module-level ISO timestamp, reset epoch (monotonic). ใช้ `>` เปรียบเทียบ lexicographic
 `_r01BaselineAt` — module-level ISO timestamp, อัพ R01 ล่าสุดบน**สาขายา**เท่านั้น (`_isPharmacyBranch()`) — ตัวตัดสิน `_isPreBaselineItem` (freeze audit/pass ที่นับก่อน baseline — audit อยู่รอดข้ามการอัพ R01 ให้เภสัชรีเช็ค) + trigger ล้าง R16 ข้ามเครื่อง ดู [[SKILL-data-files]] R01 Daily Baseline
+
+WH R16 raw timeline เก็บ cache ใน IndexedDB (`stock-count-cache` / `r16Snapshots`) แต่ Cloud meta/chunks เป็น source of truth เครื่อง Supervisor ต้องโหลด generation ที่ตรงกับ R01 และ `countResetAt` ก่อน Confirm
 
 ### Status Lifecycle
 
@@ -101,6 +132,15 @@ pending → scanning → pass
 `unknown` = barcode ไม่พบในระบบ (parallel track)
 `audit_check` = legacy, ยังอยู่ใน codebase แต่ไม่ถูกผลิตใหม่แล้ว
 `negSys` = สาขายาเท่านั้น: systemQty < 0 ใน R01 → skuMap เก็บ 0 + flag (ดู SKILL-scan-engine)
+`noStock` = สาขายาเท่านั้น: ระบบมี stock แต่ผู้ช่วยยืนยันว่าไม่มีของจริง → Confirm เป็น `stock_adjustment` ตามกติกาปัจจุบัน
+
+สูตร Confirm รอบแรกห้ามเปลี่ยนโดยพลการ:
+
+```text
+effectiveQty = countedQty + soldQty + r16103Qty - inboundQty
+```
+
+WH Recheck รอบสองเปรียบเทียบ `recheckQty` กับ `systemQty` จาก `WH_r01` ล่าสุดโดยตรง ไม่ใช้ local `skuMap` ที่อาจค้าง
 
 ### Roles & Branches
 
@@ -110,6 +150,56 @@ pending → scanning → pass
 | pharmacist | SRC/KKL/SSS | Audit Verify (scan + ยืนยัน) |
 | supervisor | WH | ยืนยันนับ + ยืนยันรีเช็ค (Desktop only) |
 | warehouse | WH | สแกนนับ + สแกนรีเช็ค (PDA) |
+
+สาขายา (`SRC`/`KKL`/`SSS`) ใช้ Confirm รอบแรกบน Desktop เท่านั้น ปุ่มถูกซ่อนและ guard ด้วย User-Agent `StockCountPDA` โดยตรง ไม่อิง viewport
+
+### Firestore Workflow Documents (ปัจจุบัน)
+
+| Document ใน `stock_sessions` | หน้าที่ |
+|---|---|
+| `{branch}` | session หลัก |
+| `{branch}_r01` | R01 master/version + R16 upload metadata |
+| `global_pm`, `global_r05` | shared Product/Barcode master |
+| `WH_counts`, `WH_count_confirmations` | Count inbox + authoritative confirmation markers |
+| `WH_rechecks`, `WH_recheck_confirmations` | Recheck inbox + authoritative confirmation markers |
+| `WH_r16_104_meta`, `WH_r16_103_meta` | active timeline generation/version |
+| `WH_r16_{kind}_{generation}_{index}` | R16 chunk เป้าหมายไม่เกินประมาณ 650 KB |
+| `{branch}_confirm_lock` | Pharmacy Desktop Confirm lock (SRC/KKL/SSS) |
+| `WH_location` | location + zone/staff mapping |
+
+### Pharmacy Desktop Confirm
+
+- `_confirmPharmacyBatched()` ต้องออนไลน์และ acquire `{branch}_confirm_lock` ก่อนเริ่ม
+- lock เก็บ token/owner/`countResetAt`/เวลาเริ่ม/หมดอายุ 5 นาที และปลดด้วย token เจ้าของเท่านั้น
+- PDA ออนไลน์ฟัง lock แล้วบล็อก Intent barcode, queue, input และการแก้จำนวนชั่วคราว
+- Desktop รอ PDA sync แล้ว snapshot เฉพาะ `scanning`; คำนวณ batch ละ 25 ผ่าน event loop พร้อม progress
+- ก่อน apply อ่าน server ซ้ำและตรวจ `countResetAt`, R01/R16 version, `countedQty`, `timestamp`, `scannedBy`; เปลี่ยนกลางงาน = abort ทั้งชุด
+- ถ้า cloud sync หลัง apply ล้มเหลว ผล local ยังคงอยู่และ lock อยู่จน retry สำเร็จหรือ TTL หมด เพื่อกันกดซ้ำ
+
+### WH Count/Recheck
+
+- WH R01/R16 master และ raw timeline ถูก sync ผ่าน Firestore เพื่อให้ Supervisor หลายเครื่องเห็นข้อมูลชุดเดียวกัน; localStorage/IndexedDB เป็น cache ที่ต้อง version ตรงเท่านั้น
+- ปุ่ม R01.102 แสดงเวลาอัปโหลดล่าสุดจาก Cloud เพื่อให้เครื่องอื่นรู้ว่า master ถูกอัปแล้ว
+- warehouse PDA เขียน live Count ไป `WH_counts` และ live Recheck ไป `WH_rechecks`
+- Supervisor Confirm รายคน/ทั้งหมดผ่าน transaction; pending ของคนอื่นห้ามถูกแตะในการ Confirm รายคน
+- Count marker `audit` เปิดงาน Recheck โดยเริ่ม `recheckQty` ว่าง/0 ตาม UI; warehouse สแกนแล้ว status ยังเป็น `audit` จน Supervisor Confirm รอบสอง
+- listener ทั้ง Supervisor/PDA ต้อง apply marker ก่อน inbox เก่า และ backfill/write ต้องข้าม SKU ที่มี marker ใน epoch เดียวกัน
+- เริ่มนับใหม่/ล้างข้อมูลต้องล้าง inbox, markers, WH R16 meta/chunks และ cache ของรอบเก่า
+
+### PDA power/audio/toast policy
+
+- Native Android ใช้ screen-on idle timer 2 นาที ไม่ใช้ bright WakeLock และไม่ปลุกจอเองหลังดับ
+- Web Audio บน PDA suspend หลังเสียงจบประมาณ 1.5 วินาทีและ resume ก่อนเสียงถัดไป เสียงสแกนและเสียงกรอกจำนวนต้องคงอยู่
+- `body.pda-power-save` ปิดเฉพาะ decorative animation ห้ามลด Firestore realtime listeners เพื่อประหยัดแบต
+- Toast บน PDA ย่อผ่าน `_toastMessageForDevice()`; Desktop ใช้ข้อความเต็ม และ action toast ต้องใช้ callback/`textContent` ไม่ประกอบ input ด้วย unsafe `innerHTML`
+
+### Known limitations / rollout assumptions
+
+- PDA ที่ออฟไลน์รับ branch lock ไม่ได้ทันที รายการใหม่จะ sync ภายหลังและรอ Confirm รอบถัดไป
+- Pharmacy Desktop ต้องออนไลน์ระหว่าง Confirm
+- Audit Verify บางเส้นทางยังไม่รองรับ pending quantity 0 เพราะ pending map กรอง `> 0` ห้ามแก้โดยไม่มี business rule ที่อนุมัติ
+- Firestore rules ปัจจุบันเปิด read/write ให้ collections ที่แอปใช้ การ tighten rules เป็น security/migration แยกและต้องทดสอบทุก client
+- สาขายาที่รับ R16 ผ่าน legacy session sync อาจมีเฉพาะ aggregate maps ไม่มี raw TRANDATE timeline; ห้ามสมมติว่าป้ายวันที่ R16 ตรงกันแล้ว derived result ทุกเครื่องจะตรงโดยอัตโนมัติ
 
 ---
 
@@ -136,6 +226,9 @@ python -m http.server 8080
 ## เมื่องานเสร็จ
 หลังทำ feature หรือ fix bug เสร็จ ให้ propose การอัพเดท CLAUDE.md
 หรือ SKILL file ที่เกี่ยวข้อง โดยเพิ่มเฉพาะ context ที่ถ้าไม่มีแล้วจะทำผิดพลาด
+ถ้าเป็น invariant, ข้อห้าม, deployment rule หรือ bug regression สำคัญ ให้ update `AGENTS.md` ด้วย
+
+ก่อนส่งงานอย่างน้อยต้องตรวจ inline JavaScript syntax (ถ้าแก้ `index.html`), `git diff --check`, regression ของ branch/role ที่แชร์ฟังก์ชัน และ `git status --short` ว่าไม่มีไฟล์ unrelated ถูกแก้หรือ stage
 
 ---
 
