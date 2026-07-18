@@ -163,12 +163,17 @@ if (scanListMap.size > prevSize) {
 ## WH Count Confirmation Workflow (July 2026)
 
 - WH warehouse PDA writes each live `scanning` SKU to `stock_sessions/WH_counts` with `countAt` and `countResetAt`.
-- Supervisor per-staff/all count confirmation uses a Firestore transaction: read latest `WH_counts`, compute the R16-adjusted result, write `stock_sessions/WH_count_confirmations`, and delete pending fields atomically.
-- Count confirmation marker fields include `status`, `countedQty`, `scannedBy`, `countAt`, `confirmedAt`, `confirmedBy`, R16 components, `effectiveQty`, and `countResetAt`.
+- `stock_sessions/WH_r01` has `r01Version`; every WH client listens for a newer version and rebuilds `skuMap`. WH Supervisor login always reloads the cloud R01/session base, so localStorage is cache only.
+- WH R16 raw timelines are cloud-shared through top-level versioned chunk docs (`WH_r16_104_<generation>_<index>` / `WH_r16_103_<generation>_<index>`) plus `WH_r16_104_meta` / `WH_r16_103_meta`. Each `data_json` chunk targets at most 650 KB. Upload writes all chunks before switching meta; only the active meta generation is authoritative. Meta also stores `r01Version`; uploading a new R01 invalidates the old R16 set until R16.104/103 are uploaded for that version.
+- Supervisor downloads the matching raw timeline into memory/IndexedDB and rebuilds aggregate maps from that same version. IndexedDB is only a cache and is accepted only when `countResetAt` and version match the cloud meta.
+- Supervisor precedence is fixed: R01/R16 master → session base → count confirmation marker → `WH_counts` → recheck confirmation marker → `WH_rechecks`. Recheck marker wins over an older count `audit` marker.
+- Supervisor per-staff/all count confirmation uses a Firestore transaction: read latest `WH_counts`, `WH_r01`, and both R16 meta docs; abort if local/cloud versions differ; compute the R16-adjusted result; write `stock_sessions/WH_count_confirmations`; and delete pending fields atomically.
+- Count confirmation marker fields include `status`, `countedQty`, `scannedBy`, `countAt`, `confirmedAt`, `confirmedBy`, R16 components, `effectiveQty`, `systemQty`, `r01Version`, `r16Version`, `r16_103Version`, and `countResetAt`.
 - A same-epoch count confirmation marker is authoritative over stale session JSON and `WH_counts`; PDA backfill/write must skip confirmed SKUs. Failed/offline transactions must not mutate local state.
 - Marker `audit` starts WH recheck with no `recheckQty`; warehouse scans recheck while status remains `audit`, then Supervisor performs the separate recheck confirmation.
-- WH raw R16.104/R16.103 timelines are cached in IndexedDB for the current `countResetAt`. On the same Desktop after reload, exact TRANDATE filtering is restored. If the matching local snapshot is unavailable, WH count confirmation is blocked and the Supervisor must upload the relevant R16 file again; never silently fall back to aggregate totals for WH confirmation.
-- `startNewCount()` and full clear delete `WH_counts`, `WH_count_confirmations`, `WH_rechecks`, `WH_recheck_confirmations`, and the local WH R16 timeline snapshot.
+- Recheck confirmation transaction reads the latest `WH_r01` data and compares `recheckQty` with that server `systemQty` directly; it does not trust a stale local `skuMap`.
+- If a new R01/R16 meta version arrives while a Supervisor is open, Confirm stays blocked until the complete matching timeline is loaded. Never silently fall back to aggregate totals for WH confirmation.
+- `startNewCount()` and full clear delete `WH_counts`, `WH_count_confirmations`, `WH_rechecks`, `WH_recheck_confirmations`, active R16 meta/chunks, and the local WH R16 timeline snapshot.
 - Scan-hour gate 08:00-21:00 applies only to pharmacy branches; WH scanning is available 24 hours.
 
 ## WH Recheck Workflow
@@ -186,6 +191,7 @@ if (scanListMap.size > prevSize) {
 **WH recheck confirmation marker (July 2026):**
 - `stock_sessions/WH_recheck_confirmations` เก็บผลยืนยันต่อ SKU (`status`, `auditor`, `confirmedAt`, `recheckQty`, `recheckAt`, `countResetAt`) และเป็น authoritative เหนือ `WH_rechecks` กับ session JSON
 - `confirmRecheckByStaff` / `confirmAllRecheckSupervisor` ใช้ Firestore transaction อ่าน pending ล่าสุด แล้วเขียน marker + ลบ pending พร้อมกัน; transaction fail = ห้ามเปลี่ยน local state
+- transaction รีเช็คอ่าน `WH_r01` ล่าสุดจาก server เพื่อใช้ `systemQty` และ marker บันทึก `systemQty`/`r01Version`/R16 versions ที่ใช้ตัดสิน
 - Supervisor และ warehouse PDA ฟัง marker; marker รอบ epoch เดียวกันต้องชนะ audit snapshot เก่า และล้าง pending ที่ PDA เขียนกลับมาช้า
 - หลังมี marker ห้าม `_writeWhRecheckInboxItem` / backfill ส่ง SKU เดิมซ้ำ; เริ่มนับใหม่/ล้างข้อมูลทั้งหมดต้องลบ marker doc
 - `_applyCloudScanData`: local ที่มี `auditor` ห้ามถูก cloud `audit` ที่ไม่มี auditor ทับ แต่ cloud audit ยังชนะ local unverified state ได้ตาม flow เภสัชเดิม
@@ -304,3 +310,5 @@ Fix: patch-first logic (ดู drainQueue section)
 
 **`getSoldQtyBefore` fallback ไม่กรองเวลา (กับดักข้ามเครื่อง):**
 `if(!state.r16RawMap.size||!scanTimestamp)return state.r16SalesMap.get(sku)||0;` — เครื่องที่**รับ R16 ผ่าน cloud sync ไม่มี rawMap** (sync เฉพาะ salesMap/inboundMap) → fallback คืน**ยอดรวมทั้งก้อนไม่กรอง TRANDATE** ขณะที่เครื่องอัพไฟล์เองกรองตาม timestamp ได้ → การคำนวณ effectiveQty **ให้ผลต่างกันตามเครื่อง** สำหรับ item timestamp เก่า (เจอตอนออกแบบ recheck ข้าม baseline — กันด้วย `_isPreBaselineItem` guard ใน `getPharmacistAuditEffectiveQty`) — logic ใหม่ที่พึ่ง `getSoldQtyBefore/getInboundQtyBefore/getR16103QtyBefore` ต้องเช็คเคสเครื่องไม่มี rawMap เสมอ
+
+WH Supervisor แก้ข้อจำกัดนี้แล้วด้วย R16 versioned chunks + meta; ข้อควรระวัง fallback ด้านบนยังมีผลกับสาขายา/legacy path ที่ไม่ได้โหลด raw timeline chunks.
