@@ -247,6 +247,10 @@
     body.pda-power-save .sl-barcode::after,
     body.pda-power-save .progress-fill { animation:none!important; }
     body.pda-power-save .progress-fill { background-size:100% 100%; }
+    body.pda-power-save #btnConfirm { display:none!important; }
+    #pdaConfirmNotice { display:none; flex:1; padding:9px 12px; border-radius:9px; background:rgba(0,114,198,0.08); color:var(--accent); font-size:0.72rem; font-weight:700; text-align:center; }
+    body.pda-power-save #pdaConfirmNotice { display:block; }
+    #branchConfirmLockBanner { display:none; position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:10020; max-width:calc(100vw - 24px); padding:10px 16px; border-radius:10px; background:#fff8e1; border:1px solid rgba(224,140,0,0.45); color:#7a5800; font-size:0.78rem; font-weight:700; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,0.16); }
     .progress-count { font-size:0.72rem; color:var(--text3); margin-top:4px; font-weight:600; }
     .db-status { display:flex; align-items:center; gap:6px; font-size:0.72rem; }
     .db-dot { width:6px; height:6px; border-radius:50%; background:var(--text3); }
@@ -350,9 +354,6 @@
       .scan-list-card{flex:1;min-height:0;display:flex;flex-direction:column;margin:4px 8px;}
       .scan-list-body{flex:1;overflow-y:auto;max-height:none!important;}
 
-      /* Hide Confirm button — ไม่ใช้บน mobile (Confirm ทำที่คอมหลัง 21:00) */
-      #btnConfirm{display:none!important;}
-
       /* Scan columns: 4 cols — hide Barcode (col2) and Action (col6) */
       .scan-list-header,.scan-row{grid-template-columns:85px 1fr 52px 60px!important;}
       .scan-row-sku{font-size:0.58rem!important;display:flex!important;align-items:center;gap:2px;overflow:visible!important;}
@@ -374,6 +375,9 @@
       /* Toast PDA — lightweight fade+slide (no spring bounce, no heavy shadow) */
       @keyframes toastFadePda{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
       .toast{animation:toastFadePda 0.2s ease-out!important;box-shadow:0 2px 8px rgba(0,0,0,0.15)!important;border-radius:10px!important;padding:12px 20px!important;font-size:0.85rem!important;}
+      body.pda-power-save .toast{max-width:calc(100vw - 24px)!important;white-space:normal!important;line-height:1.35!important;padding:10px 14px!important;}
+      body.pda-power-save .toast span{min-width:0;overflow-wrap:anywhere;}
+      body.pda-power-save .toast button{flex-shrink:0;}
 
       /* Audit Verify popup PDA — ขยายให้เห็นรายการมากขึ้น (Option B) */
       #auditVerifyPopupOverlay{padding:8px 4px!important;}
@@ -619,6 +623,7 @@
 
         <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:flex-start;">
           <button id="btnConfirm" class="btn btn-confirm" style="flex:1;" onclick="validateAndProcess()" disabled>✓ Confirm</button>
+          <div id="pdaConfirmNotice">Confirm ที่ Desktop เท่านั้น</div>
           <div id="supervisorCountBtns" style="display:none;flex-wrap:wrap;gap:6px;"></div>
           <button id="btnHideList" class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
         </div>
@@ -1087,7 +1092,7 @@
     <div style="font-size:0.8rem;color:var(--red);font-weight:600;margin-bottom:20px;">การ Confirm ด้วยไฟล์ผิดอาจทำให้ผลการนับผิดพลาด</div>
     <div style="display:flex;gap:10px;">
       <button onclick="document.getElementById('r16MismatchModal').style.display='none';" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;">✕ ยกเลิก — อัพ R16 ใหม่</button>
-      <button onclick="document.getElementById('r16MismatchModal').style.display='none';processScan();evaluatePendingScans();" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--yellow),var(--orange));color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;font-family:inherit;">ยืนยันต่อไป →</button>
+      <button onclick="document.getElementById('r16MismatchModal').style.display='none';validateAndProcess(true);" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--yellow),var(--orange));color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;font-family:inherit;">ยืนยันต่อไป →</button>
     </div>
   </div>
 </div>
@@ -1103,6 +1108,16 @@
       <button onclick="document.getElementById('clearConfirmModal').style.display='none';" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;">ยกเลิก</button>
       <button onclick="clearScanList();" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;font-family:inherit;">✕ ซ่อนรายการ</button>
     </div>
+  </div>
+</div>
+
+<div id="branchConfirmLockBanner">กำลัง Confirm ที่ Desktop — พักการสแกนชั่วคราว</div>
+<div id="branchConfirmProgressOverlay" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10030;align-items:center;justify-content:center;padding:20px;">
+  <div style="width:min(420px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);text-align:center;">
+    <div style="font-size:1.05rem;font-weight:800;color:var(--accent);margin-bottom:8px;">กำลัง Confirm สินค้า</div>
+    <div id="branchConfirmProgressText" style="font-size:0.8rem;color:var(--text2);margin-bottom:14px;">กำลังเตรียมข้อมูล...</div>
+    <div style="height:10px;background:var(--surface2);border-radius:999px;overflow:hidden;"><div id="branchConfirmProgressFill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--green));transition:width 0.15s linear;"></div></div>
+    <div style="font-size:0.7rem;color:var(--text3);margin-top:12px;">ห้ามปิดหน้าเว็บจนกว่าระบบจะแจ้งว่าเสร็จ</div>
   </div>
 </div>
 
@@ -1157,6 +1172,15 @@ let _whR16CloudLoadToken = 0;
 let _whR16TimelineLoading = false;
 let _locationUnsubscribe = null;
 let _snapshotMergeTimer = null;
+let _branchConfirmLockUnsubscribe = null;
+let _branchConfirmLockExpiryTimer = null;
+let _branchConfirmLockData = null;
+let _branchConfirmToken = '';
+let _branchConfirming = false;
+let _branchScanPaused = false;
+let _branchLockToastAt = 0;
+const BRANCH_CONFIRM_LOCK_MS = 5*60*1000;
+const BRANCH_CONFIRM_BATCH_SIZE = 25;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
 let _whResultTab = 'result'; // WH PDA warehouse: 'result'=เริ่มนับ(scanning) | 'recheck'=รีเช็ค(audit)
 let _whSupFilter = 'all'; // WH supervisor Desktop: filter ตาราง RESULT ตาม status (all/scanning/pass/audit/stock_adjustment)
@@ -1172,6 +1196,7 @@ function getWhCountInboxRef(){return _db.collection('stock_sessions').doc('WH_co
 function getWhCountConfirmationRef(){return _db.collection('stock_sessions').doc('WH_count_confirmations');}
 function getWhRecheckInboxRef(){return _db.collection('stock_sessions').doc('WH_rechecks');}
 function getWhRecheckConfirmationRef(){return _db.collection('stock_sessions').doc('WH_recheck_confirmations');}
+function getBranchConfirmLockRef(branch=currentBranch){return _db.collection('stock_sessions').doc(`${branch}_confirm_lock`);}
 function getWhR16MetaRef(kind){return _db.collection('stock_sessions').doc(kind==='103'?'WH_r16_103_meta':'WH_r16_104_meta');}
 function getWhR16ChunkRef(kind,generation,index){return _db.collection('stock_sessions').doc(`WH_r16_${kind}_${generation}_${String(index).padStart(4,'0')}`);}
 const WH_R16_CACHE_DB='stock-count-cache';
@@ -1417,6 +1442,74 @@ function stopProductMasterListener(){
 function stopScanSessionListener(){
   if(_scanSessionUnsubscribe){_scanSessionUnsubscribe();_scanSessionUnsubscribe=null;}
   clearTimeout(_snapshotMergeTimer);_snapshotMergeTimer=null;
+}
+function _isPdaApp(){return navigator.userAgent.includes('StockCountPDA');}
+function _branchConfirmLockExpiresMs(data){
+  if(!data)return 0;
+  if(data.expiresAt?.toMillis)return data.expiresAt.toMillis();
+  const ms=Date.parse(data.expiresAt||'');return Number.isFinite(ms)?ms:0;
+}
+function _isBranchConfirmLockActive(data=_branchConfirmLockData){
+  return !!(_isPharmacyBranch()&&data?.token&&(data.countResetAt||'')===(_countResetAt||'')&&_branchConfirmLockExpiresMs(data)>Date.now());
+}
+function _setBranchScanPaused(active,data=null){
+  const wasPaused=_branchScanPaused;_branchScanPaused=!!active;_branchConfirmLockData=data;
+  clearTimeout(_branchConfirmLockExpiryTimer);_branchConfirmLockExpiryTimer=null;
+  const banner=document.getElementById('branchConfirmLockBanner');
+  if(banner){banner.style.display=_branchScanPaused?'block':'none';banner.textContent=_branchScanPaused?`กำลัง Confirm ที่ Desktop${data?.owner?` โดย ${data.owner}`:''} — พักการสแกนชั่วคราว`:'';}
+  const scanInput=document.getElementById('scanInput');const auditInput=document.getElementById('auditVerifyScanInput');
+  if(_branchScanPaused){
+    clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;_lastKeystrokeTime=0;_pdaMode=false;
+    if(scanInput){scanInput.disabled=true;scanInput.classList.remove('pda-receiving');}
+    if(auditInput)auditInput.disabled=true;
+    const wait=Math.max(0,_branchConfirmLockExpiresMs(data)-Date.now()+100);
+    _branchConfirmLockExpiryTimer=setTimeout(()=>{if(_branchConfirmLockData?.token===data?.token)_setBranchScanPaused(false,null);},wait);
+  }else{
+    if(scanInput)scanInput.disabled=false;
+    updateScanInputMode();if(auditInput)auditInput.disabled=false;
+    if(!wasPaused)return;
+    if(scanQueue.length)requestAnimationFrame(drainQueue);
+    if(scanInput&&!scanInput.disabled)scanInput.focus();
+  }
+  updateConfirmBtn();
+}
+function _blockScanForBranchConfirm(showMessage=true){
+  if(!_branchScanPaused&&!_isBranchConfirmLockActive())return false;
+  if(showMessage&&Date.now()-_branchLockToastAt>2000){_branchLockToastAt=Date.now();beepWarn();toast('กำลัง Confirm ที่ Desktop — รอสักครู่','warn',3000);}
+  return true;
+}
+function stopBranchConfirmLockListener(){
+  if(_branchConfirmLockUnsubscribe){_branchConfirmLockUnsubscribe();_branchConfirmLockUnsubscribe=null;}
+  clearTimeout(_branchConfirmLockExpiryTimer);_branchConfirmLockExpiryTimer=null;
+  _setBranchScanPaused(false,null);
+}
+function startBranchConfirmLockListener(){
+  stopBranchConfirmLockListener();
+  if(!_db||!currentBranch||!_isPharmacyBranch()||_adminMode)return;
+  _branchConfirmLockUnsubscribe=getBranchConfirmLockRef().onSnapshot(doc=>{
+    const data=doc.exists?(doc.data()||{}):null;
+    _setBranchScanPaused(_isBranchConfirmLockActive(data),data);
+  },e=>console.warn('[branch confirm lock]',e.message));
+}
+async function _acquireBranchConfirmLock(){
+  if(!_db||!_isPharmacyBranch())throw new Error('BRANCH_CONFIRM_UNAVAILABLE');
+  const token=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const ref=getBranchConfirmLockRef();const expiresAt=firebase.firestore.Timestamp.fromMillis(Date.now()+BRANCH_CONFIRM_LOCK_MS);
+  const lockData={token,branch:currentBranch,owner:currentUser||'',role:currentRole||'',countResetAt:_countResetAt||'',expiresAt};
+  await _db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);const existing=snap.exists?(snap.data()||{}):null;
+    if(_isBranchConfirmLockActive(existing))throw new Error('BRANCH_CONFIRM_LOCKED');
+    tx.set(ref,{...lockData,startedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  });
+  _branchConfirmToken=token;_setBranchScanPaused(true,lockData);return token;
+}
+async function _releaseBranchConfirmLock(token){
+  if(!_db||!token||!_isPharmacyBranch())return false;
+  const ref=getBranchConfirmLockRef();
+  try{await _db.runTransaction(async tx=>{const snap=await tx.get(ref);if(snap.exists&&snap.data()?.token===token)tx.delete(ref);});}
+  catch(e){console.warn('[branch confirm unlock]',e.message);return false;}
+  if(_branchConfirmToken===token)_branchConfirmToken='';
+  return true;
 }
 function stopWhMasterListeners(){
   if(_whMasterUnsubscribe){_whMasterUnsubscribe();_whMasterUnsubscribe=null;}
@@ -1914,7 +2007,7 @@ function selectEmployee(name,role){
     applyAuditTerminology();
     if(_employeeCallback)_employeeCallback();
     else{
-      startWhMasterListeners();startScanSessionListener();
+      startWhMasterListeners();startScanSessionListener();startBranchConfirmLockListener();
       startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();
     }
     _employeeCallback=null;
@@ -2007,6 +2100,7 @@ async function initAfterLogin(){
     startWhCountInboxListener();
     startWhRecheckConfirmationListener();
     startWhRecheckInboxListener();
+    startBranchConfirmLockListener();
     // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
     rebuildScanListMap(currentRole==='pharmacist');
     renderScanList();updateStats();renderTable();
@@ -2068,6 +2162,7 @@ function requestBranchChange(){
 async function selectBranch(branch){
   stopProductMasterListener();
   stopScanSessionListener();
+  stopBranchConfirmLockListener();
   stopWhMasterListeners();
   stopWhCountConfirmationListener();
   stopWhCountInboxListener();
@@ -2884,6 +2979,7 @@ function resetScanRuntimeState(){
 // Android app เรียก: webView.evaluateJavascript("receiveBarcode('VALUE')", null)
 function receiveBarcode(barcode){
   if(!barcode||!barcode.trim())return;
+  if(_blockScanForBranchConfirm())return;
   // ถ้า Audit Verify popup เปิดอยู่ → route ไป audit verify input แทน main scan
   const avOverlay=document.getElementById('auditVerifyPopupOverlay');
   if(avOverlay&&avOverlay.style.display==='flex'){
@@ -3001,19 +3097,155 @@ function updateConfirmBtn(){
   const btn=document.getElementById('btnConfirm');
   if(!btn)return;
   const whLoading=currentBranch==='WH'&&currentRole==='supervisor'&&_whR16TimelineLoading;
-  btn.disabled=!state.r16Loaded||whLoading;
-  btn.title=whLoading?'กำลังโหลด R01/R16 จาก Cloud':(state.r16Loaded?'':'กรุณาโหลดไฟล์ R16.104 ก่อน');
+  const pdaBlocked=_isPdaApp()&&_isPharmacyBranch();
+  const branchBusy=_isPharmacyBranch()&&(_branchConfirming||_branchScanPaused||_isBranchConfirmLockActive());
+  btn.disabled=!state.r16Loaded||whLoading||pdaBlocked||branchBusy;
+  btn.title=pdaBlocked?'Confirm สาขาได้เฉพาะ Desktop':branchBusy?'มี Desktop กำลัง Confirm อยู่':whLoading?'กำลังโหลด R01/R16 จาก Cloud':(state.r16Loaded?'':'กรุณาโหลดไฟล์ R16.104 ก่อน');
 }
 
-function validateAndProcess(){
+async function validateAndProcess(forceDateMismatch=false){
+  if(_isPdaApp()&&_isPharmacyBranch()){toast('Confirm ที่ Desktop เท่านั้น','warn');return;}
+  if(_branchConfirming)return;
   if(!state.r16Loaded){toast('กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน','warn');return;}
-  if(state.r16DateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
+  if(state.r16DateMismatch&&!forceDateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
   if(currentBranch==='WH'&&currentRole==='supervisor'){
     processScan();
-    _confirmWhCountItems();
+    _confirmWhCountItems(null,forceDateMismatch);
+    return;
+  }
+  if(_isPharmacyBranch()){
+    await _confirmPharmacyBatched();
     return;
   }
   processScan();evaluatePendingScans();
+}
+
+function _setBranchConfirmProgress(text,done=0,total=0){
+  const overlay=document.getElementById('branchConfirmProgressOverlay');
+  const label=document.getElementById('branchConfirmProgressText');
+  const fill=document.getElementById('branchConfirmProgressFill');
+  if(overlay)overlay.style.display='flex';
+  if(label)label.textContent=text;
+  if(fill)fill.style.width=`${total>0?Math.min(100,Math.round(done*100/total)):0}%`;
+}
+function _hideBranchConfirmProgress(){
+  const overlay=document.getElementById('branchConfirmProgressOverlay');if(overlay)overlay.style.display='none';
+}
+function _branchConfirmYield(){return new Promise(resolve=>requestAnimationFrame(()=>resolve()));}
+function _parseSessionSnapshot(doc){
+  if(!doc?.exists)return null;
+  const raw=doc.data()||{};
+  try{return raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data||null;}catch(e){throw new Error('BRANCH_CONFIRM_BAD_SESSION');}
+}
+function _branchConfirmVersions(master){
+  return {r01Version:master?.r01Version||'',r16Version:master?.r16DetailVersion||'',r16Loaded:!!master?.r16Loaded};
+}
+function _sameBranchConfirmVersions(a,b){
+  return a.r01Version===b.r01Version&&a.r16Version===b.r16Version&&a.r16Loaded===b.r16Loaded;
+}
+function _sameBranchCount(a,b){
+  return !!a&&!!b&&a.status==='scanning'&&b.status==='scanning'&&Number(a.countedQty)===Number(b.countedQty)&&
+    (a.timestamp||'')===(b.timestamp||'')&&(a.scannedBy||'')===(b.scannedBy||'');
+}
+async function _readBranchConfirmCloudState(){
+  const sessionRef=_db.collection('stock_sessions').doc(getSessionId());
+  const masterRef=_db.collection('stock_sessions').doc(getSessionId()+'_r01');
+  const[sessionDoc,masterDoc]=await Promise.all([sessionRef.get({source:'server'}),masterRef.get({source:'server'})]);
+  const session=_parseSessionSnapshot(sessionDoc);
+  if(!session)throw new Error('BRANCH_CONFIRM_NO_SESSION');
+  return {session,master:masterDoc.exists?(masterDoc.data()||{}):{}};
+}
+async function _confirmPharmacyBatched(){
+  if(_branchConfirming||!_isPharmacyBranch())return;
+  if(!navigator.onLine){toast('ต้องออนไลน์เพื่อ Confirm','error');return;}
+  _branchConfirming=true;updateConfirmBtn();
+  let token='';let keepLockForRetry=false;
+  try{
+    _setBranchConfirmProgress('กำลังตรวจรอบนับและเวอร์ชัน R01/R16...',0,0);
+    const preflight=await _readBranchConfirmCloudState();
+    _applyCloudScanData(preflight.session);
+    const preflightEpoch=_countResetAt||'';
+    if((preflight.session.countResetAt||'')!==preflightEpoch)throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    const preflightVersions=_branchConfirmVersions(preflight.master);
+    if(!preflightVersions.r16Loaded||preflightVersions.r01Version!==(state.r01Version||'')||preflightVersions.r16Version!==(state.r16DetailVersion||''))throw new Error('BRANCH_CONFIRM_VERSION_MISMATCH');
+
+    _setBranchConfirmProgress('กำลังล็อกการสแกนทุกเครื่อง...',0,0);
+    token=await _acquireBranchConfirmLock();
+    _setBranchConfirmProgress('พักการสแกนและรอข้อมูลล่าสุดจาก PDA...',0,0);
+    await new Promise(resolve=>setTimeout(resolve,3800));
+
+    const initial=await _readBranchConfirmCloudState();
+    const initialVersions=_branchConfirmVersions(initial.master);
+    if((initial.session.countResetAt||'')!==preflightEpoch||!_sameBranchConfirmVersions(preflightVersions,initialVersions))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    _applyCloudScanData(initial.session);
+    const epoch=_countResetAt||'';
+    const versions=initialVersions;
+    if(!versions.r16Loaded||versions.r01Version!==(state.r01Version||'')||versions.r16Version!==(state.r16DetailVersion||''))throw new Error('BRANCH_CONFIRM_VERSION_MISMATCH');
+
+    const candidates=[];
+    for(const[sku,sd]of state.scanData.entries()){
+      if(sd?.status!=='scanning'||sd.countedQty==null)continue;
+      candidates.push({sku,source:{...sd}});
+    }
+    if(!candidates.length){toast('ไม่มีรายการรอ Confirm','info');return;}
+
+    const results=[];const total=candidates.length;
+    for(let i=0;i<total;i+=BRANCH_CONFIRM_BATCH_SIZE){
+      const end=Math.min(total,i+BRANCH_CONFIRM_BATCH_SIZE);
+      for(let j=i;j<end;j++){
+        const result=_buildPendingScanEvaluation(candidates[j].sku,candidates[j].source);
+        if(result)results.push(result);
+      }
+      _setBranchConfirmProgress(`กำลังคำนวณ ${end.toLocaleString()}/${total.toLocaleString()} รายการ (${Math.round(end*100/total)}%)`,end,total);
+      await _branchConfirmYield();
+    }
+
+    _setBranchConfirmProgress('กำลังตรวจว่าข้อมูลไม่เปลี่ยนกลางงาน...',total,total);
+    const latest=await _readBranchConfirmCloudState();
+    const latestVersions=_branchConfirmVersions(latest.master);
+    if((latest.session.countResetAt||'')!==epoch||!_sameBranchConfirmVersions(versions,latestVersions)||
+      versions.r01Version!==(state.r01Version||'')||versions.r16Version!==(state.r16DetailVersion||''))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    for(const candidate of candidates){
+      if(!_sameBranchCount(candidate.source,latest.session.scanData?.[candidate.sku])||!_sameBranchCount(candidate.source,state.scanData.get(candidate.sku)))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    }
+
+    clearTimeout(_saveTimer);_saveTimer=null;
+    clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
+    for(const result of results)_applyPendingScanEvaluation(result);
+    _removeWhCountInboxItems(results.map(r=>r.sku));
+    saveSession();
+    invalidatePopupRowsCache();
+    scheduleScanListRender();scheduleStats();scheduleRender();
+    requestAnimationFrame(()=>setTimeout(saveAuditLogToFirestore,0));
+
+    _setBranchConfirmProgress('กำลังบันทึกผลขึ้น Cloud...',total,total);
+    clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
+    const synced=await syncToFirestore();
+    if(!synced){
+      keepLockForRetry=true;
+      document.getElementById('dbStatus').textContent='Sync Error';
+      toast('บันทึกในเครื่องแล้ว แต่ Sync ไม่สำเร็จ','error',5000);
+      const retryToken=token,retryBranch=currentBranch,retryEpoch=_countResetAt||'';
+      setTimeout(async()=>{
+        if(currentBranch!==retryBranch||(_countResetAt||'')!==retryEpoch)return;
+        if(await syncToFirestore()){const released=await _releaseBranchConfirmLock(retryToken);if(released&&_branchConfirmLockData?.token===retryToken)_setBranchScanPaused(false,null);}
+      },10000);
+      return;
+    }
+    const pass=results.filter(r=>r.status==='pass').length;
+    const audit=results.filter(r=>r.status==='audit').length;
+    const adjust=results.filter(r=>r.status==='stock_adjustment').length;
+    toast(`Confirm สำเร็จ ${results.length} รายการ — Pass ${pass}, Audit ${audit}, ปรับ ${adjust}`,'success',5000);
+  }catch(e){
+    console.warn('[branch confirm]',e.message);
+    if(e.message==='BRANCH_CONFIRM_LOCKED')toast('มี Desktop เครื่องอื่นกำลัง Confirm อยู่','warn',5000);
+    else if(e.message==='BRANCH_CONFIRM_DATA_CHANGED')toast('ข้อมูลเปลี่ยนระหว่าง Confirm — ยังไม่มีรายการถูกเปลี่ยน กรุณากดใหม่','warn',6000);
+    else if(e.message==='BRANCH_CONFIRM_VERSION_MISMATCH')toast('R01/R16 ในเครื่องไม่ตรงกับ Cloud กรุณารอ Sync หรือโหลดไฟล์ใหม่','error',6000);
+    else toast('Confirm ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','error',5000);
+  }finally{
+    if(token&&!keepLockForRetry){const released=await _releaseBranchConfirmLock(token);if(released&&_branchConfirmLockData?.token===token)_setBranchScanPaused(false,null);}
+    _branchConfirming=false;_hideBranchConfirmProgress();updateConfirmBtn();
+  }
 }
 
 // Confirm นับครั้งแรก "ทีละพนักงาน" (group key = scannedBy) — มายด์ confirm ของคนที่นับโซนเสร็จได้เลย ไม่ต้องรอครบทุกคน
@@ -3036,11 +3268,11 @@ function _localWhCountCandidates(staffName=null){
   }
   return out;
 }
-async function _confirmWhCountItems(staffName=null){
+async function _confirmWhCountItems(staffName=null,forceDateMismatch=false){
   if(_whCountConfirming)return;
   if(!_db||currentBranch!=='WH'||currentRole!=='supervisor')return;
   if(!state.r16Loaded){toast('กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน','warn');return;}
-  if(state.r16DateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
+  if(state.r16DateMismatch&&!forceDateMismatch){document.getElementById('r16MismatchModal').style.display='flex';return;}
   if(!_ensureWhR16TimelineReady())return;
   const localCandidates=_localWhCountCandidates(staffName);
   const _todayDate=new Date();const today=`${_todayDate.getFullYear()}-${String(_todayDate.getMonth()+1).padStart(2,'0')}-${String(_todayDate.getDate()).padStart(2,'0')}`;
@@ -3159,6 +3391,7 @@ function showZeroSysModal(sku){
 }
 
 function confirmZeroSys(hasStock){
+  if(_blockScanForBranchConfirm())return;
   if(!_zeroSysHold){document.getElementById('zeroSysModal').style.display='none';return;}
   const{sku,addQty,scannedBy,now,resolvedBarcode,location,unitName,resolvedFromSku}=_zeroSysHold;
   const sd=state.scanData.get(sku);
@@ -3198,6 +3431,7 @@ function showNoStockModal(sku){
 }
 function closeNoStockModal(){_noStockSku=null;document.getElementById('noStockModal').style.display='none';}
 function confirmNoStock(){
+  if(_blockScanForBranchConfirm())return;
   const sku=_noStockSku;closeNoStockModal();if(!sku)return;
   const sd=state.scanData.get(sku);
   if(!sd||sd.status!=='pending')return; // re-guard: cloud listener อาจเปลี่ยน status ระหว่าง modal เปิด
@@ -3229,6 +3463,7 @@ function showScanGapModal(sku,oldQty,addQty){
 }
 
 function confirmScanGap(){
+  if(_blockScanForBranchConfirm())return;
   if(!_scanGapHold){document.getElementById('scanGapModal').style.display='none';return;}
   const{sku,addQty,scannedBy,auditor,now,resolvedBarcode,location,unitName,resolvedFromSku}=_scanGapHold;
   const sd=state.scanData.get(sku);
@@ -3251,6 +3486,10 @@ function confirmScanGap(){
 }
 
 function processScan(){
+  if(_blockScanForBranchConfirm()){
+    const blockedInput=document.getElementById('scanInput');if(blockedInput)blockedInput.value='';
+    return;
+  }
   if(_scanGapHold||_zeroSysHold)return;
   if(currentRole==='pharmacist'){processPharmacistAuditScan();return;}
   const _ph=new Date().getHours();if(_isPharmacyBranch()&&(_ph<8||_ph>=21)){beepError();toast('ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','warn');document.getElementById('scanInput').value='';return;}
@@ -3299,11 +3538,12 @@ function processPharmacistAuditScan(){
 }
 
 function drainQueue(){
-  if(scanProcessing||!scanQueue.length)return;
+  if(scanProcessing||!scanQueue.length||_blockScanForBranchConfirm(false))return;
   scanProcessing=true;
   _pendingPatches.clear();
   const prevSize=scanListMap.size;
   while(scanQueue.length){
+    if(_blockScanForBranchConfirm(false))break;
     if(_scanGapHold||_zeroSysHold)break; // หยุดประมวลผลถ้า gap/zeroSys modal เปิด — items ที่เหลือค้างไว้ใน queue
     const i=scanQueue.shift();
     handleBarcode(typeof i==='string'?parseScanLine(i):i,false);
@@ -3322,6 +3562,7 @@ function drainQueue(){
 // handleBarcode
 // ─────────────────────────────────────────────────────────────────────────────
 function handleBarcode(parsed,immediateRender=true){
+  if(_blockScanForBranchConfirm(false))return;
   const{location='',barcode,qty}=typeof parsed==='string'?{location:'',barcode:parsed,qty:null}:parsed;
   const scannedBy=currentUser||'';
   const auditor='';
@@ -3488,83 +3729,50 @@ function getR16103QtyBefore(sku,scanTimestamp){
   },0);
 }
 
+function _buildPendingScanEvaluation(sku,sd){
+  if(!sd||sd.status!=='scanning')return null;
+  const si=state.skuMap.get(sku);if(!si)return null;
+  const sys=si.systemQty;
+  const cnt=sd.countedQty;
+  // สูตรเดิม: ยอดนับ + ขายก่อนเวลาสแกน + R16.103 - รับเข้าก่อนเวลาสแกน
+  const soldQty=getSoldQtyBefore(sku,sd.timestamp);
+  const inboundQty=getInboundQtyBefore(sku,sd.timestamp);
+  const r16103Qty=getR16103QtyBefore(sku,sd.timestamp);
+  const effectiveCnt=cnt+soldQty+r16103Qty-inboundQty;
+  let status='audit';let auditStatus='pending';
+  if(effectiveCnt===sys){status='pass';auditStatus='approved';}
+  else if(si.negSys||(sd.noStock&&effectiveCnt===0&&sys>0)){status='stock_adjustment';auditStatus='stock_adjustment';}
+  return {sku,source:sd,cnt,soldQty,inboundQty,r16103Qty,status,auditStatus};
+}
+function _applyPendingScanEvaluation(result){
+  const{sku,source,cnt,soldQty,inboundQty,r16103Qty,status,auditStatus}=result;
+  const sd=state.scanData.get(sku);if(!sd)return;
+  if(soldQty>0){sd.soldQty=soldQty;sd.rawCountedQty=cnt;}
+  if(inboundQty>0)sd.inboundQty=inboundQty;
+  if(r16103Qty>0)sd.r16103Qty=r16103Qty;
+  sd.status=status;sd.auditStatus=auditStatus;
+  if(!sd.initialStatus)sd.initialStatus=status;
+  const hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH';
+  if(hideAuditPdaWh&&status==='audit')scanListMap.delete(sku);
+  else if(scanListMap.has(sku)){
+    const e=scanListMap.get(sku);e.status=status;e.totalQty=cnt;
+    if(soldQty>0){e.soldQty=soldQty;e.rawQty=cnt;}
+    if(inboundQty>0)e.inboundQty=inboundQty;
+  }else{
+    scanListMap.set(sku,{sku,barcodes:[{barcode:sd.barcode||source.barcode||'',unit:''}],totalQty:cnt,status,
+      location:sd.location||source.location||'',soldQty:soldQty>0?soldQty:0,inboundQty:inboundQty>0?inboundQty:0,rawQty:cnt});
+  }
+}
+
 function evaluatePendingScans(staffFilter=null){
-  let any = false;
+  let any=false;
   const confirmedSkus=[];
-  for(const[sku, sd] of state.scanData.entries()){
-    if(sd.status !== 'scanning') continue;
-    if(staffFilter && (sd.scannedBy||'(ไม่ระบุ)') !== staffFilter) continue; // Confirm ทีละพนักงาน: เฉพาะ scanning ของคนนั้น (group ตาม scannedBy)
-    any = true;
-    const si = state.skuMap.get(sku);
-    if(!si) continue;
-
-    const sys = si.systemQty;
-    const cnt = sd.countedQty;
-    
-    // หักยอดขายระหว่างนับ (R16.104) — filter เฉพาะ TRANDATE ≤ scan timestamp
-    const soldQty = getSoldQtyBefore(sku, sd.timestamp);
-    // รับเข้าก่อนสแกน (OTFB/ORTS/OTFI) — counter เห็นของแต่ system ยังไม่รู้ → หักออก
-    const inboundQty = getInboundQtyBefore(sku, sd.timestamp);
-    // WH R16.103: รับเข้าคลังแต่ยังไม่ขึ้นชั้น — อยู่ใน systemQty แต่พนักงานไม่ได้นับ → บวกกลับ
-    const r16103Qty = getR16103QtyBefore(sku, sd.timestamp);
-
-    const effectiveCnt = cnt + soldQty + r16103Qty - inboundQty;
-
-    if(soldQty > 0){
-      sd.soldQty = soldQty;      // เก็บข้อมูลเพื่อแสดง badge
-      sd.rawCountedQty = cnt;
-    }
-    if(inboundQty > 0) sd.inboundQty = inboundQty;
-    if(r16103Qty > 0) sd.r16103Qty = r16103Qty;
-
-    let st;
-    if(effectiveCnt === sys){
-      // ✅ ตรงกัน → Pass
-      st = 'pass';
-      sd.status = 'pass';
-      sd.auditStatus = 'approved';
-    } else if(si.negSys){
-      // สาขายา: ระบบติดลบ (clamp เป็น 0 แล้ว) → เข้า stock_adjustment ทันที ไม่ต้องรอเภสัช verify — Diff = ยอดนับจริง
-      st = 'stock_adjustment';
-      sd.status = 'stock_adjustment';
-      sd.auditStatus = 'stock_adjustment';
-    } else if(sd.noStock && effectiveCnt === 0 && sys > 0){
-      // สาขายา: ผู้ช่วยกด 🚫 ยืนยันไม่มีของจริง (ระบบมีสต็อค) → stock_adjustment ทันที — ถ้าสแกนจริงภายหลัง (effectiveCnt≠0) flag เป็นหมัน ตกลง rule ปกติ
-      st = 'stock_adjustment';
-      sd.status = 'stock_adjustment';
-      sd.auditStatus = 'stock_adjustment';
-    } else {
-      // ❌ ไม่ตรง → Audit
-      st = 'audit';
-      sd.status = 'audit';
-      sd.auditStatus = 'pending';
-    }
-    if(!sd.initialStatus) sd.initialStatus = st;
-    confirmedSkus.push(sku);
-
-    // อัพเดท scan list
-    // PDA + WH: ลบ audit ออกจาก RESULT (ให้ดูใน Audit Verify popup แทน)
-    const _hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH';
-    if(_hideAuditPdaWh&&st==='audit'){
-      scanListMap.delete(sku);
-    } else if(scanListMap.has(sku)){
-      const e = scanListMap.get(sku);
-      e.status = st;
-      e.totalQty = cnt;
-      if(soldQty > 0){ e.soldQty = soldQty; e.rawQty = cnt; }
-      if(inboundQty > 0) e.inboundQty = inboundQty;
-    } else {
-      scanListMap.set(sku, {
-        sku,
-        barcodes: [{barcode: sd.barcode||'', unit:''}],
-        totalQty: cnt,
-        status: st,
-        location: sd.location||'',
-        soldQty: soldQty > 0 ? soldQty : 0,
-        inboundQty: inboundQty > 0 ? inboundQty : 0,
-        rawQty: cnt
-      });
-    }
+  for(const[sku,sd]of state.scanData.entries()){
+    if(sd.status!=='scanning')continue;
+    if(staffFilter&&(sd.scannedBy||'(ไม่ระบุ)')!==staffFilter)continue;
+    any=true;
+    const result=_buildPendingScanEvaluation(sku,sd);if(!result)continue;
+    _applyPendingScanEvaluation(result);confirmedSkus.push(sku);
   }
 
   _removeWhCountInboxItems(confirmedSkus);
@@ -3642,7 +3850,7 @@ function clearScanList(){
   scanListMap.clear();
   _listCleared=true;
   updateStats();invalidatePopupRowsCache();renderScanList();
-  toastAction('ซ่อนรายการแล้ว — ข้อมูลการนับไม่หาย','↩ เรียกคืน','restoreScanList()','info',6000);
+  toastAction('ซ่อนรายการแล้ว — ข้อมูลการนับไม่หาย','↩ เรียกคืน',restoreScanList,'info',6000);
 }
 // เรียกรายการกลับมาจาก state.scanData (undo การซ่อน) — ไม่ดึง cloud, ใช้ข้อมูล local ที่มีอยู่
 function restoreScanList(){
@@ -3771,6 +3979,7 @@ function patchScanRow(key){
 }
 
 function updateInlineQty(sku,v){
+  if(_blockScanForBranchConfirm())return;
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='scanning')return;
   sd.countedQty=q;sd.manualEditAt=Date.now();
@@ -3796,6 +4005,7 @@ function updateRecheckInlineQty(sku,v){
 }
 
 function updatePopupQty(sku,v){
+  if(_blockScanForBranchConfirm())return;
   const q=parseFloat(v);if(isNaN(q)||q<0)return;
   const sd=state.scanData.get(sku);if(!sd)return;
   if(['pass','audit','audit_check','stock_adjustment'].includes(sd.status))return;
@@ -3823,6 +4033,7 @@ function updatePopupQty(sku,v){
 }
 
 function removeScanItem(sku){
+  if(_blockScanForBranchConfirm())return;
   const sd=state.scanData.get(sku);if(!sd)return;
   sd.countedQty=0;sd.status='pending';sd.timestamp='';sd.barcode='';sd.manualEditAt=Date.now();
   sd.scans=[];sd.scannedBy='';sd.auditor='';sd.auditStatus='pending';
@@ -4181,9 +4392,60 @@ function openScanGuide(){
 }
 function closeScanGuide(){document.getElementById('scanGuidePopover').style.display='none';}
 
-function toast(msg,type='info',ms=2500){const c=document.getElementById('toastContainer'),t=document.createElement('div');t.className=`toast toast-${type}`;t.innerHTML=`<span>${msg}</span>`;c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
+const _PDA_TOAST_SHORT=new Map([
+  ['R01/R16 อัปเดตจาก Cloud แล้ว','R01/R16 อัปเดตแล้ว'],
+  ['R01 อัปเดตจาก Cloud แล้ว','R01 อัปเดตแล้ว'],
+  ['R05.106 อัปเดตจากเครื่องอื่น','R05 อัปเดตแล้ว'],
+  ['ไฟล์ไม่รองรับ กรุณาใช้ .csv หรือ .xlsx','รองรับเฉพาะ CSV/XLSX'],
+  ['โหลด R01.102 และ R05.106 ก่อน แล้วค่อยโหลด R16.104','โหลด R01/R05 ก่อน R16.104'],
+  ['โหลด R01.102 และ R05.106 ก่อน แล้วค่อยโหลด R16.103','โหลด R01/R05 ก่อน R16.103'],
+  ['R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (Audit ค้างจากวันก่อนเทียบตรงกับยอดระบบ)','R16 อัปเดตแล้ว'],
+  ['กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','กด Confirm เพื่อตรวจสินค้า'],
+  ['โหลดรายละเอียด R16 จาก Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','โหลด R16 ไม่สำเร็จ — Confirm ไม่ได้'],
+  ['กำลังโหลดรายละเอียด R16 จาก Cloud — กรุณารอสักครู่แล้วกด Confirm ใหม่','กำลังโหลด R16 — รอแล้วกดใหม่'],
+  ['ข้อมูลรายละเอียด R16.104 จาก Cloud ยังไม่พร้อม — กรุณาอัปโหลด R16.104 ใหม่ที่เครื่องใดเครื่องหนึ่ง','R16.104 ยังไม่พร้อม — อัปโหลดใหม่'],
+  ['ข้อมูลรายละเอียด R16.103 จาก Cloud ยังไม่พร้อม — กรุณารอสักครู่หรืออัปโหลดใหม่','R16.103 ยังไม่พร้อม — รอหรืออัปโหลดใหม่'],
+  ['อัปโหลดรายละเอียด R16.104 ขึ้น Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','อัปโหลด R16.104 ไม่สำเร็จ'],
+  ['อัปโหลดรายละเอียด R16.103 ขึ้น Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','อัปโหลด R16.103 ไม่สำเร็จ'],
+  ['R16.103: ไม่สามารถจับคู่ข้อมูลได้ — ตรวจสอบว่าไฟล์มี code IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN ใน Col C','R16.103 จับคู่ไม่ได้ — ตรวจไฟล์'],
+  ['R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','R01 ใหม่ — อัป R16 ก่อน Confirm'],
+  ['ใช้ได้เฉพาะโหมด Administrator เท่านั้น','ใช้ได้เฉพาะ Administrator'],
+  ['ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','ออก Admin — กำลัง Sync'],
+  ['R01/R16 บน Cloud มี version ใหม่หรือยังโหลดไม่ครบ — กรุณารอให้ขึ้น Ready แล้วกด Confirm ใหม่','R01/R16 ยังไม่พร้อม — รอแล้วกดใหม่'],
+  ['ยืนยันการนับไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','ยืนยันไม่สำเร็จ — เช็กเน็ตแล้วลองใหม่'],
+  ['ยืนยันรีเช็คไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','ยืนยันรีเช็คไม่สำเร็จ — เช็กเน็ต'],
+  ['ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','ร้านปิด 21:00–08:00'],
+  ['สินค้านี้อยู่ใน Recheck — เปิด Recheck popup เพื่อรีเช็ค','อยู่ใน Recheck — เปิดรายการรีเช็ค'],
+  ['สแกนและ Confirm ไปแล้ว โปรดสแกน SKU ถัดไป','Confirm แล้ว — สแกน SKU ถัดไป'],
+  ['ซ่อนรายการแล้ว — ข้อมูลการนับไม่หาย','ซ่อนแล้ว — ข้อมูลไม่หาย'],
+  ['เฉพาะเภสัช / หัวหน้างาน เท่านั้น','เฉพาะเภสัช/หัวหน้างาน']
+]);
+function _toastMessageForDevice(msg){
+  const text=String(msg??'');if(!navigator.userAgent.includes('StockCountPDA'))return text;
+  const exact=_PDA_TOAST_SHORT.get(text);if(exact)return exact;
+  return text
+    .replace(/^♻️ รีเซ็ตของค้างข้ามวัน (\d+) รายการ — กรุณานับใหม่$/,'♻️ รีเซ็ต $1 รายการ — นับใหม่')
+    .replace(/^Product Master อัปเดตล่าสุด (.+)$/,'PM อัปเดต $1')
+    .replace(/^Product Master: (\d+) รายการ(.*)$/,'PM: $1 รายการ$2')
+    .replace(/^R01\.102: /,'R01: ')
+    .replace(/^R05\.106: /,'R05: ')
+    .replace(/ · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm \(Audit เดิมรอเภสัชตรวจ\)$/,' — อัป R16 ก่อน Confirm')
+    .replace(/ · กรุณาอัปโหลด R16\.104\/103 ชุดใหม่ก่อน Confirm$/,' — อัป R16 ใหม่ก่อน Confirm')
+    .replace(/^R16 ใหม่: ปรับสถานะ (\d+) รายการ$/,'R16 ใหม่ — ปรับ $1 รายการ')
+    .replace(/^R16\.104: ไม่สามารถจับคู่ข้อมูลได้.*$/,'R16.104 จับคู่ไม่ได้ — ตรวจไฟล์')
+    .replace(/^⚠️ วันที่ R16 .*$/,'⚠️ วันที่ R16 ไม่ตรงวันสแกน')
+    .replace(/^R16\.103: จับคู่ได้ (\d+) SKU \/ (.+) ชิ้น \(รับเข้ายังไม่ขึ้นชั้น\)$/,'R16.103: $1 SKU / $2 ชิ้น')
+    .replace(/^ดึงข้อมูลจาก Cloud สำเร็จ — สแกนแล้ว (\d+) SKU$/,'Cloud: สแกนแล้ว $1 SKU')
+    .replace(/^🔍 สแกน SKU: (.+) → ใช้ Barcode (.+) \(หน่วยเล็กสุด\)$/,'SKU $1 → $2')
+    .replace(/^⚠️ (.+) ไม่ตรง \(สแกน (.+) \+ R16 (.+) = (.+) \/ ระบบ (.+)\) → Stock Adjustment$/,'⚠️ $1 ไม่ตรง: $2+R16 $3=$4 / ระบบ $5')
+    .replace(/^โหลด LOT\/EXP สำเร็จ · จับคู่ได้ (.+)$/,'LOT/EXP: $1')
+    .replace(/^โหลดราคา R05\.105 สำเร็จ · (.+)$/,'ราคา: $1')
+    .replace(/^บันทึก LOT\/ราคาขึ้น Cloud สำเร็จ \((\d+) SKU\) — เครื่องอื่นเปิดจะเห็นข้อมูลนี้$/,'บันทึก LOT/ราคาแล้ว ($1 SKU)')
+    .replace(/^Export รายงานผลลัพธ์การนับ \(.+\) (\d+) รายการ สำเร็จ$/,'Export รายงาน $1 รายการแล้ว');
+}
+function toast(msg,type='info',ms=2500){const c=document.getElementById('toastContainer'),t=document.createElement('div'),s=document.createElement('span');t.className=`toast toast-${type}`;s.textContent=_toastMessageForDevice(msg);t.appendChild(s);c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
 // toast แบบมีปุ่ม action (เช่น "เรียกคืน") — กดปุ่มแล้วรัน action + ปิด toast
-function toastAction(msg,btnLabel,btnAction,type='info',ms=6000){const c=document.getElementById('toastContainer'),t=document.createElement('div');t.className=`toast toast-${type}`;t.innerHTML=`<span>${msg}</span><button onclick="${btnAction};this.closest('.toast').remove();" style="margin-left:12px;padding:6px 14px;border-radius:8px;border:none;background:rgba(255,255,255,0.28);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;font-family:inherit;">${btnLabel}</button>`;c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
+function toastAction(msg,btnLabel,btnAction,type='info',ms=6000){const c=document.getElementById('toastContainer'),t=document.createElement('div'),s=document.createElement('span'),b=document.createElement('button');t.className=`toast toast-${type}`;s.textContent=_toastMessageForDevice(msg);b.textContent=String(btnLabel??'');b.style.cssText='margin-left:12px;padding:6px 14px;border-radius:8px;border:none;background:rgba(255,255,255,0.28);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;font-family:inherit;';b.addEventListener('click',()=>{if(typeof btnAction==='function')btnAction();t.remove();});t.appendChild(s);t.appendChild(b);c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeStockPopup();closeAuditVerifyPopup();closeHistoryStatsPopup();}});
 
@@ -4197,7 +4459,7 @@ function toggleAdmin(){
     _adminMode=false;
     applyAdminUI();
     toast('ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','info');
-    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();});
+    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();startBranchConfirmLockListener();});
     return;
   }
   const pin=prompt('🔒 กรุณาใส่รหัส PIN เพื่อเข้าโหมด Administrator:');
@@ -4352,7 +4614,7 @@ function saveAuditLogToFirestore(){
 }
 
 async function syncToFirestore(overwrite=false){
-  if(_adminMode||!_db||!currentBranch)return;
+  if(_adminMode||!_db||!currentBranch)return false;
   runStaleGuard(); // day-rollover: ล้าง scanning ค้างข้ามวันใน local ก่อนสร้าง payload (วันละครั้ง)
   const ref=_db.collection('stock_sessions').doc(getSessionId());
   const localSd={};for(const[k,v]of state.scanData.entries()){const{retries,scans,manualEditAt,...keep}=v;localSd[k]=keep;}
@@ -4373,7 +4635,7 @@ async function syncToFirestore(overwrite=false){
           saveSession();
           if(!_listCleared){rebuildScanListMap(true);renderScanList();}
           invalidatePopupRowsCache();updateStats();renderTable();updateConfirmBtn();
-          return;
+          return true;
         }
         if(s&&s.r01BaselineAt&&s.r01BaselineAt>(_r01BaselineAt||'')&&_isPharmacyBranch()){
           await _applyR01BaselineUpdate(s.r01BaselineAt);
@@ -4439,7 +4701,8 @@ async function syncToFirestore(overwrite=false){
   try{
     await ref.set({session_data_json:JSON.stringify(data),updated_at:firebase.firestore.FieldValue.serverTimestamp()});
     document.getElementById('dbStatus').textContent='Synced';
-  }catch(e){document.getElementById('dbStatus').textContent='Sync Error';console.warn('Firestore:',e.message);}
+    return true;
+  }catch(e){document.getElementById('dbStatus').textContent='Sync Error';console.warn('Firestore:',e.message);return false;}
 }
 
 // reset ทุก item ใน scanData กลับเป็น pending — ใช้ตอน detect "เริ่มนับใหม่" (epoch) ข้ามเครื่อง

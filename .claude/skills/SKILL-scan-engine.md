@@ -33,6 +33,7 @@ State: `_lastKeystrokeTime`, `_pdaMode` reset ใน `resetScanRuntimeState()`, 
 - Android wrapper ใช้ `FLAG_KEEP_SCREEN_ON` ระหว่างมีการใช้งาน และปล่อย flag หลังไม่มีการแตะหรือรับ Intent barcode 2 นาที; ห้ามเปลี่ยนกลับไปใช้ `SCREEN_BRIGHT_WAKE_LOCK` เพราะจะบังคับจอสว่างตลอดกะ
 - Web Audio บน PDA suspend หลังเสียงสุดท้าย 1.5 วินาทีและ resume อัตโนมัติก่อนเสียงถัดไป โดยไม่เปลี่ยนจังหวะเรียก `beepSuccess`/`beepError`/`beepWarn`
 - `body.pda-power-save` ปิดเฉพาะ decorative infinite animations; Desktop และ Firestore Realtime listeners ไม่ได้รับผลกระทบ
+- Toast ใช้ข้อความเต็มบน Desktop แต่ผ่าน `_toastMessageForDevice()` เพื่อย่อคำเฉพาะในแอป `StockCountPDA`; ข้อความใหม่ที่ยาวควรเพิ่ม mapping/rule ที่ฟังก์ชันกลางแทนการแยกข้อความตาม role ใน scan path
 
 ### CSS ซ่อนตัวอักษรระหว่างรับ barcode
 
@@ -161,6 +162,15 @@ if (scanListMap.size > prevSize) {
 - WH PDA (`noEditPda`): scanning ที่ systemQty > 100 → ได้ inline input; ≤100 + audit → `<span>` scan only
 - WH Desktop: scanning → ได้ input เสมอ; audit (recheck) → `updateRecheckInlineQty()` เขียน `recheckQty`+`recheckBy`
 - ช่องจำนวน inline บน PDA เรียก `beepSuccess()` หนึ่งครั้งหลังบันทึกค่าที่ถูกต้อง; `updateRecheckInlineQty()` ส่งเสียงเฉพาะเมื่อจำนวนเปลี่ยนจริง เพื่อไม่ให้ดังจากการแตะแล้ว blur โดยไม่แก้ค่า
+
+## Pharmacy Desktop-only Confirm (July 2026)
+
+- SRC/KKL/SSS ซ่อนและบล็อก Confirm ใน native app จาก User-Agent `StockCountPDA` โดยตรง ไม่อิง viewport; WH ใช้ confirmation workflow เดิม
+- Desktop ต้องออนไลน์และ acquire `stock_sessions/{branch}_confirm_lock` ก่อน Confirm; lock มี `token`, `owner`, `countResetAt`, `startedAt`, `expiresAt` และอายุ 5 นาที การปลดต้องใช้ token เดียวกับเจ้าของ
+- PDA ทุกเครื่องฟัง branch lock แล้ว disable ช่อง scan/audit พร้อม guard ที่ `receiveBarcode`, `processScan`, `drainQueue`, `handleBarcode`, การแก้จำนวน และ modal ที่เปลี่ยนยอด; คิวที่รับไว้ก่อนล็อกพักอยู่และทำต่อหลัง lock ถูกลบ/หมดอายุ
+- Desktop รอ pending sync จาก PDA แล้วอ่าน session/master จาก Firestore server, snapshot เฉพาะ `scanning`, คำนวณด้วยสูตรเดิมเป็น batch ละ 25 ผ่าน animation frame และแสดง progress
+- ก่อน apply ต้องอ่าน server ซ้ำและยืนยัน `countResetAt`, `r01Version`, `r16DetailVersion`, `countedQty`, `timestamp`, `scannedBy`; ถ้าเปลี่ยนให้ abort โดยห้ามเปลี่ยน status บางส่วน รายการใหม่ที่อยู่นอก snapshot คง `scanning` สำหรับรอบถัดไป
+- หลัง apply ให้ checkpoint local ก่อน render และ sync Firestore; ถ้า sync ล้มเหลวให้คง lock จน retry สำเร็จหรือ TTL หมด เพื่อกัน Confirm ซ้ำทันที
 
 เงื่อนไข: `sysQty > (_isPharmacyBranch()?10:100) || (whStaffEdit && !noEditPda)`
 ทั้ง `renderScanList()` และ `patchScanRow()` ต้องเช็คเหมือนกัน · in-app guide (`guideQtyRule`) แสดงเลข threshold ตาม branch อัตโนมัติ
