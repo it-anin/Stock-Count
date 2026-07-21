@@ -2528,7 +2528,7 @@ function scrubStaleLocalAudits(){
   for(const[sku,sd] of state.scanData.entries()){
     if(!_isStaleAuditVsBaseline(sd))continue;
     state.scanData.set(sku,{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:sd.location||'',scans:[]});
-    scanListMap.delete(sku);_avMap.delete(sku);n++;
+    scanListMap.delete(sku);n++;
   }
   if(n>0){
     invalidatePopupRowsCache();rebuildScanListMap(true);renderScanList();
@@ -3248,6 +3248,111 @@ async function _confirmPharmacyBatched(){
   }
 }
 
+// เทียบยอดรีเช็คของ audit item ว่าไม่เปลี่ยนระหว่างยืนยัน (คู่ขนานกับ _sameBranchCount ของ Confirm รอบแรก)
+function _sameBranchRecheck(a,b){
+  return !!a&&!!b&&a.status==='audit'&&b.status==='audit'&&!a.auditor&&!b.auditor&&
+    Number(a.recheckQty)===Number(b.recheckQty)&&(a.recheckBy||'')===(b.recheckBy||'')&&(a.recheckAt||'')===(b.recheckAt||'');
+}
+// เภสัชยืนยัน Audit Verify แบบ batched — Desktop เท่านั้น (PDA สแกนรีเช็คเข้า sd.recheckQty แล้ว sync ขึ้น session)
+// เหตุผลที่ต้องเป็น Desktop: getSoldQtyBefore/getInboundQtyBefore ต้องใช้ R16 raw timeline (r16RawMap/r16InboundRawMap)
+// ซึ่งมีเฉพาะเครื่องที่อัปโหลด R16 เอง — เครื่องที่รับผ่าน session sync จะ fallback เป็นยอดรวมทั้งช่วง = ตัดสินผิด
+// โครงเดียวกับ _confirmPharmacyBatched: preflight → lock → รอ PDA sync → ตรวจซ้ำ → apply → sync
+async function _confirmPharmacyAuditBatched(){
+  if(!_isPharmacyBranch()||currentRole!=='pharmacist')return;
+  if(_isPdaApp()){beepWarn();toast('ยืนยัน Audit ที่ Desktop เท่านั้น','warn');return;}
+  if(_branchConfirming)return;
+  if(!navigator.onLine){toast('ต้องออนไลน์เพื่อยืนยัน Audit','error');return;}
+  if(!getPharmacistAuditPendingMap().size){toast('ยังไม่มีรายการที่สแกนรีเช็ค','warn');return;}
+  _branchConfirming=true;updateConfirmBtn();updatePharmacistAuditConfirmBtn();
+  let token='';let keepLockForRetry=false;
+  try{
+    _setBranchConfirmProgress('กำลังตรวจรอบนับและเวอร์ชัน R01/R16...',0,0);
+    const preflight=await _readBranchConfirmCloudState();
+    _applyCloudScanData(preflight.session);
+    const preflightEpoch=_countResetAt||'';
+    if((preflight.session.countResetAt||'')!==preflightEpoch)throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    const preflightVersions=_branchConfirmVersions(preflight.master);
+    if(!preflightVersions.r16Loaded||preflightVersions.r01Version!==(state.r01Version||'')||preflightVersions.r16Version!==(state.r16DetailVersion||''))throw new Error('BRANCH_CONFIRM_VERSION_MISMATCH');
+
+    _setBranchConfirmProgress('กำลังล็อกการสแกนทุกเครื่อง...',0,0);
+    token=await _acquireBranchConfirmLock();
+    _setBranchConfirmProgress('พักการสแกนและรอข้อมูลล่าสุดจาก PDA...',0,0);
+    await new Promise(resolve=>setTimeout(resolve,3800));
+
+    const initial=await _readBranchConfirmCloudState();
+    const initialVersions=_branchConfirmVersions(initial.master);
+    if((initial.session.countResetAt||'')!==preflightEpoch||!_sameBranchConfirmVersions(preflightVersions,initialVersions))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    _applyCloudScanData(initial.session); // ดึงยอดรีเช็คล่าสุดที่ PDA เพิ่งเขียนลงมา
+    const epoch=_countResetAt||'';
+    const versions=initialVersions;
+    if(!versions.r16Loaded||versions.r01Version!==(state.r01Version||'')||versions.r16Version!==(state.r16DetailVersion||''))throw new Error('BRANCH_CONFIRM_VERSION_MISMATCH');
+
+    // snapshot เฉพาะรายการที่สแกนรีเช็คแล้ว — audit ที่ยังไม่ได้สแกนคงสถานะเดิมรอรอบถัดไป
+    const candidates=[];
+    for(const sku of getPharmacistAuditPendingMap().keys()){
+      const sd=state.scanData.get(sku);
+      if(sd&&state.skuMap.has(sku))candidates.push({sku,source:{...sd}});
+    }
+    if(!candidates.length){toast('ไม่มีรายการรอยืนยัน','info');return;}
+
+    _setBranchConfirmProgress('กำลังตรวจว่าข้อมูลไม่เปลี่ยนกลางงาน...',0,candidates.length);
+    const latest=await _readBranchConfirmCloudState();
+    const latestVersions=_branchConfirmVersions(latest.master);
+    if((latest.session.countResetAt||'')!==epoch||!_sameBranchConfirmVersions(versions,latestVersions)||
+      versions.r01Version!==(state.r01Version||'')||versions.r16Version!==(state.r16DetailVersion||''))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    for(const candidate of candidates){
+      if(!_sameBranchRecheck(candidate.source,latest.session.scanData?.[candidate.sku])||
+        !_sameBranchRecheck(candidate.source,state.scanData.get(candidate.sku)))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
+    }
+
+    clearTimeout(_saveTimer);_saveTimer=null;
+    clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
+    const total=candidates.length;let nPass=0,nAdj=0;
+    for(let i=0;i<total;i+=BRANCH_CONFIRM_BATCH_SIZE){
+      const end=Math.min(total,i+BRANCH_CONFIRM_BATCH_SIZE);
+      for(let j=i;j<end;j++){
+        const r=confirmAuditVerifyItem(candidates[j].sku,true,true);
+        if(r==='pass')nPass++;else if(r==='stock_adjustment')nAdj++;
+      }
+      _setBranchConfirmProgress(`กำลังยืนยัน ${end.toLocaleString()}/${total.toLocaleString()} รายการ (${Math.round(end*100/total)}%)`,end,total);
+      await _branchConfirmYield();
+    }
+    saveSession();
+    invalidatePopupRowsCache();
+    scheduleScanListRender();scheduleStats();scheduleRender();
+    renderAuditVerifyTable();updatePharmacistAuditConfirmBtn();
+    requestAnimationFrame(()=>setTimeout(saveAuditLogToFirestore,0));
+
+    _setBranchConfirmProgress('กำลังบันทึกผลขึ้น Cloud...',total,total);
+    clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
+    const synced=await syncToFirestore();
+    if(!synced){
+      keepLockForRetry=true;
+      document.getElementById('dbStatus').textContent='Sync Error';
+      toast('บันทึกในเครื่องแล้ว แต่ Sync ไม่สำเร็จ','error',5000);
+      const retryToken=token,retryBranch=currentBranch,retryEpoch=_countResetAt||'';
+      setTimeout(async()=>{
+        if(currentBranch!==retryBranch||(_countResetAt||'')!==retryEpoch)return;
+        if(await syncToFirestore()){const released=await _releaseBranchConfirmLock(retryToken);if(released&&_branchConfirmLockData?.token===retryToken)_setBranchScanPaused(false,null);}
+      },10000);
+      return;
+    }
+    const parts=[];
+    if(nPass>0)parts.push(`✅ ผ่าน ${nPass} รายการ`);
+    if(nAdj>0)parts.push(`⚠️ ปรับสต็อก ${nAdj} รายการ`);
+    toast(parts.length?parts.join(', '):`ยืนยันแล้ว ${total} รายการ`,nAdj>0?'warn':'success',5000);
+  }catch(e){
+    console.warn('[pharmacy audit confirm]',e.message);
+    if(e.message==='BRANCH_CONFIRM_LOCKED')toast('มี Desktop เครื่องอื่นกำลัง Confirm อยู่','warn',5000);
+    else if(e.message==='BRANCH_CONFIRM_DATA_CHANGED')toast('ข้อมูลเปลี่ยนระหว่างยืนยัน — ยังไม่มีรายการถูกเปลี่ยน กรุณากดใหม่','warn',6000);
+    else if(e.message==='BRANCH_CONFIRM_VERSION_MISMATCH')toast('R01/R16 ในเครื่องไม่ตรงกับ Cloud กรุณารอ Sync หรือโหลดไฟล์ใหม่','error',6000);
+    else toast('ยืนยัน Audit ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','error',5000);
+  }finally{
+    if(token&&!keepLockForRetry){const released=await _releaseBranchConfirmLock(token);if(released&&_branchConfirmLockData?.token===token)_setBranchScanPaused(false,null);}
+    _branchConfirming=false;_hideBranchConfirmProgress();updateConfirmBtn();updatePharmacistAuditConfirmBtn();
+  }
+}
+
 // Confirm นับครั้งแรก "ทีละพนักงาน" (group key = scannedBy) — มายด์ confirm ของคนที่นับโซนเสร็จได้เลย ไม่ต้องรอครบทุกคน
 // ใช้ transaction อ่าน WH_counts ล่าสุดจาก server แล้วเขียน marker + ลบ pending พร้อมกัน
 function _setWhCountConfirming(v){
@@ -3501,6 +3606,16 @@ function processScan(){
   requestAnimationFrame(drainQueue);
 }
 
+// เภสัช (สาขายา) / supervisor (popup Recheck): เก็บยอดที่สแกนลง sd.recheckQty — sync ผ่าน session doc เหมือน WH warehouse
+// — เดิมเก็บใน _avMap ซึ่งอยู่ใน memory ล้วน ยอดที่สแกนบน PDA จึงไปไม่ถึง Desktop ที่เป็นคนกดยืนยัน
+// manualEditAt: กัน cloud snapshot เก่า (listener debounce 3s) ทับยอดที่เพิ่งยิง — ดู _applyCloudScanData
+function _addRecheckScanQty(sku,sd,addQty){
+  const total=(Number(sd.recheckQty)||0)+addQty;
+  sd.recheckQty=total;sd.recheckBy=currentUser||'';sd.recheckAt=new Date().toISOString();sd.manualEditAt=Date.now();
+  scheduleSave();
+  return total;
+}
+
 function processPharmacistAuditScan(){
   const inp=document.getElementById('scanInput');
   const raw=inp.value.trim();if(!raw)return;
@@ -3523,8 +3638,7 @@ function processPharmacistAuditScan(){
   let mult=1;
   if(si){const bi=si.barcodes.find(b=>b.barcode===bc);if(bi)mult=bi.unitMultiplier||1;}
   const addQty=manualQty!==null?manualQty*mult:mult;
-  const newTotal=(_avMap.get(sku)||0)+addQty;
-  _avMap.set(sku,newTotal);
+  const newTotal=_addRecheckScanQty(sku,sd,addQty);
   beepSuccess();
   updatePharmacistAuditConfirmBtn();
   // อัปเดต qty และย้ายขึ้นบนสุดใน RESULT
@@ -3534,6 +3648,7 @@ function processPharmacistAuditScan(){
   renderScanList();
   // refresh popup ถ้าเปิดอยู่
   if(document.getElementById('stockPopupOverlay').style.display==='flex')schedulePopupRender();
+  if(document.getElementById('auditVerifyPopupOverlay').style.display==='flex')renderAuditVerifyTable();
   document.getElementById('scanInput').focus();
 }
 
@@ -3815,11 +3930,14 @@ function rebuildScanListMap(force=false, excludeStatuses=null){
     const barcodes=si&&si.barcodes.length
       ?si.barcodes.map(b=>({barcode:b.barcode,unit:b.unitName}))
       :[{barcode:sd.barcode||sku,unit:''}];
-    // warehouse+supervisor บน WH: audit row โชว์ recheckQty (จำนวนที่ warehouse สแกนรีเช็ค) แทน countedQty
-    const showRecheck=isWh&&sd.status==='audit'&&(currentRole==='warehouse'||currentRole==='supervisor');
+    // audit row โชว์ recheckQty (จำนวนที่สแกนรีเช็ค) แทน countedQty
+    // - WH: warehouse สแกน / supervisor อ่าน
+    // - สาขายา: เภสัชสแกนรีเช็คเอง (PDA หรือ Desktop) — ต้องเห็นยอดรีเช็ค ไม่ใช่ยอดนับรอบแรก
+    const isPharmRecheck=_isPharmacyBranch()&&currentRole==='pharmacist';
+    const showRecheck=sd.status==='audit'&&((isWh&&(currentRole==='warehouse'||currentRole==='supervisor'))||isPharmRecheck);
     const totalQty=showRecheck?(sd.recheckQty||0):sd.countedQty;
-    // WH Recheck เรียงตามเวลาที่รีเช็คล่าสุด ไม่ใช่เวลานับรอบแรก
-    const sortTs=isWh&&sd.status==='audit'?(sd.recheckAt||sd.timestamp||''):(sd.timestamp||'');
+    // Recheck เรียงตามเวลาที่รีเช็คล่าสุด ไม่ใช่เวลานับรอบแรก
+    const sortTs=showRecheck?(sd.recheckAt||sd.timestamp||''):(sd.timestamp||'');
     rows.push({sku,barcodes,totalQty,status:sd.status,ts:sortTs});
   }
   // sort ตามเวลาสแกน เก่า→ใหม่ → set เข้า map (ใหม่สุดอยู่ท้าย Map → ขึ้นบนสุดหลัง .reverse() ใน renderScanList)
@@ -3917,6 +4035,8 @@ function renderScanList(){
   // WH warehouse: QTY แก้ไขผ่าน inline input — Recheck บน PDA แก้จำนวนได้ทุกรายการ
   const whStaffEdit=currentRole==='warehouse'&&currentBranch==='WH';
   const noEditPda=whStaffEdit&&window.innerWidth<=600;
+  // สาขายา เภสัช: audit row = งานรีเช็ค → ต้องมีปุ่ม ✕ รีเซ็ตยอดที่สแกนผิด (การยืนยันจริงทำที่ Desktop)
+  const pharmRecheckEdit=_isPharmacyBranch()&&currentRole==='pharmacist';
   let tpl;
   if(showSysQty){tpl=`82px 90px minmax(0,1fr) 60px 58px 65px 95px`;}
   else{tpl=_colWidths.map(w=>w+'px').join(' ');}
@@ -3928,7 +4048,7 @@ function renderScanList(){
     const pn=si?si.productName:'';
     const rowKey=entry.status==='unknown'?'unknown:'+(entry.barcodes[0]?.barcode||''):entry.sku;
     return`<div class="scan-row" data-sku="${rowKey.replace(/"/g,'&quot;')}" style="grid-template-columns:${tpl}">
-      <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&currentRole==='warehouse'&&currentBranch==='WH')?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
+      <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&(whStaffEdit||pharmRecheckEdit))?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
       <div class="scan-row-pn"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pn}</span></div>
       <div class="scan-row-qty" style="color:${cls}">${entry.status==='scanning'?((((si?.systemQty||0)>10)||(whStaffEdit&&!noEditPda))?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onchange="updateInlineQty('${entry.sku}',this.value)"/>`:`<span style="font-weight:700">${entry.totalQty}</span>`):entry.status==='unknown'?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.status==='audit'&&whStaffEdit)?`<input type="number" class="inline-qty-input" value="${entry.totalQty}" min="0" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onblur="updateRecheckInlineQty('${entry.sku}',this.value)"/>`:(entry.status==='audit'&&(currentRole==='pharmacist'||currentRole==='supervisor'||noEditPda))?`<span style="font-weight:700">${entry.totalQty}</span>`:(entry.totalQty>10?`${entry.totalQty}`:'')}</div>
@@ -4059,11 +4179,13 @@ function removeScanItem(sku){
   toast('ลบแล้ว — สแกนใหม่เพื่อเริ่มนับ','info');
 }
 
-// warehouse: รีเซ็ตจำนวนรีเช็คของ audit item กลับเป็นว่าง → สแกนนับใหม่ (status คงเป็น audit)
+// warehouse (WH) / เภสัช (สาขายา): รีเซ็ตจำนวนรีเช็คของ audit item กลับเป็นว่าง → สแกนนับใหม่ (status คงเป็น audit)
+// manualEditAt: กัน cloud snapshot เก่าที่ยังถือ recheckQty เดิม mirror กลับมาทับการรีเซ็ต (ดู _applyCloudScanData)
 function resetRecheckItem(sku){
   const sd=state.scanData.get(sku);if(!sd||sd.status!=='audit')return;
   delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;
-  _removeWhRecheckInboxItems([sku]);
+  sd.manualEditAt=Date.now();
+  _removeWhRecheckInboxItems([sku]); // guard branch WH ในตัว — เรียกจากสาขายาไม่มีผล
   const e=scanListMap.get(sku);if(e)e.totalQty=0;
   // ยกเลิก debounce + ล้าง scanInput กัน barcode ที่ PDA เพิ่งยิงก่อนกด ✕ ถูก auto-submit หลังรีเซ็ต
   clearTimeout(_scanDebounceTimer);_scanDebounceTimer=null;_lastKeystrokeTime=0;_pdaMode=false;
@@ -4075,6 +4197,8 @@ function resetRecheckItem(sku){
     if(rs===sku)scanQueue.splice(i,1);
   }
   scheduleSave();scheduleStats();scheduleScanListRender();invalidatePopupRowsCache();
+  updatePharmacistAuditConfirmBtn();
+  if(document.getElementById('auditVerifyPopupOverlay').style.display==='flex')renderAuditVerifyTable();
   toast('รีเซ็ตรีเช็คแล้ว — สแกนนับใหม่','info');
 }
 
@@ -4665,8 +4789,12 @@ async function syncToFirestore(overwrite=false){
             if(mergedSd[k]?.auditor&&!localSd[k].auditor)continue;
             // WH recheck: เครื่องที่ "ไม่ใช่เจ้าของรีเช็ค" ห้ามทับ recheck ของคนอื่นบน cloud
             // cloud มี recheck รอ verify (audit + recheckQty + ยังไม่มี auditor) + local ไม่มี recheckQty + เราไม่ใช่ recheckBy คนนั้น
-            // → กัน recheckBy สลับ/หายข้ามเครื่อง (PDA ที่ถือ audit ของเพื่อนแบบ recheckBy ว่าง sync ทับ). เจ้าของรีเซ็ต/สแกนเองยังผ่าน (recheckBy===currentUser หรือ recheckQty มีค่า)
-            if(mergedSd[k]?.status==='audit'&&mergedSd[k].recheckQty!=null&&!mergedSd[k].auditor&&localSd[k].recheckQty==null&&mergedSd[k].recheckBy!==currentUser)continue;
+            // → กัน recheckBy สลับ/หายข้ามเครื่อง (PDA ที่ถือ audit ของเพื่อนแบบ recheckBy ว่าง sync ทับ)
+            // สาขายา: เภสัชคนเดียวกัน login ทั้ง PDA (คนสแกน) และ Desktop (คนยืนยัน) → เทียบ recheckBy===currentUser อย่างเดียวไม่พอ
+            //   Desktop ที่ยังไม่ merge ยอดจาก PDA จะทับ recheck ทิ้ง → ให้ทับได้เฉพาะเมื่อเครื่องนี้เพิ่งรีเซ็ต/แก้เองจริง (manualEditAt สด)
+            {const _mRecheck=state.scanData.get(k)?.manualEditAt;
+            const _selfReset=!!_mRecheck&&(Date.now()-_mRecheck)<MANUAL_EDIT_PROTECT_MS&&(mergedSd[k]?.recheckBy||'')===(currentUser||'');
+            if(mergedSd[k]?.status==='audit'&&mergedSd[k].recheckQty!=null&&!mergedSd[k].auditor&&localSd[k].recheckQty==null&&!_selfReset)continue;}
             mergedSd[k]=localSd[k];
           }
         }
@@ -4783,7 +4911,11 @@ function _applyCloudScanData(s){
           // warehouse PDA เป็น "เจ้าของ" ค่า recheckQty → ห้าม cloud snapshot เก่าทับค่าที่เพิ่งสแกน
           // (กันอาการเด้ง 800→700 จาก race: listener ถือ snapshot เก่า 3s แล้ว apply ทับ local ที่สูงกว่า)
           // ต้อง mirror ตรงๆ (ไม่ใช่ max) เพื่อให้การรีเซ็ตรีเช็ค (recheckQty หาย/ลดลง) sync ไป Desktop ได้
-          if(local.status==='audit'&&cloudItem.status==='audit'&&currentRole!=='warehouse'){
+          // สาขายา: เภสัชเป็นทั้งคนสแกนและคนอ่าน (PDA สแกน / Desktop ยืนยัน) แยกด้วย role ไม่ได้
+          // → ใช้ manualEditAt เป็นตัวบอกว่าเครื่องนี้เพิ่งแก้ยอดรีเช็คเอง (สแกน/กด ✕) ภายใน MANUAL_EDIT_PROTECT_MS
+          //   snapshot เก่าที่ยังไม่เห็นการแก้ล่าสุดจะถูกข้าม — กันอาการเลขเด้งกลับค่าเดิม
+          const _freshLocalRecheck=local.manualEditAt&&(Date.now()-local.manualEditAt)<MANUAL_EDIT_PROTECT_MS;
+          if(local.status==='audit'&&cloudItem.status==='audit'&&currentRole!=='warehouse'&&!_freshLocalRecheck){
             local.recheckQty=cloudItem.recheckQty;local.recheckBy=cloudItem.recheckBy||'';
           }
           continue;
@@ -4943,7 +5075,8 @@ applyAdminUI();
 
 
 // ===================== Audit Verify (เภสัชเท่านั้น) =====================
-const _avMap=new Map();
+// ยอดที่สแกนรีเช็คเก็บใน state.scanData[sku].recheckQty (sync ผ่าน session doc) ไม่ใช่ map ใน memory
+// — PDA สแกนได้ แต่การยืนยันทำที่ Desktop เท่านั้น ยอดจึงต้องเดินทางข้ามเครื่องได้
 let _avFilter='audit';
 
 function setAvFilter(f,btn){
@@ -4955,7 +5088,6 @@ function setAvFilter(f,btn){
 
 function openAuditVerifyPopup(){
   if(currentRole!=='pharmacist'&&currentRole!=='supervisor'){toast('เฉพาะเภสัช / หัวหน้างาน เท่านั้น','warn');return;}
-  _avMap.clear();
   _avFilter='audit';
   const btn=document.getElementById('avBtnAudit');
   if(btn){document.querySelectorAll('#auditVerifyPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
@@ -4974,7 +5106,6 @@ function openAuditVerifyPopup(){
 }
 function closeAuditVerifyPopup(){
   _closeModal('auditVerifyPopupOverlay','auditVerifyPopupCard',()=>{
-    _avMap.clear();
     document.getElementById('scanInput').focus();
   });
 }
@@ -4996,22 +5127,24 @@ function handleAuditVerifyScan(){
   let mult=1;
   if(si){const bi=si.barcodes.find(b=>b.barcode===bc);if(bi)mult=bi.unitMultiplier||1;}
   const addQty=manualQty!==null?manualQty*mult:mult;
-  _avMap.set(sku,(_avMap.get(sku)||0)+addQty);
+  const newTotal=_addRecheckScanQty(sku,sd,addQty);
+  const e=scanListMap.get(sku);if(e)e.totalQty=newTotal;
   renderAuditVerifyTable();
   updatePharmacistAuditConfirmBtn();
+  scheduleScanListRender();
   document.getElementById('auditVerifyScanInput').focus();
 }
 
+// รายการ audit ที่ "สแกนรีเช็คแล้ว" และรอยืนยัน — อ่านจาก sd.recheckQty ที่ sync ข้ามเครื่อง
+// เดิมอ่าน scanListMap.totalQty ซึ่ง rebuildScanListMap เขียนเป็น countedQty ของรอบแรกในสาขายา
+// → audit ที่ยังไม่ได้สแกนรีเช็คเลยถูกนับเป็น pending และยอดที่เภสัชเพิ่งสแกนถูกกลบทุกครั้งที่ cloud snapshot มา
+// หมายเหตุ: ยังกรอง qty>0 ตามกติกาเดิม (pending quantity 0 ไม่รองรับ — ห้ามเปลี่ยนโดยไม่มี business rule ที่อนุมัติ)
 function getPharmacistAuditPendingMap(){
   const pending=new Map();
-  for(const[sku,qty] of _avMap.entries()){
-    if((qty||0)>0)pending.set(sku,qty);
-  }
-  for(const[sku,entry] of scanListMap.entries()){
-    const sd=state.scanData.get(sku);
-    if(!sd||sd.status!=='audit')continue;
-    const qty=Number(entry?.totalQty||0);
-    if(qty>0)pending.set(sku,qty);
+  for(const[sku,sd] of state.scanData.entries()){
+    if(!sd||sd.status!=='audit'||sd.auditor||sd.recheckQty==null)continue;
+    const qty=Number(sd.recheckQty);
+    if(Number.isFinite(qty)&&qty>0)pending.set(sku,qty);
   }
   return pending;
 }
@@ -5031,9 +5164,11 @@ function getPharmacistAuditEffectiveQty(sku,rawQty,scanTimestamp){
   };
 }
 
-// ปุ่ม "ยืนยันรีเช็ค/ยืนยัน Audit" — dispatcher: supervisor ยืนยันจาก recheckQty ที่ sync มา | เภสัช ยืนยันจาก _avMap (สแกนเอง)
+// ปุ่ม "ยืนยันรีเช็ค/ยืนยัน Audit" — dispatcher: supervisor ยืนยันจาก recheckQty ที่ PDA sync มา | เภสัชยืนยันจาก recheckQty ที่สแกนเอง
+// สาขายา + PDA: บล็อก — เภสัชสแกนรีเช็คบน PDA ได้ แต่การตัดสินต้องทำบน Desktop ที่มี R16 raw timeline ตรงกับ Cloud
 function confirmRecheckBtn(){
   if(currentRole==='supervisor'){confirmAllRecheckSupervisor();return;}
+  if(_isPdaApp()&&_isPharmacyBranch()){beepWarn();toast('ยืนยัน Audit ที่ Desktop เท่านั้น','warn');return;}
   confirmAllAuditVerify();
 }
 
@@ -5153,11 +5288,11 @@ function renderSupervisorRecheckButtons(){
   }).join('');
 }
 
+// dispatcher — สาขายา: ยืนยันแบบ batched ผ่าน branch lock บน Desktop เท่านั้น | WH: เส้นทางเดิม (local + summary toast)
 function confirmAllAuditVerify(){
+  if(_isPharmacyBranch())return _confirmPharmacyAuditBatched();
   const pending=getPharmacistAuditPendingMap();
   if(!pending.size){toast('ยังไม่มีรายการที่สแกน','warn');return;}
-  _avMap.clear();
-  for(const[sku,qty] of pending.entries())_avMap.set(sku,qty);
   // WH: ปิด toast per-item แล้วยิง summary เดียว
   const _whSummary=(currentBranch==='WH');
   let nPass=0,nAdj=0;
@@ -5174,10 +5309,12 @@ function confirmAllAuditVerify(){
   updatePharmacistAuditConfirmBtn();
 }
 
-function confirmAuditVerifyItem(sku,silent=false){
+// worker: ตัดสิน pass/stock_adjustment ของ audit item เดียวจากยอดรีเช็คใน sd.recheckQty
+// deferSync=true (ใช้โดย _confirmPharmacyAuditBatched) → ไม่ save/sync/render รายตัว ให้ caller ทำครั้งเดียวตอนจบ
+function confirmAuditVerifyItem(sku,silent=false,deferSync=false){
   const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
   if(!sd||!si)return;
-  const pharmacistQty=_avMap.get(sku)||0;
+  const pharmacistQty=Number(sd.recheckQty)||0;
   const {effectiveQty,soldQty,inboundQty,r16103Qty}=getPharmacistAuditEffectiveQty(sku,pharmacistQty,sd.timestamp);
   const _d=new Date();
   const ts=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}:${String(_d.getSeconds()).padStart(2,'0')}`;
@@ -5191,7 +5328,7 @@ function confirmAuditVerifyItem(sku,silent=false){
   }
   sd.auditor=currentUser;sd.timestamp=ts;sd.recheckQty=pharmacistQty;sd.soldQty=soldQty;sd.inboundQty=inboundQty;sd.r16103Qty=r16103Qty;sd.effectiveQty=effectiveQty;
   if(scanListMap.has(sku))scanListMap.get(sku).status=sd.status;
-  _avMap.delete(sku);
+  if(deferSync)return result;
   invalidatePopupRowsCache();saveSession();syncToFirestore();saveAuditLogToFirestore();renderScanList();updateStats();renderTable();
   renderAuditVerifyTable();
   updatePharmacistAuditConfirmBtn();
@@ -5243,16 +5380,17 @@ function renderAuditVerifyTable(){
     const rows=[];
     for(const[sku,sd] of state.scanData.entries()){if(sd.status!=='audit')continue;const si=state.skuMap.get(sku);if(!si)continue;rows.push({sku,sd,si});}
     if(rc)rc.textContent=rows.length+' รายการ '+_auditTerm();
-    const hasAny=_avMap.size>0;
+    const hasAny=getPharmacistAuditPendingMap().size>0;
     const confirmAllBtn=document.getElementById('avConfirmAllBtn');
-    if(confirmAllBtn)confirmAllBtn.style.display=hasAny?'':'none';
+    // สาขายา + PDA: ซ่อนปุ่มยืนยันในป็อปอัพ — ยืนยันได้เฉพาะ Desktop (ดู _confirmPharmacyAuditBatched)
+    if(confirmAllBtn)confirmAllBtn.style.display=(hasAny&&!(_isPdaApp()&&_isPharmacyBranch()))?'':'none';
     const colspan=isPda?3:7;
     if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ ${_auditTerm()}</td></tr>`;return;}
     tbody.innerHTML=rows.map((r,i)=>{
       const{sku,sd,si}=r;
       const bc=si.barcodes.map(b=>b.barcode).join(', ');
       const bcShort=bc.length>22?bc.slice(0,22)+'…':bc;
-      const avQty=_avMap.get(sku);const hasScanned=avQty!==undefined;
+      const avQty=sd.recheckQty;const hasScanned=avQty!=null;
       const qtyCell=hasScanned
         ?`<span style="font-weight:700;color:var(--accent);">${avQty}</span>`
         :`<span style="color:var(--text3);">รอสแกน</span>`;
@@ -5316,6 +5454,15 @@ function updatePharmacistAuditConfirmBtn(){
     el.textContent=n;
   }else{
     el.textContent=getPharmacistAuditPendingMap().size;
+    // สาขายา + PDA: เภสัชสแกนรีเช็คได้ (ตัวเลขเดินตามที่สแกน) แต่กดยืนยันไม่ได้ — ต้องทำบน Desktop
+    const btn=document.getElementById('pharmacistAuditBtn');
+    if(btn&&currentRole==='pharmacist'){
+      const pdaBlocked=_isPdaApp()&&_isPharmacyBranch();
+      btn.disabled=pdaBlocked||_branchConfirming;
+      btn.style.opacity=btn.disabled?'0.45':'1';
+      btn.style.cursor=btn.disabled?'not-allowed':'pointer';
+      btn.title=pdaBlocked?'ยืนยัน Audit ได้เฉพาะ Desktop':'';
+    }
   }
   renderSupervisorRecheckButtons();
   renderSupervisorCountButtons();
@@ -5378,7 +5525,7 @@ function updateScanInputMode(){
   // WH supervisor Desktop: status filter row บนตาราง RESULT
   const whSupRow=document.getElementById('whSupFilterRow');
   if(whSupRow)whSupRow.style.display=_whSup?'flex':'none';
-  if(!isPharm&&!isSvDesktop){_avMap.clear();updatePharmacistAuditConfirmBtn();}
+  if(!isPharm&&!isSvDesktop)updatePharmacistAuditConfirmBtn();
   const sysQtyHdr=document.getElementById('scanListHeaderSysQty');
   if(sysQtyHdr)sysQtyHdr.style.display=isSvDesktop&&currentBranch==='WH'?'flex':'none';
   const locHdr=document.getElementById('scanListHeaderLocation');

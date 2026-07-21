@@ -141,7 +141,8 @@ if (scanListMap.size > prevSize) {
 
 **Scan list QTY — audit exception:**
 - pharmacist / warehouse / supervisor → แสดง `entry.totalQty` (bold) เสมอ ไม่ใช้ threshold >100
-- เภสัช: `totalQty` = จาก `_avMap`; warehouse/supervisor: `totalQty` = `sd.recheckQty`
+- `totalQty` ของ audit row = `sd.recheckQty` ทุก role ที่รีเช็ค (เภสัชสาขายา, warehouse/supervisor WH) — ดู `showRecheck` ใน `rebuildScanListMap()`
+- ปุ่ม ✕ บน audit row = `resetRecheckItem()` (ล้าง `recheckQty/recheckBy/recheckAt` + ตั้ง `manualEditAt`) เปิดให้ warehouse WH และเภสัชสาขายา
 
 ---
 
@@ -215,6 +216,15 @@ if (scanListMap.size > prevSize) {
 
 `canVerify = currentRole === 'pharmacist' || currentRole === 'supervisor'`
 (warehouse ไม่มีสิทธิ์ verify — ใช้ช่อง scan หลักแทน)
+
+**Pharmacy Audit Verify — PDA สแกน / Desktop ยืนยัน (July 2026):**
+- ที่เก็บยอดรีเช็คคือ `sd.recheckQty`/`recheckBy`/`recheckAt` (sync ผ่าน session doc) — `_avMap` เดิมถูก**ลบแล้ว** เพราะอยู่ใน memory ล้วน ยอดจาก PDA จึงไปไม่ถึง Desktop
+- เขียนผ่าน `_addRecheckScanQty(sku,sd,addQty)` ทั้งสองทาง: `processPharmacistAuditScan()` (ช่อง scan หลัก) และ `handleAuditVerifyScan()` (popup) — ตั้ง `manualEditAt` ทุกครั้ง
+- `getPharmacistAuditPendingMap()` อ่านจาก `state.scanData` (`status==='audit' && recheckQty != null && !auditor && qty>0`) **ห้ามกลับไปอ่าน `scanListMap.totalQty`** — ค่านั้นเป็น `countedQty` รอบแรกในสาขายา
+- ปุ่มยืนยันบน PDA สาขายา disabled (`_isPdaApp()`); `confirmRecheckBtn()` และ `_confirmPharmacyAuditBatched()` มี guard ซ้ำ
+- `confirmAllAuditVerify()` = dispatcher — สาขายาไป `_confirmPharmacyAuditBatched()` (branch lock + batch 25 + ตรวจ R01/R16 version + `_sameBranchRecheck` ก่อน apply), WH ใช้ loop local เดิม
+- `confirmAuditVerifyItem(sku,silent,deferSync)` — `deferSync=true` ให้ batched flow save/sync ครั้งเดียวตอนจบ
+- mirror `recheckQty` จาก cloud ใน `_applyCloudScanData()` และ merge ใน `syncToFirestore()` ถูก gate ด้วย `manualEditAt` + `MANUAL_EDIT_PROTECT_MS` — กันเลขเด้งบนเครื่องที่เพิ่งสแกน/รีเซ็ต
 
 ---
 

@@ -53,6 +53,8 @@ pending → scanning → pass
 - `unknown` เป็นเส้นทางคู่ขนานสำหรับ barcode ที่ไม่พบ
 - `audit_check` เป็น legacy status ยังต้องรองรับ แต่ระบบไม่ควรสร้างรายการใหม่ด้วย status นี้
 - สาขายาใช้ Confirm รอบแรกบน Desktop เท่านั้น PDA ที่มี User-Agent `StockCountPDA` ต้องไม่เห็นและเรียก Confirm ไม่ได้
+- สาขายา Audit Verify: เภสัชสแกนรีเช็คบน PDA ได้ แต่การกดยืนยัน (ตัดสิน pass/stock_adjustment) เป็น Desktop-only เช่นกัน
+- ยอดที่เภสัชสแกนรีเช็คต้องเก็บใน `state.scanData[sku].recheckQty/recheckBy/recheckAt` เท่านั้น ห้ามกลับไปใช้ map ใน memory ที่ไม่ sync
 - WH ใช้ Count/Recheck confirmation workflow แยกกัน ห้ามนำ flow ของสาขายาไปใช้แทน
 
 ## 4. สูตรคำนวณที่ห้ามเปลี่ยนโดยพลการ
@@ -123,6 +125,10 @@ R01/R16 master
 - ก่อน apply ต้องอ่าน server ซ้ำและตรวจ `countResetAt`, R01/R16 version, `countedQty`, `timestamp`, `scannedBy`
 - ถ้าข้อมูลเปลี่ยนกลางงานต้อง abort ทั้งชุด ห้ามเกิดผลบางส่วน
 - ถ้า sync ผลล้มเหลว ให้คง lock จน retry สำเร็จหรือ TTL หมด เพื่อกันกด Confirm ซ้ำทันที
+- Audit Verify Confirm ของเภสัชใช้ `_confirmPharmacyAuditBatched()` ซึ่งใช้ lock/แบตช์/การตรวจเวอร์ชันชุดเดียวกัน
+  ต่างกันที่ candidate คือ `status==='audit'` ที่มี `recheckQty` และยังไม่มี `auditor` และตรวจว่า `recheckQty/recheckBy/recheckAt` ไม่เปลี่ยนกลางงาน
+- เหตุผลที่ Audit Verify ต้อง Desktop-only: `getSoldQtyBefore()`/`getInboundQtyBefore()` fallback เป็นยอดรวมทั้งช่วงเมื่อเครื่องไม่มี R16 raw timeline
+  เครื่องที่รับ R16 ผ่าน session sync (PDA) จึงตัดสิน pass/stock_adjustment ผิดได้
 
 ## 7. จุดสแกนที่ต้องขออนุมัติก่อนแก้
 
@@ -130,7 +136,8 @@ R01/R16 master
 
 - Input/detection: `handleScanInput`, `handleScanKey`, `submitScanManual`, `receiveBarcode`, debounce constants และ PDA state
 - Queue/core: `processScan`, `processPharmacistAuditScan`, `parseScanLine`, `scanQueue`, `drainQueue`, `handleBarcode`
-- Confirm/formula: `validateAndProcess`, `_confirmPharmacyBatched`, `evaluatePendingScans`, `_buildPendingScanEvaluation`
+- Confirm/formula: `validateAndProcess`, `_confirmPharmacyBatched`, `_confirmPharmacyAuditBatched`, `_sameBranchRecheck`, `evaluatePendingScans`, `_buildPendingScanEvaluation`
+- Audit Verify: `handleAuditVerifyScan`, `_addRecheckScanQty`, `getPharmacistAuditPendingMap`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`, `confirmRecheckBtn`
 - UI/state: `appendScanRow`, `removeScanItem`, `resetRecheckItem`, `rebuildScanListMap`, `renderScanList`, `patchScanRow`
 - Cloud: `_applyCloudScanData`, `syncToFirestore`, `pullFromCloud`, session/inbox/marker listeners และ restore/backfill
 - Audit/Recheck: Audit Verify, Count Confirm, Recheck Confirm และ role/status filters
@@ -152,6 +159,7 @@ R01/R16 master
 | `177271b` | WH Supervisor สองเครื่องเห็น R01/R16/สถานะไม่ตรงกัน | Cloud master/versioned chunks เป็น source of truth; localStorage เป็น cache |
 | `4ff5a12` | PDA แบตไหล, R01 upload status ข้ามเครื่องไม่ชัด | ห้ามนำ bright wake lock กลับมา; R01 ต้องแสดงข้อมูลอัปโหลดล่าสุด |
 | `30c57ca` | Pharmacy PDA Confirm หลายร้อยรายการค้าง/กดซ้ำได้ | Confirm ต้อง Desktop-only, batch processing และ branch lock ต้องคงอยู่ |
+| (ก.ค. 2026) | เภสัชสแกนรีเช็คแล้วยอดค้างใน memory (`_avMap`) ไปไม่ถึง Desktop และ pending map ดึง `countedQty` รอบแรกจาก `scanListMap` | ยอดรีเช็คต้องอยู่ใน `sd.recheckQty` เท่านั้น, pending map ต้องอ่านจาก `state.scanData` ไม่ใช่ `scanListMap`, Audit Verify Confirm ต้อง Desktop-only + branch lock |
 
 Toast บน PDA ต้องกระชับผ่าน `_toastMessageForDevice()` และใช้ `textContent`/callback สำหรับ action ห้ามกลับไปประกอบข้อความผู้ใช้ด้วย unsafe `innerHTML`
 
