@@ -56,6 +56,7 @@ pending → scanning → pass
 - สาขายา Audit Verify: เภสัชสแกนรีเช็คบน PDA ได้ แต่การกดยืนยัน (ตัดสิน pass/stock_adjustment) เป็น Desktop-only เช่นกัน
 - ยอดที่เภสัชสแกนรีเช็คต้องเก็บใน `state.scanData[sku].recheckQty/recheckBy/recheckAt` เท่านั้น ห้ามกลับไปใช้ map ใน memory ที่ไม่ sync
 - WH ใช้ Count/Recheck confirmation workflow แยกกัน ห้ามนำ flow ของสาขายาไปใช้แทน
+- WH supervisor ไม่รีเช็คเอง: ป็อปอัพ Audit Verify เป็น read-only (`_isWhSupervisorAuditReadonly()`) ยืนยันได้อย่างเดียวและต้องผ่าน transaction เสมอ
 
 ## 4. สูตรคำนวณที่ห้ามเปลี่ยนโดยพลการ
 

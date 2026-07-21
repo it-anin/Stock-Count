@@ -226,6 +226,11 @@ if (scanListMap.size > prevSize) {
 - `confirmAuditVerifyItem(sku,silent,deferSync)` — `deferSync=true` ให้ batched flow save/sync ครั้งเดียวตอนจบ
 - mirror `recheckQty` จาก cloud ใน `_applyCloudScanData()` และ merge ใน `syncToFirestore()` ถูก gate ด้วย `manualEditAt` + `MANUAL_EDIT_PROTECT_MS` — กันเลขเด้งบนเครื่องที่เพิ่งสแกน/รีเซ็ต
 
+**WH supervisor = read-only ในป็อปอัพ Audit Verify (`_isWhSupervisorAuditReadonly()`):**
+- flow ปัจจุบัน: warehouse สแกนรีเช็คบน PDA → supervisor ยืนยันบน Desktop เท่านั้น supervisor ไม่รีเช็คเอง
+- ป็อปอัพซ่อนแถวสแกน (`#avScanRow`) และ `handleAuditVerifyScan()` return ทันที — ห้ามให้การสแกนของ supervisor เขียนทับ `recheckQty`/`recheckBy` ของพนักงานคลัง (จะทำให้ยอดบวกซ้ำและรายการย้ายปุ่มรายคน)
+- `avConfirmAllBtn` ของ supervisor ต้อง dispatch ไป `confirmAllRecheckSupervisor()` (transaction + marker) **ห้าม** ใช้ loop `confirmAuditVerifyItem` แบบ local ล้วน
+
 ---
 
 ## Audit ข้าม R01 Baseline (สาขายา — flow ใหม่ July 2026, แทน stale-scrub เดิม)

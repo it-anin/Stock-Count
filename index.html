@@ -770,7 +770,7 @@
       <h2 id="auditVerifyTitle">🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)</h2>
       <button class="stock-popup-close" onclick="closeAuditVerifyPopup()">✕</button>
     </div>
-    <div style="padding:12px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+    <div id="avScanRow" style="padding:12px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
       <input id="auditVerifyScanInput" type="text" placeholder="🔍 สแกน Barcode หรือ SKU..." autocomplete="off" inputmode="none"
         style="flex:1;padding:10px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.85rem;outline:none;transition:border-color 0.15s;"
         onkeydown="if(event.key==='Enter')handleAuditVerifyScan()"
@@ -5100,9 +5100,13 @@ function openAuditVerifyPopup(){
   if(tabRow)tabRow.style.display=isPda?'none':'flex';
   const scanBtn=document.getElementById('avScanBtn');
   if(scanBtn)scanBtn.style.display=isPda?'none':'';
+  // WH supervisor: รีเช็คเป็นงานของ warehouse บน PDA — ป็อปอัพนี้ใช้ดู/ยืนยันเท่านั้น ไม่มีช่องสแกน
+  const svReadonly=_isWhSupervisorAuditReadonly();
+  const scanRow=document.getElementById('avScanRow');
+  if(scanRow)scanRow.style.display=svReadonly?'none':'flex';
   _openModal('auditVerifyPopupOverlay','auditVerifyPopupCard');
   renderAuditVerifyTable();
-  setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
+  if(!svReadonly)setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
 }
 function closeAuditVerifyPopup(){
   _closeModal('auditVerifyPopupOverlay','auditVerifyPopupCard',()=>{
@@ -5111,7 +5115,16 @@ function closeAuditVerifyPopup(){
 }
 function handleAuditVerifyOverlayClick(e){if(e.target===document.getElementById('auditVerifyPopupOverlay'))closeAuditVerifyPopup();}
 
+// WH supervisor ไม่รีเช็คเอง (flow ปัจจุบัน: warehouse สแกนบน PDA → supervisor ยืนยันบน Desktop)
+// → ป็อปอัพเป็น read-only ห้ามให้การสแกนของ supervisor เขียนทับ recheckQty/recheckBy ของพนักงานคลัง
+function _isWhSupervisorAuditReadonly(){return currentBranch==='WH'&&currentRole==='supervisor';}
+
 function handleAuditVerifyScan(){
+  if(_isWhSupervisorAuditReadonly()){
+    document.getElementById('auditVerifyScanInput').value='';
+    toast('รีเช็คทำที่ PDA พนักงานคลัง — หน้านี้ใช้ยืนยันเท่านั้น','warn');
+    return;
+  }
   const raw=document.getElementById('auditVerifyScanInput').value.trim();
   if(!raw)return;
   document.getElementById('auditVerifyScanInput').value='';
@@ -5288,8 +5301,10 @@ function renderSupervisorRecheckButtons(){
   }).join('');
 }
 
-// dispatcher — สาขายา: ยืนยันแบบ batched ผ่าน branch lock บน Desktop เท่านั้น | WH: เส้นทางเดิม (local + summary toast)
+// dispatcher — สาขายา: batched ผ่าน branch lock บน Desktop | WH supervisor: transaction เส้นทางเดียวกับปุ่มยืนยันรีเช็ค
+// (ห้ามให้ปุ่มในป็อปอัพยืนยัน WH แบบ local ล้วน — marker ใน WH_recheck_confirmations ต้องเป็น authoritative)
 function confirmAllAuditVerify(){
+  if(_isWhSupervisorAuditReadonly())return confirmAllRecheckSupervisor();
   if(_isPharmacyBranch())return _confirmPharmacyAuditBatched();
   const pending=getPharmacistAuditPendingMap();
   if(!pending.size){toast('ยังไม่มีรายการที่สแกน','warn');return;}
