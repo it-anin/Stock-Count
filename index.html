@@ -1179,6 +1179,8 @@ let _branchConfirmToken = '';
 let _branchConfirming = false;
 let _branchScanPaused = false;
 let _branchLockToastAt = 0;
+let _pharmacyAuditMarkerUnsubscribe = null;
+let _pharmacyAuditMarkerData = {};
 const BRANCH_CONFIRM_LOCK_MS = 5*60*1000;
 const BRANCH_CONFIRM_BATCH_SIZE = 25;
 let _listCleared = false; // true หลังกด Clear — ป้องกัน onSnapshot rebuild scan list
@@ -1197,6 +1199,7 @@ function getWhCountConfirmationRef(){return _db.collection('stock_sessions').doc
 function getWhRecheckInboxRef(){return _db.collection('stock_sessions').doc('WH_rechecks');}
 function getWhRecheckConfirmationRef(){return _db.collection('stock_sessions').doc('WH_recheck_confirmations');}
 function getBranchConfirmLockRef(branch=currentBranch){return _db.collection('stock_sessions').doc(`${branch}_confirm_lock`);}
+function getPharmacyAuditMarkerRef(branch=currentBranch){return _db.collection('stock_sessions').doc(`${branch}_pharmacy_audit_markers`);}
 function getWhR16MetaRef(kind){return _db.collection('stock_sessions').doc(kind==='103'?'WH_r16_103_meta':'WH_r16_104_meta');}
 function getWhR16ChunkRef(kind,generation,index){return _db.collection('stock_sessions').doc(`WH_r16_${kind}_${generation}_${String(index).padStart(4,'0')}`);}
 const WH_R16_CACHE_DB='stock-count-cache';
@@ -1510,6 +1513,217 @@ async function _releaseBranchConfirmLock(token){
   catch(e){console.warn('[branch confirm unlock]',e.message);return false;}
   if(_branchConfirmToken===token)_branchConfirmToken='';
   return true;
+}
+
+// Pharmacy Audit marker = source of truth แยกจาก session_data_json ซึ่งถูกเขียนทั้งก้อนจากหลายเครื่อง
+// เก็บเฉพาะ worklist Audit + ผลที่เภสัช verify แล้ว จึงไม่โตตาม Pass ทั้ง catalog และใช้ rules เดิมของ stock_sessions ได้
+function stopPharmacyAuditMarkerListener(){
+  if(_pharmacyAuditMarkerUnsubscribe){_pharmacyAuditMarkerUnsubscribe();_pharmacyAuditMarkerUnsubscribe=null;}
+  _pharmacyAuditMarkerData={};
+}
+function _getPharmacyAuditMarker(sku){
+  if(!_isPharmacyBranch()||(_pharmacyAuditMarkerData.countResetAt||'')!==(_countResetAt||''))return null;
+  const marker=_pharmacyAuditMarkerData.items?.[sku];
+  return marker&&(marker.countResetAt||'')===(_countResetAt||'')?marker:null;
+}
+function _pharmacyItemInCurrentEpoch(sd){
+  if(!sd)return false;
+  if(!_countResetAt)return true;
+  const ts=sd.firstScanAt||sd.timestamp;if(!ts)return false;
+  const itemMs=Date.parse(String(ts).replace(' ','T'));const epochMs=Date.parse(_countResetAt);
+  return Number.isFinite(itemMs)&&Number.isFinite(epochMs)&&itemMs>=epochMs-5*60*1000;
+}
+async function _writePharmacyAuditMarkers(markers){
+  if(!_db||!_isPharmacyBranch()||!Array.isArray(markers)||!markers.length)return _pharmacyAuditMarkerData.items||{};
+  const epoch=_countResetAt||'';const branch=currentBranch;const ref=getPharmacyAuditMarkerRef(branch);
+  const items=await _db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);const old=snap.exists?(snap.data()||{}):{};
+    const next=(old.countResetAt||'')===epoch?{...(old.items||{})}:{};
+    for(const incoming of markers){
+      if(!incoming?.sku)continue;
+      const sku=String(incoming.sku);const marker={countResetAt:epoch};
+      // Firestore ปฏิเสธ undefined ทั้ง document — backfill รุ่นเก่าอาจไม่มี recheckQty
+      for(const[key,value]of Object.entries(incoming))if(key!=='sku'&&value!==undefined)marker[key]=value;
+      const existing=next[sku]||null;
+      const existingFinal=!!(existing?.auditor&&existing.status!=='audit');
+      const incomingFinal=!!(marker.auditor&&marker.status!=='audit');
+      // final verify ชนะ audit backfill เสมอ; final ที่ใหม่กว่าชนะ final เก่า
+      if(existingFinal&&!incomingFinal)continue;
+      if(existingFinal&&incomingFinal&&String(existing.confirmedAt||'')>String(marker.confirmedAt||''))continue;
+      // audit marker ที่ใหม่กว่าชนะ audit เก่า แต่ไม่ลด confirmedAt โดย snapshot ย้อนหลัง
+      if(existing&&!existingFinal&&!incomingFinal&&String(existing.countConfirmedAt||existing.confirmedAt||'')>String(marker.countConfirmedAt||marker.confirmedAt||''))continue;
+      next[sku]={...(existing||{}),...marker};
+    }
+    const payload={branch,countResetAt:epoch,items:next,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    if((old.countResetAt||'')===epoch&&old.legacyLogBackfilledAt)payload.legacyLogBackfilledAt=old.legacyLogBackfilledAt;
+    tx.set(ref,payload);
+    return next;
+  });
+  if(currentBranch===branch&&(_countResetAt||'')===epoch)_pharmacyAuditMarkerData={..._pharmacyAuditMarkerData,branch,countResetAt:epoch,items};
+  return items;
+}
+function _pharmacyAuditMarkerFromCountResult(result,confirmedAt,versions={}){
+  const sd=result?.source||{};const si=state.skuMap.get(result?.sku);
+  const effectiveQty=Number(result?.cnt||0)+Number(result?.soldQty||0)+Number(result?.r16103Qty||0)-Number(result?.inboundQty||0);
+  return {sku:result.sku,status:'audit',auditStatus:'pending',initialStatus:'audit',auditor:'',
+    countedQty:Number(result.cnt||0),scannedBy:sd.scannedBy||'',countTimestamp:sd.timestamp||'',timestamp:sd.timestamp||'',
+    firstScanAt:sd.firstScanAt||sd.timestamp||'',barcode:sd.barcode||'',location:sd.location||'',
+    soldQty:Number(result.soldQty||0),inboundQty:Number(result.inboundQty||0),r16103Qty:Number(result.r16103Qty||0),
+    effectiveQty,systemQty:Number(si?.systemQty||0),countConfirmedAt:confirmedAt,confirmedAt,
+    confirmedBy:currentUser||'',r01Version:versions.r01Version||state.r01Version||'',
+    r16Version:versions.r16Version||state.r16DetailVersion||'',r16_103Version:versions.r16_103Version||state.r16_103DetailVersion||''};
+}
+function _pharmacyAuditMarkerFromFinal(sku,source,confirmedAt,confirmedTimestamp,versions={}){
+  const si=state.skuMap.get(sku);const qty=Number(source?.recheckQty||0);
+  const calc=getPharmacistAuditEffectiveQty(sku,qty,source?.timestamp||'');
+  const status=calc.effectiveQty===si?.systemQty?'pass':'stock_adjustment';
+  return {sku,status,auditStatus:status==='pass'?'approved':'stock_adjustment',initialStatus:'audit',
+    auditor:currentUser||'',confirmedAt,confirmedBy:currentUser||'',timestamp:confirmedTimestamp||confirmedAt,
+    recheckQty:qty,recheckBy:source?.recheckBy||currentUser||'',recheckAt:source?.recheckAt||confirmedAt,
+    soldQty:Number(calc.soldQty||0),inboundQty:Number(calc.inboundQty||0),r16103Qty:Number(calc.r16103Qty||0),
+    effectiveQty:Number(calc.effectiveQty||0),systemQty:Number(si?.systemQty||0),
+    r01Version:versions.r01Version||state.r01Version||'',r16Version:versions.r16Version||state.r16DetailVersion||'',
+    r16_103Version:versions.r16_103Version||state.r16_103DetailVersion||''};
+}
+function _applyPharmacyAuditMarkersToState(){
+  if(!_isPharmacyBranch()||(_pharmacyAuditMarkerData.countResetAt||'')!==(_countResetAt||''))return [];
+  const changed=[];
+  for(const[sku,marker]of Object.entries(_pharmacyAuditMarkerData.items||{})){
+    if(!marker||!['audit','pass','stock_adjustment'].includes(marker.status)||(marker.countResetAt||'')!==(_countResetAt||''))continue;
+    let sd=state.scanData.get(sku);
+    if(!sd&&state.skuMap.has(sku)){sd={countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:'',scans:[]};state.scanData.set(sku,sd);}
+    if(!sd)continue;
+    const markerAt=marker.confirmedAt||marker.countConfirmedAt||'';
+    const same=sd.pharmacyAuditMarkerAt===markerAt&&sd.status===marker.status&&
+      (sd.auditor||'')===(marker.auditor||'')&&(marker.recheckQty==null||Number(sd.recheckQty)===Number(marker.recheckQty));
+    if(same)continue;
+    const keepDraft=marker.status==='audit'&&sd.pharmacyAuditCountConfirmedAt&&
+      sd.pharmacyAuditCountConfirmedAt===(marker.countConfirmedAt||marker.confirmedAt||'')&&sd.recheckQty!=null;
+    const draft=keepDraft?{qty:sd.recheckQty,by:sd.recheckBy||'',at:sd.recheckAt||''}:null;
+    if(marker.countedQty!=null)sd.countedQty=Number(marker.countedQty);
+    sd.status=marker.status;sd.auditStatus=marker.auditStatus||(marker.status==='audit'?'pending':marker.status==='pass'?'approved':'stock_adjustment');
+    sd.initialStatus=marker.initialStatus||'audit';sd.scannedBy=marker.scannedBy||sd.scannedBy||'';
+    sd.firstScanAt=marker.firstScanAt||sd.firstScanAt||marker.countTimestamp||marker.timestamp||'';
+    sd.barcode=marker.barcode||sd.barcode||'';sd.location=marker.location||sd.location||'';
+    sd.soldQty=Number(marker.soldQty||0);sd.inboundQty=Number(marker.inboundQty||0);sd.r16103Qty=Number(marker.r16103Qty||0);
+    sd.effectiveQty=Number(marker.effectiveQty||0);sd.systemQty=Number(marker.systemQty);
+    sd.r01Version=marker.r01Version||'';sd.r16Version=marker.r16Version||'';sd.r16_103Version=marker.r16_103Version||'';
+    sd.pharmacyAuditCountConfirmedAt=marker.countConfirmedAt||marker.confirmedAt||sd.pharmacyAuditCountConfirmedAt||'';
+    sd.pharmacyAuditMarkerAt=markerAt;
+    if(marker.status==='audit'){
+      sd.auditor='';sd.timestamp=marker.countTimestamp||marker.timestamp||sd.timestamp||'';
+      if(marker.recheckQty!=null){sd.recheckQty=Number(marker.recheckQty);sd.recheckBy=marker.recheckBy||'';sd.recheckAt=marker.recheckAt||'';}
+      else if(draft){sd.recheckQty=draft.qty;sd.recheckBy=draft.by;sd.recheckAt=draft.at;}
+      else{delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;}
+    }else if(marker.auditor){
+      sd.auditor=marker.auditor||'';sd.timestamp=marker.timestamp||sd.timestamp||'';
+      sd.recheckQty=Number(marker.recheckQty||0);sd.recheckBy=marker.recheckBy||'';sd.recheckAt=marker.recheckAt||'';
+      sd.pharmacyAuditConfirmedAt=marker.confirmedAt||'';
+    }else{
+      // R16 re-calculation อาจปิด Audit เป็น Pass โดยยังไม่ใช่งาน Verify ของเภสัช
+      sd.auditor='';sd.timestamp=marker.countTimestamp||marker.timestamp||sd.timestamp||'';
+      if(marker.recheckQty!=null){sd.recheckQty=Number(marker.recheckQty);sd.recheckBy=marker.recheckBy||'';sd.recheckAt=marker.recheckAt||'';}
+      else{delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;}
+    }
+    changed.push(sku);
+  }
+  return changed;
+}
+function _renderPharmacyAuditMarkerChanges(changed){
+  if(!changed.length)return;
+  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();
+  updateStats();renderTable();updatePharmacistAuditConfirmBtn();updateConfirmBtn();
+  if(document.getElementById('auditVerifyPopupOverlay')?.style.display==='flex')renderAuditVerifyTable();
+}
+async function _backfillPharmacyAuditMarkersFromLocal(){
+  if(!_db||!_isPharmacyBranch())return;
+  const markers=[];
+  for(const[sku,sd]of state.scanData.entries()){
+    if(!_pharmacyItemInCurrentEpoch(sd))continue;
+    if(sd.status==='audit'&&!sd.auditor){
+      markers.push({sku,status:'audit',auditStatus:'pending',initialStatus:'audit',auditor:'',
+        countedQty:Number(sd.countedQty||0),scannedBy:sd.scannedBy||'',countTimestamp:sd.firstScanAt||sd.timestamp||'',
+        timestamp:sd.firstScanAt||sd.timestamp||'',firstScanAt:sd.firstScanAt||sd.timestamp||'',barcode:sd.barcode||'',location:sd.location||'',
+        soldQty:Number(sd.soldQty||0),inboundQty:Number(sd.inboundQty||0),r16103Qty:Number(sd.r16103Qty||0),
+        effectiveQty:Number(sd.effectiveQty??sd.countedQty??0),systemQty:Number(sd.systemQty??state.skuMap.get(sku)?.systemQty??0),
+        countConfirmedAt:sd.pharmacyAuditCountConfirmedAt||sd.countConfirmedAt||sd.firstScanAt||sd.timestamp||'',
+        confirmedAt:sd.pharmacyAuditCountConfirmedAt||sd.countConfirmedAt||sd.firstScanAt||sd.timestamp||'',confirmedBy:sd.countConfirmedBy||'',
+        recheckQty:sd.recheckQty,recheckBy:sd.recheckBy||'',recheckAt:sd.recheckAt||'',
+        r01Version:sd.r01Version||state.r01Version||'',r16Version:sd.r16Version||'',r16_103Version:sd.r16_103Version||''});
+    }else if(sd.auditor&&sd.initialStatus==='audit'&&['pass','stock_adjustment'].includes(sd.status)){
+      markers.push({sku,status:sd.status,auditStatus:sd.auditStatus||'approved',initialStatus:'audit',auditor:sd.auditor,
+        confirmedAt:sd.pharmacyAuditConfirmedAt||sd.timestamp||'',confirmedBy:sd.auditor,recheckQty:Number(sd.recheckQty||0),
+        recheckBy:sd.recheckBy||sd.auditor,recheckAt:sd.recheckAt||sd.timestamp||'',timestamp:sd.timestamp||'',
+        countedQty:Number(sd.countedQty||0),scannedBy:sd.scannedBy||'',firstScanAt:sd.firstScanAt||'',barcode:sd.barcode||'',location:sd.location||'',
+        soldQty:Number(sd.soldQty||0),inboundQty:Number(sd.inboundQty||0),r16103Qty:Number(sd.r16103Qty||0),
+        effectiveQty:Number(sd.effectiveQty||0),systemQty:Number(sd.systemQty??state.skuMap.get(sku)?.systemQty??0),
+        countConfirmedAt:sd.pharmacyAuditCountConfirmedAt||sd.countConfirmedAt||sd.firstScanAt||'',
+        r01Version:sd.r01Version||state.r01Version||'',r16Version:sd.r16Version||'',r16_103Version:sd.r16_103Version||''});
+    }
+  }
+  if(markers.length)await _writePharmacyAuditMarkers(markers);
+}
+async function _backfillPharmacyAuditMarkersFromLog(){
+  if(!_db||!_isPharmacyBranch()||_pharmacyAuditMarkerData.legacyLogBackfilledAt)return;
+  // ยังไม่มี R01/R05 map = ยังตัดสินไม่ได้ว่า SKU ใน log อยู่ในรอบนี้จริง ห้ามปัก migration-complete ก่อนเวลา
+  if(!state.skuMap.size)return;
+  const epochMs=Date.parse(_countResetAt||'');if(!Number.isFinite(epochMs))return;
+  // migration สำหรับ session รุ่นเก่าที่ Audit ถูก whole-document write ลบ: อ่าน log ตั้งแต่ epoch (จำกัด 14 วัน)
+  const today=new Date();const first=new Date(Math.max(epochMs,today.getTime()-13*86400000));
+  first.setHours(0,0,0,0);const refs=[];
+  for(let d=new Date(first);d<=today;d.setDate(d.getDate()+1)){
+    const dateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    refs.push(_db.collection('stock_audit_log').doc(`${currentBranch}_${dateStr}`));
+  }
+  const docs=await Promise.all(refs.map(ref=>ref.get()));const bySku=new Map();
+  for(const doc of docs){
+    if(!doc.exists)continue;
+    for(const item of doc.data()?.items||[]){
+      const sku=String(item?.sku||'');if(!sku||!state.skuMap.has(sku)||!['audit','pass','stock_adjustment'].includes(item.status))continue;
+      const itemMs=Date.parse(String(item.timestamp||'').replace(' ','T'));
+      if(!Number.isFinite(itemMs)||itemMs<epochMs-5*60*1000)continue;
+      const old=bySku.get(sku);if(!old||String(old.timestamp||'')<String(item.timestamp||''))bySku.set(sku,item);
+    }
+  }
+  const markers=[];
+  for(const[sku,item]of bySku){
+    const systemQty=Number(state.skuMap.get(sku)?.systemQty||0);const final=!!(item.auditor&&item.status!=='audit');
+    markers.push({sku,status:final?item.status:'audit',auditStatus:final?(item.status==='pass'?'approved':'stock_adjustment'):'pending',initialStatus:'audit',
+      auditor:final?item.auditor:'',countedQty:Number(item.countedQty||0),scannedBy:item.scannedBy||'',barcode:item.barcode||'',
+      countTimestamp:final?'':item.timestamp||'',timestamp:item.timestamp||'',firstScanAt:final?'':item.timestamp||'',
+      recheckQty:item.recheckQty==null?undefined:Number(item.recheckQty),recheckBy:final?(item.auditor||''):'',recheckAt:final?(item.timestamp||''):'',
+      soldQty:0,inboundQty:0,r16103Qty:0,effectiveQty:final?Number(item.recheckQty||0):Number(item.countedQty||0),systemQty,
+      countConfirmedAt:final?'':item.timestamp||'',confirmedAt:item.timestamp||'',confirmedBy:final?(item.auditor||''):'',
+      r01Version:state.r01Version||'',r16Version:state.r16DetailVersion||'',r16_103Version:state.r16_103DetailVersion||''});
+  }
+  if(markers.length){
+    await _writePharmacyAuditMarkers(markers);
+    await getPharmacyAuditMarkerRef().set({legacyLogBackfilledAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  }else{
+    await getPharmacyAuditMarkerRef().set({branch:currentBranch,countResetAt:_countResetAt||'',items:{},
+      legacyLogBackfilledAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  }
+  _pharmacyAuditMarkerData.legacyLogBackfilledAt=new Date().toISOString();
+}
+async function _loadPharmacyAuditMarkerState(){
+  if(!_db||!_isPharmacyBranch())return;
+  try{
+    const doc=await getPharmacyAuditMarkerRef().get();const data=doc.exists?(doc.data()||{}):{};
+    _pharmacyAuditMarkerData=(data.countResetAt||'')===(_countResetAt||'')?data:{branch:currentBranch,countResetAt:_countResetAt||'',items:{}};
+    await _backfillPharmacyAuditMarkersFromLog();
+    await _backfillPharmacyAuditMarkersFromLocal();
+    _renderPharmacyAuditMarkerChanges(_applyPharmacyAuditMarkersToState());
+  }catch(e){console.warn('[pharmacy audit marker load]',e.message);}
+}
+function startPharmacyAuditMarkerListener(){
+  // ตอน restart listener คง snapshot ที่โหลดแล้วไว้ ป้องกัน UI กระพริบกลับ Pass ระหว่างรอ onSnapshot แรก
+  if(_pharmacyAuditMarkerUnsubscribe){_pharmacyAuditMarkerUnsubscribe();_pharmacyAuditMarkerUnsubscribe=null;}
+  if(!_db||!_isPharmacyBranch()||_adminMode)return;
+  _pharmacyAuditMarkerUnsubscribe=getPharmacyAuditMarkerRef().onSnapshot(doc=>{
+    const data=doc.exists?(doc.data()||{}):{};
+    _pharmacyAuditMarkerData=(data.countResetAt||'')===(_countResetAt||'')?data:{branch:currentBranch,countResetAt:_countResetAt||'',items:{}};
+    _renderPharmacyAuditMarkerChanges(_applyPharmacyAuditMarkersToState());
+  },e=>console.warn('[pharmacy audit marker listener]',e.message));
 }
 function stopWhMasterListeners(){
   if(_whMasterUnsubscribe){_whMasterUnsubscribe();_whMasterUnsubscribe=null;}
@@ -2007,7 +2221,7 @@ function selectEmployee(name,role){
     applyAuditTerminology();
     if(_employeeCallback)_employeeCallback();
     else{
-      startWhMasterListeners();startScanSessionListener();startBranchConfirmLockListener();
+      startWhMasterListeners();startScanSessionListener();startBranchConfirmLockListener();startPharmacyAuditMarkerListener();
       startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();
     }
     _employeeCallback=null;
@@ -2088,10 +2302,12 @@ async function initAfterLogin(){
     if(_isPharmacyBranch())scrubStaleLocalAudits();
     updateBranchDisplay();
     await restoreFromFirestore(currentBranch==='WH'&&currentRole==='supervisor');
+    // session_data_json อาจถูกเครื่องเก่าเขียนทับทั้งก้อน — marker แยกคือ worklist/ผล Audit ที่ authoritative
+    if(_isPharmacyBranch())await _loadPharmacyAuditMarkerState();
     if(currentBranch==='WH'){if(currentRole==='supervisor')await _loadWhR16CloudTimelines();await _loadWhWorkflowCloudState();}
     // รีเซ็ตของค้างข้ามวัน → ดันขึ้น cloud เป็น authoritative ก่อนเริ่ม listener (กัน listener ดึงของค้างกลับมา resurrect)
     const _staleReset=resetStaleScanningItems();
-    if(_staleReset>0){saveSession();await syncToFirestore(true);toast(`♻️ รีเซ็ตของค้างข้ามวัน ${_staleReset} รายการ — กรุณานับใหม่`,'info',4000);}
+    if(_staleReset>0){saveSession();await syncToFirestore();toast(`♻️ รีเซ็ตของค้างข้ามวัน ${_staleReset} รายการ — กรุณานับใหม่`,'info',4000);}
     startProductMasterListener();
     startR05Listener();
     startWhMasterListeners();
@@ -2101,6 +2317,7 @@ async function initAfterLogin(){
     startWhRecheckConfirmationListener();
     startWhRecheckInboxListener();
     startBranchConfirmLockListener();
+    startPharmacyAuditMarkerListener();
     // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
     rebuildScanListMap(currentRole==='pharmacist');
     renderScanList();updateStats();renderTable();
@@ -2163,6 +2380,7 @@ async function selectBranch(branch){
   stopProductMasterListener();
   stopScanSessionListener();
   stopBranchConfirmLockListener();
+  stopPharmacyAuditMarkerListener();
   stopWhMasterListeners();
   stopWhCountConfirmationListener();
   stopWhCountInboxListener();
@@ -2425,7 +2643,7 @@ function loadR16(event) {
       }
     }
     // re-evaluate item ที่เป็น audit เผื่อ R16 เปลี่ยน
-    if(matched>0) reEvaluateAuditItems();
+    if(matched>0) await reEvaluateAuditItems();
     if(currentBranch==='WH'){
       _whR16TimelineReady=true;_whR16TimelineLoading=true;updateConfirmBtn();
       try{await _saveWhR16TimelineSnapshot();await _publishWhR16Timeline('104');}
@@ -2489,7 +2707,7 @@ function loadR16_103(event){
     }else{
       toast(`R16.103: ไม่สามารถจับคู่ข้อมูลได้ — ตรวจสอบว่าไฟล์มี code IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN ใน Col C`,'warn');
     }
-    if(matched>0) reEvaluateAuditItems();
+    if(matched>0) await reEvaluateAuditItems();
     saveSession();
   });
 }
@@ -2557,9 +2775,9 @@ async function _applyR01BaselineUpdate(baselineAt){
   toast('R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','info');
   return 1;
 }
-function reEvaluateAuditItems(opts={}){
+async function reEvaluateAuditItems(opts={}){
   const REEVALUATE=new Set(['audit','pass']);
-  let changed=0;
+  let changed=0;const changedItems=[];
   for(const[sku,sd] of state.scanData.entries()){
     if(!REEVALUATE.has(sd.status))continue;
     if(sd.auditor)continue; // เภสัชยืนยันแล้ว ไม่แตะ
@@ -2571,16 +2789,34 @@ function reEvaluateAuditItems(opts={}){
     const effectiveCnt=sd.countedQty+soldQty+r16103Qty-inboundQty;
     const newStatus=effectiveCnt===si.systemQty?'pass':(si.negSys?'stock_adjustment':'audit');
     if(newStatus===sd.status)continue; // ไม่เปลี่ยน ข้ามไป
-    sd.status=newStatus;
+    const before={...sd};sd.status=newStatus;
     sd.auditStatus=newStatus==='pass'?'approved':(newStatus==='stock_adjustment'?'stock_adjustment':'pending');
     sd.initialStatus=newStatus; // แก้ initialStatus ให้ตรงกับ R16 ใหม่
     if(soldQty>0){sd.soldQty=soldQty;sd.rawCountedQty=sd.countedQty;}
     if(inboundQty>0)sd.inboundQty=inboundQty;
     if(r16103Qty>0)sd.r16103Qty=r16103Qty;
     if(scanListMap.has(sku)){const e=scanListMap.get(sku);e.status=newStatus;if(soldQty>0){e.soldQty=soldQty;e.rawQty=sd.countedQty;}if(inboundQty>0)e.inboundQty=inboundQty;}
-    changed++;
+    changed++;changedItems.push({sku,before,after:sd,effectiveCnt,systemQty:si.systemQty});
   }
   if(changed>0){
+    if(_isPharmacyBranch()){
+      const recalculatedAt=new Date().toISOString();
+      const markers=changedItems.map(({sku,after,effectiveCnt,systemQty})=>({sku,status:after.status,auditStatus:after.auditStatus,
+        initialStatus:after.initialStatus,auditor:'',countedQty:Number(after.countedQty||0),scannedBy:after.scannedBy||'',
+        countTimestamp:after.firstScanAt||after.timestamp||'',timestamp:after.firstScanAt||after.timestamp||'',firstScanAt:after.firstScanAt||after.timestamp||'',
+        barcode:after.barcode||'',location:after.location||'',soldQty:Number(after.soldQty||0),inboundQty:Number(after.inboundQty||0),
+        r16103Qty:Number(after.r16103Qty||0),effectiveQty:Number(effectiveCnt||0),systemQty:Number(systemQty||0),
+        countConfirmedAt:recalculatedAt,confirmedAt:recalculatedAt,confirmedBy:currentUser||'',
+        recheckQty:after.recheckQty,recheckBy:after.recheckBy||'',recheckAt:after.recheckAt||'',
+        r01Version:state.r01Version||'',r16Version:state.r16DetailVersion||'',r16_103Version:state.r16_103DetailVersion||''}));
+      try{await _writePharmacyAuditMarkers(markers);}
+      catch(e){
+        for(const{sku,before}of changedItems)state.scanData.set(sku,before);
+        rebuildScanListMap(true);renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updatePharmacistAuditConfirmBtn();updateAuditVerifyCount();
+        toast('บันทึกสถานะ Audit กลางไม่สำเร็จ — ยกเลิกการปรับสถานะ กรุณาตรวจอินเทอร์เน็ตแล้วอัป R16 ใหม่','error',6000);
+        console.warn('[R16 pharmacy audit marker]',e.message);return 0;
+      }
+    }
     saveAuditLogToFirestore();
     rebuildScanListMap(true);
     renderScanList();
@@ -2618,6 +2854,7 @@ async function startNewCount(){
   _setR01Ts('');_setR16Ts('');
   _countResetAt=new Date().toISOString();
   _r01BaselineAt='';
+  _pharmacyAuditMarkerData={branch:currentBranch,countResetAt:_countResetAt,items:{}};
   // sync ขึ้น cloud ตอน scanData ยัง "ว่าง" (ก่อน rebuildMaps) → cloud ได้ scanData={} + epoch ใหม่
   // → ทุก SKU "หายจาก cloud" จริง ด่านกัน resurrection ใน syncToFirestore (ที่พึ่ง !mergedSd[k]) จึงทำงาน
   // และไม่ broadcast pending ทั้ง catalog กลับขึ้น cloud (ต้นเหตุที่ทำให้ confirmed เด้งกลับ)
@@ -2627,7 +2864,7 @@ async function startNewCount(){
   // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
   // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
   // ล้าง _r01 + _adjlot (LOT/ราคาที่บันทึก sync ไว้) — เริ่มนับใหม่ = LOT รอบเก่าใช้ไม่ได้แล้ว. _r05 ไม่ลบ
-  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/WH inboxes:',e.message);}}
+  if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(_isPharmacyBranch())deletes.push(getPharmacyAuditMarkerRef().delete());if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/workflow markers:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   toast(`เริ่มนับใหม่เรียบร้อย`,'success');
@@ -2644,13 +2881,14 @@ async function clearAllData() {
   localStorage.removeItem(lsKey());
   if(_db&&currentBranch==='WH'){try{await _clearWhR16CloudTimelines();}catch(e){console.warn('[clearAllData] clear WH R16 chunks:',e.message);}}
   // _r05 ไม่ลบ cloud — global doc ใช้ร่วมทุกสาขาแล้ว (เหมือน global_pm ที่ก็ไม่ลบตรงนี้), ล้างแค่ local เดี๋ยว resync กลับตอน reload
-  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
+  if(_db&&currentBranch){const id=getSessionId();try{const deletes=[_db.collection('stock_sessions').doc(id).delete(),_db.collection('stock_sessions').doc(id+'_master').delete(),_db.collection('stock_sessions').doc(id+'_r01').delete()];if(_isPharmacyBranch())deletes.push(getPharmacyAuditMarkerRef().delete());if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('Firestore delete:',e.message);}}
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r01Version='';state.r05Data=[];state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
   state.r16DetailVersion='';state.r16_103DetailVersion='';
   if(currentBranch==='WH'){_whCountConfirmationData={};_whCountInboxData={};_whRecheckConfirmationData={};_whRecheckInboxData={};await _clearWhR16TimelineSnapshot();}
   _countResetAt='';
+  _pharmacyAuditMarkerData={};
   ['R01','R05','R16'].forEach(k=>{document.getElementById('badge'+k).textContent='ยังไม่โหลด';});document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
   const _b103c=document.getElementById('badgeR16_103');if(_b103c)_b103c.textContent='ยังไม่โหลด';
   const _ts103c=document.getElementById('r16_103Timestamp');if(_ts103c)_ts103c.style.display='none';
@@ -3209,9 +3447,19 @@ async function _confirmPharmacyBatched(){
       if(!_sameBranchCount(candidate.source,latest.session.scanData?.[candidate.sku])||!_sameBranchCount(candidate.source,state.scanData.get(candidate.sku)))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
     }
 
+    // เขียน Audit worklist ลง marker ก่อนเปลี่ยน local/session เพื่อไม่ให้ whole-document sync จากเครื่องอื่นลบ Audit ได้
+    const countConfirmedAt=new Date().toISOString();
+    const auditMarkers=results.filter(result=>result.status==='audit')
+      .map(result=>_pharmacyAuditMarkerFromCountResult(result,countConfirmedAt,versions));
+    if(auditMarkers.length){
+      _setBranchConfirmProgress('กำลังบันทึกรายการ Audit กลาง...',total,total);
+      await _writePharmacyAuditMarkers(auditMarkers);
+    }
+
     clearTimeout(_saveTimer);_saveTimer=null;
     clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
     for(const result of results)_applyPendingScanEvaluation(result);
+    _applyPharmacyAuditMarkersToState();
     _removeWhCountInboxItems(results.map(r=>r.sku));
     saveSession();
     invalidatePopupRowsCache();
@@ -3305,6 +3553,14 @@ async function _confirmPharmacyAuditBatched(){
         !_sameBranchRecheck(candidate.source,state.scanData.get(candidate.sku)))throw new Error('BRANCH_CONFIRM_DATA_CHANGED');
     }
 
+    // ผล Verify เป็น authoritative marker ก่อน apply local; ถ้า session sync ล้ม เครื่องอื่นยังเห็นผลเดียวกัน
+    const verifyDate=new Date();
+    const auditConfirmedAt=verifyDate.toISOString();
+    const auditConfirmedTimestamp=`${verifyDate.getFullYear()}-${String(verifyDate.getMonth()+1).padStart(2,'0')}-${String(verifyDate.getDate()).padStart(2,'0')} ${String(verifyDate.getHours()).padStart(2,'0')}:${String(verifyDate.getMinutes()).padStart(2,'0')}:${String(verifyDate.getSeconds()).padStart(2,'0')}`;
+    const finalMarkers=candidates.map(candidate=>_pharmacyAuditMarkerFromFinal(candidate.sku,candidate.source,auditConfirmedAt,auditConfirmedTimestamp,versions));
+    _setBranchConfirmProgress('กำลังบันทึกผล Audit กลาง...',0,candidates.length);
+    await _writePharmacyAuditMarkers(finalMarkers);
+
     clearTimeout(_saveTimer);_saveTimer=null;
     clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
     const total=candidates.length;let nPass=0,nAdj=0;
@@ -3317,6 +3573,7 @@ async function _confirmPharmacyAuditBatched(){
       _setBranchConfirmProgress(`กำลังยืนยัน ${end.toLocaleString()}/${total.toLocaleString()} รายการ (${Math.round(end*100/total)}%)`,end,total);
       await _branchConfirmYield();
     }
+    _applyPharmacyAuditMarkersToState();
     saveSession();
     invalidatePopupRowsCache();
     scheduleScanListRender();scheduleStats();scheduleRender();
@@ -4583,13 +4840,16 @@ function toggleAdmin(){
     _adminMode=false;
     applyAdminUI();
     toast('ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','info');
-    syncToFirestore(true).then(()=>{startScanSessionListener();startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();startBranchConfirmLockListener();});
+    syncToFirestore().then(()=>{startScanSessionListener();startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();startBranchConfirmLockListener();startPharmacyAuditMarkerListener();});
     return;
   }
   const pin=prompt('🔒 กรุณาใส่รหัส PIN เพื่อเข้าโหมด Administrator:');
   if(pin===null)return;
   if(pin!==ADMIN_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
   _adminMode=true;
+  stopScanSessionListener();
+  stopBranchConfirmLockListener();
+  stopPharmacyAuditMarkerListener();
   stopWhCountConfirmationListener();
   stopWhCountInboxListener();
   stopWhRecheckConfirmationListener();
@@ -4778,10 +5038,11 @@ async function syncToFirestore(overwrite=false){
             if(!mergedSd[k]&&localSd[k].status==='pending')continue;
             // ป้องกัน local confirmed (pass/audit/stock_adj) resurrection หลัง startNewCount
             // — ถ้า cloud ไม่มี SKU นี้แล้ว แสดงว่าถูกลบโดย startNewCount → ไม่ re-upload
-            if(!mergedSd[k]&&_confirmedSet.has(localSd[k].status))continue;
+            // Pharmacy Audit marker ยืนยันว่า SKU นี้อยู่ใน epoch ปัจจุบัน → ต้องซ่อม session ที่ทำรายการหายได้
+            if(!mergedSd[k]&&_confirmedSet.has(localSd[k].status)&&!_getPharmacyAuditMarker(k))continue;
             // ถ้า cloud ยืนยันแล้วเป็นสถานะที่ไม่ใช่ audit แต่ local ยังเป็น audit เก่า → ให้ cloud ชนะ
             // (ต้องเช็ค _confirmedSet ด้วย — ถ้า cloud ยังเป็น scanning/pending (ยังไม่ไปถึง audit) ไม่ใช่เคสนี้ ห้าม block local audit สดทับ cloud)
-            if(mergedSd[k]&&_confirmedSet.has(mergedSd[k].status)&&mergedSd[k].status!=='audit'&&localSd[k].status==='audit'&&!localSd[k].auditor)continue;
+            if(mergedSd[k]&&_confirmedSet.has(mergedSd[k].status)&&mergedSd[k].status!=='audit'&&localSd[k].status==='audit'&&!localSd[k].auditor&&_getPharmacyAuditMarker(k)?.status!=='audit')continue;
             // ถ้า cloud ยืนยันแล้ว แต่ local ยังไม่ยืนยัน/ค้าง audit เก่า → ให้ cloud ชนะเสมอ
             if(mergedSd[k]&&_confirmedSet.has(mergedSd[k].status)&&!_confirmedSet.has(localSd[k].status))continue;
             // cloud ถูก verify แล้ว (มี auditor จาก supervisor/เภสัช) แต่ local ยังไม่ verify
@@ -4949,6 +5210,8 @@ function _applyCloudScanData(s){
     const existBc=new Set(state.unknownScans.map(u=>u.barcode));
     for(const u of s.unknownScans){if(!existBc.has(u.barcode)){state.unknownScans.push(u);existBc.add(u.barcode);}}
   }
+  // session เป็น compatibility snapshot; Pharmacy marker ต้องชนะทุกครั้งแม้ session เพิ่งมาจากเครื่อง stale
+  _applyPharmacyAuditMarkersToState();
   return scanned;
 }
 
@@ -5035,10 +5298,15 @@ async function restoreFromFirestore(force=false){
       const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
       let merged=false;
       // stale audit (เก่ากว่า R01 baseline) ห้าม adopt — กัน resurrect ตอน login (คู่กับ guard ใน _applyCloudScanData)
-      if(s.scanData){for(const k in s.scanData){const ci=s.scanData[k];if(_isStaleAuditVsBaseline(ci))continue;if(CONFIRMED.has(ci.status)){const local=state.scanData.get(k);if(!local||!CONFIRMED.has(local.status)){state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...ci});merged=true;}}}}
-      // คิด audit/pass ใหม่ด้วย R16 ล่าสุด (สาขายา) — ข้าม item ที่เภสัช verify แล้ว (auditor set) → ไม่ revert งานที่ยืนยัน
-      // reEvaluateAuditItems ทำ render/update ครบในตัวเมื่อมีการเปลี่ยน (rebuildScanListMap/renderScanList/updateStats/updateAuditVerifyCount)
-      if(_isPharmacyBranch())reEvaluateAuditItems({silent:true});
+      if(s.scanData){for(const k in s.scanData){
+        const ci=s.scanData[k];if(_isStaleAuditVsBaseline(ci)||!CONFIRMED.has(ci.status))continue;
+        const local=state.scanData.get(k);
+        // ผลที่มี auditor ชนะ local ที่ยังไม่ verify; Audit ที่ยังไม่ verify ชนะ Pass/Adjustment เก่าบนเครื่องอื่น
+        const takeVerified=!!ci.auditor&&(!local?.auditor||String(ci.pharmacyAuditConfirmedAt||ci.timestamp||'')>=String(local.pharmacyAuditConfirmedAt||local.timestamp||''));
+        const takeAudit=ci.status==='audit'&&!ci.auditor&&!local?.auditor&&local?.status!=='audit';
+        if(!local||!CONFIRMED.has(local.status)||takeVerified||takeAudit){state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...ci});merged=true;}
+      }}
+      // ห้ามคำนวณ Audit/Pass ใหม่ตอน login รายเครื่อง: source of truth มาจาก Desktop Confirm + Pharmacy marker
       if(merged){invalidatePopupRowsCache();rebuildScanListMap(true);renderScanList();updateStats();renderTable();updateConfirmBtn();}
       document.getElementById('dbStatus').textContent='Synced';return;
     }

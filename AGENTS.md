@@ -93,6 +93,7 @@ effectiveQty = countedQty + soldQty + r16103Qty - inboundQty
 | `WH_r16_104_meta`, `WH_r16_103_meta` | active R16 timeline generation/version |
 | `WH_r16_{kind}_{generation}_{index}` | versioned R16 timeline chunks |
 | `{branch}_confirm_lock` | lock ชั่วคราวระหว่าง Pharmacy Desktop Confirm |
+| `{branch}_pharmacy_audit_markers` | authoritative worklist/ผล Audit ของสาขายา แยกจาก session JSON |
 | `WH_location` | location/zone mapping ของคลัง |
 
 Precedence ของ WH Supervisor ต้องคงเป็น:
@@ -109,6 +110,8 @@ R01/R16 master
 ข้อบังคับ:
 
 - marker ใน `countResetAt` เดียวกันชนะ session snapshot และ inbox เก่าเสมอ
+- สาขายาให้ `{branch}_pharmacy_audit_markers` ชนะ session/local ทุกเครื่อง; Audit ที่อยู่ใน marker ห้ามถูก Pass เก่าหรือ SKU ที่หายจาก session กลบ
+- marker ของสาขายาเก็บ Audit ที่รอ verify, ผลที่เภสัชยืนยันแล้ว และ resolution จาก R16 re-calculation; เขียนด้วย transaction และผูก `countResetAt`
 - Recheck marker ต้องชนะ Count marker ที่ยังเป็น `audit`
 - `audit` เก่าที่ไม่มี `auditor` ห้ามทับผล `pass`/`stock_adjustment` ที่ Supervisor ยืนยันแล้ว
 - ห้ามทำ Firestore delete แบบ fire-and-forget ใน confirmation flow ที่ต้อง atomic
@@ -126,6 +129,8 @@ R01/R16 master
 - ก่อน apply ต้องอ่าน server ซ้ำและตรวจ `countResetAt`, R01/R16 version, `countedQty`, `timestamp`, `scannedBy`
 - ถ้าข้อมูลเปลี่ยนกลางงานต้อง abort ทั้งชุด ห้ามเกิดผลบางส่วน
 - ถ้า sync ผลล้มเหลว ให้คง lock จน retry สำเร็จหรือ TTL หมด เพื่อกันกด Confirm ซ้ำทันที
+- ก่อน apply ผลรอบแรกต้องเขียนรายการที่เป็น Audit ลง Pharmacy Audit marker; ก่อน apply Audit Verify ต้องเขียนผล final marker เพื่อให้ session sync ล้มเหลวแล้วทุกเครื่องยังเห็นสถานะเดียวกัน
+- `syncToFirestore(true)` ใช้ได้เฉพาะ `startNewCount()` เท่านั้น ห้ามใช้ตอน login, stale-day reset หรือออกจาก Admin Mode เพราะ local cache อาจเขียนทับ session ทั้งสาขา
 - Audit Verify Confirm ของเภสัชใช้ `_confirmPharmacyAuditBatched()` ซึ่งใช้ lock/แบตช์/การตรวจเวอร์ชันชุดเดียวกัน
   ต่างกันที่ candidate คือ `status==='audit'` ที่มี `recheckQty` และยังไม่มี `auditor` และตรวจว่า `recheckQty/recheckBy/recheckAt` ไม่เปลี่ยนกลางงาน
 - เหตุผลที่ Audit Verify ต้อง Desktop-only: `getSoldQtyBefore()`/`getInboundQtyBefore()` fallback เป็นยอดรวมทั้งช่วงเมื่อเครื่องไม่มี R16 raw timeline
@@ -161,6 +166,7 @@ R01/R16 master
 | `4ff5a12` | PDA แบตไหล, R01 upload status ข้ามเครื่องไม่ชัด | ห้ามนำ bright wake lock กลับมา; R01 ต้องแสดงข้อมูลอัปโหลดล่าสุด |
 | `30c57ca` | Pharmacy PDA Confirm หลายร้อยรายการค้าง/กดซ้ำได้ | Confirm ต้อง Desktop-only, batch processing และ branch lock ต้องคงอยู่ |
 | (ก.ค. 2026) | เภสัชสแกนรีเช็คแล้วยอดค้างใน memory (`_avMap`) ไปไม่ถึง Desktop และ pending map ดึง `countedQty` รอบแรกจาก `scanListMap` | ยอดรีเช็คต้องอยู่ใน `sd.recheckQty` เท่านั้น, pending map ต้องอ่านจาก `state.scanData` ไม่ใช่ `scanListMap`, Audit Verify Confirm ต้อง Desktop-only + branch lock |
+| (ก.ค. 2026) | สาขายา Desktop/PDA คนละเครื่องเห็น SKU เดียวกันเป็น Audit/Pass ไม่ตรงกัน และ Audit อาจหายจาก session | Pharmacy Audit marker ต้องเป็น source of truth, listener ต้อง overlay หลัง session ทุกครั้ง, marker-backed SKU ที่หายต้องซ่อมกลับ session และ rollout migration อ่าน Audit Log ตาม epoch |
 
 Toast บน PDA ต้องกระชับผ่าน `_toastMessageForDevice()` และใช้ `textContent`/callback สำหรับ action ห้ามกลับไปประกอบข้อความผู้ใช้ด้วย unsafe `innerHTML`
 

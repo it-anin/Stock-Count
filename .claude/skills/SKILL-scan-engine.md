@@ -172,6 +172,8 @@ if (scanListMap.size > prevSize) {
 - Desktop รอ pending sync จาก PDA แล้วอ่าน session/master จาก Firestore server, snapshot เฉพาะ `scanning`, คำนวณด้วยสูตรเดิมเป็น batch ละ 25 ผ่าน animation frame และแสดง progress
 - ก่อน apply ต้องอ่าน server ซ้ำและยืนยัน `countResetAt`, `r01Version`, `r16DetailVersion`, `countedQty`, `timestamp`, `scannedBy`; ถ้าเปลี่ยนให้ abort โดยห้ามเปลี่ยน status บางส่วน รายการใหม่ที่อยู่นอก snapshot คง `scanning` สำหรับรอบถัดไป
 - หลัง apply ให้ checkpoint local ก่อน render และ sync Firestore; ถ้า sync ล้มเหลวให้คง lock จน retry สำเร็จหรือ TTL หมด เพื่อกัน Confirm ซ้ำทันที
+- Pharmacy branch เขียน Audit result ลง `stock_sessions/{branch}_pharmacy_audit_markers` ก่อน apply local; marker transaction ผูก `countResetAt` และชนะ stale `session_data_json`
+- `syncToFirestore(true)` สงวนไว้เฉพาะ `startNewCount()` — stale-day reset/login/Admin exit ใช้ merge เท่านั้น
 
 เงื่อนไข: `sysQty > (_isPharmacyBranch()?10:100) || (whStaffEdit && !noEditPda)`
 ทั้ง `renderScanList()` และ `patchScanRow()` ต้องเช็คเหมือนกัน · in-app guide (`guideQtyRule`) แสดงเลข threshold ตาม branch อัตโนมัติ
@@ -225,6 +227,9 @@ if (scanListMap.size > prevSize) {
 - `confirmAllAuditVerify()` = dispatcher — สาขายาไป `_confirmPharmacyAuditBatched()` (branch lock + batch 25 + ตรวจ R01/R16 version + `_sameBranchRecheck` ก่อน apply), WH ใช้ loop local เดิม
 - `confirmAuditVerifyItem(sku,silent,deferSync)` — `deferSync=true` ให้ batched flow save/sync ครั้งเดียวตอนจบ
 - mirror `recheckQty` จาก cloud ใน `_applyCloudScanData()` และ merge ใน `syncToFirestore()` ถูก gate ด้วย `manualEditAt` + `MANUAL_EDIT_PROTECT_MS` — กันเลขเด้งบนเครื่องที่เพิ่งสแกน/รีเซ็ต
+- ก่อน apply Verify ทั้งชุด `_confirmPharmacyAuditBatched()` เขียน final marker; marker final ชนะ Audit backfill และ stale session เสมอ
+- `startPharmacyAuditMarkerListener()` overlay marker หลัง session ทุกครั้ง; marker-backed SKU ที่ session ทำหายต้อง re-upload ได้ ส่วน SKU confirmed ที่ไม่มี marker ยังใช้ resurrection guard เดิม
+- rollout migration อ่าน `stock_audit_log/{branch}_{date}` ตั้งแต่ `countResetAt` (สูงสุด 14 วัน) ครั้งเดียวต่อ epoch เพื่อกู้ Audit ที่หายก่อนมี marker
 
 **WH supervisor = read-only ในป็อปอัพ Audit Verify (`_isWhSupervisorAuditReadonly()`):**
 - flow ปัจจุบัน: warehouse สแกนรีเช็คบน PDA → supervisor ยืนยันบน Desktop เท่านั้น supervisor ไม่รีเช็คเอง
@@ -280,7 +285,7 @@ Shared function ใช้โดย `pullFromCloud()` และ `startScanSession
 2. ดึง cloud state มา merge ก่อน แล้ว overwrite ด้วย local
 3. local `pending` ไม่ overwrite cloud item ที่มี status อื่น
 4. local `scanning`/`pending` ที่ไม่มีใน cloud → ไม่ re-upload
-5. local `pass`/`audit`/`stock_adjustment` ที่ไม่มีใน cloud → ไม่ re-upload
+5. local `pass`/`audit`/`stock_adjustment` ที่ไม่มีใน cloud → ไม่ re-upload ยกเว้น Pharmacy SKU ที่มี same-epoch Audit marker (ใช้ซ่อม session ที่ทำรายการหาย)
 6. cloud มี `auditor` แต่ local ยังไม่มี → ไม่ overwrite cloud (guard WH recheck race)
 
 **Day-rollover guard (July 2026):**
