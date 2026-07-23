@@ -181,6 +181,8 @@ R01/R16 master
 
 Schema v2 — invariant ที่ห้ามทำให้ย้อนกลับ:
 
+- **SRC และ WH cutover เป็น v2 แล้ว (24 ก.ค. 2026)** ผ่าน `migrateSessionToSchemaV2()` ระหว่างรอบนับ · KKL/SSS ยังเป็น v1
+  WH ชนเพดานจริงก่อน migrate (`session_data_json` 1,182,913 bytes ถูก Firestore ปฏิเสธ = sync ค้างไปหลายชั่วโมง)
 - rollback = ตั้ง `schemaVersion` กลับเป็น 1 → **ห้ามลบโค้ด blob path** จนกว่าจะผ่านรอบนับจริงอย่างน้อย 2 รอบ
 - `scanning` ต้องเขียนด้วย `runTransaction` + delta (ยอดปัจจุบัน ลบค่าที่ sync แล้ว) ห้ามกลับไปใช้ "เลือก `countedQty` ที่สูงกว่า" ซึ่งทำยอดของอีกเครื่องหาย
 - listener ต้องข้าม `hasPendingWrites` และข้าม SKU ที่อยู่ใน `_dirtySkus`/`_scanItemInFlight` ไม่งั้น echo ของ write ตัวก่อนจะดึงยอดกลับหลังผู้ใช้สแกนเพิ่ม
