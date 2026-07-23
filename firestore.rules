@@ -4,7 +4,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /stock_sessions/{document} {
+    // {document=**} ครอบ subcollection ด้วย — จำเป็นสำหรับ stock_sessions/{branch}/items/{sku} (schema v2)
+    // wildcard แบบ {document} เดิมเป็น single-segment จึงไม่ครอบ subcollection และ items จะถูกปฏิเสธทั้งหมด
+    // สิทธิ์ยังเท่าเดิม (เปิด read/write) — การ tighten rules เป็นงาน security แยกต่างหาก
+    match /stock_sessions/{document=**} {
       allow read, write: if true;
     }
     match /stock_audit_log/{document} {

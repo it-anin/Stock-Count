@@ -71,6 +71,8 @@ effectiveQty = countedQty + soldQty + r16103Qty - inboundQty
 - `r16103Qty` ใช้กับ WH สำหรับของรับเข้าแต่ยังไม่ขึ้นชั้น
 - `effectiveQty === systemQty` → `pass`
 - สาขายา `negSys` หรือ `noStock` ที่เข้าเงื่อนไข → `stock_adjustment`
+- สาขายา สแกนสินค้า `negSys || systemQty===0` ครั้งแรกด้วย plain scan = บันทึกนับ 0 (สแกนป้ายชั้น = เช็คแล้วไม่มีของ) ครั้งที่ 2 เป็นต้นไปบวกปกติ
+  `systemQty===0` ที่นับเจอของต้องไป `audit` ให้เภสัชรีเช็คเสมอ ห้ามลัดเป็น `stock_adjustment` เอง
 - กรณีอื่น → `audit`
 - WH Recheck รอบสองเปรียบเทียบ `recheckQty` กับ `systemQty` จาก R01 ล่าสุดบน Firestore โดยตรง ไม่ใช้ค่า local ที่อาจค้าง
 
@@ -82,7 +84,8 @@ effectiveQty = countedQty + soldQty + r16103Qty - inboundQty
 
 | Document | หน้าที่ |
 |---|---|
-| `{branch}` | session หลักของ branch |
+| `{branch}` | session หลักของ branch (schema v2 = metadata เท่านั้น) |
+| `{branch}/items/{sku}` | schema v2: 1 document ต่อ SKU ต่อรอบนับ (subcollection) |
 | `{branch}_r01` | R01 master/version และ R16 metadata ของสาขา |
 | `global_pm` | Product Master |
 | `global_r05` | Barcode master R05 |
@@ -150,6 +153,12 @@ R01/R16 master
 
 อย่าลบ `_scanGapHold` guards หรือ dead gap-modal code แบบแยกส่วน แม้ 2-minute reset ถูกยกเลิกแล้ว เพราะ guards ยังผูกกับ `_zeroSysHold` และ queue runtime
 
+เพิ่มจาก schema v2 (ก.ค. 2026) — ถือเป็น scan-related ทั้งหมด:
+`getScanItemsRef`, `_markSkuDirty`, `_flushDirtySkus`, `_writeScanningItem`, `_scanItemPayload`, `_scanItemToLocal`,
+`_scanItemFingerprint`, `_scanItemLastQty`, `_reconcileScanItems`, `startScanItemsListener`, `_applyScanItemChange`,
+`_applyScanItemRemoved`, `_applyCloudSessionMeta`, `_loadScanItemsFromCloud`, `_deleteScanItemsForEpoch`,
+`_applyConfirmItemsToState`, `_writeConfirmedItems`, `_syncSessionMetaToFirestore`, `_schemaVersion` และ constant `SCAN_ITEM_*`
+
 ## 8. Bug ที่เพิ่งแก้และ invariant ที่ต้องรักษา
 
 | Commit | ปัญหาที่แก้ | สิ่งที่ห้ามทำให้ย้อนกลับ |
@@ -167,6 +176,21 @@ R01/R16 master
 | `30c57ca` | Pharmacy PDA Confirm หลายร้อยรายการค้าง/กดซ้ำได้ | Confirm ต้อง Desktop-only, batch processing และ branch lock ต้องคงอยู่ |
 | (ก.ค. 2026) | เภสัชสแกนรีเช็คแล้วยอดค้างใน memory (`_avMap`) ไปไม่ถึง Desktop และ pending map ดึง `countedQty` รอบแรกจาก `scanListMap` | ยอดรีเช็คต้องอยู่ใน `sd.recheckQty` เท่านั้น, pending map ต้องอ่านจาก `state.scanData` ไม่ใช่ `scanListMap`, Audit Verify Confirm ต้อง Desktop-only + branch lock |
 | (ก.ค. 2026) | สาขายา Desktop/PDA คนละเครื่องเห็น SKU เดียวกันเป็น Audit/Pass ไม่ตรงกัน และ Audit อาจหายจาก session | Pharmacy Audit marker ต้องเป็น source of truth, listener ต้อง overlay หลัง session ทุกครั้ง, marker-backed SKU ที่หายต้องซ่อมกลับ session และ rollout migration อ่าน Audit Log ตาม epoch |
+
+| (ก.ค. 2026) | session blob ชนเพดาน 1 MiB ของ Firestore เมื่อนับครบทั้งสาขา (~1.6 MB) แล้ว `ref.set()` throw โดยโชว์แค่ `'Sync Error'` — ข้อมูลนับหายเงียบ | `scanData` ต้องอยู่ใน `{branch}/items/{sku}` (schema v2); `_checkSessionBlobSize()` ต้องเตือน/หยุดเขียนแทนการ throw เงียบ; ห้าม dual-write blob+items; cutover ทำที่ขอบ `startNewCount()` เท่านั้น |
+
+Schema v2 — invariant ที่ห้ามทำให้ย้อนกลับ:
+
+- rollback = ตั้ง `schemaVersion` กลับเป็น 1 → **ห้ามลบโค้ด blob path** จนกว่าจะผ่านรอบนับจริงอย่างน้อย 2 รอบ
+- `scanning` ต้องเขียนด้วย `runTransaction` + delta (ยอดปัจจุบัน ลบค่าที่ sync แล้ว) ห้ามกลับไปใช้ "เลือก `countedQty` ที่สูงกว่า" ซึ่งทำยอดของอีกเครื่องหาย
+- listener ต้องข้าม `hasPendingWrites` และข้าม SKU ที่อยู่ใน `_dirtySkus`/`_scanItemInFlight` ไม่งั้น echo ของ write ตัวก่อนจะดึงยอดกลับหลังผู้ใช้สแกนเพิ่ม
+- `_scanItemToLocal()` ต้องคง `scans`/`retries`/`manualEditAt` ของเครื่องเดิม — `scans` ถูกอ่านโดย `_zeroSysFirstScan`
+- `manualEditAt` สด = เขียนทับตรงๆ ไม่ใช่ delta
+- ไม่เขียน doc สำหรับ `pending` (ไม่มี doc = `pending`)
+- `firestore.rules` ต้องเป็น `{document=**}` และต้อง Publish ก่อน deploy เว็บ; composite index `countResetAt`+`status` ต้องสร้างก่อน cutover
+- `_checkSessionBlobSize()` **ห้ามกลับไป block การเขียน** — block เองจะทำให้ payload ที่ Firestore ยังรับได้เขียนไม่ผ่าน และทำ branch lock ค้าง
+- `migrateSessionToSchemaV2()` ต้องคงลำดับ: สำรอง → เขียน items → **verify จำนวนจาก server** → ค่อยเขียน session doc เป็น metadata-only
+  ห้ามเขียน session doc ก่อน verify เด็ดขาด เพราะนั่นคือจุดที่ `scanData` เดิมหายไป
 
 Toast บน PDA ต้องกระชับผ่าน `_toastMessageForDevice()` และใช้ `textContent`/callback สำหรับ action ห้ามกลับไปประกอบข้อความผู้ใช้ด้วย unsafe `innerHTML`
 
