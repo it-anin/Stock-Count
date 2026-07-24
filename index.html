@@ -2159,7 +2159,7 @@ function _applyCloudSessionMeta(s){
     _countResetAt=s.countResetAt;
     _resetLocalScanDataToPending();
     _resetLocalR01ToEmpty();
-    _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();
+    _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
     startScanItemsListener(); // epoch เปลี่ยน → query เดิมชี้ epoch เก่า ต้อง restart
   }
   if(Array.isArray(s.unknownScans)){
@@ -2988,7 +2988,7 @@ async function startNewCount(){
   _r01BaselineAt='';
   _pharmacyAuditMarkerData={branch:currentBranch,countResetAt:_countResetAt,items:{}};
   // ล้าง items ของรอบเก่า — ขอบ startNewCount คือจุด cutover ไป schema v2 (scanData ว่างอยู่แล้ว จึงไม่ต้อง migrate)
-  _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();
+  _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
   clearTimeout(_scanItemFlushTimer);_scanItemFlushTimer=null;
   stopScanItemsListener();
   if(_db&&!_adminMode){try{await _deleteScanItemsForEpoch(_prevEpoch);}catch(e){console.warn('[startNewCount] clear items:',e.message);}}
@@ -3018,7 +3018,7 @@ async function clearAllData() {
   clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
   resetScanRuntimeState();
   localStorage.removeItem(lsKey());
-  _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();
+  _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
   clearTimeout(_scanItemFlushTimer);_scanItemFlushTimer=null;
   stopScanItemsListener();
   // ลบ items subcollection ก่อนลบ session doc — Firestore ไม่ลบ subcollection ตาม parent ให้อัตโนมัติ
@@ -3054,12 +3054,25 @@ const _scanItemInFlight=new Set();// sku ที่กำลังเขียน
 let _scanItemFlushTimer=null;
 let _scanItemFlushing=false;
 let _scanItemReconcileTimer=null;
+let _scanItemFailStreak=0;       // จำนวนครั้งที่ flush ล้มติดกัน → ใช้คำนวณ backoff
+let _scanItemBackoffUntil=0;     // เวลา (ms) ที่ห้าม flush ก่อนถึง — กัน retry storm ตอน Firestore rate limit
+
+// rate limit / quota / เน็ตล่ม — ต้องถอยห่าง ไม่ใช่ยิงซ้ำถี่ๆ (ยิ่งยิงยิ่งโดนเบรก)
+function _isRateLimitError(e){
+  const c=(e&&e.code)||'';const m=((e&&e.message)||'')+'';
+  return c==='resource-exhausted'||c==='unavailable'||/RESOURCE_EXHAUSTED|Quota|429|Too Many Requests|UNAVAILABLE/i.test(m);
+}
+// ตั้ง flush ครั้งถัดไป โดยไม่ให้เร็วกว่า backoff window ที่ตั้งไว้
+function _scheduleScanFlush(delayMs){
+  const wait=Math.max(delayMs||0,_scanItemBackoffUntil-Date.now());
+  clearTimeout(_scanItemFlushTimer);
+  _scanItemFlushTimer=setTimeout(()=>{_flushDirtySkus();},Math.max(0,wait));
+}
 
 function _markSkuDirty(sku){
   if(!sku||_adminMode||!_isScanSchemaV2())return;
   _dirtySkus.add(String(sku));
-  clearTimeout(_scanItemFlushTimer);
-  _scanItemFlushTimer=setTimeout(()=>{_flushDirtySkus();},SCAN_ITEM_FLUSH_MS);
+  _scheduleScanFlush(SCAN_ITEM_FLUSH_MS);
 }
 
 // สถานะที่ Confirm แล้ว — เขียนได้เฉพาะจาก Confirm flow ไม่ใช่จากการสแกนสด
@@ -3068,15 +3081,21 @@ const _CONFIRMED_STATUSES=new Set(['pass','audit','audit_check','stock_adjustmen
 // เขียน dirty SKU ขึ้น items collection
 // - `pending` = ลบ doc ทิ้ง (ไม่มี doc = pending ตรงกับพฤติกรรม cloud เดิมที่ไม่อัป pending)
 // - ใช้ writeBatch เมื่อไม่มี race; ใช้ runTransaction เฉพาะ `scanning` เพราะสอง PDA อาจสแกน SKU เดียวกันพร้อมกัน
+// จำกัด scanning items ต่อรอบ — backlog ใหญ่จะได้ทยอยเขียน ไม่ยิงพรึบเดียวจน Firestore เบรก
+const SCAN_ITEM_CONTENDED_PER_FLUSH=25;
 async function _flushDirtySkus(){
   if(_scanItemFlushing||_adminMode||!_db||!currentBranch||!_isScanSchemaV2())return;
   if(!_dirtySkus.size)return;
+  if(Date.now()<_scanItemBackoffUntil){_scheduleScanFlush(0);return;} // ยังอยู่ในช่วง backoff → รอ
   _scanItemFlushing=true;
   const skus=[..._dirtySkus];_dirtySkus.clear();
   for(const sku of skus)_scanItemInFlight.add(sku);
   const itemsRef=getScanItemsRef();
   const epoch=_countResetAt||'';
-  const requeue=[];
+  const requeue=[];       // SKU ที่ต้องลองใหม่เพราะ error
+  const overflow=[];      // SKU ที่ยังไม่ได้ทำเพราะเกิน cap ต่อรอบ (ไม่ใช่ error)
+  let sawRateLimit=false; // เจอ rate limit/quota → ถอยยาว
+  let sawError=false;     // เจอ error ใดๆ → เข้าโหมด backoff
   try{
     const plain=[];   // เขียนตรงได้ (ลบ / สถานะที่ Confirm แล้ว)
     const contended=[];// ต้อง transaction (scanning — ยอดสะสมจากหลายเครื่อง)
@@ -3087,37 +3106,48 @@ async function _flushDirtySkus(){
       else plain.push({sku,sd});
     }
     for(let i=0;i<plain.length;i+=SCAN_ITEM_BATCH_SIZE){
+      const jobs=plain.slice(i,i+SCAN_ITEM_BATCH_SIZE);
+      if(sawError){for(const j of jobs)requeue.push(j.sku);continue;}
       const batch=_db.batch();
-      for(const job of plain.slice(i,i+SCAN_ITEM_BATCH_SIZE)){
+      for(const job of jobs){
         if(job.del){batch.delete(itemsRef.doc(job.sku));_scanItemRev.delete(job.sku);_scanItemSynced.delete(job.sku);continue;}
         const rev=(_scanItemRev.get(job.sku)||0)+1;
         _scanItemRev.set(job.sku,rev);
-        const payload=_scanItemPayload(job.sku,job.sd,rev);
-        batch.set(itemsRef.doc(job.sku),payload,{merge:false});
+        batch.set(itemsRef.doc(job.sku),_scanItemPayload(job.sku,job.sd,rev),{merge:false});
         _scanItemSynced.set(job.sku,_scanItemFingerprint(job.sd));
       }
-      await batch.commit();
+      try{await batch.commit();}
+      catch(e){for(const j of jobs)requeue.push(j.sku);sawError=true;if(_isRateLimitError(e))sawRateLimit=true;console.warn('[scanItem batch]',e.code||e.message);}
     }
+    // ทยอยเขียน scanning ทีละไม่เกิน N รายการต่อรอบ + เว้นจังหวะ 40ms กัน burst
+    let done=0;
     for(const sku of contended){
-      try{await _writeScanningItem(itemsRef,sku,epoch);}
-      catch(e){requeue.push(sku);console.warn('[scanItem]',sku,e.message);}
+      if(sawError){requeue.push(sku);continue;}
+      if(done>=SCAN_ITEM_CONTENDED_PER_FLUSH){overflow.push(sku);continue;} // เกิน cap ไม่ใช่ error
+      try{await _writeScanningItem(itemsRef,sku,epoch);done++;await new Promise(r=>setTimeout(r,40));}
+      catch(e){requeue.push(sku);sawError=true;if(_isRateLimitError(e))sawRateLimit=true;console.warn('[scanItem]',sku,e.code||e.message);}
     }
-    if(!requeue.length)document.getElementById('dbStatus').textContent='Synced';
   }catch(e){
-    for(const sku of skus)requeue.push(sku);
-    document.getElementById('dbStatus').textContent='Sync Error';
-    console.warn('[flushDirtySkus]',e.message);
+    for(const sku of skus)if(!requeue.includes(sku))requeue.push(sku);
+    sawError=true;if(_isRateLimitError(e))sawRateLimit=true;
+    console.warn('[flushDirtySkus]',e.code||e.message);
   }finally{
     _scanItemFlushing=false;
     for(const sku of skus)_scanItemInFlight.delete(sku);
-    // คืน SKU ที่เขียนไม่สำเร็จเข้าคิว แล้วลองใหม่ — offline ก็จะค้างในคิวจนกลับมาออนไลน์
-    if(requeue.length){
-      for(const sku of requeue)_dirtySkus.add(sku);
-      clearTimeout(_scanItemFlushTimer);
-      _scanItemFlushTimer=setTimeout(()=>{_flushDirtySkus();},5000);
-    }else if(_dirtySkus.size){
-      clearTimeout(_scanItemFlushTimer);
-      _scanItemFlushTimer=setTimeout(()=>{_flushDirtySkus();},SCAN_ITEM_FLUSH_MS);
+    for(const sku of requeue)_dirtySkus.add(sku);
+    for(const sku of overflow)_dirtySkus.add(sku);
+    if(sawError){
+      _scanItemFailStreak++;
+      // rate limit เริ่มถอย 20s เพิ่มเท่าตัวจนถึง 2 นาที; error อื่นเริ่ม 5s ถึง 1 นาที
+      const delay=sawRateLimit?Math.min(20000*Math.pow(2,_scanItemFailStreak-1),120000)
+                              :Math.min(5000*Math.pow(2,_scanItemFailStreak-1),60000);
+      _scanItemBackoffUntil=Date.now()+delay;
+      document.getElementById('dbStatus').textContent=sawRateLimit?`Cloud หน่วง — รอ ${Math.round(delay/1000)} วิ`:'Sync Error';
+      _scheduleScanFlush(delay);
+    }else{
+      _scanItemFailStreak=0;_scanItemBackoffUntil=0;
+      document.getElementById('dbStatus').textContent=_dirtySkus.size?'กำลังบันทึก…':'Synced';
+      if(_dirtySkus.size)_scheduleScanFlush(SCAN_ITEM_FLUSH_MS); // ยังมี backlog (overflow) → รอบถัดไปทันที
     }
   }
 }
@@ -3200,7 +3230,7 @@ function _reconcileScanItems(){
     if(!sd||sd.status==='pending'){if(known!==undefined)_dirtySkus.add(sku);continue;}
     if(known!==_scanItemFingerprint(sd))_dirtySkus.add(sku);
   }
-  if(_dirtySkus.size){clearTimeout(_scanItemFlushTimer);_scanItemFlushTimer=setTimeout(()=>{_flushDirtySkus();},SCAN_ITEM_FLUSH_MS);}
+  if(_dirtySkus.size)_scheduleScanFlush(SCAN_ITEM_FLUSH_MS); // เคารพ backoff — ไม่ยิงทับช่วงที่ Firestore หน่วง
 }
 function startScanItemReconcile(){
   clearInterval(_scanItemReconcileTimer);
@@ -5536,7 +5566,7 @@ async function _syncSessionMetaToFirestore(ref){
       _countResetAt=s.countResetAt;
       _resetLocalScanDataToPending();
       _resetLocalR01ToEmpty();
-      _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();
+      _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
       saveSession();
       startScanItemsListener();
       if(!_listCleared){rebuildScanListMap(true);renderScanList();}
@@ -5711,7 +5741,7 @@ async function migrateSessionToSchemaV2(opts={}){
 
   // 6. สลับเครื่องนี้ไป v2 ทันที (เครื่องอื่นจะสลับเองเมื่อ session listener เห็น schemaVersion)
   _schemaVersion=SCAN_SCHEMA_V2;
-  _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();
+  _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
   await _loadScanItemsFromCloud();
   _applyPharmacyAuditMarkersToState();
   startScanItemsListener();
@@ -5876,7 +5906,7 @@ async function pullFromCloud(){
       // pull = "เอาของบน cloud มาเป็นหลัก" → ล้าง local ก่อนแล้วโหลด items ของ epoch ปัจจุบัน
       if(s.countResetAt)_countResetAt=s.countResetAt;
       _resetLocalScanDataToPending();
-      _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();
+      _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
       _applyCloudSessionMeta(s);
       scanned=await _loadScanItemsFromCloud();
       _applyPharmacyAuditMarkersToState();
@@ -5994,7 +6024,7 @@ async function restoreFromFirestore(force=false){
     if(s.r01BaselineAt)_r01BaselineAt=s.r01BaselineAt;
     state.scanData.clear();
     if(_isScanSchemaV2()){
-      _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();
+      _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
       await _loadScanItemsFromCloud();
     }
     else if(s.scanData){for(const k in s.scanData)state.scanData.set(k,{scannedBy:'',auditor:'',retries:0,scans:[],...s.scanData[k]});}
