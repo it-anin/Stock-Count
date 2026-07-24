@@ -3158,12 +3158,17 @@ async function _writeScanningItem(itemsRef,sku,epoch){
   const local=state.scanData.get(sku);
   if(!local||local.status!=='scanning')return;
   const ref=itemsRef.doc(sku);
+  // freeze state ตอนเริ่มเขียน — local เป็น object เดียวกับ state.scanData และยังถูก handleBarcode
+  // เพิ่มยอดได้ระหว่าง await transaction; ห้ามให้ callback/ผลลัพธ์เก่าทับ scan ที่เกิดระหว่างนั้น
+  const startLocal={...local};
+  const startQty=Number(startLocal.countedQty)||0;
+  const startManualEditAt=Number(startLocal.manualEditAt)||0;
   // ยอดที่เครื่องนี้ยังไม่เคยส่งขึ้น server (delta) — ส่วนที่ส่งไปแล้วอยู่ใน _scanItemSynced
   // (listener ก็อัพ _scanItemSynced ทุกครั้งที่รับค่าจากเครื่องอื่น → delta จึงไม่นับซ้ำ)
   const lastSyncedQty=_scanItemLastQty(sku);
-  const delta=(Number(local.countedQty)||0)-lastSyncedQty;
+  const delta=startQty-lastSyncedQty;
   // แก้จำนวนด้วยมือ (updateInlineQty / popup) = ผู้ใช้สั่ง "ให้เป็นเลขนี้" ไม่ใช่ยอดสะสม → เขียนทับตรงๆ
-  const absolute=!!local.manualEditAt&&(Date.now()-local.manualEditAt)<MANUAL_EDIT_PROTECT_MS;
+  const absolute=!!startManualEditAt&&(Date.now()-startManualEditAt)<MANUAL_EDIT_PROTECT_MS;
   const rev=await _db.runTransaction(async tx=>{
     const snap=await tx.get(ref);
     const server=snap.exists?(snap.data()||{}):null;
@@ -3172,9 +3177,10 @@ async function _writeScanningItem(itemsRef,sku,epoch){
     // server confirm ไปแล้ว → ห้าม scanning สดทับผลที่ยืนยันแล้ว (คงกฎเดิมของ merge guard)
     if(server&&_CONFIRMED_STATUSES.has(server.status))return{abort:'confirmed',server};
     const base=server&&String(server.countResetAt||'')===epoch?(Number(server.countedQty)||0):0;
-    const merged={...local};
+    const merged={...startLocal};
     // ถ้า server มียอดจากเครื่องอื่นอยู่แล้ว ให้บวก delta ของเครื่องนี้เข้าไป ไม่ใช่เขียนทับ
-    merged.countedQty=(server&&!absolute&&delta!==0)?base+delta:(Number(local.countedQty)||0);
+    // delta=0 ก็ต้องใช้ base: server อาจมียอดใหม่กว่าระหว่าง transaction ห้าม local เก่าทับกลับ
+    merged.countedQty=(server&&!absolute)?base+delta:startQty;
     const nextRev=(Number(server?.rev)||0)+1;
     tx.set(ref,_scanItemPayload(sku,merged,nextRev),{merge:false});
     return{rev:nextRev,countedQty:merged.countedQty};
@@ -3192,14 +3198,29 @@ async function _writeScanningItem(itemsRef,sku,epoch){
   }
   if(!rev)return;
   _scanItemRev.set(sku,rev.rev);
-  // ยอดรวมจาก server ชนะ local ถ้าเครื่องอื่นบวกเข้ามาระหว่างนั้น
+  // baseline ต้องตรงกับสิ่งที่ commit จริงเท่านั้น — ยอดที่สแกนเพิ่มระหว่าง await ยังไม่ได้ขึ้น server
+  const committedLocal={...startLocal,countedQty:rev.countedQty};
+  const committedFingerprint=_scanItemFingerprint(committedLocal);
+  _scanItemSynced.set(sku,committedFingerprint);
+
+  // รวมยอด server ที่ commit แล้วกับ scan ใหม่ที่เกิดหลัง startQty
+  // ถ้ามี manual edit ระหว่าง await ให้ค่าที่ผู้ใช้ตั้งล่าสุดชนะแบบ absolute
   const cur=state.scanData.get(sku);
-  if(cur&&cur.status==='scanning'&&rev.countedQty!==cur.countedQty){
-    cur.countedQty=rev.countedQty;
-    const e=scanListMap.get(sku);if(e)e.totalQty=rev.countedQty;
-    scheduleScanListRender();scheduleStats();scheduleRender();
+  if(cur&&cur.status==='scanning'){
+    const currentQty=Number(cur.countedQty)||0;
+    const currentManualEditAt=Number(cur.manualEditAt)||0;
+    const manualEditedDuringFlight=!!currentManualEditAt&&currentManualEditAt!==startManualEditAt;
+    const pendingLocalDelta=currentQty-startQty;
+    const nextLocalQty=manualEditedDuringFlight?currentQty:rev.countedQty+pendingLocalDelta;
+    if(nextLocalQty!==currentQty){
+      cur.countedQty=nextLocalQty;
+      const e=scanListMap.get(sku);if(e)e.totalQty=nextLocalQty;
+      scheduleScanListRender();scheduleStats();scheduleRender();
+    }
   }
-  _scanItemSynced.set(sku,_scanItemFingerprint(state.scanData.get(sku)));
+  // scan/manual edit/remove/confirm ที่เกิดระหว่าง await ต้องค้าง dirty เพื่อส่งรอบถัดไป
+  const latest=state.scanData.get(sku);
+  if(latest&&_scanItemFingerprint(latest)!==committedFingerprint)_dirtySkus.add(sku);
 }
 
 // เรียง key ก่อน stringify — ไม่งั้น object ที่ค่าเท่ากันแต่ลำดับ key ต่างกันจะถูกมองว่า "เปลี่ยน"
