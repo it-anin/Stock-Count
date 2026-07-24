@@ -177,9 +177,9 @@ R01/R16 master
 | (ก.ค. 2026) | เภสัชสแกนรีเช็คแล้วยอดค้างใน memory (`_avMap`) ไปไม่ถึง Desktop และ pending map ดึง `countedQty` รอบแรกจาก `scanListMap` | ยอดรีเช็คต้องอยู่ใน `sd.recheckQty` เท่านั้น, pending map ต้องอ่านจาก `state.scanData` ไม่ใช่ `scanListMap`, Audit Verify Confirm ต้อง Desktop-only + branch lock |
 | (ก.ค. 2026) | สาขายา Desktop/PDA คนละเครื่องเห็น SKU เดียวกันเป็น Audit/Pass ไม่ตรงกัน และ Audit อาจหายจาก session | Pharmacy Audit marker ต้องเป็น source of truth, listener ต้อง overlay หลัง session ทุกครั้ง, marker-backed SKU ที่หายต้องซ่อมกลับ session และ rollout migration อ่าน Audit Log ตาม epoch |
 
-| (ก.ค. 2026) | session blob ชนเพดาน 1 MiB ของ Firestore เมื่อนับครบทั้งสาขา (~1.6 MB) แล้ว `ref.set()` throw โดยโชว์แค่ `'Sync Error'` — ข้อมูลนับหายเงียบ | `scanData` ต้องอยู่ใน `{branch}/items/{sku}` (schema v2); `_checkSessionBlobSize()` ต้องเตือน/หยุดเขียนแทนการ throw เงียบ; ห้าม dual-write blob+items; cutover ทำที่ขอบ `startNewCount()` เท่านั้น |
+| (ก.ค. 2026) | session blob ชนเพดาน 1 MiB ของ Firestore เมื่อนับครบทั้งสาขา (~1.6 MB) แล้ว `ref.set()` throw โดยโชว์แค่ `'Sync Error'` — ข้อมูลนับหายเงียบ | `scanData` ต้องอยู่ใน `{branch}/items/{sku}` (schema v2); `_reportSyncError()` ต้องรายงานกรณีเกินขนาดให้ชัดแทน throw เงียบ; ห้าม dual-write blob+items |
 
-Schema v2 — invariant ที่ห้ามทำให้ย้อนกลับ:
+Schema v2 — invariant ที่ห้ามทำให้ย้อนกลับ (รายละเอียดเต็ม + งานที่ยังค้างอยู่ที่ `CLAUDE.md` §Scan data schema v2):
 
 - **SRC และ WH cutover เป็น v2 แล้ว (24 ก.ค. 2026)** ผ่าน `migrateSessionToSchemaV2()` ระหว่างรอบนับ · KKL/SSS ยังเป็น v1
   WH ชนเพดานจริงก่อน migrate (`session_data_json` 1,182,913 bytes ถูก Firestore ปฏิเสธ = sync ค้างไปหลายชั่วโมง)
