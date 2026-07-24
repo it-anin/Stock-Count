@@ -104,7 +104,7 @@ state = {
   r16DateMismatch,                       // true = R16 TRANDATE ไม่ overlap scan dates
   r16_103Map, r16_103RawMap,             // WH only: รับเข้ายังไม่ขึ้นชั้น (R16.103)
   r16_103DetailVersion,                  // active R16.103 generation/version
-  skuMap,       // SKU → { productName, systemQty, barcodes[], isDel, isP }
+  skuMap,       // SKU → { productName, unitPrice, systemQty, barcodes[], isDel, isP }
   barcodeMap,   // barcode → SKU
   skuDirectMap, // SKU → { barcode, unitName }
   scanData,     // Map<SKU, { countedQty, status, timestamp, scannedBy, auditor,
@@ -115,6 +115,15 @@ state = {
   zoneStaffMap  // WH only: Map<zone, staff> e.g. "A" → "มุก"
 }
 ```
+
+### ProductMaster price และสิทธิ์กรอกจำนวน
+
+- ตอนอัปโหลด ProductMaster ให้จับ `SKU` จากคอลัมน์ A และ `unitPrice` จากคอลัมน์ J; รองรับตัวเลขที่มี comma/ช่องว่าง แล้ว sync ทั้งคู่ไปกับ `global_pm.data_json`
+- สิทธิ์กรอกจำนวน Count รอบแรก resolve ผ่าน R05.106 `Barcode` คอลัมน์ A → `SKU` คอลัมน์ E → ProductMaster `SKU` คอลัมน์ A → ราคาคอลัมน์ J
+- `unitPrice < 1000` เท่านั้นที่แสดงและยอมรับช่อง QTY แบบยอดรวมหน่วยย่อย (absolute); ราคา `>= 1000`, ค่าว่าง/อ่านไม่ได้, Unknown, DEL หรือ SKU ที่ไม่มี ProductMaster ต้องสแกนทีละชิ้น
+- กฎราคาต้องครอบทั้ง RESULT row, stock popup, `barcode,qty` และฟังก์ชันแก้จำนวนโดยใช้ `_canEnterCountQty()` จุดเดียวกัน; ห้ามนำ threshold จาก `systemQty` กลับมา
+- กฎนี้ไม่ใช้กับ Audit/Recheck และไม่เปลี่ยน `unitMultiplier` ของการสแกน Barcode ปกติ
+- หลัง deploy ต้องอัปโหลด ProductMaster ใหม่หนึ่งครั้งเพื่อเติม `unitPrice` ให้ `global_pm`; ข้อมูลเก่าที่ไม่มี field นี้ต้อง fallback แบบปลอดภัยเป็นสแกนทีละชิ้น
 
 `_countResetAt` — module-level ISO timestamp, reset epoch (monotonic). ใช้ `>` เปรียบเทียบ lexicographic
 `_r01BaselineAt` — module-level ISO timestamp, อัพ R01 ล่าสุดบน**สาขายา**เท่านั้น (`_isPharmacyBranch()`) — ตัวตัดสิน `_isPreBaselineItem` (freeze audit/pass ที่นับก่อน baseline — audit อยู่รอดข้ามการอัพ R01 ให้เภสัชรีเช็ค) + trigger ล้าง R16 ข้ามเครื่อง ดู [[SKILL-data-files]] R01 Daily Baseline
