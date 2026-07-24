@@ -3485,6 +3485,15 @@ let _popupOverlay=null;
 let renderDebounceTimer=null,statsDebounceTimer=null,scanListRenderTimer=null;
 function scheduleRender(){clearTimeout(renderDebounceTimer);renderDebounceTimer=setTimeout(renderTable,80);}
 function scheduleStats(){clearTimeout(statsDebounceTimer);statsDebounceTimer=setTimeout(updateStats,80);}
+// WH PDA: updateStats กวาด catalog หลายรอบ (~5 passes) แต่ยอด scanning ไม่เปลี่ยน Pass/Audit
+// รวม scan burst แล้วคำนวณครั้งเดียวหลังหยุดยิง เพื่อลด main-thread jank; row/qty/cloud sync ยังทันทีเหมือนเดิม
+const WH_PDA_SCAN_STATS_DEBOUNCE_MS=1000;
+function scheduleStatsAfterScan(){
+  clearTimeout(statsDebounceTimer);
+  const delay=_isPdaApp()&&currentBranch==='WH'&&currentRole==='warehouse'
+    ?WH_PDA_SCAN_STATS_DEBOUNCE_MS:80;
+  statsDebounceTimer=setTimeout(updateStats,delay);
+}
 function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,20);}
 // ─── Scan Sound System (Web Audio API — ไม่ต้องมีไฟล์เสียง) ──────────────────
 let _audioCtx=null,_audioSuspendTimer=null;
@@ -4356,7 +4365,7 @@ function drainQueue(){
     _pendingPatches.forEach(key=>{if(!patchScanRow(key))needsRender=true;});
     if(needsRender)renderScanList();
   }
-  scheduleStats();scheduleRender();scanProcessing=false;
+  scheduleStatsAfterScan();scheduleRender();scanProcessing=false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
