@@ -6554,7 +6554,14 @@ async function refreshDashboard(){
     const auditPromises=activeBranches.map(b=>_db.collection('stock_audit_log').where('branch','==',b).get().then(s=>({b,s})).catch(()=>({b,s:null})));
     const r01Promises=activeBranches.map(b=>_db.collection('stock_sessions').doc(b+'_r01').get().then(d=>({b,d})).catch(()=>({b,d:null})));
     const [sessionResults,auditResults,r01Results]=await Promise.all([Promise.all(sessionPromises),Promise.all(auditPromises),Promise.all(r01Promises)]);
-    const data=buildDashboardData(sessionResults,auditResults,r01Results);
+    // schema v2: scanData ย้ายไป items subcollection แล้ว — session blob ไม่มี scanData ต้องดึง items มาแทน
+    const itemsResults=await Promise.all(sessionResults.map(async({b,d})=>{
+      if(!d||!d.exists||Number(d.data().schemaVersion)!==SCAN_SCHEMA_V2)return{b,items:null};
+      try{const snap=await getScanItemsRef(b).get();const items={};snap.forEach(doc=>{items[doc.id]=doc.data();});return{b,items};}
+      catch(e){return{b,items:null};}
+    }));
+    const itemsByBranch={};for(const{b,items}of itemsResults)if(items)itemsByBranch[b]=items;
+    const data=buildDashboardData(sessionResults,auditResults,r01Results,itemsByBranch);
     renderDashboard(data);
     document.getElementById('dashStatus').textContent=`อัปเดต: ${formatThaiDateTime(new Date())}`;
   }catch(e){
@@ -6566,7 +6573,7 @@ async function refreshDashboard(){
   }
 }
 
-function buildDashboardData(sessionResults,auditResults,r01Results){
+function buildDashboardData(sessionResults,auditResults,r01Results,itemsByBranch){
   const branches={};
   for(const b of getActiveDashBranches()){
     branches[b]={branch:b,totalSku:0,passCount:0,auditCount:0,stockAdjCount:0,scanningCount:0,auditTotal:0,auditDone:0,auditPending:0,assistants:{},dateActivity:{},r01Date:''};
@@ -6574,13 +6581,19 @@ function buildDashboardData(sessionResults,auditResults,r01Results){
   // R01.102 upload date per branch (วันที่เริ่มนับสต็อก)
   if(r01Results)for(const{b,d} of r01Results){if(d&&d.exists&&branches[b])branches[b].r01Date=(d.data().r01UploadedAt||'');}
   // Current session: scanData per branch (live count)
+  // v2 → itemsByBranch[b] (จาก items subcollection); v1 → s.scanData ใน blob เดิม
   for(const{b,d} of sessionResults){
-    if(!d||!d.exists)continue;
-    const raw=d.data();
-    const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
-    if(!s||!s.scanData)continue;
-    for(const sku in s.scanData){
-      const sd=s.scanData[sku];
+    if(!branches[b])continue;
+    let scanData=itemsByBranch&&itemsByBranch[b];
+    if(!scanData){
+      if(!d||!d.exists)continue;
+      const raw=d.data();
+      const s=raw.session_data_json?JSON.parse(raw.session_data_json):raw.session_data;
+      if(!s||!s.scanData)continue;
+      scanData=s.scanData;
+    }
+    for(const sku in scanData){
+      const sd=scanData[sku];
       if(!sd||sd.status==='pending')continue;
       const who=sd.scannedBy||'(ไม่ระบุ)';
       branches[b].totalSku++;
