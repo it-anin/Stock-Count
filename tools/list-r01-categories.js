@@ -34,7 +34,7 @@ const COL_SKU = 4;   // E  CF_ITEMID
 const COL_QTY = 6;   // G  CF_QUANTITY
 const COL_CAT = 15;  // P  CF_ITEMGROUPL1_GROUPNAME
 
-// ไฟล์จาก POS ออกมาได้ทั้ง UTF-8 (มี/ไม่มี BOM) และ TIS-620/CP874 — ยึดแนวเดียวกับ decode_bytes()
+// ไฟล์จาก POS ออกมาได้ทั้ง UTF-8 (มี/ไม่มี BOM) และ TIS-620/CP874 — ยึดแนวเดียวกับ parseFile()/decode_bytes()
 function decode(buf) {
   if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.slice(3).toString('utf8');
   const utf8 = buf.toString('utf8');
@@ -42,34 +42,22 @@ function decode(buf) {
   return new TextDecoder('windows-874').decode(buf);
 }
 
-function parseLine(line, delim) {
-  const out = []; let cur = '', quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (quoted) {
-      if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else quoted = false; } else cur += c;
-    } else if (c === '"') quoted = true;
-    else if (c === delim) { out.push(cur); cur = ''; }
-    else cur += c;
-  }
-  out.push(cur);
-  return out;
-}
+// ⛔ ห้ามเขียน CSV parser เอง — รุ่นแรกของไฟล์นี้เขียนเองแล้วนับพลาด 371 แถว
+// เพราะชื่อสินค้าจริงมีเครื่องหมายนิ้ว เช่น `Klean Gauze 2" x 2" (10ชิ้น/bx)`
+// ใช้ PapaParse ตัวเดียวกับที่ index.html โหลด และ config ต้องตรงกับ parseFile() เป๊ะ
+const Papa = require('../libs/papaparse.min.js');
+const PAPA_OPTS = { header: false, skipEmptyLines: true, delimiter: ',', quoteChar: '"' };
 
 const file = process.argv[2];
 if (!file) { console.error('ใช้: node tools/list-r01-categories.js "<path ไป Allstock.CSV>"'); process.exit(1); }
 if (!fs.existsSync(file)) { console.error(`ไม่พบไฟล์: ${file}`); process.exit(1); }
 
-const text = decode(fs.readFileSync(file));
-const head = text.split('\n')[0] || '';
-const delim = (head.match(/\t/g) || []).length > (head.match(/,/g) || []).length ? '\t' : ',';
+const rows = Papa.parse(decode(fs.readFileSync(file)), PAPA_OPTS).data;
 
 const cats = new Map();
 let skipNoSku = 0, skipQty = 0;
-for (const ln of text.split(/\r?\n/).slice(1)) {   // ข้าม header เหมือน loadR01 ที่เริ่ม i=1
-  if (!ln.trim()) continue;
-  const r = parseLine(ln, delim);
-  if (r.length <= COL_QTY) continue;
+for (const r of rows.slice(1)) {   // ข้าม header เหมือน loadR01 ที่เริ่ม i=1
+  if (!r || r.length <= COL_QTY) continue;
   const sku = (r[COL_SKU] ?? '').trim();
   if (!sku) { skipNoSku++; continue; }
   const g = (r[COL_QTY] ?? '').replace(/,|\s/g, '').trim();
@@ -81,15 +69,15 @@ for (const ln of text.split(/\r?\n/).slice(1)) {   // ข้าม header เห
   if (+g !== 0) e.nonZero++;
 }
 
-const rows = [...cats.entries()].sort((a, b) => b[1].rows - a[1].rows);
-const total = rows.reduce((s, [, e]) => s + e.rows, 0);
-const cut = rows.filter(([c]) => isNonCount(c)).reduce((s, [, e]) => s + e.rows, 0);
+const list = [...cats.entries()].sort((a, b) => b[1].rows - a[1].rows);
+const total = list.reduce((s, [, e]) => s + e.rows, 0);
+const cut = list.filter(([c]) => isNonCount(c)).reduce((s, [, e]) => s + e.rows, 0);
 
 console.log(`ไฟล์   : ${file}`);
 console.log(`แถวที่ใช้ได้: ${total}   (ข้าม: ไม่มี SKU ${skipNoSku} · qty ไม่ใช่ตัวเลข ${skipQty})`);
-console.log(`หมวด   : ${rows.length}   ตัดออก ${cut} แถว · เหลือเข้าเกณฑ์นับ ${total - cut} แถว\n`);
+console.log(`หมวด   : ${list.length}   ตัดออก ${cut} แถว · เหลือเข้าเกณฑ์นับ ${total - cut} แถว\n`);
 console.log('        แถว    G≠0   หมวด');
-for (const [cat, e] of rows) {
+for (const [cat, e] of list) {
   const mark = isNonCount(cat) ? '✂️ ตัด ' : '   นับ ';
   console.log(`${mark} ${String(e.rows).padStart(6)} ${String(e.nonZero).padStart(6)}   ${cat === '' ? '(ว่าง)' : cat}`);
 }
