@@ -8014,70 +8014,74 @@ function handleAdjPriceFile(event){
     renderAdjustDocTable();
   });
 }
+// ── กติกาใบปรับปรุง (ก.ย. 2026) ───────────────────────────────────────────────
+// เป้าหมายของใบคือ "ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้" (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
+// ⇒ ต้องหักลบกับ si.systemQty **ค่าสด** เท่านั้น เพราะเลขที่ส่งไปจะถูกบวก/ลบกับยอดที่ระบบมีอยู่ ณ ตอนนั้น
+//   ⛔ ห้ามเปลี่ยนไปใช้ recheckSystemQty คำนวณ — จะได้ "ปัจจุบัน − ส่วนต่างเก่า" ซึ่งไม่ใช่ยอดที่นับได้
+//
+// แต่กติกานี้ใช้ได้ก็ต่อเมื่อ "ยอดที่นับยังเป็นยอดล่าสุดจริง" — ซึ่งเดิมไม่เคยตรวจเลย
+//   รีเช็คไว้เดือนก่อน (ระบบ 2 · นับ 1) → ขายไป 1 → ระบบ 1 · ชั้นเหลือ 0
+//   ใบคิด 1−1 = 0 → ไม่ทำอะไร ทั้งที่ของยังขาด และแถวหลุดหายทั้ง ORDS+IRPS แบบเงียบ (บอทอัป R01 ทุกเช้า = เจอทุกวัน)
+// ⇒ recheckSystemQty (freeze ตอนสแกน) ใช้เป็น "ตัวจับว่ายอดหมดอายุ" ไม่ใช่ตัวคำนวณ
+//   ไม่เท่ายอดระบบตอนนี้ = มีการเคลื่อนไหวหลังรีเช็ค = ตัดออกจากใบ ให้ไปรีเช็คใหม่ (ดู _adjustDocAudit)
+function _isAdjustRowFresh(sku,sd,liveSys){
+  // ไม่มี recheckSystemQty (เช่น noStock จากรอบนับแรก) → fallback เป็นค่าสดเอง ⇒ ถือว่าสด = พฤติกรรมเดิม
+  return _recheckBaselineSystemQty(sku,sd)===Number(liveSys||0);
+}
 function _buildAdjustDocRows(dir){
   const rows=[];
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
     const si=state.skuMap.get(sku);if(!si)continue;
     const sysQty=Number(si.systemQty||0);
+    if(!_isAdjustRowFresh(sku,sd,sysQty))continue;   // ยอดนับหมดอายุ → ห้ามส่งเลขนี้เข้าระบบ
     const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
     const diff=cnt-sysQty;
     if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
     if(dir==='irps'&&diff<=0)continue;   // IRPS = เกิน (count>system)
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
-    // sysLive/sysFrozen/cnt = ข้อมูลประกอบสำหรับธงเตือนในตาราง (ดู _adjustDocAudit) — ไม่มีผลกับ qty
-    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:Math.abs(diff),
-      cnt,sysLive:sysQty,sysFrozen:_recheckBaselineSystemQty(sku,sd)});
+    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:Math.abs(diff)});
   }
   return rows;
 }
-// ── กันใบตกหล่นเงียบ (ก.ย. 2026) ─────────────────────────────────────────────
-// ระบบ "ตัดสิน" stock_adjustment ด้วยยอดระบบที่ freeze ตอนสแกน (sd.recheckSystemQty · confirmAuditVerifyItem)
-// แต่ "ใบ" คิดจาก si.systemQty ค่าสด — ต่างกันโดยตั้งใจ (ตัวเลขบนใบ = ค่าที่ส่งเข้าระบบจริง)
-// ⇒ ถ้า R01 ขยับหลังรีเช็ค (บอท auto-r01 รันทุกเช้า ⇒ เกิดได้ทุกวัน) แถวจะ:
-//     ผลต่างกลายเป็น 0 → หลุดทั้ง ORDS และ IRPS · sign กลับด้าน → ข้ามแท็บ · หรือจำนวนต่างจากตอนตัดสิน
-//   badge บนปุ่มนับ "ทุก stock_adjustment" จึงมากกว่าจำนวนแถวบนใบโดยไม่มีอะไรเตือน (เจอ ก.ย. 2026)
-// ⚠️ ฟังก์ชันนี้ "รายงานอย่างเดียว" — ห้ามเอาผลไปกรอง/แก้ตัวเลขใน _buildAdjustDocRows()
+// รายการ stock_adjustment ที่ "ไม่ได้ขึ้นใบ" แยกตามเหตุผล — ห้ามให้หายเงียบ
+// badge บนปุ่มนับทุก stock_adjustment จึงมากกว่าจำนวนแถวบนใบเสมอเมื่อมีสามกลุ่มนี้
 function _adjustDocAudit(){
-  const dropped=[],moved=[];
+  const stale=[],noSku=[],settled=[];
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
     const si=state.skuMap.get(sku);
-    const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
-    if(!si){dropped.push({sku,name:'',reason:'no_sku'});continue;}  // R05.106 ยังไม่โหลด → skuMap ว่าง → ใบว่างทั้งใบ
+    if(!si){noSku.push({sku,name:''});continue;}      // R05.106 ยังไม่โหลด → skuMap ว่าง → ใบว่างทั้งใบ
     const live=Number(si.systemQty||0);
-    // ไม่มี recheckSystemQty (เช่น noStock จากรอบนับแรก) → fallback เป็นค่าสดเอง ⇒ live===frozen ⇒ ไม่เตือนผิดตัว
-    const frozen=_recheckBaselineSystemQty(sku,sd);
     const name=si.productName||'';
-    if(cnt-live===0){dropped.push({sku,name,reason:'zero',live,frozen,cnt});continue;}
-    if(live!==frozen)moved.push({sku,name,live,frozen,cnt,flipped:Math.sign(cnt-live)!==Math.sign(cnt-frozen)});
+    const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+    if(!_isAdjustRowFresh(sku,sd,live)){stale.push({sku,name,live,frozen:_recheckBaselineSystemQty(sku,sd),cnt});continue;}
+    if(cnt-live===0)settled.push({sku,name,live,cnt});  // สดแล้วและตรงพอดี = ไม่มีอะไรต้องปรับ (งานจบ)
   }
-  return {dropped,moved};
+  return {stale,noSku,settled};
 }
 // แถบเตือนในป็อปอัพ — หัวข้อสั้นบรรทัดเดียวต่อเรื่อง · รหัสสินค้าซ่อนใน <details> (28 รายการยาวเกินอ่านไหว)
 // สร้างด้วย createElement/textContent เท่านั้น ห้ามประกอบ innerHTML จากข้อมูล
 function _renderAdjustDocWarn(){
   const box=document.getElementById('adjustDocWarn');if(!box)return;
   box.textContent='';
-  const{dropped,moved}=_adjustDocAudit();
-  const zero=dropped.filter(d=>d.reason==='zero');
-  const noSku=dropped.filter(d=>d.reason==='no_sku');
-  if(!zero.length&&!noSku.length&&!moved.length){box.style.display='none';return;}
+  const{stale,noSku,settled}=_adjustDocAudit();
+  if(!stale.length&&!noSku.length&&!settled.length){box.style.display='none';return;}
   const line=(t,bold)=>{const d=document.createElement('div');if(bold)d.style.fontWeight='700';d.textContent=t;box.appendChild(d);};
-  if(zero.length)line(`⚠️ ${zero.length} รายการหลุดจากใบปรับปรุง — ยอดระบบเปลี่ยนหลังรีเช็ค`,true);
+  if(stale.length)line(`⚠️ ${stale.length} รายการต้องรีเช็คใหม่ก่อนออกใบปรับปรุง — ยอดระบบขยับหลังเภสัชรีเช็ค`,true);
   if(noSku.length)line(`⚠️ ${noSku.length} รายการไม่มีข้อมูลสินค้า — ยังไม่ได้โหลด R05.106`,true);
-  if(moved.length){
-    const f=moved.filter(m=>m.flipped).length;
-    line(`ℹ️ ${moved.length} รายการยอดระบบเปลี่ยน แต่ยังอยู่ในใบปรับปรุง${f?` (${f} รายการสลับขาด↔เกิน)`:''}`);
-  }
-  if(zero.length||moved.length)line('👉 รีเช็ครายการเหล่านี้ใหม่ก่อนออกใบปรับปรุง');
+  if(settled.length)line(`ℹ️ ${settled.length} รายการระบบตรงกับที่นับแล้ว ไม่ต้องปรับ`);
+  // WH supervisor ไม่มีปุ่ม ↺ (ป็อปอัพ Audit Verify เป็น read-only) — ต้องให้พนักงานคลังสแกนแทน
+  if(stale.length)line(currentBranch==='WH'
+    ?'👉 ให้พนักงานคลังสแกนรีเช็คใหม่ รายการถึงจะกลับเข้าใบปรับปรุง'
+    :'👉 กด ↺ สแกนใหม่ ในหน้า Audit Verify แล้วให้เภสัชรีเช็คใหม่ รายการถึงจะกลับเข้าใบปรับปรุง');
   const det=document.createElement('details');det.style.marginTop='5px';
   const sum=document.createElement('summary');
   sum.style.cssText='cursor:pointer;color:var(--text3);font-size:0.72rem;';
-  sum.textContent=`ดูรหัสสินค้า (${zero.length+noSku.length+moved.length})`;
+  sum.textContent=`ดูรหัสสินค้า (${stale.length+noSku.length+settled.length})`;
   det.appendChild(sum);
   // แยกกลุ่มตอนกาง — คนละสาเหตุ คนละวิธีแก้ ถ้ารวมเป็นก้อนเดียวจะหาไม่เจอว่าตัวไหนต้องทำอะไร
-  [['หลุดจากใบปรับปรุง',zero],['ไม่มีข้อมูลสินค้า',noSku],['ยอดระบบเปลี่ยน',moved]].forEach(([label,arr])=>{
+  [['ต้องรีเช็คใหม่',stale],['ไม่มีข้อมูลสินค้า',noSku],['ไม่ต้องปรับแล้ว',settled]].forEach(([label,arr])=>{
     if(!arr.length)return;
     const d=document.createElement('div');
     d.style.cssText="margin-top:4px;font-size:0.72rem;color:var(--text3);word-break:break-all;";
@@ -8118,18 +8122,13 @@ function renderAdjustDocTable(){
     const priceCell=hasPrice?_fmtMoney(pr.price):'—';
     const totalCell=hasPrice?_fmtMoney(pr.price*r.qty):'—'; // รวมเงิน = ราคา × จำนวน(ปรับ)
     const moneyColor=hasPrice?'var(--text)':'var(--text3)';
-    // ยอดระบบขยับหลังรีเช็ค → บอกให้เห็นบนแถว (สำนวนเดียวกับตาราง Audit Verify: dashed + title + วงเล็บเล็ก)
-    // จำนวนที่แสดงยังเป็นค่าที่คิดจากยอดระบบปัจจุบันเสมอ — วงเล็บบอกว่า "ถ้าคิดจากยอดตอนรีเช็คจะได้เท่าไหร่"
-    const sysMoved=Number(r.sysLive)!==Number(r.sysFrozen);
-    const qtyCell=sysMoved
-      ?`<span title="ยอดระบบตอนรีเช็ค ${r.sysFrozen} · ตอนนี้ ${r.sysLive} — จำนวนบนใบปรับปรุงคิดจากยอดปัจจุบัน" style="border-bottom:1px dashed var(--text3);cursor:help;">${r.qty}</span> <span style="font-size:0.68rem;color:var(--text3);font-weight:400;">(ตอนรีเช็ค ${Math.abs(r.cnt-r.sysFrozen)})</span>`
-      :`${r.qty}`;
+    // ทุกแถวบนตารางผ่านด่าน _isAdjustRowFresh มาแล้ว = ยอดระบบไม่ขยับหลังรีเช็ค จึงไม่ต้องมีธงเตือนรายแถว
     return`<tr>`
       +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${r.sku}</td>`
       +`<td class="ptd-name">${r.name}</td>`
       +`<td style="text-align:center;font-size:0.8rem;color:var(--text2);">${unit||'—'}</td>`
-      +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${qtyCell}</td>`
+      +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${r.qty}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;color:${moneyColor};">${priceCell}</td>`
       +`<td style="text-align:center;">${lotCell}</td>`
       +`<td style="text-align:center;font-size:0.78rem;color:${expVal?'var(--text2)':'var(--text3)'};">${expVal||'—'}</td>`
@@ -8182,7 +8181,8 @@ function exportAdjustDocText(){
 }
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกซ้ำตอนนี้ ไม่ใช่เตือนแค่ในป็อปอัพ
 function _warnAdjustDocDropped(){
-  const n=_adjustDocAudit().dropped.length;
+  const{stale,noSku}=_adjustDocAudit();
+  const n=stale.length+noSku.length;   // settled ไม่นับ — ไม่มีอะไรต้องปรับอยู่แล้ว ไม่ใช่ของตกหล่น
   if(n)toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ — ดูแถบเตือนด้านบน`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)

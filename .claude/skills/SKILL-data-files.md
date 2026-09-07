@@ -289,13 +289,16 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 ⚠️ **diff convention ต้องตรงกับ `exportStockAdjExcel()`:** count = `recheckQty ?? countedQty`, diff = `count − systemQty`,
 จำนวนที่แสดง = `Math.abs(diff)` — ถ้าแก้ convention ที่ `exportStockAdjExcel` **ต้องแก้ที่นี่ด้วย** ไม่งั้นตัวเลข 2 ที่ไม่ตรงกัน
 
-⛔ **แถวหลุดจากใบได้ และเคยหลุดแบบเงียบสนิท** (แก้ ก.ย. 2026) — ใบใช้ `si.systemQty` **ค่าสด** แต่ระบบตัดสิน `stock_adjustment`
-ด้วย `_recheckBaselineSystemQty()` (ค่า freeze ตอนสแกน) · พอบอท auto-r01 อัป R01 ทุกเช้า `cnt − live` กลายเป็น `0` ได้
-⇒ หลุด**ทั้งสองแท็บพร้อมกัน** (`diff>=0` / `diff<=0`) ขณะที่ badge บนปุ่ม (`_countAdjustDocItems()`) ยังนับทุก `stock_adjustment`
-- `_adjustDocAudit()` คืน `{dropped, moved}` · `_renderAdjustDocWarn()` วาดแถบ `#adjustDocWarn` (หัวข้อสั้นบรรทัดเดียวต่อเรื่อง + รหัสสินค้าซ่อนใน `<details>`) · เพิ่มธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
-- **รายงานอย่างเดียว ห้ามเอาไปกรอง/แก้ตัวเลขใน `_buildAdjustDocRows()`** — ตัวเลขบนใบต้องเป็นค่าสดเสมอ (ดู `CLAUDE.md` §Pharmacy Audit Verify)
-- ไม่เตือนผิดตัว: `noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ `frozen===live` ⇒ เงียบ
-- `exportStockAdjExcel()` นับ `skipZero`/`skipNoSku` แล้ว toast บอกด้วย — **เพิ่มเงื่อนไข `continue` ใหม่ที่ไหน ต้องนับเข้าตัวเตือนเสมอ**
+⛔ **ใบรับเฉพาะยอดรีเช็คที่ยังสด** (ก.ย. 2026) — เป้าหมายของใบคือ *ทำให้ระบบเหลือเท่ากับยอดที่นับได้*
+จึงต้องคิดจาก `si.systemQty` **ค่าสด** เสมอ (**ห้ามคำนวณด้วย `recheckSystemQty`** — จะได้ `ปัจจุบัน − ส่วนต่างเก่า`)
+แต่ใช้ได้เมื่อ *ยอดที่นับยังล่าสุด* เท่านั้น · พอบอท auto-r01 อัป R01 ทุกเช้า `cnt − live` กลายเป็น `0` ได้
+⇒ เดิมหลุด**ทั้งสองแท็บพร้อมกัน** (`diff>=0` / `diff<=0`) ขณะที่ badge (`_countAdjustDocItems()`) ยังนับทุก `stock_adjustment`
+- `_isAdjustRowFresh(sku,sd,liveSys)` = ด่านใน `_buildAdjustDocRows()` — `_recheckBaselineSystemQty()===live` เท่านั้นถึงขึ้นใบ
+  ⚠️ **ตัวกรองต้องอยู่ในฟังก์ชันนั้นจุดเดียว** เพื่อให้ตาราง · Export Text · Export Excel ใช้ประตูเดียวกัน
+- `_adjustDocAudit()` คืน `{stale, noSku, settled}` · `_renderAdjustDocWarn()` วาดแถบ `#adjustDocWarn` (หัวข้อสั้นบรรทัดเดียวต่อเรื่อง + รหัสสินค้าแยกกลุ่มใน `<details>`) + toast ตอน Export
+  `stale` = ต้องรีเช็คใหม่ · `noSku` = R05.106 ยังไม่โหลด · `settled` = สดแล้วตรงพอดี **ไม่ต้องปรับ (งานจบ ห้ามไล่ไปรีเช็คซ้ำ)**
+- ไม่เตือนผิดตัว: `noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ ถือว่าสด ⇒ ขึ้นใบเหมือนเดิม
+- **`exportStockAdjExcel()` จงใจไม่ใช้ด่านนี้** — เป็นรายงานภาพรวม ไม่ใช่ไฟล์ import เข้า ERP · มี `skipZero`/`skipNoSku` + toast ของตัวเอง **อย่าทำให้ตรงกัน**
 - เทส: `tests/specs/logic/adjust-doc-dropped.spec.js`
 
 **คอลัมน์:** ลำดับ / รหัสสินค้า(SKU) / ชื่อสินค้า / หน่วย(`skuDirectMap`) / จำนวน / ราคา / LOT / EXP / รวมเงิน

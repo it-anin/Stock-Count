@@ -423,14 +423,20 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
   - ⛔ **PDA สแกนทับของที่ Confirm แล้วไม่ได้** — `handleBarcode` return ตั้งแต่ guard `!['pending','scanning'].includes(sd.status)` **ก่อน**บรรทัดบวก `countedQty` (ได้แค่ toast "สแกนและ Confirm ไปแล้ว") · ปุ่ม ✕ ก็ขึ้นเฉพาะแถว `scanning` ⇒ "ให้นับใหม่เฉพาะบาง SKU" ไม่มีในระบบ ทางเลือกมีแค่ `reopenPharmacyAudit` (→ `audit`) หรือ `startNewCount()` (ล้างทั้งสาขา)
   - guard `sd.initialStatus!=='audit'` ทำให้ item ที่ `pass` ตั้งแต่ Count รอบแรกย้อนไม่ได้เลย · และ **`pass` ไม่โผล่ในแท็บไหนของ Audit Verify** (`_avFilter` มีแค่ `audit`/`stock_adj`) ⇒ ต้องหาจาก 📋 → ✅ Pass → **Export** (`exportExcel()` มีคอลัมน์ `SystemQty`) เพราะป็อปอัพซ่อนคอลัมน์นั้นบนสาขายา
   - `tools/list-negative-confirmed.js` (ก.ย. 2026) — read-only survey วางใน Console แล้วเรียก `listNegativeConfirmed()` · **ไม่แตะ Firestore เลย** (อ่าน state ในหน่วยความจำ 0 reads) แยกกลุ่มให้ว่าตัวไหนมีปุ่ม ↺ อยู่แล้ว / ตัวไหนต้อง Console / ตัวไหน `initialStatus` ไม่ใช่ `audit` จึง reopen ไม่ได้ · คอลัมน์ `ฐานถูก_clamp` ชี้รายการที่ถูกตัดสินด้วยฐาน `0` สมัยยัง clamp
-- ⚠️ **ใบปรับสต็อกไม่เคารพ freeze ของ `_isPreBaselineItem` (ก.ย. 2026)** — `_buildAdjustDocRows()` คิด `diff = cnt − si.systemQty` จาก **`si.systemQty` ค่าสด** ขณะที่ตาราง Audit Verify แสดง `_recheckBaselineSystemQty()` (ค่าที่ freeze ตอนสแกน) พร้อมวงเล็บ `(ตอนนี้ N)`
-  - ต่างกันโดยตั้งใจ — **ตัวเลขบนใบคือค่าที่ส่งเข้าระบบจริง ให้เชื่อใบ** ไม่ใช่ Diff บนจอ
-  - แต่ถ้ารอบนับค้างข้ามการอัป R01 (`si.systemQty` ขยับไปแล้ว) **ใบจะเทียบยอดนับเก่ากับยอดระบบใหม่ = ข้ามช่วงเวลา** ต้อง reopen + รีเช็คใหม่ให้ `_freezeRecheckBaseline()` จับ R01 ปัจจุบันก่อนออกใบ
-  - ⛔ **ผลข้างเคียงที่เคยเงียบสนิท (แก้แล้ว ก.ย. 2026 รอบ 2): แถวหลุดจากใบไปเลย** — ถ้า `cnt − si.systemQty` สดกลายเป็น `0` แถวหลุด**พร้อมกันทั้ง** ORDS (`diff>=0`) และ IRPS (`diff<=0`) และ `exportStockAdjExcel()` ก็ `if(diff===0)continue`
-    ขณะที่ badge บนปุ่มมาจาก `_countAdjustDocItems()` = นับ **ทุก** `stock_adjustment` ⇒ ปุ่มขึ้น 12 แต่ใบมี 11 โดยไม่มีอะไรบอกว่าตัวไหนหาย · `!si` (R05 ยังไม่โหลด → `skuMap` ว่าง) ก็ทำใบว่างทั้งใบแบบเงียบเหมือนกัน
-  - `_adjustDocAudit()` / `_renderAdjustDocWarn()` เป็นตัว**รายงานอย่างเดียว** → แถบเตือน `#adjustDocWarn` ในป็อปอัพ + ธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
-    ⚠️ **ห้ามเอาผลจากมันไปกรองหรือแก้ตัวเลขใน `_buildAdjustDocRows()`** — การตัดสินใจคือ "เตือน ไม่แตะตัวเลข" · ต้องไม่เตือนผิดตัวด้วย: รายการรอบนับแรก (`noStock`) ไม่มี `recheckSystemQty` แล้ว `_recheckBaselineSystemQty()` fallback เป็นค่าสดเอง ⇒ `frozen===live` ⇒ เงียบ
-    เทสตรึงไว้ที่ `tests/specs/logic/adjust-doc-dropped.spec.js` (ตรึงทั้ง "ตัวที่หายต้องถูกรายงาน", "ตัวปกติต้องไม่ถูกเตือน" และ **"ตัวเลขบนใบต้องไม่เปลี่ยน"**)
+- **ใบปรับปรุงคำนวณจากยอดระบบ "ค่าสด" เสมอ แต่รับเฉพาะยอดรีเช็คที่ยังสด (ก.ย. 2026 รอบ 2)**
+  - เป้าหมายของใบคือ **"ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้"** (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
+    ⇒ `_buildAdjustDocRows()` ต้องคิด `diff = cnt − si.systemQty` จาก **ค่าสด** เพราะเลขที่ส่งไปจะถูกบวก/ลบกับยอดที่ระบบมี ณ ตอนนั้น
+    ⛔ **ห้ามเปลี่ยนไปคำนวณด้วย `recheckSystemQty`** — จะได้ `ปัจจุบัน − ส่วนต่างเก่า` ซึ่งไม่ใช่ยอดที่นับได้ (เคยเสนอแล้วถอน)
+  - กติกานี้ใช้ได้เมื่อ **"ยอดที่นับยังล่าสุดจริง"** เท่านั้น — เดิมไม่เคยตรวจ จึงเกิดเคสนี้ทุกวันที่บอทอัป R01:
+    รีเช็คเดือนก่อน (ระบบ 2 · นับ 1) → ขายไป 1 → ระบบ 1 · ชั้นเหลือ 0 · ใบคิด `1−1=0` → ไม่ทำอะไรทั้งที่ของยังขาด
+    และแถวหลุด**พร้อมกันทั้ง** ORDS (`diff>=0`) และ IRPS (`diff<=0`) แบบเงียบสนิท ขณะที่ badge (`_countAdjustDocItems()`) ยังนับอยู่
+  - ⇒ `_isAdjustRowFresh(sku,sd,liveSys)` = ด่านใน `_buildAdjustDocRows()`: `_recheckBaselineSystemQty() === live` เท่านั้นถึงขึ้นใบ
+    **`recheckSystemQty` เป็นตัวจับว่า "ยอดหมดอายุ" ไม่ใช่ตัวคำนวณ** · ตัวกรองต้องอยู่ในฟังก์ชันนี้จุดเดียว เพื่อให้ตาราง/Export Text/Export Excel ใช้ประตูเดียวกัน
+  - `_adjustDocAudit()` คืน `{stale, noSku, settled}` → `_renderAdjustDocWarn()` วาดแถบ `#adjustDocWarn` + toast ตอน Export
+    `stale` = ต้องรีเช็คใหม่ (ตัดออกจากใบ) · `noSku` = R05 ยังไม่โหลด · `settled` = สดแล้วและตรงพอดี ไม่ต้องปรับ (งานจบ ไม่ใช่ของตกหล่น)
+    ⚠️ **ห้ามไล่ `settled` ไปรีเช็คซ้ำ** และ **`noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ ถือว่าสด ⇒ พฤติกรรมเดิมไม่กระทบ**
+    เทสตรึงไว้ที่ `tests/specs/logic/adjust-doc-dropped.spec.js` (ตรึงทั้ง "หมดอายุต้องออกจากใบ + ถูกรายงาน", "แยก stale ออกจาก settled" และ **"ของสดต้องผ่านตัวเลขเดิม ไม่เตือนผิดตัว"**)
+  - **`exportStockAdjExcel()` จงใจไม่ใช้ด่านนี้** — เป็นรายงานภาพรวมจาก 📊 ประวัติการนับ (มี จำนวนคงเหลือ + จำนวนปรับปรุง + Diff ให้คนดูเอง) ไม่ใช่ไฟล์ที่ import เข้า ERP · มีตัวนับ `skipZero`/`skipNoSku` + toast ของตัวเอง **อย่า "ทำให้ตรงกัน"**
   - ระบบ**ไม่มี** field `issuedAt`/`exportedAt` ที่ไหนเลย = ไม่มีอะไรกัน double-adjust ⇒ ห้ามย้อนสถานะหลังส่งใบเข้าระบบหลังบ้านแล้ว
 
 ### WH Count/Recheck
