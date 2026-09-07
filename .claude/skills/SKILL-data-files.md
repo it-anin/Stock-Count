@@ -274,10 +274,13 @@ J=Recheck / K=DIFF Recheck / L=Check By
 
 ---
 
-## ปรับปรุงลดสินค้า — ORDS/IRPS popup (เภสัช + WH supervisor)
+## ปรับปรุงสินค้า — ORDS/IRPS popup (เภสัช + WH supervisor)
 
 Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดงเฉพาะ role ที่ยืนยัน
 (`currentRole==='pharmacist' || 'supervisor'`) อยู่ใน `.left-panel` → **desktop-only** อัตโนมัติ (PDA ซ่อนทั้งคอลัมน์)
+
+ชื่อปุ่มและหัวป็อปอัพเป็น **📦 ปรับปรุงสินค้า** เหมือนกัน (ก.ย. 2026 — หัวป็อปอัพเดิมเขียน "ปรับปรุง**ลด**สินค้า"
+ทั้งที่ข้างในมีแท็บ IRPS ที่เป็นใบ**เพิ่ม**) · ชื่อในแท็บ `ORDS (ใบปรับปรุงลดสินค้า)` / `IRPS (ใบปรับปรุงเพิ่มสินค้า)` คงเดิม — เป็นชื่อเอกสารจริงของ ERP
 
 **รายการที่แสดง:** เฉพาะ `status==='stock_adjustment'` แยก 2 แท็บด้วยทิศของ diff (`_buildAdjustDocRows(dir)`):
 - **ORDS** = ขาด (count < systemQty) → ตัวเลขแดง
@@ -285,6 +288,15 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 
 ⚠️ **diff convention ต้องตรงกับ `exportStockAdjExcel()`:** count = `recheckQty ?? countedQty`, diff = `count − systemQty`,
 จำนวนที่แสดง = `Math.abs(diff)` — ถ้าแก้ convention ที่ `exportStockAdjExcel` **ต้องแก้ที่นี่ด้วย** ไม่งั้นตัวเลข 2 ที่ไม่ตรงกัน
+
+⛔ **แถวหลุดจากใบได้ และเคยหลุดแบบเงียบสนิท** (แก้ ก.ย. 2026) — ใบใช้ `si.systemQty` **ค่าสด** แต่ระบบตัดสิน `stock_adjustment`
+ด้วย `_recheckBaselineSystemQty()` (ค่า freeze ตอนสแกน) · พอบอท auto-r01 อัป R01 ทุกเช้า `cnt − live` กลายเป็น `0` ได้
+⇒ หลุด**ทั้งสองแท็บพร้อมกัน** (`diff>=0` / `diff<=0`) ขณะที่ badge บนปุ่ม (`_countAdjustDocItems()`) ยังนับทุก `stock_adjustment`
+- `_adjustDocAudit()` คืน `{dropped, moved}` · `_adjustDocWarnText()` ประกอบข้อความ → แถบ `#adjustDocWarn` + ธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
+- **รายงานอย่างเดียว ห้ามเอาไปกรอง/แก้ตัวเลขใน `_buildAdjustDocRows()`** — ตัวเลขบนใบต้องเป็นค่าสดเสมอ (ดู `CLAUDE.md` §Pharmacy Audit Verify)
+- ไม่เตือนผิดตัว: `noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ `frozen===live` ⇒ เงียบ
+- `exportStockAdjExcel()` นับ `skipZero`/`skipNoSku` แล้ว toast บอกด้วย — **เพิ่มเงื่อนไข `continue` ใหม่ที่ไหน ต้องนับเข้าตัวเตือนเสมอ**
+- เทส: `tests/specs/logic/adjust-doc-dropped.spec.js`
 
 **คอลัมน์:** ลำดับ / รหัสสินค้า(SKU) / ชื่อสินค้า / หน่วย(`skuDirectMap`) / จำนวน / ราคา / LOT / EXP / รวมเงิน
 → ราคา + รวมเงิน จาก R05.105 · **EXP จาก R14.102 (ของ LOT ที่เลือก)** · ช่องที่ยังไม่แนบไฟล์ = `—`

@@ -413,8 +413,8 @@
     <div class="phase-head purple">
       <div class="phase-num purple">6</div>
       <div class="phase-info">
-        <h2>ดาวน์โหลดรายงาน <span class="device-label dl-desk">Desktop</span></h2>
-        <p>หัวหน้างาน Export Excel สรุปผลการนับ</p>
+        <h2>ดาวน์โหลดรายงาน + ออกเอกสารปรับสต็อก <span class="device-label dl-desk">Desktop</span></h2>
+        <p>หัวหน้างาน Export Excel สรุปผล · ใบ ORDS/IRPS ที่ส่งเข้าระบบหลังบ้าน</p>
       </div>
     </div>
     <div class="phase-body">
@@ -436,6 +436,69 @@
             </div>
           </li>
         </ol>
+
+        <h3 style="margin:26px 0 4px;font-size:1rem;">📦 ปรับปรุงสินค้า — ขั้นตอนสุดท้าย</h3>
+        <p style="margin:0 0 12px;font-size:0.88rem;opacity:0.75;">
+          ตัวเลขจากหน้านี้คือตัวเลขที่ส่งเข้าระบบหลังบ้านจริง — ทำบน<strong>คอมพิวเตอร์</strong>เท่านั้น
+        </p>
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n purple">1</div>
+            <div class="step-c">
+              <strong>กดปุ่ม "📦 ปรับปรุงสินค้า"</strong>
+              <p>อยู่ที่แถบซ้ายของหน้าจอ · ตัวเลขบนปุ่มคือจำนวนรายการที่ต้องปรับสต็อกทั้งหมด</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n purple">2</div>
+            <div class="step-c">
+              <strong>เลือกแท็บ ORDS หรือ IRPS</strong>
+              <p>
+                🔻 <strong>ORDS</strong> = ของ<strong>ขาด</strong> (นับได้น้อยกว่าระบบ) → ใบปรับปรุงลดสินค้า<br>
+                🔺 <strong>IRPS</strong> = ของ<strong>เกิน</strong> (นับได้มากกว่าระบบ) → ใบปรับปรุงเพิ่มสินค้า<br>
+                เป็นคนละใบกัน ต้อง Export แยกทีละแท็บ
+              </p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n purple">3</div>
+            <div class="step-c">
+              <strong>แนบไฟล์ R14.102 และ R05.105</strong>
+              <p>
+                <strong>R14.102</strong> = LOT และวันหมดอายุ (EXP) · <strong>R05.105</strong> = ราคาสินค้า (ใช้เฉพาะแถว Price Level 4)<br>
+                กดที่การ์ดเพื่อเลือกไฟล์ · การ์ดจะเปลี่ยนเป็นเขียว "แนบแล้ว" เมื่อจับคู่สำเร็จ
+              </p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n purple">4</div>
+            <div class="step-c">
+              <strong>เลือก LOT ของแต่ละรายการ แล้วกด "💾 บันทึก LOT"</strong>
+              <p>เลือกแล้วคอลัมน์ EXP จะขึ้นให้เอง · กดบันทึกแล้วเครื่องอื่นเปิดหน้านี้จะเห็นสิ่งที่แนบไว้ ไม่ต้องแนบไฟล์ใหม่</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n purple">5</div>
+            <div class="step-c">
+              <strong>กด "⬇️ Export Text" เพื่อส่งเข้าระบบ</strong>
+              <p>ได้ไฟล์ .txt สำหรับ import เข้าระบบหลังบ้าน · ถ้าต้องการดูเป็นตารางให้ใช้ "📊 Export Excel" แทน</p>
+            </div>
+          </li>
+        </ol>
+        <div class="warn" style="margin-top:4px">
+          <span class="ci">⚠️</span>
+          <div>
+            <strong>ถ้าเห็นแถบสีส้มด้านบนของหน้าต่าง อย่าเพิ่ง Export</strong> — แปลว่ามีรายการที่<strong>ยอดระบบขยับหลังจากที่รีเช็คไปแล้ว</strong>
+            (R01 ถูกอัปใหม่ทุกเช้า) บางรายการอาจ<strong>หลุดจากใบไปเลย</strong> หรือย้ายจากขาดไปเกิน<br>
+            👉 ให้พนักงานคลังสแกนรีเช็ครายการนั้นใหม่ก่อนออกใบ เพื่อให้ยอดนับกับยอดระบบมาจากช่วงเวลาเดียวกัน
+          </div>
+        </div>
+        <div class="warn" style="margin-top:10px">
+          <span class="ci">🚫</span>
+          <div>
+            ระบบ<strong>ไม่มี</strong>ตัวจำว่าใบไหนส่งเข้าระบบไปแล้ว — <strong>ห้ามส่งใบเดิมซ้ำ</strong> เพราะจะทำให้ยอดถูกปรับสองรอบ
+          </div>
+        </div>
       </div>
     </div>
   </div>

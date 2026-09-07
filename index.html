@@ -939,11 +939,11 @@
   </div>
 </div>
 
-<!-- ปรับปรุงลดสินค้า (Stock Adjustment Doc — ORDS/IRPS) -->
+<!-- ปรับปรุงสินค้า (Stock Adjustment Doc — ORDS/IRPS) -->
 <div class="stock-popup-overlay" id="adjustDocPopupOverlay" style="display:none" onclick="handleAdjustDocOverlayClick(event)">
   <div class="stock-popup" id="adjustDocPopupCard" style="max-width:1100px;">
     <div class="stock-popup-header">
-      <h2>📦 ปรับปรุงลดสินค้า</h2>
+      <h2>📦 ปรับปรุงสินค้า</h2>
       <button class="stock-popup-close" onclick="closeAdjustDocPopup()">✕</button>
     </div>
     <div style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
@@ -974,6 +974,8 @@
         <div class="upload-file-badge upload-file-badge-optional" id="adjPriceBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
       </div>
     </div>
+    <!-- แถบเตือน "ใบไม่ครบ/ตัวเลขขยับ" — เติมด้วย textContent เท่านั้น (ดู _adjustDocWarnText) -->
+    <div id="adjustDocWarn" style="display:none;padding:10px 22px;border-bottom:1px solid var(--border);background:rgba(224,140,0,0.10);color:var(--text2);font-size:0.76rem;line-height:1.6;white-space:pre-line;"></div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="adjustDocThead"></thead>
@@ -3424,7 +3426,7 @@ async function startNewCount(){
   state.r16_103Map.clear();state.r16_103RawMap.clear();state.r16_103Loaded=false;state.r16_103UploadedAt='';
   state.r16DetailVersion='';state.r16_103DetailVersion='';
   if(currentBranch==='WH'){_whLegacyCountConfirmationData={};_whLegacyRecheckConfirmationData={};_whCountOpConfirmationData={};_whRecheckOpConfirmationData={};_whCountConfirmationData={};_whCountInboxData={};_whRecheckConfirmationData={};_whRecheckInboxData={};_whCommittedOps.clear();stopWhConfirmOpsListener();await _clearWhR16TimelineSnapshot();}
-  _lotMap.clear();_lotSelected.clear();_priceMap.clear(); // ล้าง LOT/ราคา ที่แนบไว้ในป็อปอัพปรับปรุงลดสินค้า (local)
+  _lotMap.clear();_lotSelected.clear();_priceMap.clear(); // ล้าง LOT/ราคา ที่แนบไว้ในป็อปอัพปรับปรุงสินค้า (local)
   document.getElementById('badgeR01').textContent='ยังไม่โหลด';
   document.getElementById('badgeR16').textContent='ยังไม่โหลด';document.getElementById('badgeR16').parentElement.classList.remove('upload-file-badge-warn');
   const _b103n=document.getElementById('badgeR16_103');if(_b103n)_b103n.textContent='ยังไม่โหลด';
@@ -4264,7 +4266,7 @@ function _fmtDateDMY(ts){
 }
 // วันที่วันนี้สำหรับชื่อไฟล์ export → "DD-MM-YYYY" (ใช้ '-' ไม่ใช่ '/' เพราะ '/' ใช้ในชื่อไฟล์ไม่ได้ — คนไทยอ่านง่ายกว่า YYYY-MM-DD)
 function _fileDateDMY(){const d=new Date();return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;}
-// แปลงวันที่ EXP (ค.ศ., format ใดก็ได้ที่ parseTranDate รองรับ) → "DD/MM/YYYY" ปี พ.ศ. (+543) สำหรับ Export Text ปรับปรุงลดสินค้า
+// แปลงวันที่ EXP (ค.ศ., format ใดก็ได้ที่ parseTranDate รองรับ) → "DD/MM/YYYY" ปี พ.ศ. (+543) สำหรับ Export Text ปรับปรุงสินค้า
 function _toBeDMY(str){if(!str)return '';const d=parseTranDate(str);if(!d)return '';return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()+543}`;}
 function _setPmTs(tsStr){
   state.productMasterUploadedAt=tsStr||'';
@@ -7938,7 +7940,7 @@ function closeHistoryStatsPopup(){
 }
 function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById('historyStatsPopupOverlay'))closeHistoryStatsPopup();}
 
-// ─── ปรับปรุงลดสินค้า (Stock Adjustment Doc — ORDS/IRPS) ──────────────────────
+// ─── ปรับปรุงสินค้า (Stock Adjustment Doc — ORDS/IRPS) ────────────────────────
 // แสดงเฉพาะ role ที่ยืนยัน: เภสัช (สาขายา) + supervisor (WH). Panel อยู่ใน .left-panel → desktop-only อัตโนมัติ
 // ดึงเฉพาะ status 'stock_adjustment' (รีเช็คแล้วยังไม่ตรง) ยึด convention เดียวกับ exportStockAdjExcel:
 //   count = recheckQty ?? countedQty, diff = count - systemQty → เกิน(diff>0)=IRPS เขียว, ขาด(diff<0)=ORDS
@@ -8023,9 +8025,54 @@ function _buildAdjustDocRows(dir){
     if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
     if(dir==='irps'&&diff<=0)continue;   // IRPS = เกิน (count>system)
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
-    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:Math.abs(diff)});
+    // sysLive/sysFrozen/cnt = ข้อมูลประกอบสำหรับธงเตือนในตาราง (ดู _adjustDocAudit) — ไม่มีผลกับ qty
+    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:Math.abs(diff),
+      cnt,sysLive:sysQty,sysFrozen:_recheckBaselineSystemQty(sku,sd)});
   }
   return rows;
+}
+// ── กันใบตกหล่นเงียบ (ก.ย. 2026) ─────────────────────────────────────────────
+// ระบบ "ตัดสิน" stock_adjustment ด้วยยอดระบบที่ freeze ตอนสแกน (sd.recheckSystemQty · confirmAuditVerifyItem)
+// แต่ "ใบ" คิดจาก si.systemQty ค่าสด — ต่างกันโดยตั้งใจ (ตัวเลขบนใบ = ค่าที่ส่งเข้าระบบจริง)
+// ⇒ ถ้า R01 ขยับหลังรีเช็ค (บอท auto-r01 รันทุกเช้า ⇒ เกิดได้ทุกวัน) แถวจะ:
+//     ผลต่างกลายเป็น 0 → หลุดทั้ง ORDS และ IRPS · sign กลับด้าน → ข้ามแท็บ · หรือจำนวนต่างจากตอนตัดสิน
+//   badge บนปุ่มนับ "ทุก stock_adjustment" จึงมากกว่าจำนวนแถวบนใบโดยไม่มีอะไรเตือน (เจอ ก.ย. 2026)
+// ⚠️ ฟังก์ชันนี้ "รายงานอย่างเดียว" — ห้ามเอาผลไปกรอง/แก้ตัวเลขใน _buildAdjustDocRows()
+function _adjustDocAudit(){
+  const dropped=[],moved=[];
+  for(const[sku,sd] of state.scanData.entries()){
+    if(sd.status!=='stock_adjustment')continue;
+    const si=state.skuMap.get(sku);
+    const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+    if(!si){dropped.push({sku,name:'',reason:'no_sku'});continue;}  // R05.106 ยังไม่โหลด → skuMap ว่าง → ใบว่างทั้งใบ
+    const live=Number(si.systemQty||0);
+    // ไม่มี recheckSystemQty (เช่น noStock จากรอบนับแรก) → fallback เป็นค่าสดเอง ⇒ live===frozen ⇒ ไม่เตือนผิดตัว
+    const frozen=_recheckBaselineSystemQty(sku,sd);
+    const name=si.productName||'';
+    if(cnt-live===0){dropped.push({sku,name,reason:'zero',live,frozen,cnt});continue;}
+    if(live!==frozen)moved.push({sku,name,live,frozen,cnt,flipped:Math.sign(cnt-live)!==Math.sign(cnt-frozen)});
+  }
+  return {dropped,moved};
+}
+// รายชื่อ SKU แบบย่อสำหรับข้อความเตือน (ยาวเกินไปอ่านไม่ไหว)
+function _adjSkuList(arr,max=8){
+  const ids=arr.map(x=>x.sku);
+  return ids.length>max?`${ids.slice(0,max).join(', ')} …และอีก ${ids.length-max}`:ids.join(', ');
+}
+// ข้อความเตือนรวม (คืน '' เมื่อทุกอย่างปกติ) — ใช้ทั้งแถบในป็อปอัพและ toast ตอน Export
+function _adjustDocWarnText(){
+  const{dropped,moved}=_adjustDocAudit();
+  const parts=[];
+  const zero=dropped.filter(d=>d.reason==='zero');
+  const noSku=dropped.filter(d=>d.reason==='no_sku');
+  if(zero.length)parts.push(`⚠️ ${zero.length} รายการไม่ได้อยู่บนใบนี้ (ยอดระบบขยับหลังรีเช็คจนผลต่างเป็น 0) — SKU ${_adjSkuList(zero)}`);
+  if(noSku.length)parts.push(`⚠️ ${noSku.length} รายการไม่มีข้อมูลสินค้า (ยังไม่ได้โหลด R05.106) — SKU ${_adjSkuList(noSku)}`);
+  if(moved.length){
+    const flipped=moved.filter(m=>m.flipped);
+    parts.push(`ℹ️ ${moved.length} รายการยอดระบบขยับหลังรีเช็คแต่ยังอยู่บนใบ${flipped.length?` · ${flipped.length} รายการสลับทิศ ขาด↔เกิน (SKU ${_adjSkuList(flipped)})`:''}`);
+  }
+  if(parts.length)parts.push('แนะนำ: reopen แล้วให้เภสัชรีเช็คใหม่ก่อนออกใบ เพื่อให้ยอดนับกับยอดระบบมาจากช่วงเวลาเดียวกัน');
+  return parts.join('\n');
 }
 function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')n++;return n;}
 function renderAdjustDocTable(){
@@ -8036,6 +8083,9 @@ function renderAdjustDocTable(){
   if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th></tr>';
   const rows=_buildAdjustDocRows(_adjDocFilter);
   if(rc)rc.textContent=`${rows.length} รายการ`;
+  // ต้องอยู่ "ก่อน" early-return ข้างล่าง — ใบว่างเพราะ skuMap ยังไม่โหลดคือเคสที่ต้องเตือนที่สุด
+  const warnBox=document.getElementById('adjustDocWarn');
+  if(warnBox){const w=_adjustDocWarnText();warnBox.textContent=w;warnBox.style.display=w?'':'none';}
   if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   tbody.innerHTML=rows.map((r,i)=>{
@@ -8056,12 +8106,18 @@ function renderAdjustDocTable(){
     const priceCell=hasPrice?_fmtMoney(pr.price):'—';
     const totalCell=hasPrice?_fmtMoney(pr.price*r.qty):'—'; // รวมเงิน = ราคา × จำนวน(ปรับ)
     const moneyColor=hasPrice?'var(--text)':'var(--text3)';
+    // ยอดระบบขยับหลังรีเช็ค → บอกให้เห็นบนแถว (สำนวนเดียวกับตาราง Audit Verify: dashed + title + วงเล็บเล็ก)
+    // จำนวนที่แสดงยังเป็นค่าที่คิดจากยอดระบบปัจจุบันเสมอ — วงเล็บบอกว่า "ถ้าคิดจากยอดตอนรีเช็คจะได้เท่าไหร่"
+    const sysMoved=Number(r.sysLive)!==Number(r.sysFrozen);
+    const qtyCell=sysMoved
+      ?`<span title="ยอดระบบตอนรีเช็ค ${r.sysFrozen} · ตอนนี้ ${r.sysLive} — จำนวนบนใบคิดจากยอดปัจจุบัน" style="border-bottom:1px dashed var(--text3);cursor:help;">${r.qty}</span> <span style="font-size:0.68rem;color:var(--text3);font-weight:400;">(ตอนรีเช็ค ${Math.abs(r.cnt-r.sysFrozen)})</span>`
+      :`${r.qty}`;
     return`<tr>`
       +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${r.sku}</td>`
       +`<td class="ptd-name">${r.name}</td>`
       +`<td style="text-align:center;font-size:0.8rem;color:var(--text2);">${unit||'—'}</td>`
-      +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${r.qty}</td>`
+      +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${qtyCell}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;color:${moneyColor};">${priceCell}</td>`
       +`<td style="text-align:center;">${lotCell}</td>`
       +`<td style="text-align:center;font-size:0.78rem;color:${expVal?'var(--text2)':'var(--text3)'};">${expVal||'—'}</td>`
@@ -8110,6 +8166,12 @@ function exportAdjustDocText(){
   a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
+  _warnAdjustDocDropped();
+}
+// ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกซ้ำตอนนี้ ไม่ใช่เตือนแค่ในป็อปอัพ
+function _warnAdjustDocDropped(){
+  const n=_adjustDocAudit().dropped.length;
+  if(n)toast(`⚠️ มี ${n} รายการ Stock Adjustment ที่ไม่ได้อยู่ในไฟล์นี้ — ดูแถบเตือนในป็อปอัพ`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
@@ -8134,6 +8196,7 @@ function exportAdjustDocExcel(){
   XLSX.utils.book_append_sheet(wb,ws,_adjDocFilter==='ords'?'ORDS':'IRPS');
   XLSX.writeFile(wb,`stockadj_${_adjDocFilter}_${_fileDateDMY()}.xlsx`);
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ`,'success');
+  _warnAdjustDocDropped();
 }
 // ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────
 // เก็บใน doc แยก ${id}_adjlot เขียน "ตอนกดบันทึกเท่านั้น" (ไม่ใช่ทุก 3 วิ เหมือน session doc)
@@ -8531,26 +8594,29 @@ function exportStockAdjExcel(){
   // A=Location, B-H=ข้อมูลสินค้า, I=พนักงานที่สแกน, J=เวลาที่นับ (ใช้ layout เดียวกันทั้งสาขาและ WH; สาขาที่ไม่มี Location เว้นว่าง)
   const header=['Location','SKU','Barcode','Product Name','หน่วย','จำนวนคงเหลือ','จำนวนปรับปรุง','Diff','พนักงานที่สแกน','เวลาที่นับ'];
   const rows=[header];
+  let skipZero=0,skipNoSku=0; // แถวที่หลุดจากไฟล์ — ต้องรายงาน ไม่ใช่หายเงียบ (ดู _adjustDocAudit)
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
-    const si=state.skuMap.get(sku);if(!si)continue;
+    const si=state.skuMap.get(sku);if(!si){skipNoSku++;continue;}
     const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'';
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
     const unitName=unitInfo?.unitName||'';
     const sysQty=si.systemQty;
     const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
     const diff=rv-sysQty; // ColG - ColF
-    if(diff===0)continue;
+    if(diff===0){skipZero++;continue;}
     const loc=state.locationMap.get(sku)||'';
     rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',_fmtDateDMY(sd.firstScanAt||sd.timestamp)]);
   }
-  if(rows.length===1){toast('ไม่มีข้อมูล Stock Adjustment','warn');return;}
+  const skipMsg=[skipZero?`${skipZero} รายการผลต่างเป็น 0 (ยอดระบบขยับหลังรีเช็ค)`:'',skipNoSku?`${skipNoSku} รายการไม่มีข้อมูลสินค้า (ยังไม่ได้โหลด R05.106)`:''].filter(Boolean).join(' · ');
+  if(rows.length===1){toast(skipMsg?`ไม่มีรายการที่ Export ได้ — ข้าม ${skipMsg}`:'ไม่มีข้อมูล Stock Adjustment','warn',skipMsg?9000:undefined);return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'StockAdj');
   const dateStr=_fileDateDMY();
   XLSX.writeFile(wb,`stockadj_${currentBranch||'all'}_${dateStr}.xlsx`);
   toast(`Export Stock Adj ${rows.length-1} รายการ สำเร็จ`,'success');
+  if(skipMsg)toast(`⚠️ ข้าม ${skipMsg} — ไม่ได้อยู่ในไฟล์นี้`,'warn',9000);
 }
 
 function updateHistoryStatsCount(){
