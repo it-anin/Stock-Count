@@ -6107,20 +6107,25 @@ function applyAdminUI(){
 async function syncMasterToFirestore(includeR05=true,includeR01=true){
   if(!_db||!currentBranch)return;
   const id=getSessionId();
-  try{
-    // merge:true — กัน field r16UploadedAt/r16Loaded (เขียนโดย syncR16MetaToFirestore) ถูกลบหายตอน R01 re-upload
-    const writes=[];
-    if(includeR01)writes.push(_db.collection('stock_sessions').doc(id+'_r01').set({data_json:JSON.stringify(state.r01Data),r01UploadedAt:state.r01UploadedAt||'',r01Version:state.r01Version||'',updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}));
-    // R05 เขียน cloud เฉพาะตอนอัพ R05 จริง (loadR05) — login/loadR01 ไม่ push (กันของเก่าทับ cloud ที่ listener จะ propagate)
-    // global doc (ไม่ผูก branch) — สาขาไหนอัพก็ได้ ทุกสาขาเห็นร่วมกัน (mirror global_pm)
-    if(includeR05)writes.push(getR05Ref().set({data_json:_serializeR05(state.r05Data),format:R05_CLOUD_FORMAT,row_count:state.r05Data.length,updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
-    await Promise.all(writes);
-  }catch(e){
-    console.warn('Firestore master sync:',e.message);
-    // เงียบไม่ได้: R05 ที่เขียนไม่ผ่าน (เช่นชนเพดาน 1 MiB) จะถูก listener ดึงของเก่ากลับมาทับทันที
-    // แล้วผู้ใช้เห็นแค่ "อัปเดตจากเครื่องอื่น" โดยไม่รู้ว่าไฟล์ที่เพิ่งอัปหายไป
-    if(includeR05)toast(`อัปโหลด R05 ขึ้น Cloud ไม่สำเร็จ (${e.message}) — ข้อมูลยังไม่ถูกบันทึก กรุณาแจ้งผู้ดูแลระบบ`,'error',10000);
-  }
+  // allSettled ไม่ใช่ Promise.all + catch ก้อนเดียว — ต้องรู้ว่า "ตัวไหน" ล้มถึงจะรายงานถูก
+  // (เดิมจับรวมแล้ว toast เฉพาะ R05 ⇒ R01 ล้มแล้วเงียบสนิท เหลือแค่ console.warn)
+  const jobs=[];
+  // merge:true — กัน field r16UploadedAt/r16Loaded (เขียนโดย syncR16MetaToFirestore) ถูกลบหายตอน R01 re-upload
+  if(includeR01)jobs.push({label:'R01.102',run:()=>_db.collection('stock_sessions').doc(id+'_r01').set({data_json:JSON.stringify(state.r01Data),r01UploadedAt:state.r01UploadedAt||'',r01Version:state.r01Version||'',updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})});
+  // R05 เขียน cloud เฉพาะตอนอัพ R05 จริง (loadR05) — login/loadR01 ไม่ push (กันของเก่าทับ cloud ที่ listener จะ propagate)
+  // global doc (ไม่ผูก branch) — สาขาไหนอัพก็ได้ ทุกสาขาเห็นร่วมกัน (mirror global_pm)
+  if(includeR05)jobs.push({label:'R05.106',run:()=>getR05Ref().set({data_json:_serializeR05(state.r05Data),format:R05_CLOUD_FORMAT,row_count:state.r05Data.length,updated_at:firebase.firestore.FieldValue.serverTimestamp()})});
+  const results=await Promise.allSettled(jobs.map(j=>j.run()));
+  results.forEach((r,i)=>{
+    if(r.status==='fulfilled')return;
+    const msg=r.reason?.message||String(r.reason);
+    console.warn(`Firestore master sync (${jobs[i].label}):`,msg);
+    // เงียบไม่ได้ทั้งคู่ — ไฟล์ที่เขียนไม่ผ่าน (เช่นชนเพดาน 1 MiB) จะไม่มีอยู่บน cloud เลย:
+    //   R05 → listener ดึงของเก่ากลับมาทับทันที ผู้ใช้เห็นแค่ "อัปเดตจากเครื่องอื่น"
+    //   R01 → เครื่องที่อัปยังมีข้อมูลใน localStorage จึงนับต่อได้ทั้งรอบโดยไม่มีอาการ
+    //         แต่เครื่องอื่นและ auto-r01 ไม่เห็นเลย (เจอจริง ก.ย. 2026: KKL_r01 หายทั้งรอบนับ)
+    toast(`อัปโหลด ${jobs[i].label} ขึ้น Cloud ไม่สำเร็จ (${msg}) — ข้อมูลยังไม่ถูกบันทึก กรุณาแจ้งผู้ดูแลระบบ`,'error',10000);
+  });
 }
 
 // วันที่อัพ R16 — เขียนลง master doc เดียวกับ R01 (ไม่ใช่ session doc ที่ syncToFirestore ทับทุก ~3s จากทุกเครื่อง)
