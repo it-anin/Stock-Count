@@ -1203,6 +1203,14 @@ let _r01BaselineAt = ''; // ISO timestamp ล่าสุดที่อัพ R
 // baseline ที่ adopt มาจาก master doc {branch}_r01 (เส้นทาง auto-r01) แล้วใน page session นี้
 // จำเป็นเพราะ startNewCount() ตั้ง _r01BaselineAt='' → ถ้าไม่จำไว้ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
 let _adoptedMasterBaselineAt = '';
+// กัน toast ซ้ำตอนโหลดหน้า (ก.ย. 2026): session doc เก็บ "สำเนา" r01BaselineAt ที่ค้างเก่ากว่า
+// master doc {branch}_r01 ได้ (session อัปเดตต่อเมื่อมีเครื่องบนสาขานั้น sync จริง)
+// ⇒ โหลดครั้งเดียวอาจ apply สองรอบ: session เก่า (ผ่าน guard เพราะ > '') → master ใหม่ (ผ่านเพราะ > ค่าเก่า)
+//   ทั้งสองรอบถูกต้องตามตรรกะ แต่ผู้ใช้ไม่ควรเห็นข้อความเดียวกันสองครั้ง
+// ⚠️ debounce เฉพาะ "การแสดง toast" เท่านั้น — ห้ามเอาไปกั้น _clearR16ForNewBaseline หรือการตั้ง _r01BaselineAt
+//    (ของสองอย่างนั้นต้องทำงานทุกรอบเหมือนเดิม ไม่งั้น R16/audit freeze เพี้ยน)
+let _lastR01BaselineToastAt = 0;
+const R01_BASELINE_TOAST_GAP_MS = 10000; // ครอบลำดับ session→master ตอน boot โดยไม่กลบเหตุการณ์ที่ห่างกันจริง
 function _isPharmacyBranch(){return currentBranch==='SRC'||currentBranch==='KKL'||currentBranch==='SSS';}
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
 function getSessionId(){return currentBranch;}
@@ -3330,7 +3338,10 @@ async function _applyR01BaselineUpdate(baselineAt,docData=null){
   // flow ใหม่ (July 2026): ไม่ล้าง audit — ล้าง R16 เมื่อวานตาม baseline ใหม่แทน (cross-device propagation หลักของการล้าง R16)
   // ไม่เรียก saveSession/syncR16MetaToFirestore ที่นี่ — listener handler ห้าม saveSession (กัน sync loop), meta เครื่องอัพ R01 เขียนแล้ว
   _clearR16ForNewBaseline();
-  toast('R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','info');
+  // toast เท่านั้นที่ถูก debounce — ทุกอย่างด้านบนทำงานทุกรอบเหมือนเดิม (ดู R01_BASELINE_TOAST_GAP_MS)
+  if(Date.now()-_lastR01BaselineToastAt>R01_BASELINE_TOAST_GAP_MS)
+    toast('R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','info');
+  _lastR01BaselineToastAt=Date.now();
   return 1;
 }
 async function reEvaluateAuditItems(opts={}){
