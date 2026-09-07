@@ -2,11 +2,45 @@
 
 อ่าน `AGENTS.md` เป็นไฟล์แรกก่อนเริ่มงานทุกครั้ง แล้วจึงอ่านไฟล์นี้และ skill ที่เกี่ยวข้อง
 
-Single-file PWA (`index.html`, ~6,600+ บรรทัดรวม HTML/CSS/JS) + Android WebView wrapper (`android-app/`).
+Single-file PWA (`index.html`, ~8,800 บรรทัดรวม HTML/CSS/JS) + Android WebView wrapper (`android-app/`).
 No build system. No framework.
 
-**Current baseline:** `30c57ca` (`Move pharmacy confirmation to desktop`) · APK `1.11` (`versionCode 12`, tag `v1.11`)
+**Current baseline (7 ก.ย. 2026):** APK `1.11` (`versionCode 12`, tag `v1.11`) — native ไม่ได้แก้มาตั้งแต่นั้น
 ระบบผ่าน technical verification เบื้องต้นแล้ว แต่ยังรอ User Acceptance Test (UAT) จากผู้ใช้งานจริง ห้ามเปลี่ยน business flow จากการคาดเดา
+
+**สภาพ production ที่ยืนยันแล้ว 7 ก.ย. 2026** (อย่าเชื่อของเก่ากว่านี้โดยไม่ตรวจซ้ำ):
+
+| | สถานะ | ตรวจซ้ำยังไง |
+|---|---|---|
+| schema v2 | **ครบทั้ง 4 สาขา** | `stock_sessions/{branch}.schemaVersion === 2` |
+| Firebase | **แผน Blaze** (ไม่มี hard-stop แล้ว) | Console → Billing |
+| `firestore.rules` | Publish รุ่น `confirm_ops` แล้ว | snippet ในหัวไฟล์ `firestore.rules` |
+| composite index `countResetAt`+`status` | มีแล้ว | snippet ใน §Automated Tests |
+| auto-r01 | **รันจริงทุกเช้า ~09:36 ครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
+| ยังไม่ได้ทำ | Budget Alert · ย้าย Confirm ไป Cloud Function (Stage 2) | — |
+
+---
+
+## ⚠️ กฎ 0 — วินิจฉัยก่อนตั้งทฤษฎี (เพิ่ม ก.ย. 2026 หลังไล่ผิดทาง 3 รอบ)
+
+**เมื่อพบว่า document บน Firestore หายไป หรือข้อมูลไม่ตรงที่คาด ให้ไล่ตามลำดับนี้เสมอ ห้ามข้าม:**
+
+1. **"มีใครกดอะไรไปล่าสุด"** — ตรวจ `countResetAt` (epoch) ของ session ก่อนเป็นอันดับแรก
+   `startNewCount()` ลบ `{branch}_r01`, `{branch}_adjlot`, `{branch}_pharmacy_audit_markers` · `clearAllData()` ลบมากกว่านั้นอีก
+   **การกระทำของผู้ใช้อธิบายของหายได้บ่อยกว่าบั๊ก**
+2. **อ่าน log ของตัวที่เขียนข้อมูลนั้น** — `auto-r01/auto_r01.log` **บนเครื่องที่รันจริง** (`BIGYAMAINPC`)
+3. **ค่อยตั้งสมมติฐานว่าโค้ดพัง** และต้องยืนยัน premise ก่อนเสมอ
+
+### กับดัก 3 ข้อที่ทำให้สรุปผิดมาแล้ว — อย่าทำซ้ำ
+
+| # | สรุปผิดว่า | เพราะ | บทเรียน |
+|---|---|---|---|
+| 1 | "auto-r01 ยังไม่เคยรัน" | เช็ค `Get-ScheduledTask` + `auto_r01.log` **บนเครื่องที่นั่งอยู่** (`BigYa-spare` = เครื่องพัฒนา) แต่บอทรันบน `BIGYAMAINPC` | **ระบบนี้มีหลายเครื่อง — สถานะ runtime ต้องอ่านจาก Firestore ไม่ใช่จากเครื่องที่เปิดอยู่** (`{branch}_r01.r01UploadedAt`) |
+| 2 | "บอทไม่ครอบ KKL" | เห็นว่าสคริปต์เป็น all-or-none แล้วอนุมานว่า "3 สาขาสำเร็จ ⇒ KKL ไม่ได้เปิดใช้" — แต่ all-or-none อยู่ที่ **guard ตอน parse** เท่านั้น ส่วน**ลูปเขียนวนต่อเมื่อล้ม** | **อย่าเหมาการรับประกันจากโค้ดส่วนหนึ่งไปยังอีกส่วน** · log มีคำตอบอยู่แล้วแต่ไปขอช้า |
+| 3 | "R01 อัปไม่ขึ้นเพราะอัป `Allstock.CSV` รวมสาขาผ่านหน้าเว็บ" | สร้างทฤษฎีที่อธิบายหลักฐานได้ครบ (เกิน 1 MiB + ล้มเงียบ) แล้วนำเสนอเหมือนเป็นข้อสรุป **ทั้งที่ไม่เคยยืนยันว่ามีใครอัปแบบนั้นจริง** | **"ทฤษฎีที่อธิบายได้ครบ" ≠ หลักฐาน** — ต้องยืนยัน premise ก่อนเสมอ |
+
+**ต้นเหตุจริงของทั้ง 3 รอบ:** ผู้ใช้กด "เริ่มนับใหม่" บน KKL หลังบอทรัน ⇒ `_r01` ถูกลบตามดีไซน์
+เอกสารเขียนเตือนเรื่องนี้ไว้อยู่แล้ว — **มีข้อมูลครบแต่ไม่ได้เอามาใช้กับสิ่งที่สังเกตเห็น**
 
 ---
 
@@ -296,7 +330,9 @@ Audit Verify ของเภสัชก็เช่นกัน — สแก�
 - **rollback = ตั้ง `schemaVersion` กลับเป็น 1 พร้อมคืน blob จาก `{branch}_v1_backup`** โค้ด blob เดิมยังอยู่ครบ ห้ามลบจนกว่าจะผ่านรอบนับจริงอย่างน้อย 2 รอบ
   หลัง Publish schema guard แล้ว Browser/PDA ทำ rollback เองไม่ได้: ต้องหยุด client ทุกเครื่องและใช้สิทธิ์ผู้ดูแล หรือผ่อน Rules ชั่วคราวใน maintenance window แล้ว Publish guard กลับทันที
 - cutover ทำได้ 2 ทาง: `startNewCount()` (ตอน `scanData` ว่าง) หรือ `migrateSessionToSchemaV2()` (ระหว่างรอบนับ) — **ห้าม dual-write blob+items**
-- **SRC และ WH cutover เป็น v2 แล้ว (24 ก.ค. 2026)** ด้วย live migration · KKL/SSS ยังเป็น v1 จะ cutover ตอน `startNewCount()` ครั้งถัดไป
+- **ทั้ง 4 สาขาเป็น v2 แล้ว (7 ก.ย. 2026)** — SRC/WH ด้วย live migration (24 ก.ค.) · SSS ตอน `startNewCount()` (5 ส.ค.) · KKL ตอน `startNewCount()` (7 ก.ย.)
+  ⚠️ **`{branch}_v1_backup` มีเฉพาะ SRC/WH** — `startNewCount()` ไม่สร้าง backup ให้ (ต่างจาก `migrateSessionToSchemaV2()`) ⇒ KKL/SSS ไม่มี snapshot v1 เหลืออยู่เลย
+  และ rollback ถูก Rules ปิดไปแล้ว (`preservesScanSchemaVersion` ปฏิเสธ `2 → 1`) ⇒ **ทางกลับมีทางเดียวคือ backup ที่ดาวน์โหลดไว้เองก่อนกดปุ่ม**
 - ระหว่าง migrate ต้องหยุดสแกนสาขานั้น — เครื่องที่ยังเป็น v1 เขียน session doc ด้วย `ref.set()` แบบไม่ merge
   ถ้าเขียนหลัง cutover จะลบ field `schemaVersion` ทิ้งแล้วทุกเครื่องหลุดกลับ v1 พร้อมกัน
 - ไม่เขียน doc สำหรับ `pending` — ไม่มี doc = `pending` (ตรงกับพฤติกรรม cloud เดิมที่ merge rule กัน pending ไม่ให้ขึ้น)
@@ -340,7 +376,9 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
    - Confirm รอบแรก + Audit Verify บน v2 (query `scanning`/`audit` + `rev` check + `writeBatch`) · `confirm-count.spec.js`, `audit-verify.spec.js`
    - offline PDA สแกนค้างแล้วกลับ online → `_reconcileScanItems` push ครบ ไม่ทับของเครื่องอื่น · `offline-reconcile.spec.js`
 2. ~~composite index `countResetAt` + `status`~~ — ✅ **ยืนยันแล้วว่ามีบน production (7 ก.ย. 2026)** · **automated test จับเคสนี้ไม่ได้** เพราะ emulator ไม่บังคับ index จึงต้องตรวจกับของจริง — วิธีตรวจ read-only อยู่ที่ §Automated Tests
-3. **KKL/SSS ยังเป็น v1** — จะ cutover เองตอน `startNewCount()` ครั้งถัดไป (ไม่ต้อง migrate เพราะ session เล็ก ~1 KB)
+3. ~~KKL/SSS ยังเป็น v1~~ — ✅ **ครบทั้ง 4 สาขาแล้ว (7 ก.ย. 2026)** ดูรายละเอียดด้านบน
+   ⚠️ บทเรียนจากรอบ KKL ที่ต้องเก็บไว้: **`startNewCount()` ไม่สร้าง `{branch}_v1_backup`** (ต่างจาก `migrateSessionToSchemaV2()`) และ `_syncSessionMetaToFirestore()` เขียนทับ `session_data_json` ทั้ง field ⇒ **blob เดิมหายทันทีที่กดปุ่ม** ต้องสำรองด้วย `tools/backup-branch.js` ก่อนเสมอ
+   ⚠️ และ **`startNewCount()` ลบ `{branch}_r01` ด้วย** ([:3455](index.html)) ⇒ สาขานั้นจะไม่มี R01 จนกว่า auto-r01 จะรันรอบถัดไป — **กดช่วงบ่าย/เย็นเพื่อให้บอทเติมให้เช้าวันรุ่งขึ้น** ถ้ากดหลังบอทรันจะเสียไปหนึ่งวัน
 4. **WH workflow v2 (Stage 1b, ส.ค. 2026)** — `WH_count_confirmations` ชนเพดาน 40,000 index entries ก่อนถึง 1 MiB (873 markers; Confirm ที่เหลือเริ่มล้ม) จึงห้ามเพิ่ม final ลง dynamic-map docs อีก ใช้ `WH/confirm_ops/{opId}/results/{sku}` + atomic committed pointer ตาม §WH Count/Recheck ด้านล่าง ระหว่าง rollout ต้อง dual-read legacy และ roll-forward จาก committed op; `{branch}_pharmacy_audit_markers` ยังเป็น blob ที่ต้องเฝ้าแยกต่างหาก
 
 สถานะหลังแก้: WH Count/Recheck รุ่นใหม่ถูก commit และ push แล้ว โดยผล final ใหม่ไม่เพิ่มลง `WH_count_confirmations`/`WH_recheck_confirmations` อีก จึงไม่ควรเกิดปัญหาเพดาน index เดิมซ้ำในรอบถัดไป · **Rules ที่รองรับ `confirm_ops` ยืนยันแล้วว่า Publish จริงบน Console (7 ก.ย. 2026)** — วิธีตรวจซ้ำแบบ read-only อยู่ในหัวไฟล์ `firestore.rules` · เหลือแค่ต้องแน่ใจว่า Supervisor/PDA โหลดเว็บรุ่นใหม่ครบทุกเครื่อง หาก Confirm ล้มเหลวอีก ให้ตรวจเว็บ/Rules รุ่น, R01/R16 version, lock/การยืนยันพร้อมกัน, network และ quota ก่อนสรุปว่าเป็นปัญหาเดิม
@@ -465,10 +503,10 @@ npm test             # ทั้งหมด (logic + e2e ผ่าน emulator)
 - ห้าม sleep: ใช้ `waitForFunction(..., {polling:100})` + `waitForDoc()` · บังคับ flush ด้วย `_flushDirtySkus()` · offline ต้องปลด `_scanItemBackoffUntil` ก่อน flush
 - fixture ต้องสังเคราะห์เท่านั้น (`tests/lib/fixtures.js`) — ห้ามนำ CSV ข้อมูลจริงเข้า repo (root `.gitignore` กัน `*.csv` ไว้แล้ว)
 
-**เทสแทนการทดสอบมือไม่ได้ในเรื่องเหล่านี้:** PDA จริง (Intent scanner/keystroke/WebView/เสียง/APK), composite index บน production (emulator ไม่บังคับ), KKL/SSS v1 blob path เต็มรูปแบบ, WH Count/Recheck inbox flow
+**เทสแทนการทดสอบมือไม่ได้ในเรื่องเหล่านี้:** PDA จริง (Intent scanner/keystroke/WebView/เสียง/APK), composite index บน production (emulator ไม่บังคับ), blob path v1 เต็มรูปแบบ (ไม่มีสาขาไหนเป็น v1 แล้ว แต่โค้ดยังอยู่เพื่อ rollback), WH Count/Recheck inbox flow
 
 **ตรวจ production ที่ emulator ทำแทนไม่ได้ — 2 อย่างนี้เช็คได้แบบ read-only** (วางใน Console ของหน้าเว็บที่ login แล้ว · ไม่เขียนอะไรเลย)
-- **composite index `countResetAt`+`status`** — ต้อง login สาขา v2 (SRC/WH) เพราะ KKL/SSS ยังไม่มี items · index ขาดจะได้ `failed-precondition` พร้อมลิงก์สร้าง
+- **composite index `countResetAt`+`status`** — login สาขาไหนก็ได้ (v2 ครบทั้ง 4 แล้ว) แต่สาขานั้นต้องมี items อยู่บ้าง · index ขาดจะได้ `failed-precondition` พร้อมลิงก์สร้าง
   ```js
   try { await getScanItemsRef().where('countResetAt','==',_countResetAt||'').where('status','==','scanning').limit(1).get({source:'server'});
         console.log('✅ composite index มีแล้ว'); }
