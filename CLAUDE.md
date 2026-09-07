@@ -320,7 +320,7 @@ Audit Verify ของเภสัชก็เช่นกัน — สแก�
   - เมื่อค่าเดิม `schemaVersion>=2`, ค่าใหม่ต้องเป็นตัวเลขและห้ามต่ำลง; v1 `ref.set()` ที่ทำ field หายจึงถูกปฏิเสธ
   - delete parent ยังอนุญาตเพื่อคง `clearAllData()`; Rules นี้เป็น data-integrity guard ไม่ใช่ authentication/security เต็มรูปแบบ
   ต้อง copy Rules ไป Publish ใน Firebase Console ด้วย — แก้ไฟล์ใน Git อย่างเดียวไม่มีผลกับระบบจริง
-- composite index `countResetAt` + `status` ต้องสร้างใน Console ก่อน cutover
+- composite index `countResetAt` + `status` ต้องสร้างใน Console ก่อน cutover (✅ มีแล้ว ยืนยัน 7 ก.ย. 2026 · index scope เป็น collection id `items` จึงครอบทุกสาขาในตัว)
 
 Stage 0 safety net (blob path): `_checkSessionBlobSize()` เตือนที่ 800 KB — **เตือนอย่างเดียว ห้าม block การเขียน**
 ถ้า block เอง จะทำให้ payload ที่ Firestore ยังรับได้เขียนไม่ผ่าน = regression กับรอบนับที่กำลังทำอยู่ และทำให้ branch lock ค้าง
@@ -339,11 +339,11 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
    - **สอง PDA สแกน SKU เดียวกันพร้อมกัน → ยอดต้องรวม ไม่ใช่ทับ** (จุดเสี่ยงสูงสุด — `_writeScanningItem` delta/transaction) · `tests/specs/e2e/concurrent-scan.spec.js`
    - Confirm รอบแรก + Audit Verify บน v2 (query `scanning`/`audit` + `rev` check + `writeBatch`) · `confirm-count.spec.js`, `audit-verify.spec.js`
    - offline PDA สแกนค้างแล้วกลับ online → `_reconcileScanItems` push ครบ ไม่ทับของเครื่องอื่น · `offline-reconcile.spec.js`
-2. **composite index `countResetAt` + `status`** — ยังไม่ยืนยันว่าสร้างใน Console แล้ว ถ้า Confirm error พร้อมลิงก์สร้าง index = ยังไม่มี ให้กดลิงก์สร้าง · **automated test จับเคสนี้ไม่ได้** เพราะ emulator ไม่บังคับ index
+2. ~~composite index `countResetAt` + `status`~~ — ✅ **ยืนยันแล้วว่ามีบน production (7 ก.ย. 2026)** · **automated test จับเคสนี้ไม่ได้** เพราะ emulator ไม่บังคับ index จึงต้องตรวจกับของจริง — วิธีตรวจ read-only อยู่ที่ §Automated Tests
 3. **KKL/SSS ยังเป็น v1** — จะ cutover เองตอน `startNewCount()` ครั้งถัดไป (ไม่ต้อง migrate เพราะ session เล็ก ~1 KB)
 4. **WH workflow v2 (Stage 1b, ส.ค. 2026)** — `WH_count_confirmations` ชนเพดาน 40,000 index entries ก่อนถึง 1 MiB (873 markers; Confirm ที่เหลือเริ่มล้ม) จึงห้ามเพิ่ม final ลง dynamic-map docs อีก ใช้ `WH/confirm_ops/{opId}/results/{sku}` + atomic committed pointer ตาม §WH Count/Recheck ด้านล่าง ระหว่าง rollout ต้อง dual-read legacy และ roll-forward จาก committed op; `{branch}_pharmacy_audit_markers` ยังเป็น blob ที่ต้องเฝ้าแยกต่างหาก
 
-สถานะหลังแก้: WH Count/Recheck รุ่นใหม่ถูก commit และ push แล้ว โดยผล final ใหม่ไม่เพิ่มลง `WH_count_confirmations`/`WH_recheck_confirmations` อีก จึงไม่ควรเกิดปัญหาเพดาน index เดิมซ้ำในรอบถัดไป หาก Rules ที่รองรับ `confirm_ops` ถูก Publish และ Supervisor/PDA โหลดเว็บรุ่นใหม่ครบทุกเครื่องแล้ว หาก Confirm ล้มเหลวอีก ให้ตรวจเว็บ/Rules รุ่น, R01/R16 version, lock/การยืนยันพร้อมกัน, network และ quota ก่อนสรุปว่าเป็นปัญหาเดิม
+สถานะหลังแก้: WH Count/Recheck รุ่นใหม่ถูก commit และ push แล้ว โดยผล final ใหม่ไม่เพิ่มลง `WH_count_confirmations`/`WH_recheck_confirmations` อีก จึงไม่ควรเกิดปัญหาเพดาน index เดิมซ้ำในรอบถัดไป · **Rules ที่รองรับ `confirm_ops` ยืนยันแล้วว่า Publish จริงบน Console (7 ก.ย. 2026)** — วิธีตรวจซ้ำแบบ read-only อยู่ในหัวไฟล์ `firestore.rules` · เหลือแค่ต้องแน่ใจว่า Supervisor/PDA โหลดเว็บรุ่นใหม่ครบทุกเครื่อง หาก Confirm ล้มเหลวอีก ให้ตรวจเว็บ/Rules รุ่น, R01/R16 version, lock/การยืนยันพร้อมกัน, network และ quota ก่อนสรุปว่าเป็นปัญหาเดิม
 5. **Confirm ยังคำนวณฝั่ง client → กฎ Desktop-only ยังอยู่ (Stage 2)** — ปลดได้เมื่อย้ายสูตร `effectiveQty` ไป Cloud Function
 6. **มี automated test แล้ว (`tests/`) แต่ไม่แทนการทดสอบมือ** — ดู §Automated Tests ด้านล่าง; PDA จริง, composite index และ WH inbox flow ยังไม่ครอบ
 7. **เก็บกวาดหลังเสถียร:** เมื่อผ่านรอบนับจริง ≥2 รอบ ค่อยลบ blob path เดิม (`_applyCloudScanData` merge guard, blob branch ใน `syncToFirestore`/`restoreFromFirestore`) และลบ `{branch}_v1_backup` — **ห้ามลบก่อนหน้านั้น** เพราะ rollback พึ่งพาอยู่
@@ -427,7 +427,11 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - Audit Verify รองรับ pending quantity 0 แล้ว (ส.ค. 2026) = "ตรวจแล้วไม่มีของ" — ห้ามกลับไปกรอง `> 0` ไม่งั้น negSys ค้าง audit ถาวร
 - Firestore rules ปัจจุบันเปิด read/write ให้ collections ที่แอปใช้ การ tighten rules เป็น security/migration แยกและต้องทดสอบทุก client
 - สาขายาที่รับ R16 ผ่าน legacy session sync อาจมีเฉพาะ aggregate maps ไม่มี raw TRANDATE timeline; ห้ามสมมติว่าป้ายวันที่ R16 ตรงกันแล้ว derived result ทุกเครื่องจะตรงโดยอัตโนมัติ
-- **Firestore quota (ก.ค. 2026):** Spark 50K reads/วันเคยเต็มช่วงรอบนับ (ประเมิน ~178K reads/วันนับทั้งระบบ) — ทางแก้หลักคืออยู่บนแผน Blaze (โควต้าฟรีรายวันยังได้เท่าเดิม + budget alert) จุดกิน read ใหญ่ที่ยังไม่แก้และเป็น backlog (ทุกข้อแตะ scan-related ต้องขอ approve กฎ 1 + field test): login สาขา v2 อ่าน items ซ้ำ 2 รอบ (`_loadScanItemsFromCloud` + listener initial ≈ 2×N/reload), ไม่ได้เปิด Firestore offline persistence, Pharmacy Confirm อ่าน server 3 รอบ (integrity check — ห้ามลดโดยพลการ), `WH_counts` เขียนทุกสแกนไม่ debounce (echo 1 read/สแกนไป Supervisor) · `startNewCount` สาขา v2 กิน ~N deletes + ~N reads ต่อครั้ง อย่ารันสองสาขาวันเดียวกันบน Spark
+- **Firestore quota — อยู่บนแผน Blaze แล้ว (7 ก.ย. 2026):** โควต้าฟรีรายวันยังได้เท่าเดิม (50K reads / 20K writes / 20K deletes) แต่ **เกินแล้วคิดเงินแทนที่จะ hard-stop** ⇒ ความเสี่ยง "Confirm ล้มกลางรอบนับเพราะโควต้าเต็ม" หายไปแล้ว ห้ามอ้างเหตุผลนี้เตือนผู้ใช้อีก
+  - ประเมิน ~178K reads/วันช่วงรอบนับ = เกินฟรี ~128K ≈ **2–3 บาท/วันเฉพาะวันที่นับ** — ค่าใช้จ่ายไม่ใช่ข้อจำกัดในทางปฏิบัติ
+  - ⚠️ guardrail ตัวเดียวที่เหลือคือ **budget alert** (ไม่มี hard-stop แล้ว) — จำเป็นกรณี loop bug/listener รั่วยิง read ไม่หยุด
+  - backlog ลด read ยังควรทำเพราะแก้ **ความช้าตอน login** ไม่ใช่เพื่อประหยัดโควต้าแล้ว (ทุกข้อแตะ scan-related ต้องขอ approve กฎ 1 + field test): login สาขา v2 อ่าน items ซ้ำ 2 รอบ (`_loadScanItemsFromCloud` + listener initial ≈ 2×N/reload), ไม่ได้เปิด Firestore offline persistence, `WH_counts` เขียนทุกสแกนไม่ debounce (echo 1 read/สแกนไป Supervisor) · Pharmacy Confirm อ่าน server 3 รอบเป็น integrity check **ห้ามลดโดยพลการ**
+  - `startNewCount` สาขา v2 กิน ~N deletes + ~N reads ต่อครั้ง — บน Blaze รันสองสาขาวันเดียวกันได้แล้ว (เดิมชนเพดาน deletes 20K ของ Spark)
 
 ---
 
@@ -462,6 +466,17 @@ npm test             # ทั้งหมด (logic + e2e ผ่าน emulator)
 - fixture ต้องสังเคราะห์เท่านั้น (`tests/lib/fixtures.js`) — ห้ามนำ CSV ข้อมูลจริงเข้า repo (root `.gitignore` กัน `*.csv` ไว้แล้ว)
 
 **เทสแทนการทดสอบมือไม่ได้ในเรื่องเหล่านี้:** PDA จริง (Intent scanner/keystroke/WebView/เสียง/APK), composite index บน production (emulator ไม่บังคับ), KKL/SSS v1 blob path เต็มรูปแบบ, WH Count/Recheck inbox flow
+
+**ตรวจ production ที่ emulator ทำแทนไม่ได้ — 2 อย่างนี้เช็คได้แบบ read-only** (วางใน Console ของหน้าเว็บที่ login แล้ว · ไม่เขียนอะไรเลย)
+- **composite index `countResetAt`+`status`** — ต้อง login สาขา v2 (SRC/WH) เพราะ KKL/SSS ยังไม่มี items · index ขาดจะได้ `failed-precondition` พร้อมลิงก์สร้าง
+  ```js
+  try { await getScanItemsRef().where('countResetAt','==',_countResetAt||'').where('status','==','scanning').limit(1).get({source:'server'});
+        console.log('✅ composite index มีแล้ว'); }
+  catch (e) { console.log(e.code==='failed-precondition' ? '❌ ยังไม่มี index:\n'+e.message : '⚠️ '+e.code); }
+  ```
+- **Rules ที่ Publish จริงตรงกับไฟล์ไหม** — ดูวิธีในหัวไฟล์ `firestore.rules`
+
+✅ ทั้งสองข้อยืนยันแล้วบน production 7 ก.ย. 2026
 
 ---
 

@@ -1,6 +1,15 @@
 // Firestore Security Rules — เก็บไว้ track ใน git เท่านั้น
 // deploy จริงทำผ่าน Firebase Console → Firestore Database → Rules → Publish (ไม่มี Firebase CLI/auto-deploy ผูกไว้)
 // แก้ไฟล์นี้แล้วอย่าลืม copy ไป publish ใน Console ด้วย — ไม่งั้นจะไม่ตรงกับของจริง
+//
+// ── ตรวจว่า "ของจริงบน Console" ตรงกับไฟล์นี้หรือยัง (read-only, 1 read) ──
+// rules ก่อน 524f969 (13 ส.ค. 2026) ไม่มี match ของ confirm_ops และไม่มี recursive {document=**}
+// path ที่ไม่มี rule ใดตรง = Firestore ปฏิเสธ ⇒ แค่ "อ่าน" ก็แยกรุ่นเก่า/ใหม่ได้โดยไม่ต้องเขียนอะไรเลย
+// วางใน Console ของหน้าเว็บที่ login แล้ว:
+//   try { await _db.collection('stock_sessions').doc('WH').collection('confirm_ops').limit(1).get({source:'server'});
+//         console.log('✅ Rules ใหม่ Publish แล้ว'); }
+//   catch (e) { console.log(e.code === 'permission-denied' ? '❌ ยังเป็น Rules เก่า' : '⚠️ ' + e.code); }
+// ✅ ตรวจแล้ว 7 ก.ย. 2026 — ของจริงบน Console เป็นรุ่นที่รองรับ confirm_ops แล้ว
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
