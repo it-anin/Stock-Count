@@ -60,7 +60,7 @@ test('ยอดระบบขยับจนผลต่างเป็น 0 �
   expect(r.irps).toEqual([]);
   expect(r.badge).toBe(1);               // แต่ปุ่มยังนับอยู่ = ความไม่ตรงที่เคยเงียบ
   expect(r.dropped).toEqual([{ sku: 'GONE', reason: 'zero' }]);
-  expect(r.warn).toContain('หลุดจากใบ');
+  expect(r.warn).toContain('หลุดจากใบปรับปรุง');
   expect(r.warn).toContain('GONE');      // ★ ต้องหารหัสสินค้าเจอได้ ไม่ใช่บอกแค่จำนวน
   await closeApp(app);
 });
