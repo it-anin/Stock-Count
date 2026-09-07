@@ -974,8 +974,8 @@
         <div class="upload-file-badge upload-file-badge-optional" id="adjPriceBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
       </div>
     </div>
-    <!-- แถบเตือน "ใบไม่ครบ/ตัวเลขขยับ" — เติมด้วย textContent เท่านั้น (ดู _adjustDocWarnText) -->
-    <div id="adjustDocWarn" style="display:none;padding:10px 22px;border-bottom:1px solid var(--border);background:rgba(224,140,0,0.10);color:var(--text2);font-size:0.76rem;line-height:1.6;white-space:pre-line;"></div>
+    <!-- แถบเตือน "ใบไม่ครบ/ตัวเลขขยับ" — เติมด้วย createElement/textContent เท่านั้น (ดู _renderAdjustDocWarn) -->
+    <div id="adjustDocWarn" style="display:none;padding:10px 22px;border-bottom:1px solid var(--border);background:rgba(224,140,0,0.10);color:var(--text2);font-size:0.76rem;line-height:1.6;"></div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="adjustDocThead"></thead>
@@ -8054,25 +8054,38 @@ function _adjustDocAudit(){
   }
   return {dropped,moved};
 }
-// รายชื่อ SKU แบบย่อสำหรับข้อความเตือน (ยาวเกินไปอ่านไม่ไหว)
-function _adjSkuList(arr,max=8){
-  const ids=arr.map(x=>x.sku);
-  return ids.length>max?`${ids.slice(0,max).join(', ')} …และอีก ${ids.length-max}`:ids.join(', ');
-}
-// ข้อความเตือนรวม (คืน '' เมื่อทุกอย่างปกติ) — ใช้ทั้งแถบในป็อปอัพและ toast ตอน Export
-function _adjustDocWarnText(){
+// แถบเตือนในป็อปอัพ — หัวข้อสั้นบรรทัดเดียวต่อเรื่อง · รหัสสินค้าซ่อนใน <details> (28 รายการยาวเกินอ่านไหว)
+// สร้างด้วย createElement/textContent เท่านั้น ห้ามประกอบ innerHTML จากข้อมูล
+function _renderAdjustDocWarn(){
+  const box=document.getElementById('adjustDocWarn');if(!box)return;
+  box.textContent='';
   const{dropped,moved}=_adjustDocAudit();
-  const parts=[];
   const zero=dropped.filter(d=>d.reason==='zero');
   const noSku=dropped.filter(d=>d.reason==='no_sku');
-  if(zero.length)parts.push(`⚠️ ${zero.length} รายการไม่ได้อยู่บนใบนี้ (ยอดระบบขยับหลังรีเช็คจนผลต่างเป็น 0) — SKU ${_adjSkuList(zero)}`);
-  if(noSku.length)parts.push(`⚠️ ${noSku.length} รายการไม่มีข้อมูลสินค้า (ยังไม่ได้โหลด R05.106) — SKU ${_adjSkuList(noSku)}`);
+  if(!zero.length&&!noSku.length&&!moved.length){box.style.display='none';return;}
+  const line=(t,bold)=>{const d=document.createElement('div');if(bold)d.style.fontWeight='700';d.textContent=t;box.appendChild(d);};
+  if(zero.length)line(`⚠️ ${zero.length} รายการหลุดจากใบนี้ — ยอดระบบเปลี่ยนหลังรีเช็ค`,true);
+  if(noSku.length)line(`⚠️ ${noSku.length} รายการไม่มีข้อมูลสินค้า — ยังไม่ได้โหลด R05.106`,true);
   if(moved.length){
-    const flipped=moved.filter(m=>m.flipped);
-    parts.push(`ℹ️ ${moved.length} รายการยอดระบบขยับหลังรีเช็คแต่ยังอยู่บนใบ${flipped.length?` · ${flipped.length} รายการสลับทิศ ขาด↔เกิน (SKU ${_adjSkuList(flipped)})`:''}`);
+    const f=moved.filter(m=>m.flipped).length;
+    line(`ℹ️ ${moved.length} รายการยอดระบบเปลี่ยน แต่ยังอยู่ในใบ${f?` (${f} รายการสลับขาด↔เกิน)`:''}`);
   }
-  if(parts.length)parts.push('แนะนำ: reopen แล้วให้เภสัชรีเช็คใหม่ก่อนออกใบ เพื่อให้ยอดนับกับยอดระบบมาจากช่วงเวลาเดียวกัน');
-  return parts.join('\n');
+  if(zero.length||moved.length)line('👉 รีเช็ครายการเหล่านี้ใหม่ก่อนออกใบ');
+  const det=document.createElement('details');det.style.marginTop='5px';
+  const sum=document.createElement('summary');
+  sum.style.cssText='cursor:pointer;color:var(--text3);font-size:0.72rem;';
+  sum.textContent=`ดูรหัสสินค้า (${zero.length+noSku.length+moved.length})`;
+  det.appendChild(sum);
+  // แยกกลุ่มตอนกาง — คนละสาเหตุ คนละวิธีแก้ ถ้ารวมเป็นก้อนเดียวจะหาไม่เจอว่าตัวไหนต้องทำอะไร
+  [['หลุดจากใบ',zero],['ไม่มีข้อมูลสินค้า',noSku],['ยอดระบบเปลี่ยน',moved]].forEach(([label,arr])=>{
+    if(!arr.length)return;
+    const d=document.createElement('div');
+    d.style.cssText="margin-top:4px;font-size:0.72rem;color:var(--text3);word-break:break-all;";
+    d.textContent=`${label} (${arr.length}): ${arr.map(x=>x.sku).join(', ')}`;
+    det.appendChild(d);
+  });
+  box.appendChild(det);
+  box.style.display='';
 }
 function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')n++;return n;}
 function renderAdjustDocTable(){
@@ -8084,8 +8097,7 @@ function renderAdjustDocTable(){
   const rows=_buildAdjustDocRows(_adjDocFilter);
   if(rc)rc.textContent=`${rows.length} รายการ`;
   // ต้องอยู่ "ก่อน" early-return ข้างล่าง — ใบว่างเพราะ skuMap ยังไม่โหลดคือเคสที่ต้องเตือนที่สุด
-  const warnBox=document.getElementById('adjustDocWarn');
-  if(warnBox){const w=_adjustDocWarnText();warnBox.textContent=w;warnBox.style.display=w?'':'none';}
+  _renderAdjustDocWarn();
   if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   tbody.innerHTML=rows.map((r,i)=>{
@@ -8171,7 +8183,7 @@ function exportAdjustDocText(){
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกซ้ำตอนนี้ ไม่ใช่เตือนแค่ในป็อปอัพ
 function _warnAdjustDocDropped(){
   const n=_adjustDocAudit().dropped.length;
-  if(n)toast(`⚠️ มี ${n} รายการ Stock Adjustment ที่ไม่ได้อยู่ในไฟล์นี้ — ดูแถบเตือนในป็อปอัพ`,'warn',9000);
+  if(n)toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ — ดูแถบเตือนด้านบน`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
@@ -8608,15 +8620,15 @@ function exportStockAdjExcel(){
     const loc=state.locationMap.get(sku)||'';
     rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',_fmtDateDMY(sd.firstScanAt||sd.timestamp)]);
   }
-  const skipMsg=[skipZero?`${skipZero} รายการผลต่างเป็น 0 (ยอดระบบขยับหลังรีเช็ค)`:'',skipNoSku?`${skipNoSku} รายการไม่มีข้อมูลสินค้า (ยังไม่ได้โหลด R05.106)`:''].filter(Boolean).join(' · ');
-  if(rows.length===1){toast(skipMsg?`ไม่มีรายการที่ Export ได้ — ข้าม ${skipMsg}`:'ไม่มีข้อมูล Stock Adjustment','warn',skipMsg?9000:undefined);return;}
+  const skipMsg=[skipZero?`${skipZero} รายการยอดระบบเปลี่ยนหลังรีเช็ค`:'',skipNoSku?`${skipNoSku} รายการไม่มีข้อมูลสินค้า`:''].filter(Boolean).join(' · ');
+  if(rows.length===1){toast(skipMsg?`ไม่มีรายการให้ Export — ข้าม ${skipMsg}`:'ไม่มีข้อมูล Stock Adjustment','warn',skipMsg?9000:undefined);return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'StockAdj');
   const dateStr=_fileDateDMY();
   XLSX.writeFile(wb,`stockadj_${currentBranch||'all'}_${dateStr}.xlsx`);
   toast(`Export Stock Adj ${rows.length-1} รายการ สำเร็จ`,'success');
-  if(skipMsg)toast(`⚠️ ข้าม ${skipMsg} — ไม่ได้อยู่ในไฟล์นี้`,'warn',9000);
+  if(skipMsg)toast(`⚠️ ไม่ได้อยู่ในไฟล์นี้: ${skipMsg}`,'warn',9000);
 }
 
 function updateHistoryStatsCount(){

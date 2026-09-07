@@ -83,7 +83,7 @@ pending → scanning → pass
 - ยอดที่เภสัชสแกนรีเช็คต้องเก็บใน `state.scanData[sku].recheckQty/recheckBy/recheckAt` เท่านั้น ห้ามกลับไปใช้ map ใน memory ที่ไม่ sync
 - **`recheckQty` ต้องเทียบกับ `recheckSystemQty` (ยอดระบบที่ freeze ตอนสแกน) เสมอ ห้ามใช้ `si.systemQty` สด** — `si.systemQty` ขยับทุกครั้งที่อัพ R01 ถ้าเทียบข้ามช่วงเวลาจะได้ Stock Adjustment ผิด · ทุกจุดที่ตั้ง `recheckQty` ต้องเรียก `_freezeRecheckBaseline()` และทุกจุดที่ตัดสินต้องใช้ `_recheckBaselineSystemQty()`
 - **ข้อยกเว้นที่ตั้งใจของกฎก่อนหน้า: ใบปรับสต็อกใช้ `si.systemQty` ค่าสด** (`_buildAdjustDocRows()` + `exportStockAdjExcel()`) เพราะตัวเลขบนใบคือค่าที่ส่งเข้าระบบจริง — **แต่ห้ามให้แถวหายเงียบ**
-  ถ้า R01 ขยับจน `cnt − systemQty` สดเป็น `0` แถวหลุด**ทั้ง ORDS และ IRPS พร้อมกัน** ขณะที่ badge บนปุ่มยังนับอยู่ (เจอ ก.ย. 2026) · `_adjustDocAudit()`/`_adjustDocWarnText()` เป็นตัวรายงาน — **รายงานอย่างเดียว ห้ามเอาไปกรองหรือแก้ตัวเลข** · เพิ่มเงื่อนไข `continue` ใหม่ในสองฟังก์ชันนั้นเมื่อไร ต้องนับเข้าตัวเตือนด้วยเสมอ
+  ถ้า R01 ขยับจน `cnt − systemQty` สดเป็น `0` แถวหลุด**ทั้ง ORDS และ IRPS พร้อมกัน** ขณะที่ badge บนปุ่มยังนับอยู่ (เจอ ก.ย. 2026) · `_adjustDocAudit()`/`_renderAdjustDocWarn()` เป็นตัวรายงาน — **รายงานอย่างเดียว ห้ามเอาไปกรองหรือแก้ตัวเลข** · เพิ่มเงื่อนไข `continue` ใหม่ในสองฟังก์ชันนั้นเมื่อไร ต้องนับเข้าตัวเตือนด้วยเสมอ
 - การย้อนผลที่ยืนยันแล้วกลับเป็น `audit` (ปุ่ม ↺ `reopenPharmacyAudit`) ต้องเขียน marker ที่มี `reopenedAt` ก่อนแก้ local และ `_writePharmacyAuditMarkers` ต้องให้ reopen ชนะ guard "final ชนะ audit เสมอ"
 - WH ใช้ Count/Recheck confirmation workflow แยกกัน ห้ามนำ flow ของสาขายาไปใช้แทน
 - WH supervisor ไม่รีเช็คเอง: ป็อปอัพ Audit Verify เป็น read-only (`_isWhSupervisorAuditReadonly()`) ยืนยันได้อย่างเดียวและต้องผ่าน transaction เสมอ

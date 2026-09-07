@@ -35,15 +35,18 @@ async function seed(page, items) {
   }, { items });
 }
 
+// อ่านแถบเตือน "จากที่ render จริง" ไม่ใช่จากสตริงกลางทาง — พังตอนต่อสายเข้า DOM จะถูกจับด้วย
 const read = (page) => page.evaluate(() => {
   const audit = _adjustDocAudit();
+  renderAdjustDocTable();
+  const box = document.getElementById('adjustDocWarn');
   return {
     ords: _buildAdjustDocRows('ords').map((x) => ({ sku: x.sku, qty: x.qty })),
     irps: _buildAdjustDocRows('irps').map((x) => ({ sku: x.sku, qty: x.qty })),
     badge: _countAdjustDocItems(),
     dropped: audit.dropped.map((d) => ({ sku: d.sku, reason: d.reason })),
     moved: audit.moved.map((m) => ({ sku: m.sku, flipped: m.flipped })),
-    warn: _adjustDocWarnText(),
+    warn: box.style.display === 'none' ? '' : box.textContent,
   };
 });
 
@@ -57,7 +60,8 @@ test('ยอดระบบขยับจนผลต่างเป็น 0 �
   expect(r.irps).toEqual([]);
   expect(r.badge).toBe(1);               // แต่ปุ่มยังนับอยู่ = ความไม่ตรงที่เคยเงียบ
   expect(r.dropped).toEqual([{ sku: 'GONE', reason: 'zero' }]);
-  expect(r.warn).toContain('GONE');      // ★ ต้องเห็นชื่อ SKU ไม่ใช่แค่จำนวน
+  expect(r.warn).toContain('หลุดจากใบ');
+  expect(r.warn).toContain('GONE');      // ★ ต้องหารหัสสินค้าเจอได้ ไม่ใช่บอกแค่จำนวน
   await closeApp(app);
 });
 
@@ -111,6 +115,6 @@ test('ยอดระบบขยับจนสลับทิศ ขาด↔�
   expect(r.irps).toEqual([{ sku: 'FLIP', qty: 2 }]);  // ตัวเลขไม่ถูกแตะ
   expect(r.dropped).toEqual([]);                      // ไม่ได้หาย แค่ย้ายแท็บ
   expect(r.moved).toEqual([{ sku: 'FLIP', flipped: true }]);
-  expect(r.warn).toContain('สลับทิศ');
+  expect(r.warn).toContain('สลับขาด↔เกิน');
   await closeApp(app);
 });

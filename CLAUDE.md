@@ -428,7 +428,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
   - แต่ถ้ารอบนับค้างข้ามการอัป R01 (`si.systemQty` ขยับไปแล้ว) **ใบจะเทียบยอดนับเก่ากับยอดระบบใหม่ = ข้ามช่วงเวลา** ต้อง reopen + รีเช็คใหม่ให้ `_freezeRecheckBaseline()` จับ R01 ปัจจุบันก่อนออกใบ
   - ⛔ **ผลข้างเคียงที่เคยเงียบสนิท (แก้แล้ว ก.ย. 2026 รอบ 2): แถวหลุดจากใบไปเลย** — ถ้า `cnt − si.systemQty` สดกลายเป็น `0` แถวหลุด**พร้อมกันทั้ง** ORDS (`diff>=0`) และ IRPS (`diff<=0`) และ `exportStockAdjExcel()` ก็ `if(diff===0)continue`
     ขณะที่ badge บนปุ่มมาจาก `_countAdjustDocItems()` = นับ **ทุก** `stock_adjustment` ⇒ ปุ่มขึ้น 12 แต่ใบมี 11 โดยไม่มีอะไรบอกว่าตัวไหนหาย · `!si` (R05 ยังไม่โหลด → `skuMap` ว่าง) ก็ทำใบว่างทั้งใบแบบเงียบเหมือนกัน
-  - `_adjustDocAudit()` / `_adjustDocWarnText()` เป็นตัว**รายงานอย่างเดียว** → แถบเตือน `#adjustDocWarn` ในป็อปอัพ + ธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
+  - `_adjustDocAudit()` / `_renderAdjustDocWarn()` เป็นตัว**รายงานอย่างเดียว** → แถบเตือน `#adjustDocWarn` ในป็อปอัพ + ธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
     ⚠️ **ห้ามเอาผลจากมันไปกรองหรือแก้ตัวเลขใน `_buildAdjustDocRows()`** — การตัดสินใจคือ "เตือน ไม่แตะตัวเลข" · ต้องไม่เตือนผิดตัวด้วย: รายการรอบนับแรก (`noStock`) ไม่มี `recheckSystemQty` แล้ว `_recheckBaselineSystemQty()` fallback เป็นค่าสดเอง ⇒ `frozen===live` ⇒ เงียบ
     เทสตรึงไว้ที่ `tests/specs/logic/adjust-doc-dropped.spec.js` (ตรึงทั้ง "ตัวที่หายต้องถูกรายงาน", "ตัวปกติต้องไม่ถูกเตือน" และ **"ตัวเลขบนใบต้องไม่เปลี่ยน"**)
   - ระบบ**ไม่มี** field `issuedAt`/`exportedAt` ที่ไหนเลย = ไม่มีอะไรกัน double-adjust ⇒ ห้ามย้อนสถานะหลังส่งใบเข้าระบบหลังบ้านแล้ว

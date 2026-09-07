@@ -292,7 +292,7 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 ⛔ **แถวหลุดจากใบได้ และเคยหลุดแบบเงียบสนิท** (แก้ ก.ย. 2026) — ใบใช้ `si.systemQty` **ค่าสด** แต่ระบบตัดสิน `stock_adjustment`
 ด้วย `_recheckBaselineSystemQty()` (ค่า freeze ตอนสแกน) · พอบอท auto-r01 อัป R01 ทุกเช้า `cnt − live` กลายเป็น `0` ได้
 ⇒ หลุด**ทั้งสองแท็บพร้อมกัน** (`diff>=0` / `diff<=0`) ขณะที่ badge บนปุ่ม (`_countAdjustDocItems()`) ยังนับทุก `stock_adjustment`
-- `_adjustDocAudit()` คืน `{dropped, moved}` · `_adjustDocWarnText()` ประกอบข้อความ → แถบ `#adjustDocWarn` + ธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
+- `_adjustDocAudit()` คืน `{dropped, moved}` · `_renderAdjustDocWarn()` วาดแถบ `#adjustDocWarn` (หัวข้อสั้นบรรทัดเดียวต่อเรื่อง + รหัสสินค้าซ่อนใน `<details>`) · เพิ่มธง `(ตอนรีเช็ค N)` บนแถว + toast ตอน Export
 - **รายงานอย่างเดียว ห้ามเอาไปกรอง/แก้ตัวเลขใน `_buildAdjustDocRows()`** — ตัวเลขบนใบต้องเป็นค่าสดเสมอ (ดู `CLAUDE.md` §Pharmacy Audit Verify)
 - ไม่เตือนผิดตัว: `noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ `frozen===live` ⇒ เงียบ
 - `exportStockAdjExcel()` นับ `skipZero`/`skipNoSku` แล้ว toast บอกด้วย — **เพิ่มเงื่อนไข `continue` ใหม่ที่ไหน ต้องนับเข้าตัวเตือนเสมอ**
