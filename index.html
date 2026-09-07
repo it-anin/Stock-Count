@@ -3406,7 +3406,9 @@ async function reEvaluateAuditItems(opts={}){
 
 const CLEAR_PIN = 'gut22190';
 async function startNewCount(){
-  const pin=prompt('🔒 บันทึกประวัติและเริ่มนับใหม่ กรุณาใส่รหัส PIN:');
+  // ข้อความเดิม "บันทึกประวัติและเริ่มนับใหม่" ชวนเข้าใจผิดว่ากดแล้วระบบเซฟให้ — ปุ่มนี้ "ไม่บันทึกอะไรเลย"
+  // ประวัติมีจริงแต่ถูกเขียนสะสมตอน Confirm แต่ละครั้ง (saveAuditLogToFirestore → stock_audit_log) ซึ่งรอดจากการล้าง
+  const pin=prompt('🔒 เริ่มนับใหม่ — ล้างยอดที่นับ, R01 และ LOT ที่แนบไว้ ของสาขานี้ทั้งหมด\n(ปุ่มนี้ไม่ได้สำรองอะไรให้ · ประวัติการ Confirm ใน Audit Log ยังอยู่)\n\nกรุณาใส่รหัส PIN:');
   if(pin===null)return;
   if(pin!==CLEAR_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
   if(currentBranch==='WH'&&(_branchConfirming||_isBranchConfirmLockActive())){toast('มีการ Confirm อยู่ — รอให้เสร็จก่อนเริ่มนับใหม่','warn',5000);return;}
@@ -3416,9 +3418,7 @@ async function startNewCount(){
     catch(e){toast(e.message==='BRANCH_CONFIRM_LOCKED'?'มี Desktop เครื่องอื่นกำลัง Confirm อยู่':'ล็อกสาขาเพื่อเริ่มนับใหม่ไม่สำเร็จ','warn',5000);return;}
   }
   try{
-  const _d=new Date();
-  const dateStr=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
-  const savedAt=`${dateStr} ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}`;
+  // (เดิมมี _d/dateStr/savedAt ค้างอยู่ตรงนี้ — เศษจากรุ่นที่เคยตั้งใจเซฟ snapshot ไม่มีใครใช้ ลบทิ้งแล้ว)
   clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
   resetScanRuntimeState();
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
