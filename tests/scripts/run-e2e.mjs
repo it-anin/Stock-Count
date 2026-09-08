@@ -65,10 +65,16 @@ for (const [port, what] of [[EMULATOR_PORT, 'Firestore emulator'], [HUB_PORT, 'e
 copyFileSync(join(testsDir, '..', 'firestore.rules'), join(testsDir, 'firestore.rules'));
 
 const env = { ...process.env };
-env.PATH = [join(testsDir, 'node_modules', '.bin'), dirname(process.execPath), env.PATH].join(delimiter);
+// Windows เก็บตัวแปรนี้เป็น `Path` (ไม่ใช่ `PATH`) — `process.env.PATH` อ่านได้เพราะ Node ทำ
+// case-insensitive ให้ แต่ spread ก้อบมาเป็น key ชื่อ `Path` ⇒ `env.PATH` กลายเป็น undefined
+// แล้ว join จะได้สตริงลงท้ายด้วยคำว่า 'undefined' + สร้าง key ที่สองซ้อนกัน ⇒ emulator spawn java ไม่เจอ
+// (อาการ: "Could not spawn `java -version`" ทั้งที่ java อยู่ใน PATH จริง)
+const PATH_KEY = Object.keys(env).find((k) => /^path$/i.test(k)) || 'PATH';
+env[PATH_KEY] = [join(testsDir, 'node_modules', '.bin'), dirname(process.execPath), env[PATH_KEY]]
+  .filter(Boolean).join(delimiter);
 const javaBin = javaBinDir();
 if (javaBin) {
-  env.PATH = javaBin + delimiter + env.PATH;
+  env[PATH_KEY] = javaBin + delimiter + env[PATH_KEY];
   env.JAVA_HOME = dirname(javaBin);
   console.log(`[run-e2e] using Java at ${javaBin} (not on PATH — open a new shell to pick it up permanently)`);
 } else if (spawnSync('java', ['-version']).error) {

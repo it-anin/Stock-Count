@@ -19,6 +19,10 @@ Auto R01.102 importer  ->  Firestore  (Stock Count)
     python auto_r01_import.py --dry-run  # ทดสอบ — แค่พิมพ์ยอดต่อ branch ไม่เขียน
     python auto_r01_import.py --force    # ข้าม guard "ไฟล์ไม่ใช่ของวันนี้" (ใช้ตอนทดสอบเท่านั้น)
 
+    python auto_r01_import.py --resync-nc         # งานครั้งเดียวหลังแก้กติกาหมวด: ดูอย่างเดียว (dry-run)
+    python auto_r01_import.py --resync-nc --yes    # เขียนธง nc ใหม่ลง data_json (ไม่แตะ version/baseline/r16)
+    python auto_r01_import.py --resync-nc --yes --branch SRC   # ทีละสาขา
+
 ตั้งเวลา 8:10 ทุกวันด้วย Windows Task Scheduler (ดู README.md)
 """
 
@@ -109,7 +113,11 @@ COL_CAT    = 15  # P  CF_ITEMGROUPL1_GROUPNAME
 # ⚠️ ก่อนเพิ่ม/ลดหมวด ให้รัน tools/list-r01-categories.js ดูค่าจริงในไฟล์ก่อนเสมอ
 #    (เคยมีโน้ตในเอกสารเขียนผิดว่าหมวด "11. อุปกรณ์สำนักงาน..." ไม่มีเลขนำหน้า เกือบทำให้แก้เกินจำเป็น)
 R01_NON_COUNT_PREFIXES = ("11.",)
-R01_NON_COUNT_KEYWORDS = ("DELETE",)
+# ⛔ ถอด "DELETE" ออก ก.ย. 2026 (ผู้ใช้ยืนยัน) — ห้ามเติมกลับ
+#    ของจริง 776 รายการหมวด DELETE ยังมียอดคงเหลือ (SRC 327 · KKL 220 · SSS 224 · WH 5) และมีบาร์โค้ดครบ
+#    = ของบนชั้นจริงที่ต้องเดินไปนับ · ตัวที่ยอดเป็น 0 ถูกกติกา G ≠ 0 ตัดออกเองอยู่แล้ว
+#    ธง nc ที่ค้างบน cloud จากรุ่นก่อนหน้า sync ให้ตรงกติกาใหม่ด้วย --resync-nc (ดู README §--resync-nc)
+R01_NON_COUNT_KEYWORDS = ()
 
 # field ทั้งหมดที่เขียน — ใช้เป็น updateMask ด้วย
 # ⚠️ ห้ามเขียนแบบไม่มี updateMask: PATCH จะ replace ทั้ง document แล้วลบ field ที่เว็บเขียนไว้ทิ้ง
@@ -313,11 +321,227 @@ def write_branch(branch, items, version_iso, uploaded_at, dry_run):
         return False
 
 
+# ============================================================
+#  --resync-nc : เขียนธง nc บน cloud ให้ตรงกติกาปัจจุบัน (งานครั้งเดียวหลังแก้กติกาหมวด)
+# ============================================================
+#
+# ทำไมต้องมี: ธง nc ถูกตัดสิน "ตอน parse" แล้วตรึงลง {branch}_r01.data_json
+# แก้ R01_NON_COUNT_* อย่างเดียวจึงไม่มีผลกับข้อมูลที่ค้างบน cloud จนกว่าบอทจะรันรอบถัดไป
+# โหมดนี้เขียนธงใหม่ให้ตรงกติกาโดย **ไม่แตะอะไรอย่างอื่นเลย**:
+#   เขียนเฉพาะ data_json · ไม่แตะ r01Version / r01BaselineAt / r01UploadedAt / r16* / updated_at
+#   ⇒ ไม่ trigger _applyR01BaselineUpdate() (ไม่ล้าง R16 · ไม่ freeze audit) · ไม่ invalidate R16 ของ WH
+#   ⇒ Confirm ที่กำลังรันอยู่ไม่ abort (_branchConfirmVersions เทียบแค่ r01Version/r16Version)
+#
+# ⚠️ เครื่องที่เปิดค้างอยู่จะยังไม่เห็นจนกว่าจะ reload — ไม่มี listener path ไหนโหลด data_json ใหม่
+#    ถ้า r01Version/r01BaselineAt ไม่ขยับ (index.html: _applyWhR01Doc, startWhMasterListeners)
+#    วิธีใช้จริง: รันโหมดนี้ก่อน แล้วค่อย deploy เว็บ — auto-refresh จะ reload ให้ทุกเครื่องเอง
+
+BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backup")
+
+
+def _rest_doc_url(doc_id, query=""):
+    return (f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}"
+            f"/databases/(default)/documents/stock_sessions/{doc_id}?{query}key={API_KEY}")
+
+
+def _rest_get_data_json(doc_id):
+    """อ่าน field data_json ของ doc เดียว — คืน None ถ้าไม่มี doc, '' ถ้ามี doc แต่ไม่มี field"""
+    url = _rest_doc_url(doc_id, "mask.fieldPaths=data_json&")
+    try:
+        with urllib.request.urlopen(url, timeout=120) as resp:
+            doc = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+    return ((doc.get("fields") or {}).get("data_json") or {}).get("stringValue", "")
+
+
+def _row_identity_diff(cloud_rows, items):
+    """guard ที่สำคัญที่สุดของโหมดนี้ — ยืนยันว่าไฟล์ที่ใช้คือ "ไฟล์เดียวกับที่บอทเขียนขึ้นไป"
+
+    เทียบทุก field ยกเว้น nc · ต่างแม้แถวเดียว = ยกเลิกสาขานั้นทั้งสาขา
+    ถ้าไม่มี guard นี้แล้วเผลอรันด้วยไฟล์คนละวัน systemQty จะถูกเขียนทับด้วยยอดคนละรอบ
+    ⛔ ห้ามเพิ่ม flag ให้ข้าม guard นี้เด็ดขาด
+    """
+    if len(cloud_rows) != len(items):
+        return f"จำนวนแถวต่างกัน — cloud {len(cloud_rows)} · ไฟล์ {len(items)}"
+    for i, (c, n) in enumerate(zip(cloud_rows, items)):
+        for f in ("colE", "productName", "systemQty"):
+            if c.get(f) != n.get(f):
+                return (f"แถวที่ {i + 1} field '{f}' ต่างกัน — cloud={c.get(f)!r} · ไฟล์={n.get(f)!r} "
+                        f"(SKU cloud={c.get('colE')!r} / ไฟล์={n.get('colE')!r})")
+    return None
+
+
+def _cat_skus_from_pm(branch):
+    """SKU ที่มี field cat ใน {branch}_pm = PBM Col D ∈ {A,B,C,REVIEW} (ตัวที่นับแม้ยอดเป็น 0)"""
+    raw = _rest_get_data_json(f"{branch}_pm")
+    if not raw:
+        return set(), False
+    try:
+        return {r.get("sku") for r in json.loads(raw) if r.get("cat")}, True
+    except Exception:
+        return set(), False
+
+
+def _countable_count(items, cat_skus):
+    """จำลอง _rebuildCountableSkus() ใน index.html เป๊ะ — ใช้ประเมิน Total SKU ก่อน/หลัง"""
+    non_count = {it.get("colE") for it in items if it.get("nc")}
+    qty = {}
+    for it in items:
+        qty[it.get("colE")] = it.get("systemQty", 0)   # last-wins เหมือน qtyMap.set()
+    return sum(1 for sku, q in qty.items()
+               if sku not in non_count and (q != 0 or sku in cat_skus))
+
+
+def _patch_data_json(doc_id, data_json):
+    body = {"fields": {"data_json": {"stringValue": data_json}}}
+    url = _rest_doc_url(doc_id, "updateMask.fieldPaths=data_json&")
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="PATCH",
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        resp.read()
+
+
+def resync_nc(branches, apply_writes, only_branch):
+    log("")
+    log("═══ โหมด --resync-nc : sync ธง nc บน cloud ให้ตรงกติกาปัจจุบัน ═══")
+    log(f"กติกาที่ใช้: prefixes={list(R01_NON_COUNT_PREFIXES)} · keywords={list(R01_NON_COUNT_KEYWORDS)}")
+    log("เขียนเฉพาะ data_json — ไม่แตะ r01Version / r01BaselineAt / r01UploadedAt / r16* / updated_at")
+    log("โหมด: ✍️ เขียนจริง" if apply_writes else "โหมด: 🔍 DRY-RUN (ใส่ --yes เพื่อเขียนจริง)")
+
+    targets = [only_branch] if only_branch else sorted(AUTO_BRANCHES)
+    ok = True
+    for branch in targets:
+        log("")
+        log(f"── {branch} ──")
+        items = branches.get(branch, [])
+        if not items:
+            log(f"  ❌ ไม่มีแถวของสาขานี้ในไฟล์ — ข้าม")
+            ok = False
+            continue
+
+        try:
+            cloud_raw = _rest_get_data_json(f"{branch}_r01")
+        except Exception as e:
+            log(f"  ❌ อ่าน {branch}_r01 ไม่ได้: {e}")
+            ok = False
+            continue
+        if cloud_raw is None:
+            log(f"  ❌ ไม่มี doc {branch}_r01 บน cloud (อาจมีคนกด 'เริ่มนับใหม่') — ข้าม")
+            ok = False
+            continue
+        if not cloud_raw:
+            log(f"  ❌ {branch}_r01 ไม่มี field data_json — ข้าม")
+            ok = False
+            continue
+
+        try:
+            cloud_rows = json.loads(cloud_raw)
+        except Exception as e:
+            log(f"  ❌ data_json เดิมอ่านไม่ได้: {e} — ข้าม")
+            ok = False
+            continue
+
+        diff = _row_identity_diff(cloud_rows, items)
+        if diff:
+            log(f"  ❌ ไฟล์ไม่ตรงกับที่อยู่บน cloud — {diff}")
+            log(f"     ต้องรันด้วยไฟล์ Allstock ชุดเดียวกับที่บอทเขียนขึ้นไปล่าสุดเท่านั้น (ยกเลิกสาขานี้)")
+            ok = False
+            continue
+
+        nc_before = sum(1 for r in cloud_rows if r.get("nc"))
+        nc_after = sum(1 for r in items if r.get("nc"))
+        cloud_nc_skus = {r.get("colE") for r in cloud_rows if r.get("nc")}
+        new_nc_skus = {r.get("colE") for r in items if r.get("nc")}
+        removed = cloud_nc_skus - new_nc_skus
+        added = new_nc_skus - cloud_nc_skus
+
+        new_raw = json.dumps(items, ensure_ascii=False)
+        kb_before = len(cloud_raw.encode("utf-8")) / 1024
+        kb_after = len(new_raw.encode("utf-8")) / 1024
+
+        cat_skus, has_pm = _cat_skus_from_pm(branch)
+        total_before = _countable_count(cloud_rows, cat_skus)
+        total_after = _countable_count(items, cat_skus)
+        removed_with_cat = len(removed & cat_skus)
+
+        log(f"  แถว {len(items)} · nc {nc_before} → {nc_after}  (ถอด {len(removed)} · เพิ่ม {len(added)})")
+        log(f"  ขนาด {kb_before:.0f} KB → {kb_after:.0f} KB")
+        if has_pm:
+            log(f"  Total SKU {total_before} → {total_after}  (+{total_after - total_before})")
+            log(f"  ในจำนวนที่ถอดธง มี cat ใน PBM {removed_with_cat} ตัว (ตัวที่จะนับแม้ยอดเป็น 0)")
+        else:
+            log(f"  ⚠️ ไม่มี {branch}_pm บน cloud — ประเมิน Total SKU ไม่ได้ (ตัวเลขนับเฉพาะกติกา G ≠ 0)")
+
+        if kb_after > MAX_DOC_KB:
+            log(f"  ❌ {kb_after:.0f} KB เกิน {MAX_DOC_KB} KB — ไม่เขียน")
+            ok = False
+            continue
+
+        if new_raw == cloud_raw:
+            log(f"  ✅ ตรงกติกาอยู่แล้ว ไม่ต้องเขียน")
+            continue
+
+        if not apply_writes:
+            log(f"  [DRY] จะเขียน data_json ใหม่ (ยังไม่เขียน)")
+            continue
+
+        try:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            bpath = os.path.join(BACKUP_DIR, f"{branch}_r01_data_json_{stamp}.json")
+            with open(bpath, "w", encoding="utf-8") as f:
+                f.write(cloud_raw)
+            log(f"  💾 สำรองของเดิมไว้ที่ {bpath}")
+        except Exception as e:
+            log(f"  ❌ สำรองไฟล์ไม่สำเร็จ ({e}) — ไม่เขียน cloud")
+            ok = False
+            continue
+
+        try:
+            _patch_data_json(f"{branch}_r01", new_raw)
+            log(f"  ✅ เขียน data_json ใหม่แล้ว")
+        except urllib.error.HTTPError as e:
+            log(f"  ❌ HTTP {e.code} — {e.read().decode('utf-8', 'replace')[:400]}")
+            ok = False
+        except Exception as e:
+            log(f"  ❌ {e}")
+            ok = False
+
+    log("")
+    if apply_writes and ok:
+        log("เสร็จสิ้น — ขั้นต่อไป: ตรวจบน Firebase Console ว่า r01Version / r01BaselineAt / r16Loaded เป็นค่าเดิม")
+        log("แล้วค่อย deploy เว็บ (auto-refresh จะ reload ให้ทุกเครื่องเอง ภายใน 15 นาที)")
+    elif not apply_writes:
+        log("DRY-RUN จบ — ยังไม่เขียนอะไรทั้งสิ้น · ใส่ --yes เมื่อตรวจตัวเลขแล้วพอใจ")
+    else:
+        log("เสร็จแบบมีข้อผิดพลาด (ดู log ด้านบน)")
+    sys.exit(0 if ok else 1)
+
+
 def main():
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
     force = "--force" in sys.argv
+    # --resync-nc = งานครั้งเดียวหลังแก้กติกาหมวด · dry-run เป็นค่าเริ่มต้น ต้องใส่ --yes ถึงจะเขียน
+    resync = "--resync-nc" in sys.argv
+    apply_writes = "--yes" in sys.argv
+    only_branch = None
+    for i, a in enumerate(sys.argv):
+        if a == "--branch" and i + 1 < len(sys.argv):
+            only_branch = sys.argv[i + 1].strip().upper()
+        elif a.startswith("--branch="):
+            only_branch = a.split("=", 1)[1].strip().upper()
+    if only_branch and not resync:
+        log("❌ --branch ใช้ได้เฉพาะกับ --resync-nc — ยกเลิก")
+        sys.exit(2)
+    if only_branch and only_branch not in AUTO_BRANCHES:
+        log(f"❌ --branch {only_branch} ไม่อยู่ใน AUTO_BRANCHES ({', '.join(sorted(AUTO_BRANCHES))}) — ยกเลิก")
+        sys.exit(2)
 
-    log(f"เริ่มงาน auto R01 import  (dry_run={dry_run}, force={force})")
+    mode = f", resync-nc (เขียนจริง={apply_writes})" if resync else ""
+    log(f"เริ่มงาน auto R01 import  (dry_run={dry_run}, force={force}{mode})")
     log(f"เครื่อง: {os.environ.get('COMPUTERNAME', '?')} · ผู้ใช้: {os.environ.get('USERNAME', '?')}")
     log(f"โฟลเดอร์: {WATCH_FOLDER}   [จาก {WATCH_FOLDER_SOURCE}]")
     log(f"branch ที่เปิดใช้: {', '.join(sorted(AUTO_BRANCHES))}")
@@ -374,6 +598,11 @@ def main():
 
     for branch in sorted(AUTO_BRANCHES):
         log(f"  · {branch}: {len(branches[branch])} รายการ (nc {stats['nc_counts'][branch]})")
+
+    # --resync-nc จบงานที่นี่ (sys.exit ในตัว) — ใช้ guard 1-3 ด้านบนร่วมกันทั้งหมด
+    # แต่ไม่แตะ metadata ใดๆ จึงไม่ต้องมี version_iso / uploaded_at
+    if resync:
+        resync_nc(branches, apply_writes, only_branch)
 
     # ใช้ค่าเดียวกันทุก branch ในรอบเดียว — อ่าน log ย้อนหลังแล้วจับคู่ได้ว่า doc ไหนมาจากรอบไหน
     version_iso = iso_utc_ms()

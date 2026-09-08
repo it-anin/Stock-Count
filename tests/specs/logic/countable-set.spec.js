@@ -1,5 +1,6 @@
-// "SKU ที่ต้องนับ" (_countableSkus) = มีแถวใน R01.102 · หมวด Col P ไม่ใช่ 11./DELETE
+// "SKU ที่ต้องนับ" (_countableSkus) = มีแถวใน R01.102 · หมวด Col P ไม่ขึ้นต้นด้วย 11.
 //                                     และ ( G ≠ 0  หรือ  Col D ใน PBM ∈ {A,B,C,REVIEW} )
+// (ก.ย. 2026: ถอดคำว่า DELETE ออกจากหมวดที่ตัดทิ้ง — ตัวตัดสินของหมวดนั้นกลับไปเป็นยอดคงเหลือตามปกติ)
 // ตัวเดียวที่อยู่เบื้องหลังทั้งการ์ด Total SKU และตัวเศษ/ตัวหารของ Progress
 //
 // กับดักที่เทสนี้ล็อกไว้:
@@ -136,20 +137,58 @@ test('_countableSkus — Col D REVIEW ได้สิทธิ์เต็มร
   await closeApp(app);
 });
 
-test('_isNonCountR01Category — เทียบเลขหมวดนำหน้า "11." และคำว่า DELETE', async ({ browser }) => {
+test('_isNonCountR01Category — ตัดด้วยเลขหมวดนำหน้า "11." เท่านั้น (ไม่มี keyword แล้ว)', async ({ browser }) => {
   const app = await bootBare(browser);
   const out = await app.page.evaluate(() => [
     _isNonCountR01Category('11. อุปกรณ์สำนักงาน / ค่าใช้จ่าย / ขนส่ง'),
     _isNonCountR01Category('  11.อุปกรณ์สำนักงาน  '),   // ช่องว่าง/วรรคตอนต่างกันก็ยังตัด
-    _isNonCountR01Category('12. DELETE'),
-    _isNonCountR01Category('delete'),                   // case-insensitive
+    _isNonCountR01Category('12. DELETE'),               // ก.ย. 2026: ถอด keyword DELETE ออกแล้ว
+    _isNonCountR01Category('delete'),
+    _isNonCountR01Category('12. DELETE ห้ามนับ'),        // ล็อกว่าไม่มี keyword matching หลงเหลืออยู่
     _isNonCountR01Category('1. ยา'),                    // หมวดปกติ
     _isNonCountR01Category('110. อะไรสักอย่าง'),         // ขึ้นต้น '11' แต่ไม่ใช่ '11.' → ต้องไม่ตัด
     _isNonCountR01Category(''),
     _isNonCountR01Category(null),
     _isNonCountR01Category(undefined),
   ]);
-  expect(out).toEqual([true, true, true, true, false, false, false, false, false]);
+  expect(out).toEqual([true, true, false, false, false, false, false, false, false, false]);
+  await closeApp(app);
+});
+
+// ก.ย. 2026: ของจริง 776 รายการหมวด DELETE ยังมียอดคงเหลือและมีบาร์โค้ดครบทุกตัว = ของบนชั้นที่ต้องเดินไปนับ
+// เทสนี้ตรึงทั้ง "กลับมานับแล้ว" และ "หมวด 11. ต้องยังถูกตัดอยู่" — ห้ามให้ข้อหลังหลุดไปพร้อมกัน
+test('_countableSkus — หมวด DELETE ตัดสินด้วยยอด ส่วนหมวด 11. ยังถูกตัดแม้มีของ', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await app.page.evaluate(() => { currentBranch = 'SRC'; });
+
+  // แถวที่มาจาก loadR01/บอทรุ่นใหม่: DELETE ไม่มีธง nc แล้ว · หมวด 11. ยังมี
+  const r01 = [
+    { colE: 'DEL-POS', productName: 'DELETE มีของ', systemQty: 4 },
+    { colE: 'DEL-NEG', productName: 'DELETE ค้างส่ง', systemQty: -2 },
+    { colE: 'DEL-ZERO', productName: 'DELETE ของหมด', systemQty: 0 },
+    { colE: 'OFFICE', productName: 'หมวด 11.', systemQty: 7, nc: 1 },
+  ];
+  // DELETE ของจริงไม่อยู่ใน PBM เลย — ใส่แค่ OFFICE ที่จัดชั้น A เพื่อพิสูจน์ว่าหมวด R01 ยังชนะ Col D
+  const pm = [{ sku: 'OFFICE', productName: 'หมวด 11.', unitPrice: 10, cat: 'A' }];
+
+  const out = await countableFrom(app.page, { r01, pm });
+  expect(out.countable).toEqual(['DEL-NEG', 'DEL-POS']);
+  expect(out.total).toBe(2);
+  expect(out.countable).not.toContain('DEL-ZERO');   // ยอด 0 + ไม่มี cat → กติกา G ≠ 0 ตัดออกเอง
+  expect(out.countable).not.toContain('OFFICE');     // ธง nc ยังชนะทุกอย่างเหมือนเดิม
+
+  // ของที่หลุดจากชุดต้องยังอยู่ในระบบครบ — สแกนได้ Confirm ได้ผลถูก
+  const info = await app.page.evaluate(() => ({
+    zeroInMap: state.skuMap.has('DEL-ZERO'),
+    officeSys: state.skuMap.get('OFFICE')?.systemQty,
+    negRaw: _rawSystemQty('DEL-NEG'),
+    negIsDel: state.skuMap.get('DEL-NEG')?.isDel,
+  }));
+  expect(info.zeroInMap).toBe(true);
+  expect(info.officeSys).toBe(7);
+  expect(info.negRaw).toBe(-2);        // ค่าดิบ ไม่ถูก clamp
+  expect(info.negIsDel).toBe(true);    // ไม่อยู่ใน PBM → DEL ตามกลไกเดิม
+
   await closeApp(app);
 });
 

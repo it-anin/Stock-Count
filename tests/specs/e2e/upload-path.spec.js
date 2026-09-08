@@ -58,6 +58,9 @@ test.describe('CSV upload path', () => {
       countableDel: _countableSkus.has('S-ONLYR01'),
       countableOffice: _countableSkus.has('S-OFFICE'),
       countableDelCat: _countableSkus.has('S-DELCAT'),
+      countableDelCatZero: _countableSkus.has('S-DELCAT0'),
+      countableDelCatNeg: _countableSkus.has('S-DELCATNEG'),
+      delCatNegIsDel: state.skuMap.get('S-DELCATNEG')?.isDel,
       officeSys: state.skuMap.get('S-OFFICE')?.systemQty,
       officeInR01: state.r01Data.some((r) => r.colE === 'S-OFFICE'),
       noCatSys: state.skuMap.get('S-NOCAT')?.systemQty,
@@ -100,9 +103,13 @@ test.describe('CSV upload path', () => {
     expect(parsed.countableCatP).toBe(true);         // Col D = P ถูกกรองออกจาก PBM แต่มีสต็อก → ยังนับ
     expect(parsed.countableDel).toBe(true);          // ไม่มีใน PBM แต่มีสต็อก → ยังนับ
     expect(parsed.countablePmOnly).toBe(false);      // จัดชั้น A แต่ไม่มีแถวใน R01 → ไม่นับ
-    // R01 คอลัมน์ P ชนะทั้งสองข้อเสมอ: หมวด "11. …" และ DELETE ไม่นับ แม้ Col D = A/C และมีสต็อก
-    expect(parsed.countableOffice).toBe(false);
-    expect(parsed.countableDelCat).toBe(false);
+    // R01 คอลัมน์ P ชนะทั้งสองข้อเสมอ — แต่เหลือหมวด "11. …" หมวดเดียวแล้ว
+    expect(parsed.countableOffice).toBe(false);      // Col D = A และมีสต็อก 7 ก็ยังไม่นับ
+    // หมวด DELETE กลับมานับตั้งแต่ ก.ย. 2026 — ตัวตัดสินคือยอด ไม่ใช่ชื่อหมวด
+    expect(parsed.countableDelCat).toBe(true);       // มีสต็อก → นับ
+    expect(parsed.countableDelCatZero).toBe(false);  // ยอด 0 + ไม่มีใน PBM → กติกา G ≠ 0 ตัดออกเอง
+    expect(parsed.countableDelCatNeg).toBe(true);    // ยอดติดลบ (ค้างส่งลูกค้า) → ต้องนับ
+    expect(parsed.delCatNegIsDel).toBe(true);        // ไม่อยู่ใน PBM → ยังติดแท็ก DEL ตามเดิม
     // ทุกตัวที่หลุดจาก Progress ต้องยังอยู่ในระบบครบ — สแกนได้ Confirm ได้ผลถูก
     expect(parsed.officeInR01).toBe(true);           // ไม่ได้ถูกข้ามตอน parse
     expect(parsed.officeSys).toBe(7);

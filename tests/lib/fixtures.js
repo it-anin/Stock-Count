@@ -24,10 +24,13 @@ const PM_SKIPPED_COL_D = ['D', 'P'];
 const PM_COUNT_COL_D = ['A', 'B', 'C', 'REVIEW'];
 const isForceCountColD = (colD) => PM_COUNT_COL_D.includes(String(colD ?? '').trim().toUpperCase());
 
-// R01 col P (index 15) = product category. Categories that are not stock-on-hand ("11. …" office
-// supplies / expenses / freight, and anything marked DELETE) stay fully usable but drop out of the
-// Total SKU / Progress set. `colP` is fixture-only: the app stores just an `nc` flag on the parsed row.
-const R01_NON_COUNT_COL_P = ['11. อุปกรณ์สำนักงาน / ค่าใช้จ่าย / ขนส่ง', '12. DELETE'];
+// R01 col P (index 15) = product category. Only "11. …" (office supplies / expenses / freight) is not
+// stock-on-hand: those rows stay fully usable but drop out of the Total SKU / Progress set.
+// DELETE was dropped from this list in ก.ย. 2026 — 776 real rows in that category still carry stock
+// (mostly positive, 29 negative) and every one of them has a barcode, so they are shelf items that
+// must be walked to. The zero-stock ones fall out through the G ≠ 0 clause on their own.
+// `colP` is fixture-only: the app stores just an `nc` flag on the parsed row.
+const R01_NON_COUNT_COL_P = ['11. อุปกรณ์สำนักงาน / ค่าใช้จ่าย / ขนส่ง'];
 const isNonCountColP = (colP) => R01_NON_COUNT_COL_P.includes(colP);
 
 // colD defaults to 'A' so ordinary fixtures stay countable; pass colD:'' for the "in PBM but
@@ -75,10 +78,15 @@ add({ sku: 'S-999',    name: 'Test Boundary 999',    price: 10,   sys: 3,  barco
 add({ sku: 'S-1000',   name: 'Test Boundary 1000',   price: 10,   sys: 3,  barcodes: [['B-1000', 'EA', 1, 1000]] });
 // DEL item (in R01, not in ProductMaster) — now allowed to take a qty when its barcode is cheap
 add({ sku: 'S-ONLYR01',name: 'Test R01 Only',        inPm: false, sys: 6,  barcodes: [['B-ONLYR01', 'EA', 1, 40]] });
-// R01 col P categories that must NOT count. Col D is 'A' on purpose: the R01 category has to win over
+// R01 col P category that must NOT count. Col D is 'A' on purpose: the R01 category has to win over
 // the PBM classification, otherwise office supplies would be pulled back into the count.
 add({ sku: 'S-OFFICE', name: 'Test Office Supply',   price: 15, sys: 7,  colD: 'A', colP: '11. อุปกรณ์สำนักงาน / ค่าใช้จ่าย / ขนส่ง', barcodes: [['B-OFFICE', 'EA', 1, 15]] });
+// DELETE category (ก.ย. 2026): no longer blocks anything — the stock clause decides, same as any other
+// category. Real DELETE rows are never in the PBM, so they land as DEL; the in-PBM variant is kept to
+// prove the R01 category is not consulted at all any more.
 add({ sku: 'S-DELCAT', name: 'Test Deleted Category',price: 15, sys: 9,  colD: 'C', colP: '12. DELETE', barcodes: [['B-DELCAT', 'EA', 1, 15]] });
+add({ sku: 'S-DELCAT0',  name: 'Test Deleted Empty',  price: 15, sys: 0,  inPm: false, colP: '12. DELETE', barcodes: [['B-DELCAT0', 'EA', 1, 15]] });
+add({ sku: 'S-DELCATNEG',name: 'Test Deleted Negative',price: 15, sys: -2, inPm: false, colP: '12. DELETE', barcodes: [['B-DELCATNEG', 'EA', 1, 15]] });
 for (let i = 1; i <= 9; i++) {
   add({ sku: `S-F0${i}`, name: `Test Filler ${i}`, price: 10, sys: i, barcodes: [[`B-F0${i}`, 'EA', 1, 10]] });
 }

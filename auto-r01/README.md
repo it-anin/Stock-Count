@@ -124,7 +124,35 @@ PATCH ที่ไม่มี `updateMask` = replace ทั้ง document → 
 
 ---
 
-## 🛡️ Guard 4 ชั้น
+## 🔧 `--resync-nc` — sync ธง `nc` บน cloud ให้ตรงกติกาหมวด (งานครั้งเดียว)
+
+ธง `nc` ถูกตัดสิน **ตอน parse** แล้วตรึงลง `data_json` ⇒ แก้ `R01_NON_COUNT_*` อย่างเดียว
+**ไม่มีผลกับข้อมูลที่ค้างบน cloud** จนกว่าบอทจะรันรอบถัดไป โหมดนี้เขียนธงใหม่ให้ทันทีโดยไม่รบกวนรอบนับ
+
+```powershell
+python auto_r01_import.py --resync-nc                    # dry-run (ค่าเริ่มต้น — ไม่เขียนอะไร)
+python auto_r01_import.py --resync-nc --yes              # เขียนจริง
+python auto_r01_import.py --resync-nc --yes --branch SRC # ทีละสาขา
+```
+
+**เขียนเฉพาะ `data_json` ด้วย `updateMask.fieldPaths=data_json`** — ไม่แตะ `r01Version`, `r01BaselineAt`,
+`r01UploadedAt`, `r16*`, `updated_at` ⇒ ไม่ trigger `_applyR01BaselineUpdate()` (R16 ไม่ถูกล้าง · audit ไม่ถูก freeze),
+ไม่ invalidate R16 ของ WH และ Confirm ที่กำลังรันอยู่ไม่ abort (`_branchConfirmVersions()` เทียบแค่ version)
+
+- **guard เทียบแถว (ชั้นที่ 5)** — เทียบ `data_json` เดิมกับที่ parse ได้ทุก field ยกเว้น `nc`
+  ต่างแม้แถวเดียว = **ยกเลิกสาขานั้น** ⇒ บังคับให้ใช้ไฟล์ Allstock ชุดเดียวกับที่บอทเขียนขึ้นไป
+  ⛔ **ห้ามเพิ่ม flag ให้ข้าม guard นี้** — ถ้าข้ามแล้วรันด้วยไฟล์คนละวัน `systemQty` จะถูกทับด้วยยอดคนละรอบ
+- สำรอง `data_json` เดิมลง `auto-r01/backup/{branch}_r01_data_json_{วันเวลา}.json` ก่อนเขียนทุกครั้ง
+- รายงาน `nc` ก่อน/หลัง, จำนวนที่ถอด/เพิ่ม, ขนาด KB และ **Total SKU ก่อน/หลัง** (อ่าน `{branch}_pm` มาคำนวณ)
+- idempotent — ถ้าธงตรงกติกาอยู่แล้วจะไม่เขียน · rollback = revert ค่าคงที่แล้วรันซ้ำ
+
+⚠️ **เครื่องที่เปิดค้างจะยังไม่เห็นจนกว่าจะ reload** (ไม่มี listener ไหนโหลด `data_json` ใหม่ถ้า version ไม่ขยับ)
+⇒ **รันโหมดนี้ก่อน แล้วค่อย deploy เว็บ** — auto-refresh จะ reload ให้ทุกเครื่องเองภายใน 15 นาที
+ถ้า deploy ก่อน ทุกเครื่องจะ reload ไปเจอธงเก่าแล้วต้องรอ reload รอบสอง
+
+---
+
+## 🛡️ Guard 5 ชั้น
 
 | guard | เงื่อนไข | ผล |
 |---|---|---|
@@ -132,6 +160,7 @@ PATCH ที่ไม่มี `updateMask` = replace ทั้ง document → 
 | Col D ใหม่ | `norm(Col D)` ไม่อยู่ใน `BRANCH_MAP` | **ยกเลิกทั้งงาน** exit 4 — POS เปลี่ยนชื่อคลัง/เพิ่มสาขา ต้องมีคนมาดูก่อน |
 | branch แถวน้อย | แถว < `MIN_ROWS_PER_BRANCH` | **ยกเลิกทั้งงาน** exit 4 (ตรวจครบทุก branch **ก่อน** เขียนตัวแรก) |
 | doc ใหญ่ | > `MAX_DOC_KB` | ข้าม **เฉพาะ branch นั้น** + exit 1 — branch อื่นยังได้ข้อมูลวันนี้ (ปัญหาการโต ไม่ใช่ไฟล์เพี้ยน) |
+| แถวไม่ตรง cloud (`--resync-nc` เท่านั้น) | `colE`/`productName`/`systemQty` หรือจำนวนแถวต่างจาก `data_json` เดิม | ข้าม **เฉพาะ branch นั้น** + exit 1 — ไฟล์คนละชุดกับที่บอทเขียนไว้ ⛔ ห้ามทำ flag ให้ข้าม |
 
 > guard "ไฟล์เก่า" สำคัญเป็นพิเศษเพราะ Task Scheduler ตั้ง `StartWhenAvailable` = รันชดเชยข้ามวันได้
 > ถ้าไม่มี guard นี้ การเปิดเครื่องวันถัดไปจะเขียนข้อมูลเก่าทับแล้วล้าง R16 ของทุกเครื่องฟรี

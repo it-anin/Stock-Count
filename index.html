@@ -2985,9 +2985,15 @@ function loadProductMaster(event) {
 // ─── R01 คอลัมน์ P (index 15) = หมวดสินค้า — หมวดที่ "ไม่ใช่สินค้าคงคลัง" ไม่ต้องนับ (ส.ค. 2026) ───
 // SKU เหล่านี้ยังอยู่ในระบบครบ: สแกนได้ · Confirm ได้ผลถูกต้อง · เห็นในรายการสินค้า
 // ตัดออกเฉพาะจาก `_countableSkus` → ไม่อยู่ใน Total SKU และไม่อยู่ใน Progress ทั้งตัวเศษและตัวหาร
-// เพิ่มหมวดใหม่ = เติมใน 2 array ด้านล่างที่เดียว
+// เพิ่มหมวดใหม่ = เติมใน 2 array ด้านล่าง แต่ต้องแก้ auto-r01/auto_r01_import.py + tools/list-r01-categories.js
+// พร้อมกันเสมอ (กติกาถูกทำซ้ำ 3 ที่) แล้วรัน tools/check-r01-parity.js ยืนยันว่า JS กับ Python ให้ผลตรงกัน
 const R01_NON_COUNT_PREFIXES=['11.'];      // '11. อุปกรณ์สำนักงาน / ค่าใช้จ่าย / ขนส่ง' — เทียบเฉพาะเลขหมวดนำหน้า
-const R01_NON_COUNT_KEYWORDS=['DELETE'];   // หมวดที่ถูกทำเครื่องหมายลบ — เทียบแบบ "มีคำนี้อยู่"
+// ⛔ ถอด 'DELETE' ออก ก.ย. 2026 (ผู้ใช้ยืนยัน) — ห้ามเติมกลับ
+//    ของจริง 776 รายการหมวด DELETE ยังมียอดคงเหลือ (SRC 327 · KKL 220 · SSS 224 · WH 5 · ในนั้นติดลบ 29)
+//    และมีบาร์โค้ดใน R05 ครบทุกตัว = ของที่อยู่บนชั้นจริงและต้องเดินไปนับ ไม่ใช่ของนอกคลัง
+//    ตัวที่ยอดเป็น 0 ถูกกติกา G ≠ 0 ตัดออกเองอยู่แล้ว จึงไม่ต้องพึ่ง keyword
+// ⚠️ เก็บเป็น array ว่าง ห้ามลบตัวแปรทิ้ง — tools/check-r01-parity.js ดึงบรรทัดนี้ด้วย regex ถ้าหายจะ exit 2
+const R01_NON_COUNT_KEYWORDS=[];
 function _isNonCountR01Category(colP){
   // เทียบด้วยเลขหมวดนำหน้า/คำสำคัญ ไม่เทียบข้อความเต็ม — ชื่อหมวดในไฟล์จริงมีช่องว่าง/วรรคตอนไม่คงที่
   const v=(colP??'').toString().trim().toUpperCase();
@@ -3016,7 +3022,7 @@ function loadR01(event) {
       // R16 ทุกชุดผูกกับ r01Version — อัป R01 ใหม่ต้องรออัป R16.104/103 ชุดเดียวกันก่อน Confirm
       _clearWhR16Kind('104');_clearWhR16Kind('103');_clearWhR16TimelineSnapshot();
     }
-    let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'')+(nc?` · ไม่นับ ${nc} (หมวดไม่ใช่สินค้า)`:'');
+    let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'')+(nc?` · ไม่นับ ${nc} (หมวด 11. ไม่ใช่สินค้าคงคลัง)`:'');
     if(_isPharmacyBranch())r01Msg+=' · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)';
     else if(currentBranch==='WH')r01Msg+=' · กรุณาอัปโหลด R16.104/103 ชุดใหม่ก่อน Confirm';
     toast(r01Msg,'success'); saveSession(); syncMasterToFirestore(false,true);

@@ -22,7 +22,8 @@ const fs = require('fs');
 
 // ต้องตรงกับ index.html และ auto_r01_import.py เป๊ะ
 const R01_NON_COUNT_PREFIXES = ['11.'];
-const R01_NON_COUNT_KEYWORDS = ['DELETE'];
+// ⛔ ถอด 'DELETE' ออก ก.ย. 2026 (ผู้ใช้ยืนยัน) — ห้ามเติมกลับ · เก็บ array ว่างไว้ให้ตรงกับอีก 2 ไฟล์
+const R01_NON_COUNT_KEYWORDS = [];
 const isNonCount = (colP) => {
   const v = (colP ?? '').toString().trim().toUpperCase();
   if (!v) return false;
