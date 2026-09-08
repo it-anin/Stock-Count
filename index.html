@@ -2982,33 +2982,45 @@ function loadProductMaster(event) {
   });
 }
 
-// ─── R01 คอลัมน์ P (index 15) = หมวดสินค้า — หมวดที่ "ไม่ใช่สินค้าคงคลัง" ไม่ต้องนับ (ส.ค. 2026) ───
+// ─── R01 คอลัมน์ P (index 15) = หมวดสินค้า → ตัดสินว่า "ต้องเดินไปนับไหม" (ส.ค. 2026 · แยกชนิด ก.ย. 2026) ───
 // SKU เหล่านี้ยังอยู่ในระบบครบ: สแกนได้ · Confirm ได้ผลถูกต้อง · เห็นในรายการสินค้า
-// ตัดออกเฉพาะจาก `_countableSkus` → ไม่อยู่ใน Total SKU และไม่อยู่ใน Progress ทั้งตัวเศษและตัวหาร
-// เพิ่มหมวดใหม่ = เติมใน 2 array ด้านล่าง แต่ต้องแก้ auto-r01/auto_r01_import.py + tools/list-r01-categories.js
-// พร้อมกันเสมอ (กติกาถูกทำซ้ำ 3 ที่) แล้วรัน tools/check-r01-parity.js ยืนยันว่า JS กับ Python ให้ผลตรงกัน
+// มีผลเฉพาะกับ `_countableSkus` → Total SKU และ Progress ทั้งตัวเศษและตัวหาร
+//
+// ธง `nc` มี 2 ชนิด — เก็บเป็นตัวเลข ไม่เก็บข้อความหมวด ({branch}_r01 มีเพดาน 1 MiB):
+//   nc:1 = ตัดเด็ดขาด          หมวด `11.` ไม่ใช่สินค้าคงคลัง · ยอดเท่าไรหรือจัดชั้นอะไรก็ไม่นับ
+//   nc:2 = นับเฉพาะเมื่อมีของ   หมวด `DELETE` · ต้องยอดไม่เท่ากับ 0 เท่านั้น · ชั้น A/B/C/REVIEW ดึงเข้าไม่ได้
+// เพิ่ม/ลดหมวดต้องแก้ auto-r01/auto_r01_import.py + tools/list-r01-categories.js พร้อมกันเสมอ
+// (กติกาถูกทำซ้ำ 3 ที่) แล้วรัน tools/check-r01-parity.js ยืนยันว่า JS กับ Python ให้ผลตรงกันทุกไบต์
 const R01_NON_COUNT_PREFIXES=['11.'];      // '11. อุปกรณ์สำนักงาน / ค่าใช้จ่าย / ขนส่ง' — เทียบเฉพาะเลขหมวดนำหน้า
-// ⛔ ถอด 'DELETE' ออก ก.ย. 2026 (ผู้ใช้ยืนยัน) — ห้ามเติมกลับ
-//    ของจริง 776 รายการหมวด DELETE ยังมียอดคงเหลือ (SRC 327 · KKL 220 · SSS 224 · WH 5 · ในนั้นติดลบ 29)
-//    และมีบาร์โค้ดใน R05 ครบทุกตัว = ของที่อยู่บนชั้นจริงและต้องเดินไปนับ ไม่ใช่ของนอกคลัง
-//    ตัวที่ยอดเป็น 0 ถูกกติกา G ≠ 0 ตัดออกเองอยู่แล้ว จึงไม่ต้องพึ่ง keyword
-// ⚠️ เก็บเป็น array ว่าง ห้ามลบตัวแปรทิ้ง — tools/check-r01-parity.js ดึงบรรทัดนี้ด้วย regex ถ้าหายจะ exit 2
+// ⚠️ ว่างโดยเจตนา ห้ามลบตัวแปรทิ้ง — tools/check-r01-parity.js ดึงบรรทัดนี้ด้วย regex ถ้าหายจะ exit 2
+//    'DELETE' ย้ายไป R01_STOCK_ONLY_KEYWORDS แล้ว (ก.ย. 2026) ห้ามเติมกลับมาที่นี่
 const R01_NON_COUNT_KEYWORDS=[];
+// ⛔ 'DELETE' = "นับเฉพาะเมื่อมีของ" ไม่ใช่ "ตัดทิ้ง" (ก.ย. 2026 · ผู้ใช้ยืนยัน) — ห้ามย้ายกลับไป NON_COUNT
+//    ของจริง 745 รายการหมวดนี้ยังมียอดคงเหลือ (ในนั้นติดลบ 29 = ค้างส่งลูกค้า) และมีบาร์โค้ดใน R05
+//    ครบทุกตัว = ของบนชั้นจริงที่ต้องเดินไปนับ · ส่วนอีก ~6,100 รายการที่ยอดเป็น 0 ต้องไม่โผล่เป็นงาน
+//    **แม้จะถูกจัดชั้น A/B/C/REVIEW ไว้ใน PBM ก็ตาม** — นั่นคือเหตุผลที่ต้องแยกเป็นธงคนละชนิด
+const R01_STOCK_ONLY_KEYWORDS=['DELETE'];
 function _isNonCountR01Category(colP){
   // เทียบด้วยเลขหมวดนำหน้า/คำสำคัญ ไม่เทียบข้อความเต็ม — ชื่อหมวดในไฟล์จริงมีช่องว่าง/วรรคตอนไม่คงที่
   const v=(colP??'').toString().trim().toUpperCase();
   if(!v)return false;
   return R01_NON_COUNT_PREFIXES.some(p=>v.startsWith(p))||R01_NON_COUNT_KEYWORDS.some(k=>v.includes(k));
 }
+// หมวดที่ "ต้องมีของถึงนับ" — ต่างจาก _isNonCountR01Category ตรงที่ยังนับได้ถ้ายอดไม่เท่ากับ 0
+function _isStockOnlyR01Category(colP){
+  const v=(colP??'').toString().trim().toUpperCase();
+  if(!v)return false;
+  return R01_STOCK_ONLY_KEYWORDS.some(k=>v.includes(k));
+}
 
 function loadR01(event) {
   const file=event.target.files[0]; if(!file)return;
   parseFile(file,rows=>{
-    state.r01Data=[]; let sk=0,nc=0;
-    // คอลัมน์ P (index 15) = หมวดสินค้า · หมวดที่ไม่ใช่สินค้าคงคลังจะติดธง `nc` ไว้ (ดู _isNonCountR01Category)
+    state.r01Data=[]; let sk=0,nc=0,so=0;
+    // คอลัมน์ P (index 15) = หมวดสินค้า · ติดธง `nc` ตามชนิด — 1 = ตัดเด็ดขาด · 2 = นับเฉพาะเมื่อมีของ
     // เก็บแค่ธง ไม่เก็บข้อความหมวด — r01Data ถูก JSON.stringify ลง {branch}_r01 ซึ่งมีเพดาน 1 MiB
     // (ข้อความหมวดภาษาไทย ~45 ตัวอักษร × 5,400 แถว ≈ 750 KB จะชนเพดานทันที)
-    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const e=(r[4]??'').toString().trim();const f=(r[5]??'').toString().trim();const g=(r[6]??'').toString().replace(/,|\s/g,'').trim();if(!e){sk++;continue;}if(g===''||!isFinite(+g)){sk++;continue;}const qty=+g;const nonCount=_isNonCountR01Category(r[15]);if(nonCount)nc++;state.r01Data.push({colE:e,productName:f,systemQty:qty,...(nonCount?{nc:1}:{})});}
+    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const e=(r[4]??'').toString().trim();const f=(r[5]??'').toString().trim();const g=(r[6]??'').toString().replace(/,|\s/g,'').trim();if(!e){sk++;continue;}if(g===''||!isFinite(+g)){sk++;continue;}const qty=+g;const nonCount=_isNonCountR01Category(r[15]);const stockOnly=!nonCount&&_isStockOnlyR01Category(r[15]);if(nonCount)nc++;else if(stockOnly)so++;state.r01Data.push({colE:e,productName:f,systemQty:qty,...(nonCount?{nc:1}:stockOnly?{nc:2}:{})});}
     document.getElementById('badgeR01').textContent='Ready';
     document.getElementById('fileR01').nextElementSibling.style.borderColor='var(--green)';
     const r01Now=new Date();state.r01Version=r01Now.toISOString();_setR01Ts(formatThaiDateTime(r01Now));
@@ -3022,7 +3034,7 @@ function loadR01(event) {
       // R16 ทุกชุดผูกกับ r01Version — อัป R01 ใหม่ต้องรออัป R16.104/103 ชุดเดียวกันก่อน Confirm
       _clearWhR16Kind('104');_clearWhR16Kind('103');_clearWhR16TimelineSnapshot();
     }
-    let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'')+(nc?` · ไม่นับ ${nc} (หมวด 11. ไม่ใช่สินค้าคงคลัง)`:'');
+    let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'')+(nc?` · ไม่นับ ${nc} (หมวด 11. ไม่ใช่สินค้าคงคลัง)`:'')+(so?` · หมวด DELETE ${so} (นับเฉพาะที่ยังมียอด)`:'');
     if(_isPharmacyBranch())r01Msg+=' · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)';
     else if(currentBranch==='WH')r01Msg+=' · กรุณาอัปโหลด R16.104/103 ชุดใหม่ก่อน Confirm';
     toast(r01Msg,'success'); saveSession(); syncMasterToFirestore(false,true);
@@ -3926,11 +3938,13 @@ window.addEventListener('DOMContentLoaded',async()=>{
 
 let _cachedActiveSkus=[];
 let _cachedTotalSku=0;
-// SKU ที่ "ต้องนับ" (ส.ค. 2026):
-//   มีแถวใน R01.102  และ  หมวด Col P ไม่ใช่ 11./DELETE  และ ( G ≠ 0  หรือ  Col D ใน PBM ∈ {A,B,C,REVIEW} )
+// SKU ที่ "ต้องนับ" (ส.ค. 2026 · แยกชนิดธง ก.ย. 2026):
+//   มีแถวใน R01.102  และ  ธง nc ไม่ใช่ 1  และ ( G ≠ 0  หรือ  ( ธง nc ไม่ใช่ 2 และ Col D ใน PBM ∈ {A,B,C,REVIEW} ) )
 //   - G ≠ 0              : ระบบบอกว่ามีของ → ต้องไปนับ (กติกาเดิม)
 //   - Col D A/B/C/REVIEW : สินค้าขายดี/รอตรวจสอบ → ต้องไปดูของบนชั้นจริง **แม้ระบบจะขึ้น 0** (เพิ่ม ส.ค. 2026)
-//   - หมวดใน R01 (ธง nc) ชนะทั้งสองข้อเสมอ
+//   - ธง nc:1 (หมวด 11.) ชนะทุกข้อเสมอ
+//   - ธง nc:2 (หมวด DELETE) ตัดสินด้วยยอดอย่างเดียว — **ชั้น A/B/C/REVIEW ดึงของที่ยอด 0 เข้าไม่ได้** (ก.ย. 2026)
+//     ของหมวดนี้ถูกมาร์คลบไปแล้ว ยอด 0 จึงแปลว่า "ไม่มีของและไม่ต้องมี" ต่างจากสินค้าขายดีที่ต้องไปดูชั้นทุกวัน
 // เงื่อนไข A/B/C มีแต่ "เพิ่ม" ไม่มีทางตัดออก → PBM ไฟล์เก่าที่ไม่มี field `cat` ให้ผลเท่ากติกาเดิมเป๊ะ
 // จึงไม่ต้องมี feature flag / fallback ใดๆ · ห้ามเปลี่ยน OR เป็น AND ไม่งั้นสาขาที่ยังไม่อัป PBM จะได้ Total SKU = 0
 // ตัวเศษกับตัวหารของ Progress ใช้ชุดนี้ชุดเดียว → ตัวเศษ ⊆ ตัวหารเสมอ เกิน 100% ไม่ได้
@@ -3944,16 +3958,22 @@ let _r01RawQty=new Map();
 // (rebuildMaps() ทั้งก้อนเรียกไม่ได้ตอน R05 ยังไม่มา เพราะมันเคลียร์ skuMap/barcodeMap แล้ว early-return)
 function _rebuildCountableSkus(){
   _countableSkus=new Set();
-  const nonCountSkus=new Set();const qtyMap=new Map();
-  // `nc` = หมวดใน R01 คอลัมน์ P ที่ไม่ใช่สินค้าคงคลัง (ติดธงตอน loadR01) — sticky: แถวไหนติดธง SKU นั้นไม่นับ
-  state.r01Data.forEach(r=>{qtyMap.set(r.colE,r.systemQty);if(r.nc)nonCountSkus.add(r.colE);});
+  const ncFlag=new Map();const qtyMap=new Map();
+  // `nc` = ชนิดหมวดใน R01 คอลัมน์ P (ติดธงตอน loadR01) — sticky: SKU ที่มีหลายแถวยึดธงที่เข้มที่สุด (1 ชนะ 2)
+  // อ่านแบบ truthy เหมือนเดิมโดยเจตนา — doc เก่าที่มีแต่ `nc:1` ต้องให้ผลเท่าเดิมเป๊ะ
+  state.r01Data.forEach(r=>{
+    qtyMap.set(r.colE,r.systemQty);
+    if(r.nc){const cur=ncFlag.get(r.colE);ncFlag.set(r.colE,cur?Math.min(cur,+r.nc):+r.nc);}
+  });
   _r01RawQty=qtyMap;   // เก็บ G ดิบไว้ให้ _rawSystemQty() — ห้ามอ่านจาก skuMap เพราะสาขายา clamp negSys เป็น 0
   // `cat` มีเฉพาะแถว A/B/C (loadProductMaster) — ไฟล์เก่าไม่มีเลย → set ว่าง → เงื่อนไขนี้ไม่ทำอะไร
   const abcSkus=new Set();
   state.productMasterData.forEach(r=>{if(r.cat)abcSkus.add(r.sku);});
   qtyMap.forEach((q,sku)=>{
-    if(nonCountSkus.has(sku))return;                    // หมวดใน R01 ชนะ Col D เสมอ
-    if(q!==0||abcSkus.has(sku))_countableSkus.add(sku);
+    const flag=ncFlag.get(sku)||0;
+    if(flag===1)return;                                          // หมวด 11. ตัดเด็ดขาด ชนะทุกเงื่อนไข
+    // flag===2 (หมวด DELETE) ตัดสินด้วยยอดอย่างเดียว — ชั้น A/B/C/REVIEW ดึงของที่ยอด 0 เข้าไม่ได้
+    if(q!==0||(flag!==2&&abcSkus.has(sku)))_countableSkus.add(sku);
   });
   _cachedTotalSku=_countableSkus.size;
 }

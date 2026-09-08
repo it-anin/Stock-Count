@@ -39,14 +39,17 @@ function grab(re, label) {
 const src = [
   grab(/const R01_NON_COUNT_PREFIXES=\[[^\]]*\];/, 'R01_NON_COUNT_PREFIXES'),
   grab(/const R01_NON_COUNT_KEYWORDS=\[[^\]]*\];/, 'R01_NON_COUNT_KEYWORDS'),
+  // ธง nc:2 "มีของถึงนับ" (ก.ย. 2026) — ต้องดึงมาด้วย ไม่งั้น parity ตรวจไม่ครบชนิดธง
+  grab(/const R01_STOCK_ONLY_KEYWORDS=\[[^\]]*\];/, 'R01_STOCK_ONLY_KEYWORDS'),
   grab(/function _isNonCountR01Category\(colP\)\{[\s\S]*?\n\}/, '_isNonCountR01Category'),
+  grab(/function _isStockOnlyR01Category\(colP\)\{[\s\S]*?\n\}/, '_isStockOnlyR01Category'),
 ].join('\n');
 const parseLoop = grab(
   /for\(let i=1;i<rows\.length;i\+\+\)\{const r=rows\[i\];[^\n]*state\.r01Data\.push\([^\n]*\}/,
   'ลูป parse ใน loadR01',
 );
-// state/sk/nc เป็นตัวแปรที่ลูปต้องใช้ — จำลองให้ครบเหมือนใน loadR01
-const runLoop = new Function('rows', `${src}\nconst state={r01Data:[]};let sk=0,nc=0;\n${parseLoop}\nreturn state.r01Data;`);
+// state/sk/nc/so เป็นตัวแปรที่ลูปต้องใช้ — จำลองให้ครบเหมือนใน loadR01
+const runLoop = new Function('rows', `${src}\nconst state={r01Data:[]};let sk=0,nc=0,so=0;\n${parseLoop}\nreturn state.r01Data;`);
 
 // ── อ่าน CSV ด้วย config เดียวกับ parseFile() ใน index.html ─────────────────
 function decode(buf) {

@@ -21,13 +21,21 @@
 const fs = require('fs');
 
 // ต้องตรงกับ index.html และ auto_r01_import.py เป๊ะ
+// ธง nc มี 2 ชนิด (ก.ย. 2026): nc:1 ตัดเด็ดขาด · nc:2 นับเฉพาะเมื่อยอดไม่เป็น 0
 const R01_NON_COUNT_PREFIXES = ['11.'];
-// ⛔ ถอด 'DELETE' ออก ก.ย. 2026 (ผู้ใช้ยืนยัน) — ห้ามเติมกลับ · เก็บ array ว่างไว้ให้ตรงกับอีก 2 ไฟล์
+// ⚠️ ว่างโดยเจตนา ห้ามลบตัวแปร — 'DELETE' ย้ายไป R01_STOCK_ONLY_KEYWORDS แล้ว ห้ามเติมกลับมาที่นี่
 const R01_NON_COUNT_KEYWORDS = [];
+// ⛔ 'DELETE' = "นับเฉพาะเมื่อมีของ" ไม่ใช่ "ตัดทิ้ง" — ชั้น A/B/C/REVIEW ดึงของที่ยอด 0 เข้าไม่ได้
+const R01_STOCK_ONLY_KEYWORDS = ['DELETE'];
 const isNonCount = (colP) => {
   const v = (colP ?? '').toString().trim().toUpperCase();
   if (!v) return false;
   return R01_NON_COUNT_PREFIXES.some((p) => v.startsWith(p)) || R01_NON_COUNT_KEYWORDS.some((k) => v.includes(k));
+};
+const isStockOnly = (colP) => {
+  const v = (colP ?? '').toString().trim().toUpperCase();
+  if (!v) return false;
+  return R01_STOCK_ONLY_KEYWORDS.some((k) => v.includes(k));
 };
 
 // index คอลัมน์ชุดเดียวกับ loadR01() / auto_r01_import.py
@@ -73,13 +81,20 @@ for (const r of rows.slice(1)) {   // ข้าม header เหมือน loa
 const list = [...cats.entries()].sort((a, b) => b[1].rows - a[1].rows);
 const total = list.reduce((s, [, e]) => s + e.rows, 0);
 const cut = list.filter(([c]) => isNonCount(c)).reduce((s, [, e]) => s + e.rows, 0);
+// หมวด "มีของถึงนับ": แถวที่ยอดเป็น 0 หลุดออกเองทั้งหมด จึงเหลือเข้าเกณฑ์เท่าจำนวน G≠0
+const stockOnlyRows = list.filter(([c]) => isStockOnly(c)).reduce((s, [, e]) => s + e.rows, 0);
+const stockOnlyKept = list.filter(([c]) => isStockOnly(c)).reduce((s, [, e]) => s + e.nonZero, 0);
 
 console.log(`ไฟล์   : ${file}`);
 console.log(`แถวที่ใช้ได้: ${total}   (ข้าม: ไม่มี SKU ${skipNoSku} · qty ไม่ใช่ตัวเลข ${skipQty})`);
-console.log(`หมวด   : ${list.length}   ตัดออก ${cut} แถว · เหลือเข้าเกณฑ์นับ ${total - cut} แถว\n`);
-console.log('        แถว    G≠0   หมวด');
+console.log(`หมวด   : ${list.length}   ตัดเด็ดขาด ${cut} แถว · มีของถึงนับ ${stockOnlyRows} แถว (เข้าเกณฑ์ ${stockOnlyKept})`);
+console.log(`         เหลือเข้าเกณฑ์นับ ${total - cut - (stockOnlyRows - stockOnlyKept)} แถว\n`);
+console.log('           แถว    G≠0   หมวด');
 for (const [cat, e] of list) {
-  const mark = isNonCount(cat) ? '✂️ ตัด ' : '   นับ ';
+  const mark = isNonCount(cat) ? '✂️ ตัดเด็ดขาด' : isStockOnly(cat) ? '📦 มีของถึงนับ' : '   นับ       ';
   console.log(`${mark} ${String(e.rows).padStart(6)} ${String(e.nonZero).padStart(6)}   ${cat === '' ? '(ว่าง)' : cat}`);
 }
-console.log('\nหมายเหตุ: "นับ" = ไม่โดนตัดด้วยหมวด — ยังต้องผ่านเงื่อนไข G ≠ 0 หรือ PBM Col D ∈ {A,B,C,REVIEW} อีกชั้น');
+console.log('\nหมายเหตุ:');
+console.log('  "นับ"          = ยังต้องผ่านเงื่อนไข G ≠ 0 หรือ PBM Col D ∈ {A,B,C,REVIEW} อีกชั้น');
+console.log('  "มีของถึงนับ"   = ต้อง G ≠ 0 อย่างเดียว (ธง nc:2) — ชั้น A/B/C/REVIEW ดึงของที่ยอด 0 เข้าไม่ได้');
+console.log('  "ตัดเด็ดขาด"    = ไม่นับเลยไม่ว่ากรณีใด (ธง nc:1)');

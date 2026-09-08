@@ -13,8 +13,9 @@ const { bootFreshCount, bootJoinCount, armR16, PROJECT_ID } = require('../../lib
 const { adminDb } = require('../../lib/emulator');
 const F = require('../../lib/fixtures');
 
-// รูปแบบธงเก่า (ก่อน ก.ย. 2026): หมวด DELETE ถูกติด nc:1 ไปด้วย
-const DELETE_SKUS = ['S-DELCAT', 'S-DELCAT0', 'S-DELCATNEG'];
+// รูปแบบธงเก่า (ก่อน ก.ย. 2026): หมวด DELETE ถูกติด nc:1 เหมือนหมวด 11. คือตัดทิ้งทั้งกลุ่ม
+// ปัจจุบันกลุ่มนี้ติด nc:2 ("มีของถึงนับ") — เทสนี้จำลองสภาพ cloud ก่อน resync แล้วดูว่า patch เปลี่ยนอะไร
+const DELETE_SKUS = ['S-DELCAT', 'S-DELCAT0', 'S-DELCATNEG', 'S-DELCAT-ABC0'];
 const legacyNcRows = F.r01CloudRows.map((r) => (DELETE_SKUS.includes(r.colE) ? { ...r, nc: 1 } : r));
 // ธงเก่าตัด DELETE ที่ยังมียอดออกไป 2 ตัว (S-DELCAT sys 9 · S-DELCATNEG sys -2)
 // ส่วน S-DELCAT0 (ยอด 0 ไม่มีใน PBM) ไม่เข้าชุดอยู่แล้วทั้งสองกติกา
@@ -77,13 +78,17 @@ test.describe('--resync-nc: patch data_json อย่างเดียว', () 
       delCat: _countableSkus.has('S-DELCAT'),
       delNeg: _countableSkus.has('S-DELCATNEG'),
       delZero: _countableSkus.has('S-DELCAT0'),
-      ncLeft: state.r01Data.filter((r) => r.nc).length,
+      delAbc0: _countableSkus.has('S-DELCAT-ABC0'),
+      nc1: state.r01Data.filter((r) => r.nc === 1).length,
+      nc2: state.r01Data.filter((r) => r.nc === 2).length,
     }));
     expect(after2.total).toBe(F.COUNTABLE_COUNT);
     expect(after2.delCat).toBe(true);        // DELETE ที่มียอด → กลับเข้าชุดที่ต้องนับ
     expect(after2.delNeg).toBe(true);        // ยอดติดลบ (ค้างส่งลูกค้า) ก็ต้องนับ
     expect(after2.delZero).toBe(false);      // ยอด 0 → กติกา G ≠ 0 ตัดออกเอง
-    expect(after2.ncLeft).toBe(1);           // เหลือ S-OFFICE (หมวด 11.) ตัวเดียว
+    expect(after2.delAbc0).toBe(false);      // ยอด 0 + จัดชั้น B → ธง nc:2 กันไม่ให้ชั้น B ดึงเข้า
+    expect(after2.nc1).toBe(1);              // เหลือ S-OFFICE (หมวด 11.) ตัวเดียวที่ตัดเด็ดขาด
+    expect(after2.nc2).toBe(DELETE_SKUS.length);   // หมวด DELETE ได้ธงชนิด "มีของถึงนับ" ครบทุกตัว
 
     // ── หัวใจของเทส: เครื่องแรกต้องไม่ขยับเลยแม้แต่ค่าเดียว ──
     const after1 = await app.page.evaluate(() => ({

@@ -112,12 +112,18 @@ COL_CAT    = 15  # P  CF_ITEMGROUPL1_GROUPNAME
 #   index.html · ไฟล์นี้ · tools/list-r01-categories.js (ตัวสำรวจหมวด อ่านอย่างเดียว)
 # ⚠️ ก่อนเพิ่ม/ลดหมวด ให้รัน tools/list-r01-categories.js ดูค่าจริงในไฟล์ก่อนเสมอ
 #    (เคยมีโน้ตในเอกสารเขียนผิดว่าหมวด "11. อุปกรณ์สำนักงาน..." ไม่มีเลขนำหน้า เกือบทำให้แก้เกินจำเป็น)
+#
+# ธง nc มี 2 ชนิด (ก.ย. 2026) — เก็บเป็นตัวเลข ไม่เก็บข้อความหมวด เพราะ {branch}_r01 มีเพดาน 1 MiB:
+#   nc=1  ตัดเด็ดขาด          หมวด "11." ไม่ใช่สินค้าคงคลัง · ยอดเท่าไรหรือจัดชั้นอะไรก็ไม่นับ
+#   nc=2  นับเฉพาะเมื่อมีของ   หมวด "DELETE" · ต้องยอดไม่เท่ากับ 0 · ชั้น A/B/C/REVIEW ดึงเข้าไม่ได้
 R01_NON_COUNT_PREFIXES = ("11.",)
-# ⛔ ถอด "DELETE" ออก ก.ย. 2026 (ผู้ใช้ยืนยัน) — ห้ามเติมกลับ
-#    ของจริง 776 รายการหมวด DELETE ยังมียอดคงเหลือ (SRC 327 · KKL 220 · SSS 224 · WH 5) และมีบาร์โค้ดครบ
-#    = ของบนชั้นจริงที่ต้องเดินไปนับ · ตัวที่ยอดเป็น 0 ถูกกติกา G ≠ 0 ตัดออกเองอยู่แล้ว
-#    ธง nc ที่ค้างบน cloud จากรุ่นก่อนหน้า sync ให้ตรงกติกาใหม่ด้วย --resync-nc (ดู README §--resync-nc)
+# ⚠️ ว่างโดยเจตนา ห้ามลบตัวแปร — "DELETE" ย้ายไป R01_STOCK_ONLY_KEYWORDS แล้ว ห้ามเติมกลับมาที่นี่
 R01_NON_COUNT_KEYWORDS = ()
+# ⛔ "DELETE" = "นับเฉพาะเมื่อมีของ" ไม่ใช่ "ตัดทิ้ง" (ก.ย. 2026 · ผู้ใช้ยืนยัน)
+#    ของจริง 745 รายการหมวดนี้ยังมียอดคงเหลือและมีบาร์โค้ดใน R05 ครบทุกตัว = ของบนชั้นที่ต้องเดินไปนับ
+#    ส่วนที่ยอดเป็น 0 (~6,100 รายการ) ต้องไม่โผล่เป็นงาน **แม้จะถูกจัดชั้น A/B/C/REVIEW ไว้ใน PBM ก็ตาม**
+#    ธง nc ที่ค้างบน cloud จากรุ่นก่อนหน้า sync ให้ตรงกติกาปัจจุบันด้วย --resync-nc (ดู README §--resync-nc)
+R01_STOCK_ONLY_KEYWORDS = ("DELETE",)
 
 # field ทั้งหมดที่เขียน — ใช้เป็น updateMask ด้วย
 # ⚠️ ห้ามเขียนแบบไม่มี updateMask: PATCH จะ replace ทั้ง document แล้วลบ field ที่เว็บเขียนไว้ทิ้ง
@@ -198,6 +204,14 @@ def is_non_count_category(col_p):
     return v.startswith(R01_NON_COUNT_PREFIXES) or any(k in v for k in R01_NON_COUNT_KEYWORDS)
 
 
+def is_stock_only_category(col_p):
+    """ตรงกับ _isStockOnlyR01Category() ใน index.html — หมวดที่ "ต้องมีของถึงนับ" """
+    v = str(col_p or "").strip().upper()
+    if not v:
+        return False
+    return any(k in v for k in R01_STOCK_ONLY_KEYWORDS)
+
+
 def parse_file(path):
     with open(path, "rb") as f:
         raw = f.read()
@@ -207,6 +221,7 @@ def parse_file(path):
 
     branches = defaultdict(list)
     nc_counts = defaultdict(int)
+    so_counts = defaultdict(int)
     skipped_no_sku = 0
     skipped_qty = 0
     unknown_branch = defaultdict(int)
@@ -233,13 +248,19 @@ def parse_file(path):
             continue
 
         item = {"colE": sku, "productName": str(r[COL_NAME]).strip(), "systemQty": qty}
-        if is_non_count_category(r[COL_CAT] if len(r) > COL_CAT else ""):
+        col_p = r[COL_CAT] if len(r) > COL_CAT else ""
+        # ลำดับเช็คต้องเหมือน index.html: ตัดเด็ดขาดมาก่อน แล้วค่อย "ต้องมีของถึงนับ"
+        if is_non_count_category(col_p):
             item["nc"] = 1
             nc_counts[branch] += 1
+        elif is_stock_only_category(col_p):
+            item["nc"] = 2
+            so_counts[branch] += 1
         branches[branch].append(item)
 
     return branches, {
         "nc_counts": nc_counts,
+        "so_counts": so_counts,
         "skipped_no_sku": skipped_no_sku,
         "skipped_qty": skipped_qty,
         "unknown_branch": dict(unknown_branch),
@@ -289,7 +310,7 @@ def build_payload(items, version_iso, uploaded_at):
 def write_branch(branch, items, version_iso, uploaded_at, dry_run):
     data_json, body = build_payload(items, version_iso, uploaded_at)
     size_kb = len(data_json.encode("utf-8")) / 1024
-    nc = sum(1 for x in items if x.get("nc"))
+    nc = "1:%d 2:%d" % (sum(1 for x in items if x.get("nc") == 1), sum(1 for x in items if x.get("nc") == 2))
 
     if size_kb > MAX_DOC_KB:
         log(f"  ❌ {branch}_r01: {size_kb:.0f} KB เกิน {MAX_DOC_KB} KB (เพดาน Firestore 1 MiB) — ไม่เขียน")
@@ -385,14 +406,34 @@ def _cat_skus_from_pm(branch):
         return set(), False
 
 
+def _nc_flags(items):
+    """SKU -> ชนิดธงที่เข้มที่สุด (1 ชนะ 2) — sticky เหมือน _rebuildCountableSkus() ใน index.html"""
+    flags = {}
+    for it in items:
+        if it.get("nc"):
+            sku = it.get("colE")
+            cur = flags.get(sku)
+            flags[sku] = min(cur, int(it["nc"])) if cur else int(it["nc"])
+    return flags
+
+
 def _countable_count(items, cat_skus):
-    """จำลอง _rebuildCountableSkus() ใน index.html เป๊ะ — ใช้ประเมิน Total SKU ก่อน/หลัง"""
-    non_count = {it.get("colE") for it in items if it.get("nc")}
+    """จำลอง _rebuildCountableSkus() ใน index.html เป๊ะ — ใช้ประเมิน Total SKU ก่อน/หลัง
+
+    nc=1 ตัดเด็ดขาด · nc=2 ตัดสินด้วยยอดอย่างเดียว (ชั้น A/B/C/REVIEW ดึงของยอด 0 เข้าไม่ได้)
+    """
+    flags = _nc_flags(items)
     qty = {}
     for it in items:
         qty[it.get("colE")] = it.get("systemQty", 0)   # last-wins เหมือน qtyMap.set()
-    return sum(1 for sku, q in qty.items()
-               if sku not in non_count and (q != 0 or sku in cat_skus))
+    n = 0
+    for sku, q in qty.items():
+        flag = flags.get(sku, 0)
+        if flag == 1:
+            continue
+        if q != 0 or (flag != 2 and sku in cat_skus):
+            n += 1
+    return n
 
 
 def _patch_data_json(doc_id, data_json):
@@ -407,7 +448,8 @@ def _patch_data_json(doc_id, data_json):
 def resync_nc(branches, apply_writes, only_branch):
     log("")
     log("═══ โหมด --resync-nc : sync ธง nc บน cloud ให้ตรงกติกาปัจจุบัน ═══")
-    log(f"กติกาที่ใช้: prefixes={list(R01_NON_COUNT_PREFIXES)} · keywords={list(R01_NON_COUNT_KEYWORDS)}")
+    log(f"กติกาที่ใช้: nc:1 prefixes={list(R01_NON_COUNT_PREFIXES)} keywords={list(R01_NON_COUNT_KEYWORDS)} "
+        f"· nc:2 keywords={list(R01_STOCK_ONLY_KEYWORDS)}")
     log("เขียนเฉพาะ data_json — ไม่แตะ r01Version / r01BaselineAt / r01UploadedAt / r16* / updated_at")
     log("โหมด: ✍️ เขียนจริง" if apply_writes else "โหมด: 🔍 DRY-RUN (ใส่ --yes เพื่อเขียนจริง)")
 
@@ -451,12 +493,11 @@ def resync_nc(branches, apply_writes, only_branch):
             ok = False
             continue
 
-        nc_before = sum(1 for r in cloud_rows if r.get("nc"))
-        nc_after = sum(1 for r in items if r.get("nc"))
-        cloud_nc_skus = {r.get("colE") for r in cloud_rows if r.get("nc")}
-        new_nc_skus = {r.get("colE") for r in items if r.get("nc")}
-        removed = cloud_nc_skus - new_nc_skus
-        added = new_nc_skus - cloud_nc_skus
+        flags_before = _nc_flags(cloud_rows)
+        flags_after = _nc_flags(items)
+        count_flag = lambda flags, want: sum(1 for v in flags.values() if v == want)
+        changed = {s for s in set(flags_before) | set(flags_after)
+                   if flags_before.get(s, 0) != flags_after.get(s, 0)}
 
         new_raw = json.dumps(items, ensure_ascii=False)
         kb_before = len(cloud_raw.encode("utf-8")) / 1024
@@ -465,13 +506,17 @@ def resync_nc(branches, apply_writes, only_branch):
         cat_skus, has_pm = _cat_skus_from_pm(branch)
         total_before = _countable_count(cloud_rows, cat_skus)
         total_after = _countable_count(items, cat_skus)
-        removed_with_cat = len(removed & cat_skus)
+        # หมวด DELETE ที่ยังถูกจัดชั้น A/B/C/REVIEW ไว้ใน PBM = เคสที่ธง nc:2 มีไว้กันโดยเฉพาะ
+        stock_only_with_cat = len({s for s, v in flags_after.items() if v == 2} & cat_skus)
 
-        log(f"  แถว {len(items)} · nc {nc_before} → {nc_after}  (ถอด {len(removed)} · เพิ่ม {len(added)})")
+        log(f"  แถว {len(items)} · ธงเปลี่ยน {len(changed)} SKU")
+        log(f"    nc:1 ตัดเด็ดขาด (หมวด 11.)    {count_flag(flags_before, 1)} → {count_flag(flags_after, 1)}")
+        log(f"    nc:2 นับเฉพาะมีของ (DELETE)   {count_flag(flags_before, 2)} → {count_flag(flags_after, 2)}")
         log(f"  ขนาด {kb_before:.0f} KB → {kb_after:.0f} KB")
         if has_pm:
-            log(f"  Total SKU {total_before} → {total_after}  (+{total_after - total_before})")
-            log(f"  ในจำนวนที่ถอดธง มี cat ใน PBM {removed_with_cat} ตัว (ตัวที่จะนับแม้ยอดเป็น 0)")
+            log(f"  Total SKU {total_before} → {total_after}  ({total_after - total_before:+d})")
+            log(f"  หมวด DELETE ที่จัดชั้น A/B/C/REVIEW ไว้ด้วย {stock_only_with_cat} ตัว "
+                f"(กลุ่มนี้ยอด 0 จะไม่ถูกนับ — เป็นเหตุผลของธง nc:2)")
         else:
             log(f"  ⚠️ ไม่มี {branch}_pm บน cloud — ประเมิน Total SKU ไม่ได้ (ตัวเลขนับเฉพาะกติกา G ≠ 0)")
 
@@ -597,7 +642,8 @@ def main():
         sys.exit(4)
 
     for branch in sorted(AUTO_BRANCHES):
-        log(f"  · {branch}: {len(branches[branch])} รายการ (nc {stats['nc_counts'][branch]})")
+        log(f"  · {branch}: {len(branches[branch])} รายการ "
+            f"(nc:1 ตัดเด็ดขาด {stats['nc_counts'][branch]} · nc:2 มีของถึงนับ {stats['so_counts'][branch]})")
 
     # --resync-nc จบงานที่นี่ (sys.exit ในตัว) — ใช้ guard 1-3 ด้านบนร่วมกันทั้งหมด
     # แต่ไม่แตะ metadata ใดๆ จึงไม่ต้องมี version_iso / uploaded_at

@@ -121,7 +121,7 @@ PATCH ที่ไม่มี `updateMask` = replace ทั้ง document → 
 
 | field | ค่า | ใครใช้ |
 |---|---|---|
-| `data_json` | `[{colE,productName,systemQty[,nc]}]` ของ branch นั้น | `restoreMasterFromFirestore()`, `_applyWhR01Doc()` |
+| `data_json` | `[{colE,productName,systemQty[,nc]}]` ของ branch นั้น · `nc:1` = ตัดเด็ดขาด (หมวด `11.`) · `nc:2` = นับเฉพาะเมื่อมีของ (หมวด `DELETE`) | `restoreMasterFromFirestore()`, `_applyWhR01Doc()` |
 | `r01UploadedAt` | `HH:MM น. DD/MM/YYYY` | ป้ายเวลาใต้ปุ่ม R01 |
 | `r01Version` | ISO UTC มิลลิวินาที (เช่น `2026-08-26T01:10:00.123Z`) | `_branchConfirmVersions()` ตรวจก่อน Confirm · `_applyWhR01Doc()` ใช้ตัดสินว่าจะ adopt ไหม |
 | `r01BaselineAt` | **ค่าเดียวกับ `r01Version`** | trigger ให้ listener ของสาขายาเรียก `_applyR01BaselineUpdate()` |
@@ -145,8 +145,11 @@ PATCH ที่ไม่มี `updateMask` = replace ทั้ง document → 
 
 ## 🔧 `--resync-nc` — sync ธง `nc` บน cloud ให้ตรงกติกาหมวด (งานครั้งเดียว)
 
-ธง `nc` ถูกตัดสิน **ตอน parse** แล้วตรึงลง `data_json` ⇒ แก้ `R01_NON_COUNT_*` อย่างเดียว
+ธง `nc` ถูกตัดสิน **ตอน parse** แล้วตรึงลง `data_json` ⇒ แก้ `R01_NON_COUNT_*` / `R01_STOCK_ONLY_*` อย่างเดียว
 **ไม่มีผลกับข้อมูลที่ค้างบน cloud** จนกว่าบอทจะรันรอบถัดไป โหมดนี้เขียนธงใหม่ให้ทันทีโดยไม่รบกวนรอบนับ
+
+รายงานจะแยกให้เห็นทั้ง 2 ชนิด (`nc:1` ตัดเด็ดขาด · `nc:2` มีของถึงนับ) และบอกจำนวน SKU ที่ธงเปลี่ยน
+พร้อมบรรทัด "หมวด DELETE ที่จัดชั้น A/B/C/REVIEW ไว้ด้วย" ซึ่งเป็นเคสที่ธง `nc:2` มีไว้กันโดยเฉพาะ
 
 ```powershell
 python auto_r01_import.py --resync-nc                    # dry-run (ค่าเริ่มต้น — ไม่เขียนอะไร)

@@ -60,7 +60,12 @@ test.describe('CSV upload path', () => {
       countableDelCat: _countableSkus.has('S-DELCAT'),
       countableDelCatZero: _countableSkus.has('S-DELCAT0'),
       countableDelCatNeg: _countableSkus.has('S-DELCATNEG'),
+      countableDelCatAbc0: _countableSkus.has('S-DELCAT-ABC0'),
       delCatNegIsDel: state.skuMap.get('S-DELCATNEG')?.isDel,
+      delCatAbc0InPm: state.productMasterMap.has('S-DELCAT-ABC0'),
+      ncFlagOffice: state.r01Data.find((r) => r.colE === 'S-OFFICE')?.nc,
+      ncFlagDelCat: state.r01Data.find((r) => r.colE === 'S-DELCAT')?.nc,
+      ncFlagNormal: state.r01Data.find((r) => r.colE === 'S-NORM')?.nc,
       officeSys: state.skuMap.get('S-OFFICE')?.systemQty,
       officeInR01: state.r01Data.some((r) => r.colE === 'S-OFFICE'),
       noCatSys: state.skuMap.get('S-NOCAT')?.systemQty,
@@ -103,12 +108,19 @@ test.describe('CSV upload path', () => {
     expect(parsed.countableCatP).toBe(true);         // Col D = P ถูกกรองออกจาก PBM แต่มีสต็อก → ยังนับ
     expect(parsed.countableDel).toBe(true);          // ไม่มีใน PBM แต่มีสต็อก → ยังนับ
     expect(parsed.countablePmOnly).toBe(false);      // จัดชั้น A แต่ไม่มีแถวใน R01 → ไม่นับ
-    // R01 คอลัมน์ P ชนะทั้งสองข้อเสมอ — แต่เหลือหมวด "11. …" หมวดเดียวแล้ว
-    expect(parsed.countableOffice).toBe(false);      // Col D = A และมีสต็อก 7 ก็ยังไม่นับ
-    // หมวด DELETE กลับมานับตั้งแต่ ก.ย. 2026 — ตัวตัดสินคือยอด ไม่ใช่ชื่อหมวด
+    // ธง nc แยก 2 ชนิดตอน parse (ก.ย. 2026) — คอลัมน์ P ถูกยุบเหลือแค่ตัวเลขนี้ก่อนขึ้น cloud
+    expect(parsed.ncFlagOffice).toBe(1);             // หมวด 11. → ตัดเด็ดขาด
+    expect(parsed.ncFlagDelCat).toBe(2);             // หมวด DELETE → มีของถึงนับ
+    expect(parsed.ncFlagNormal).toBeUndefined();     // หมวดปกติไม่มีธงเลย (ประหยัดพื้นที่ doc)
+
+    expect(parsed.countableOffice).toBe(false);      // nc:1 — Col D = A และมีสต็อก 7 ก็ยังไม่นับ
+    // nc:2 ตัดสินด้วยยอดอย่างเดียว
     expect(parsed.countableDelCat).toBe(true);       // มีสต็อก → นับ
-    expect(parsed.countableDelCatZero).toBe(false);  // ยอด 0 + ไม่มีใน PBM → กติกา G ≠ 0 ตัดออกเอง
+    expect(parsed.countableDelCatZero).toBe(false);  // ยอด 0 + ไม่มีใน PBM → ไม่นับ
     expect(parsed.countableDelCatNeg).toBe(true);    // ยอดติดลบ (ค้างส่งลูกค้า) → ต้องนับ
+    expect(parsed.countableDelCatAbc0).toBe(false);  // ★ DELETE + จัดชั้น B + ยอด 0 → ชั้น B ดึงเข้าไม่ได้
+    expect(parsed.countableAbcZero).toBe(true);      // ★ คู่เทียบ: หมวดปกติ จัดชั้น B ยอด 0 ยังนับ
+    expect(parsed.delCatAbc0InPm).toBe(true);        // อยู่ใน catalog ปกติ ตัดเฉพาะจาก Progress
     expect(parsed.delCatNegIsDel).toBe(true);        // ไม่อยู่ใน PBM → ยังติดแท็ก DEL ตามเดิม
     // ทุกตัวที่หลุดจาก Progress ต้องยังอยู่ในระบบครบ — สแกนได้ Confirm ได้ผลถูก
     expect(parsed.officeInR01).toBe(true);           // ไม่ได้ถูกข้ามตอน parse
