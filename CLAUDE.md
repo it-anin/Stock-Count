@@ -16,7 +16,7 @@ No build system. No framework.
 | Firebase | **แผน Blaze** (ไม่มี hard-stop แล้ว) | Console → Billing |
 | `firestore.rules` | Publish รุ่น `confirm_ops` แล้ว | snippet ในหัวไฟล์ `firestore.rules` |
 | composite index `countResetAt`+`status` | มีแล้ว | snippet ใน §Automated Tests |
-| auto-r01 | **รันจริงทุกเช้า ~09:36 ครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
+| auto-r01 | **รันจริงทุกเช้า ~09:36 ครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
 | ยังไม่ได้ทำ | Budget Alert · ย้าย Confirm ไป Cloud Function (Stage 2) | — |
 
 ---

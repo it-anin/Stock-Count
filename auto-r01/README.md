@@ -59,6 +59,25 @@ MAX_DOC_KB          = 950                      # เพดาน Firestore 1 MiB
 วางที่ไหนก็ได้ เช่น `C:\Users\AninMainPC\Desktop\auto-r01\`
 (ถ้าเครื่องนั้นมี repo อยู่แล้วให้ `git pull` แทน จะได้อัปเดตตามได้)
 
+> ⚠️ **`BIGYAMAINPC` (เครื่องที่รันจริงทุกเช้า) ไม่ใช่ git clone — เป็นไฟล์ที่ก๊อปไปวางเฉยๆ** (ยืนยัน ก.ย. 2026)
+> ⇒ **แก้สคริปต์ใน repo แล้วเครื่องนั้นไม่ได้ตามเอง ต้องเอาไปวางเองทุกครั้ง** · `git pull` ที่นั่นไม่มีผล
+> เคยเกือบทำให้รันสคริปต์เวอร์ชันเก่าด้วย flag ใหม่มาแล้ว ซึ่งอันตรายเพราะ**สคริปต์ไม่ตรวจ flag แปลกปลอม**
+> (อ่านด้วย `"--resync-nc" in sys.argv` เฉยๆ) ⇒ ตัวเก่าจะเมิน flag แล้วเดินเข้าโหมดปกติซึ่ง**เขียนจริงทันที**
+>
+> **ตรวจก่อนรันเสมอ** ว่าไฟล์บนเครื่องนั้นเป็นเวอร์ชันที่ต้องการจริง:
+> ```powershell
+> Select-String -Path auto_r01_import.py -Pattern "def resync_nc" -Quiet   # ต้องได้ True
+> ```
+> **วิธีอัปเดตไฟล์เดียว** (repo เป็น public จึงดึงตรงได้ ไม่ต้อง login):
+> ```powershell
+> Copy-Item auto_r01_import.py auto_r01_import.py.bak -Force
+> [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+> Invoke-WebRequest -UseBasicParsing -OutFile auto_r01_import.py `
+>   -Uri "https://raw.githubusercontent.com/it-anin/Stock-Count/main/auto-r01/auto_r01_import.py"
+> ```
+> ไฟล์จาก GitHub เป็น LF ส่วนสำเนาในเครื่องพัฒนาเป็น CRLF — **hash จึงต่างกันโดยปกติ** ให้เทียบกับ
+> `git show main:auto-r01/auto_r01_import.py | sha256sum` ไม่ใช่กับไฟล์ในโฟลเดอร์ · Python รันได้ทั้งสองแบบ
+
 **2. ตรวจว่ามี Python** — `.bat` หาให้เองจาก `C:\Program Files\Python311/312/313`, `PATH` แล้ว `py` launcher
 ถ้าไม่มีจะเขียน `ERROR: Python not found` ลง log แล้วออกด้วย exit 9
 ติดตั้งจาก <https://www.python.org/downloads/> แล้ว **ติ๊ก "Add python.exe to PATH"** · ไม่ต้องลง pip อะไรเพิ่ม
