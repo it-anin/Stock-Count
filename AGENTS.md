@@ -38,6 +38,15 @@
   - ปิดฉุกเฉิน: `Disable-ScheduledTask -TaskName "AutoR01Import"` → รายละเอียดใน `auto-r01/TODO-safe-enable.md`
   - แก้สคริปต์ + ทดสอบต้องทำที่เครื่อง `BigYa-spare` (ไฟล์ CSV จริง + Task Scheduler อยู่ที่นั่น) ส่วน `index.html` ทำที่เครื่องไหนก็ได้
 
+- **`auto-r05/` เขียนเสร็จแล้ว (ก.ย. 2026) แต่ ⏳ ยังไม่ได้ตั้ง Task บน `BIGYAMAINPC`** — อัป R05.106 ลง `global_r05` ทุกเช้า 07:30
+  - **`global_r05` เป็น doc กลางใช้ร่วมทุกสาขา** ⇒ เขียนผิดครั้งเดียว บาร์โค้ดพังพร้อมกันทั้ง 4 สาขา · เขียนแบบแทนที่ทั้งชุด ไม่ใช่ merge
+  - **สคริปต์ต้องให้ผลเท่า `loadR05()` + `_serializeR05()` ทุกไบต์** — ยืนยันด้วย `node tools/check-r05-parity.js "<R05.106.CSV>"` ทุกครั้งที่แตะฝั่งใดฝั่งหนึ่ง
+    ⚠️ ต้องเทียบ **ระดับสตริง** ไม่ใช่แค่โครงข้อมูล เพราะ echo guard ของ listener (`_lastAppliedR05Json`) และด่าน "เนื้อหาเหมือนเดิมจึงไม่เขียน" ของบอท ต่างก็เทียบสตริงตรงๆ
+  - ⛔ **ห้ามเพิ่ม flag ข้ามด่านหัวคอลัมน์** — เป็นด่านเดียวที่ยืนยันว่าไฟล์คือรายงานตัวที่ `loadR05` ออกแบบมาอ่าน (`loadR05` อ่านด้วยเลขคอลัมน์ตายตัว ไม่ได้อ่านตามชื่อ) · ProMaxx สลับคอลัมน์เมื่อไรจะได้บาร์โค้ดผิดคู่ SKU ทั้งบริษัทแบบเงียบสนิท
+  - ⛔ **ห้ามเติม field ของบอทลง `global_r05`** — ต้องเขียนแค่ 4 field เท่ากับที่หน้าเว็บเขียน (`data_json`, `format`, `row_count`, `updated_at`) เพื่อให้ผลของบอทแยกไม่ออกจากคนอัปผ่านเว็บ · การอัปผ่านเว็บเป็น `set()` ทั้ง document จะลบ field ส่วนเกินทิ้งอยู่ดี = สัญญาณที่เชื่อไม่ได้
+  - ตัวป้อนไฟล์คือบอทคนละตัว (`BOTR05106` export จาก ProMaxx 06:30 บนเครื่องเดียวกัน) — เห็น exit 4 "ไฟล์ไม่ใช่ของวันนี้" ติดกันหลายวัน ต้องไปแก้ที่ Task ตัวนั้น ไม่ใช่ที่นี่
+  - ปิดฉุกเฉิน: `Disable-ScheduledTask -TaskName "AutoR05Import"` · ย้อนข้อมูล: อัปผ่านหน้าเว็บตามเดิม หรือคืนจาก `auto-r05/backup/`
+
 ## 2. โครงสร้างระบบ
 
 โปรแกรมหลักเป็น single-file PWA ไม่มี framework และไม่มี build step สำหรับเว็บ
@@ -52,6 +61,7 @@
 | `version.json` | manifest สำหรับ APK self-update | ต้องตรงกับ `android-app/app/build.gradle` |
 | `firestore.rules` | สำเนา rules เพื่อ track ใน Git | แก้ไฟล์นี้ไม่ใช่การ deploy; ต้อง Publish ใน Firebase Console |
 | `auto-r01/` | import R01 ของ WH/SRC/KKL/SSS อัตโนมัติทุกเช้า แยกตาม Col D | ทดสอบด้วย `--dry-run` ก่อนเขียน Firestore จริง · ต้องคง parity กับ `loadR01()` |
+| `auto-r05/` | import R05.106 (ตารางบาร์โค้ด) ลง `global_r05` อัตโนมัติทุกเช้า 07:30 | ทดสอบด้วย `--dry-run` ก่อน · ต้องคง parity กับ `loadR05()` + `_serializeR05()` **ถึงระดับสตริง** (`node tools/check-r05-parity.js`) |
 | `คู่มือการใช้งาน.html` | คู่มือรวมทุก role | เป็น standalone HTML |
 | `คู่มือ-สาขา.html` | คู่มือ assistant/pharmacist | ไม่กระทบ runtime หลัก |
 | `คู่มือ-คลัง.html` | คู่มือ warehouse/supervisor | ไม่กระทบ runtime หลัก |

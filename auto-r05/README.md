@@ -1,0 +1,293 @@
+# Auto R05.106 Import → Firestore
+
+ดึงไฟล์ `R05.106.CSV` (ตารางบาร์โค้ด) ที่บอท ProMaxx export มาวางในโฟลเดอร์
+แล้วเขียนเข้า Firestore `stock_sessions/global_r05` โดยอัตโนมัติทุกวัน **07:30**
+— ไม่ต้องเปิดเว็บ ไม่ต้องอัปไฟล์เอง
+
+R05 เป็น **doc กลาง ใช้ร่วมกันทุกสาขา** (ต่างจาก R01 ที่แยก 4 doc ตามสาขา) อัปครั้งเดียวทุกสาขาเห็นพร้อมกัน
+
+## ทำไมต้องมี
+
+R05 ค้างเก่าแล้วไม่มีอะไรเตือน — ตอนสร้างบอทตัวนี้ (ก.ย. 2026) บน cloud เป็นชุดวันที่ 2 ก.ย. มี 10,857 บาร์โค้ด
+แต่ไฟล์ที่บอท export ไว้วันที่ 6 ก.ย. มี 10,864 ⇒ **บาร์โค้ดใหม่ 7 ตัวยิงไม่ติดบน PDA** (ตกเป็น "ไม่พบในระบบ")
+
+และ R05 ยังเป็นตัวตัดสิน **สิทธิ์กรอกจำนวน** ด้วย (ราคาต่อบาร์โค้ดใน Col B)
+บาร์โค้ดที่ยังไม่มีในตารางจะถูกบังคับให้สแกนทีละชิ้นเสมอ — ปลอดภัยแต่ช้า และเป็นอาการเงียบที่ไม่มีใครรายงาน
+
+---
+
+## ตำแหน่งในสายพาน
+
+| เวลา | ใคร | ทำอะไร |
+|---|---|---|
+| 06:30 | `BOTR05106` (ProMaxx GUI automation) | export R05.106 ออกจาก ProMaxx → `Desktop\run-upload-stock\R05.106.CSV` แล้วอัปเข้า Supabase ของอีกโปรเจกต์ |
+| **07:30** | **`auto-r05` (โฟลเดอร์นี้)** | **อ่านไฟล์นั้น → เขียน `global_r05` บน Firestore** |
+| 08:10 | `auto-r01` | อ่าน `Allstock.CSV` → เขียน `{branch}_r01` ทั้ง 4 สาขา |
+
+ทั้งสามตัวอยู่บนเครื่องเดียวกัน (`AninMainPC` / `BIGYAMAINPC`) และใช้โฟลเดอร์ CSV เดียวกัน
+
+⚠️ **ตัวนี้พึ่งบอท 06:30 เต็มตัว** — ถ้าไฟล์ไม่สด guard จะกันไว้ให้แล้วออกด้วย exit 4
+เห็น exit 4 ติดกันหลายวัน แปลว่าต้องไปแก้ที่ Task ของ `BOTR05106` ไม่ใช่ที่นี่
+
+---
+
+## ไฟล์ในโฟลเดอร์นี้
+
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `auto_r05_import.py` | สคริปต์หลัก (Python stdlib ล้วน — ไม่ต้องลง pip) |
+| `run_auto_r05.bat` | ตัวเรียกสำหรับ Task Scheduler + เก็บ log (หมุนไฟล์ที่ 2 MB) |
+| `auto_r05.log` | log การรัน (สร้างอัตโนมัติ) · รุ่นก่อนหน้าอยู่ที่ `auto_r05.log.1` |
+| `backup/` | สำเนา `data_json` เดิมก่อนถูกเขียนทับ (สร้างอัตโนมัติ · ไม่เข้า git) |
+
+---
+
+## ⚙️ ค่าที่ตั้งไว้ (แก้ได้ในหัวไฟล์ `auto_r05_import.py`)
+
+```python
+FILE_GLOB           = "R05*.CSV"   # เลือกไฟล์ใหม่สุดที่ตรงรูปแบบ (ข้ามชื่อที่มี ".part.")
+MIN_ROWS            = 5000         # น้อยกว่านี้ = ไฟล์ผิดปกติ ยกเลิก
+MAX_SHRINK_RATIO    = 0.20         # แถวหดจากบน cloud เกินเท่านี้ = ยกเลิก
+MAX_PRICED_DROP_PCT = 10.0         # สัดส่วนแถวที่มีราคาตกเกินกี่จุด = ยกเลิก
+MAX_DOC_KB          = 950          # เพดาน Firestore 1 MiB (ของจริงตอนนี้ ~488 KB)
+```
+
+**โฟลเดอร์ CSV ไม่ต้องแก้โค้ด** — หาอัตโนมัติตามลำดับเดียวกับ auto-r01:
+
+| ลำดับ | ที่มา | ใช้เมื่อ |
+|---|---|---|
+| 1 | `--folder "<path>"` | ทดสอบครั้งเดียว |
+| 2 | ตัวแปรระบบ `AUTO_R05_WATCH_FOLDER` | เครื่องที่วางไฟล์ไว้ที่อื่น |
+| 3 | `%USERPROFILE%\Desktop\run-upload-stock` | **ค่าปกติ** |
+
+บรรทัดต้น ๆ ของ log บอกเสมอว่ารอบนั้นใช้โฟลเดอร์ไหนและมาจากที่มาใด
+
+---
+
+## สิ่งที่สคริปต์เขียนลง `global_r05`
+
+เขียนแบบ **PATCH + `updateMask`** ครบทั้ง 4 field ที่หน้าเว็บเขียน:
+
+| field | ค่า |
+|---|---|
+| `data_json` | ตารางบาร์โค้ดทั้งชุด รูป array-of-arrays ตาม `_serializeR05()` |
+| `format` | `r05a1` |
+| `row_count` | จำนวนบาร์โค้ด |
+| `updated_at` | เวลาที่เขียน |
+
+⛔ **ห้ามเติม field ของบอทเองลงไป** — ผลของบอทต้องแยกไม่ออกจากคนอัปผ่านหน้าเว็บ
+ร่องรอยว่าใครเขียนอยู่ที่ `auto_r05.log` กับโฟลเดอร์ `backup/` ไม่ใช่ในตัว document
+(ถ้าเติมเข้าไป การอัปผ่านเว็บซึ่งเป็น `set()` ทั้ง document จะลบทิ้งอยู่ดี แล้วจะกลายเป็นสัญญาณที่เชื่อไม่ได้)
+
+### ผลกับเครื่องที่เปิดค้างอยู่
+
+`startR05Listener()` ในหน้าเว็บฟัง doc นี้อยู่ ⇒ เขียนแล้วทุกเครื่องจะ:
+1. สร้าง `barcodeMap` ใหม่ผ่าน `rebuildMaps()` — **ยอดที่นับไว้ไม่กระทบ** (มีด่าน `if(!has)` กันอยู่)
+2. เด้ง toast `R05.106 อัปเดตจากเครื่องอื่น`
+
+เวลา 07:30 อยู่ก่อนพนักงานเริ่มงาน จึงแทบไม่มีใครเห็น
+และวันที่ตารางบาร์โค้ดไม่เปลี่ยน สคริปต์จะไม่เขียนเลย (ด่านที่ 7) ⇒ ไม่มี toast ไม่มี write
+
+---
+
+## ด่านก่อนเขียน — ล้มด่านไหนก็ไม่เขียนเลย
+
+| # | ด่าน | ทำไม |
+|---|---|---|
+| 1 | ข้ามไฟล์ชื่อที่มี `.part.` | flow ของ `BOTR05106` เขียน `R05.106.part.CSV` ก่อนแล้วค่อยเปลี่ยนชื่อ — เผลออ่านตัวที่ยังเขียนไม่เสร็จ = ตารางขาดครึ่งไปทับของครบ |
+| 2 | ไฟล์ต้องถูกแก้ไขวันนี้ (`--force` ข้ามได้) | ไฟล์เก่าไปทับ = บาร์โค้ดที่เพิ่มมาระหว่างนั้นหายจากทุกสาขาพร้อมกัน |
+| 3 | **หัวคอลัมน์ต้องอยู่ตำแหน่งเดิมครบ 5 ตัว** | `loadR05` อ่านด้วยเลขคอลัมน์ตายตัว ไม่ได้อ่านตามชื่อ — ProMaxx สลับ/แทรกคอลัมน์เมื่อไรจะได้บาร์โค้ดมั่วขึ้น cloud แบบเงียบสนิท |
+| 4 | แถวต้องไม่ต่ำกว่า `MIN_ROWS` | export ไม่ครบ |
+| 5 | แถวต้องไม่หดจากบน cloud เกิน 20% | ยืมกติกาจาก `upload-products.mjs` ของบอท export |
+| 6 | สัดส่วนแถวที่มีราคาต้องไม่ตกเกิน 10 จุด | ราคาหายทั้งไฟล์ = ทุกสาขาเด้งไปโหมดสแกนทีละชิ้นโดยไม่มีใครรู้สาเหตุ |
+| 7 | เนื้อหาเหมือนเดิมทุกไบต์ → **ไม่เขียน** | ตารางบาร์โค้ดเปลี่ยนไม่บ่อย ⇒ วันปกติเป็นการอ่านอย่างเดียว |
+| 8 | ขนาดต้องไม่เกิน `MAX_DOC_KB` | เพดาน Firestore 1 MiB |
+
+ด่านที่ 5 กับ 6 ต้องอ่าน doc เดิมก่อน — ถ้ายังไม่มี doc บน cloud จะข้ามสองด่านนี้พร้อมพิมพ์บอกใน log
+
+**ก่อนเขียนจริงต้องสำรอง `data_json` เดิมลง `backup/global_r05_<เวลา>.json` เสมอ · สำรองไม่สำเร็จ = ไม่เขียน**
+เพราะการเขียนนี้แทนที่ตารางบาร์โค้ดทั้งชุดของ doc ที่ทุกสาขาใช้ร่วมกัน
+
+### ⛔ ห้ามเพิ่ม flag ข้ามด่านที่ 3
+
+ด่านหัวคอลัมน์เป็นด่านเดียวที่ยืนยันว่า "ไฟล์นี้คือรายงานตัวเดียวกับที่ `loadR05` ออกแบบมาอ่าน"
+ถ้าเปิดช่องให้ข้าม วันที่ ProMaxx เปลี่ยนรูปแบบรายงาน เราจะเขียนบาร์โค้ดผิดคู่ SKU ขึ้นไปทั้งบริษัท
+โดยไม่มีอาการจนกว่าจะมีคนยิงของแล้วได้ชื่อสินค้าผิด
+
+---
+
+## 🔗 parity กับ `index.html` — สำคัญที่สุด
+
+ตรรกะ parse + serialize R05 ถูกเขียนไว้ **2 ภาษา**:
+
+| ที่ | โค้ด |
+|---|---|
+| `index.html` | ลูป parse ใน `loadR05()` · `_parseProductMasterPrice()` · `_serializeR05()` |
+| `auto-r05/auto_r05_import.py` | `parse_file()` · `parse_price()` · `serialize_r05()` |
+
+**แก้ที่ใดที่หนึ่งต้องแก้อีกที่เสมอ** แล้วยืนยันด้วย:
+
+```powershell
+node tools/check-r05-parity.js "$env:USERPROFILE\Desktop\run-upload-stock\R05.106.CSV"   # ต้อง exit 0
+```
+
+เครื่องมือนั้นดึงโค้ดจริงจาก `index.html` มารันเทียบกับฝั่ง Python **ถึงระดับสตริง JSON ที่จะเขียนลง Firestore**
+ไม่ใช่แค่โครงข้อมูล เพราะทั้ง echo guard ของ listener (`_lastAppliedR05Json`) และด่านที่ 7 ของบอท
+ต่างก็เทียบสตริงตรง ๆ — ต่างกันแม้ช่องว่างเดียวก็ทำให้บอทเขียนซ้ำทุกวันโดยเปล่าประโยชน์
+
+จุดที่ทำให้สองภาษาหลุดจากกันได้ง่ายและ `serialize_r05()` จัดการไว้แล้ว:
+- `json.dumps` ของ Python ใส่ช่องว่างหลังคอมมา ต้องสั่ง `separators=(',', ':')`
+- เลขลงตัวต้องเขียนเป็นจำนวนเต็ม (`1.0000` ต้องได้ `1` ไม่ใช่ `1.0`)
+- ราคาที่อ่านไม่ได้เขียนเป็นสตริงว่าง ไม่ใช่ `null`
+- `float()` ของ Python กับ `Number()` ของ JS ไม่เหมือนกันสามจุด (`0x10` · `1_0` · `inf`/`nan`) — `_js_number()` ปรับให้ตรงแล้ว
+
+---
+
+## 🖥️ ติดตั้งบนเครื่องอื่น
+
+**1. ก๊อปโฟลเดอร์ `auto-r05` ทั้งโฟลเดอร์** ไม่ใช่แค่ `.bat`
+`run_auto_r05.bat` เรียก `auto_r05_import.py` ที่อยู่ข้าง ๆ กัน (`%~dp0`) — ขาดตัวใดตัวหนึ่งไม่ทำงาน
+
+> ⚠️ **`BIGYAMAINPC` (เครื่องที่รันจริง) ไม่ใช่ git clone — เป็นไฟล์ที่ก๊อปไปวางเฉย ๆ**
+> ⇒ แก้สคริปต์ใน repo แล้วเครื่องนั้นไม่ได้ตามเอง ต้องเอาไปวางเองทุกครั้ง · `git pull` ที่นั่นไม่มีผล
+>
+> **ตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม (อ่านด้วย `in sys.argv` เฉย ๆ)
+> ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที
+>
+> **วิธีอัปเดตไฟล์เดียว** (repo เป็น public จึงดึงตรงได้ ไม่ต้อง login):
+> ```powershell
+> Copy-Item auto_r05_import.py auto_r05_import.py.bak -Force
+> [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+> Invoke-WebRequest -UseBasicParsing -OutFile auto_r05_import.py `
+>   -Uri "https://raw.githubusercontent.com/it-anin/Stock-Count/main/auto-r05/auto_r05_import.py"
+> ```
+> ไฟล์จาก GitHub เป็น LF ส่วนสำเนาในเครื่องพัฒนาเป็น CRLF — **hash จึงต่างกันโดยปกติ**
+> ให้เทียบกับ `git show main:auto-r05/auto_r05_import.py | sha256sum` ไม่ใช่กับไฟล์ในโฟลเดอร์
+
+**2. ตรวจว่ามี Python** — `.bat` หาให้เองจาก `C:\Program Files\Python311/312/313`, `PATH` แล้ว `py` launcher
+ไม่มีจะเขียน `ERROR: Python not found` ลง log แล้วออกด้วย exit 9 · ไม่ต้องลง pip อะไรเพิ่ม
+
+**3. ตรวจว่าไฟล์อยู่ถูกที่** — ถ้าเป็น `C:\Users\AninMainPC\Desktop\run-upload-stock\R05.106.CSV` ไม่ต้องตั้งอะไรเลย
+ถ้าอยู่ที่อื่น ตั้งครั้งเดียว (แล้วเปิด CMD ใหม่):
+```powershell
+setx AUTO_R05_WATCH_FOLDER "D:\path\to\run-upload-stock"
+```
+
+**4. ทดสอบก่อน** (ไม่เขียน Firestore)
+```powershell
+cd "C:\Users\AninMainPC\Desktop\auto-r05"
+.\run_auto_r05.bat --dry-run
+Get-Content .\auto_r05.log -Tail 25 -Encoding UTF8
+```
+⚠️ ต้องมี `-Encoding UTF8` ไม่งั้น PowerShell 5.1 อ่านเป็นภาษาไทยเพี้ยน
+
+ต้องเห็นโฟลเดอร์ที่ถูกต้อง · จำนวนบาร์โค้ดสมเหตุสมผล · และบรรทัดเทียบกับของบน cloud
+**ถ้าขั้นนี้ไม่ผ่าน อย่าเพิ่งตั้ง Task**
+
+**5. รันจริงครั้งแรก** — `.\run_auto_r05.bat`
+
+### รันหลายเครื่องพร้อมกัน
+
+**ไม่แนะนำ** เหมือน auto-r01 — สคริปต์ไม่มี lock ระหว่างเครื่อง เครื่องที่เขียนทีหลังชนะ
+ให้เลือกเครื่องเดียวเป็นเจ้าภาพ (เครื่องที่บอท 06:30 export ไฟล์ลงจริง) เครื่องสำรองติดตั้งไว้ได้แต่ให้ `Disable-ScheduledTask` ไว้
+
+---
+
+## ⏰ ตั้งเวลา 07:30 ทุกวัน (Windows Task Scheduler)
+
+### ขั้น 0 — ดูก่อนว่าไฟล์สดจริง
+
+```powershell
+(Get-Item "$env:USERPROFILE\Desktop\run-upload-stock\R05.106.CSV").LastWriteTime
+```
+
+ต้องเป็นเช้าวันนี้ · ถ้าไม่ใช่แปลว่า Task ของ `BOTR05106` ไม่ได้รัน — **แก้ตรงนั้นก่อน ห้ามตั้ง Task ตัวนี้**
+และถ้า export เสร็จช้ากว่า 07:00 ให้เลื่อนเวลาด้านล่างตาม (เผื่อไว้อย่างน้อย 30 นาที)
+
+### ขั้น 1 — ลงทะเบียน Task
+
+แก้ `$Root` บรรทัดแรกให้ตรงกับที่วางโฟลเดอร์จริง แล้ววางทั้งก้อนใน PowerShell:
+
+```powershell
+$Root = "$env:USERPROFILE\Desktop\auto-r05"          # <-- แก้บรรทัดนี้บรรทัดเดียว
+$Bat  = Join-Path $Root "run_auto_r05.bat"
+if (-not (Test-Path $Bat)) { throw "ไม่พบ $Bat" }
+
+$A = New-ScheduledTaskAction -Execute $Bat -WorkingDirectory $Root
+$T = New-ScheduledTaskTrigger -Daily -At 07:30
+$S = New-ScheduledTaskSettingsSet `
+       -StartWhenAvailable `
+       -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
+       -MultipleInstances IgnoreNew `
+       -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries `
+       -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 20)
+
+Register-ScheduledTask -TaskName "AutoR05Import" -Action $A -Trigger $T -Settings $S `
+       -Description "อัป R05.106 (ตารางบาร์โค้ด) ขึ้น Firestore ทุกเช้า (global_r05)" -Force
+```
+
+| ค่า | ทำไมต้องมี |
+|---|---|
+| `-StartWhenAvailable` | เครื่องปิดตอน 07:30 → รันชดเชยทันทีที่เปิด · **เขียนได้เลยถ้าไฟล์ยังเป็นของวันนี้** (ต่างจาก R01 ตรงที่ R05 ไม่ล้าง R16 ไม่ขยับ baseline ไม่ freeze audit) |
+| `-RestartCount 3 -RestartInterval 20m` | บอท export ช้า/เน็ตหลุด → ลองใหม่อีก 3 ครั้ง แทนที่จะข้ามทั้งวัน |
+| `-MultipleInstances IgnoreNew` | กันซ้อนถ้ารอบก่อนยังค้าง |
+| `-ExecutionTimeLimit 15m` | งานจริงใช้ไม่ถึง 10 วินาที ถ้าเกิน 15 นาที = ค้าง ให้ฆ่าทิ้ง |
+
+### ขั้น 2 — ทดสอบ Task จริง
+
+```powershell
+Start-ScheduledTask -TaskName "AutoR05Import"
+Start-Sleep -Seconds 20
+Get-ScheduledTask -TaskName "AutoR05Import" | Get-ScheduledTaskInfo |
+  Select-Object LastRunTime, LastTaskResult, NextRunTime
+Get-Content "$Root\auto_r05.log" -Tail 25 -Encoding UTF8
+```
+
+`LastTaskResult` คือ exit code ของสคริปต์ตรง ๆ:
+
+| code | ความหมาย |
+|---|---|
+| `0` | สำเร็จ **หรือ** เนื้อหาเหมือนเดิมจึงไม่ต้องเขียน (อ่าน log ดูว่าอันไหน) |
+| `1` | อ่าน/เขียน Firestore ไม่ผ่าน หรือสำรองไฟล์ไม่สำเร็จ |
+| `2` | ไม่พบไฟล์/โฟลเดอร์ |
+| `4` | ด่านไม่ผ่าน (ไฟล์ไม่ใช่ของวันนี้ · หัวคอลัมน์เพี้ยน · แถวน้อย/หด · ราคาหาย · ขนาดเกิน) |
+| `9` | ไม่พบ Python |
+
+> ⚠️ ขั้นนี้ **เขียน Firestore จริง** (ไม่ใช่ dry-run) จะดันตารางบาร์โค้ดใหม่ให้ทุกเครื่องพร้อม toast
+> ทำนอกเวลาที่กำลังนับ หรือแจ้งทีมก่อน
+
+### ตัวเลือกเรื่องบัญชีผู้ใช้
+
+เหมือน auto-r01 ทุกประการ — ค่าปกติคือ *"Run only when user is logged on"*
+ถ้าต้องรันตอนล็อกหน้าจอ ให้เพิ่ม principal แบบ S4U ก่อน `Register-ScheduledTask`:
+```powershell
+$P = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
+# แล้วเพิ่ม  -Principal $P  ใน Register-ScheduledTask
+```
+
+---
+
+## 🔎 ตรวจสถานะ / แก้ปัญหา
+
+```powershell
+Get-ScheduledTask -TaskName "AutoR05Import" | Get-ScheduledTaskInfo   # ผลรันล่าสุด
+Get-Content .\auto_r05.log -Tail 40 -Encoding UTF8                    # log
+Disable-ScheduledTask -TaskName "AutoR05Import"                       # ปิดฉุกเฉิน
+```
+
+**ตรวจจากฝั่ง cloud** (ไม่ต้องเข้าเครื่อง) — เปิด Firebase Console ที่ `stock_sessions/global_r05`
+ดู `updated_at` กับ `row_count` · หรือวางใน Console ของหน้าเว็บที่ login แล้ว (อ่านอย่างเดียว ไม่กิน read):
+```js
+state.r05Data.length                                  // จำนวนบาร์โค้ดที่เครื่องนี้ถืออยู่
+state.r05Data.filter(r=>r.unitPrice!=null).length     // จำนวนที่มีราคา
+```
+
+| อาการ | สาเหตุที่พบบ่อย |
+|---|---|
+| exit 4 ทุกวัน + log บอก "ไฟล์ไม่ได้ถูกแก้ไขวันนี้" | Task ของ `BOTR05106` (export 06:30) ไม่ได้รัน — ไปแก้ที่นั่น |
+| exit 4 + "หัวคอลัมน์ไม่ตรง" | ProMaxx เปลี่ยนรูปแบบรายงาน — ต้องมีคนตรวจแล้วแก้ทั้ง `index.html` และสคริปต์นี้พร้อมกัน |
+| เขียนทุกวันทั้งที่ไฟล์เหมือนเดิม | ตัว serialize หลุด parity กับ `index.html` แล้ว — รัน `node tools/check-r05-parity.js` |
+| log ภาษาไทยเพี้ยน | ลืม `-Encoding UTF8` ตอน `Get-Content` (PowerShell 5.1 อ่านเป็น ANSI โดยปริยาย) |
+
+**ถ้าต้องย้อนข้อมูล:** อัป `R05.106.CSV` ผ่านหน้าเว็บตามวิธีเดิม (เส้นทางนั้นไม่ถูกแตะ)
+หรือคืน `data_json` จากไฟล์ใน `backup/`

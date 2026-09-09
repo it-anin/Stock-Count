@@ -17,6 +17,7 @@ No build system. No framework.
 | `firestore.rules` | Publish รุ่น `confirm_ops` แล้ว | snippet ในหัวไฟล์ `firestore.rules` |
 | composite index `countResetAt`+`status` | มีแล้ว | snippet ใน §Automated Tests |
 | auto-r01 | **รันจริงทุกเช้า ~09:36 ครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
+| auto-r05 | ⏳ **โค้ดพร้อมแล้ว (9 ก.ย. 2026) แต่ยังไม่ได้ตั้ง Task บน `BIGYAMAINPC`** — ยังต้องก๊อป `auto-r05/` ไปวางแล้วตั้ง Task 07:30 · ตัวป้อนไฟล์ (`BOTR05106` export 06:30) ตั้ง Task ไว้แล้วบนเครื่องนั้น | `stock_sessions/global_r05.updated_at` ต้องเป็นเช้าวันนี้ |
 | ธง `nc` บน `{branch}_r01` | **หมวด DELETE ถูกถอดธงแล้วครบ 4 สาขา (8 ก.ย. 16:57 ผ่าน `--resync-nc`)** ⇒ ของที่ยังมียอด 745 รายการเข้า Progress แล้ว · ⏳ **ธงชนิด `nc:2` ยังไม่ขึ้น cloud** — รอบอทรันด้วยสคริปต์รุ่นใหม่ (ต้องเอา `auto_r01_import.py` ไปวางที่ `BIGYAMAINPC` ก่อน) · ระหว่างนี้หมวด DELETE ถูกมองเป็นหมวดปกติ ซึ่งให้ผลเท่ากันเพราะไม่มีตัวไหนอยู่ใน PBM | `state.r01Data.filter(r=>r.nc===1).length` (หมวด `11.`) · `r.nc===2` (หมวด DELETE) |
 | ยังไม่ได้ทำ | Budget Alert · ย้าย Confirm ไป Cloud Function (Stage 2) | — |
 
@@ -117,6 +118,7 @@ android-app/        ← WebView wrapper (Kotlin)
 version.json        ← APK self-update manifest
 firestore.rules     ← สำเนา rules; deploy จริงต้อง Publish ผ่าน Firebase Console
 auto-r01/           ← R01 auto import ทุกเช้า 08:10 ครบ 4 branch แยกตาม Col D (Windows Task Scheduler)
+auto-r05/           ← R05.106 auto import ทุกเช้า 07:30 ลง `global_r05` (doc กลาง ใช้ร่วมทุกสาขา)
 api/ip.js           ← Vercel function สำหรับ login log IP
 ```
 
@@ -240,6 +242,10 @@ state = {
   - เขียนด้วย `_serializeR05()` อ่านด้วย `_parseR05Json()` เสมอ — **ห้ามใช้ `JSON.stringify(state.r05Data)`/`JSON.parse` ตรงๆ กับ R05 อีก** และ `_lastAppliedR05Json` ต้องเป็นสตริงรูปแบบเดียวกับที่เขียนขึ้น cloud ไม่งั้น echo guard ของ listener พัง (เด้ง "อัปเดตจากเครื่องอื่น" ทุกครั้งแล้วทับตัวเอง)
   - `_parseR05Json()` ยังอ่านรูปแบบ object เดิมได้ **ห้ามถอด fallback จนกว่าทุกสาขาจะอัป R05 ใหม่**
   - รูปแบบใหม่ ~520 KB ที่ 10,619 บาร์โค้ด (เหลือที่ ~2 เท่า) ถ้าโตเกินนี้ต้องแตก chunk แบบ WH R16
+- ⚠️ **มีบอทเขียน `global_r05` ให้ทุกเช้าแล้ว (ก.ย. 2026) ⇒ ตรรกะ parse/serialize ถูกเขียนไว้ 2 ภาษา** — `loadR05()` + `_parseProductMasterPrice()` + `_serializeR05()` ใน `index.html` มีคู่แฝดเป็น `parse_file()` + `parse_price()` + `serialize_r05()` ใน `auto-r05/auto_r05_import.py`
+  **แก้ที่ใดที่หนึ่งต้องแก้อีกที่เสมอ** แล้วยืนยันด้วย `node tools/check-r05-parity.js "<R05.106.CSV>"` (ต้อง exit 0)
+  ตัวตรวจเทียบถึงระดับ **สตริง JSON ที่จะเขียนลง Firestore** ไม่ใช่แค่โครงข้อมูล เพราะทั้ง echo guard ของ listener (`_lastAppliedR05Json`) และด่าน "เนื้อหาเหมือนเดิมจึงไม่เขียน" ของบอท ต่างก็เทียบสตริงตรงๆ — ต่างกันแม้ช่องว่างเดียวก็ทำให้บอทเขียนซ้ำทุกวันโดยเปล่าประโยชน์ และทุกเครื่องเด้ง toast ทุกเช้า
+  ⚠️ **ห้ามเปลี่ยนชื่อ/signature ของ `parse_file()` กับ `serialize_r05()`** — `tools/check-r05-parity.js` import ตรงๆ
 - toast ตอนอัปโหลดโชว์ขนาดจริงทุกครั้ง เตือนเมื่อ ≥ 800 KB และ **ถ้าเขียน cloud ไม่ผ่านต้องเด้ง error ให้ผู้ใช้เห็น** (`syncMasterToFirestore` เดิม catch เงียบ)
 
 `_countResetAt` — module-level ISO timestamp, reset epoch (monotonic). ใช้ `>` เปรียบเทียบ lexicographic
