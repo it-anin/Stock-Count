@@ -2,13 +2,13 @@
 
 อ่าน `AGENTS.md` เป็นไฟล์แรกก่อนเริ่มงานทุกครั้ง แล้วจึงอ่านไฟล์นี้และ skill ที่เกี่ยวข้อง
 
-Single-file PWA (`index.html`, ~8,800 บรรทัดรวม HTML/CSS/JS) + Android WebView wrapper (`android-app/`).
+Single-file PWA (`index.html`, ~8,950 บรรทัดรวม HTML/CSS/JS) + Android WebView wrapper (`android-app/`).
 No build system. No framework.
 
 **Current baseline (7 ก.ย. 2026):** APK `1.11` (`versionCode 12`, tag `v1.11`) — native ไม่ได้แก้มาตั้งแต่นั้น
 ระบบผ่าน technical verification เบื้องต้นแล้ว แต่ยังรอ User Acceptance Test (UAT) จากผู้ใช้งานจริง ห้ามเปลี่ยน business flow จากการคาดเดา
 
-**สภาพ production ที่ยืนยันแล้ว 8 ก.ย. 2026** (อย่าเชื่อของเก่ากว่านี้โดยไม่ตรวจซ้ำ):
+**สภาพ production ที่ยืนยันแล้ว 9 ก.ย. 2026** (อย่าเชื่อของเก่ากว่านี้โดยไม่ตรวจซ้ำ):
 
 | | สถานะ | ตรวจซ้ำยังไง |
 |---|---|---|
@@ -16,9 +16,9 @@ No build system. No framework.
 | Firebase | **แผน Blaze** (ไม่มี hard-stop แล้ว) | Console → Billing |
 | `firestore.rules` | Publish รุ่น `confirm_ops` แล้ว | snippet ในหัวไฟล์ `firestore.rules` |
 | composite index `countResetAt`+`status` | มีแล้ว | snippet ใน §Automated Tests |
-| auto-r01 | **รันจริงทุกเช้า ~09:36 ครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
+| auto-r01 | **รันจริงทุกเช้าครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` (ยืนยัน 9 ก.ย. 2026: `r01UploadedAt` = `08:10 น. 09/09/2026` ทั้ง 4 สาขา ตรงกับเวลาที่ตั้ง Task ไว้ · เคยเห็นรัน ~09:36 มาก่อน = รอบรันชดเชยจาก `-StartWhenAvailable`) · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
 | auto-r05 | **ใช้งานจริงแล้ว 9 ก.ย. 2026** — Task `AutoR05Import` 09:00 บน `BIGYAMAINPC` (โฟลเดอร์ `C:\Users\AninMainPC\Desktop\auto-r05` · Python 3.13) เขียนครั้งแรกสำเร็จ 11:33 น. `global_r05` 10,857 → **10,864 บาร์โค้ด** · ⚠️ **เครื่องนั้นไม่ใช่ git clone เหมือน auto-r01** ต้องก๊อปไฟล์ไปวางเองทุกครั้ง · ตัวป้อนไฟล์คือ Task ชื่อ **`BOT05106`** (ไม่ใช่ `ProMaxxReportBot` ตามที่เอกสารของโปรเจกต์นั้นยกตัวอย่างไว้) เขียนไฟล์เสร็จ ~07:55 | `stock_sessions/global_r05.updated_at` ต้องเป็นเช้าวันนี้ **หรือ** log บอกว่า "เนื้อหาเหมือนเดิม ไม่เขียน" (วันที่บาร์โค้ดไม่เปลี่ยนถือว่าปกติ) |
-| ธง `nc` บน `{branch}_r01` | **หมวด DELETE ถูกถอดธงแล้วครบ 4 สาขา (8 ก.ย. 16:57 ผ่าน `--resync-nc`)** ⇒ ของที่ยังมียอด 745 รายการเข้า Progress แล้ว · ⏳ **ธงชนิด `nc:2` ยังไม่ขึ้น cloud** — รอบอทรันด้วยสคริปต์รุ่นใหม่ (ต้องเอา `auto_r01_import.py` ไปวางที่ `BIGYAMAINPC` ก่อน) · ระหว่างนี้หมวด DELETE ถูกมองเป็นหมวดปกติ ซึ่งให้ผลเท่ากันเพราะไม่มีตัวไหนอยู่ใน PBM | `state.r01Data.filter(r=>r.nc===1).length` (หมวด `11.`) · `r.nc===2` (หมวด DELETE) |
+| ธง `nc` บน `{branch}_r01` | **หมวด DELETE ถูกถอดธงแล้วครบ 4 สาขา (8 ก.ย. 16:57 ผ่าน `--resync-nc`)** ⇒ ของที่ยังมียอด 745 รายการเข้า Progress แล้ว · ⏳ **ธงชนิด `nc:2` ยังไม่ขึ้น cloud — ยืนยัน 9 ก.ย. ว่ายังเป็น 0 ทั้ง 4 สาขา** (SRC `nc:1`=68 · KKL 35 · SSS 54 · WH 143 · `nc:2`=0 ทุกสาขา) บอทรันเช้านี้แล้วแต่ยังใช้ `auto_r01_import.py` **รุ่นเก่า** ⇒ **ยังต้องเอาไฟล์ไปวางที่ `BIGYAMAINPC` ด้วยมือ** (ตรวจด้วย `Select-String -Path auto_r01_import.py -Pattern "STOCK_ONLY" -Quiet` ต้องได้ `True`) · ระหว่างนี้หมวด DELETE ถูกมองเป็นหมวดปกติ ซึ่งให้ผลเท่ากันเพราะไม่มีตัวไหนอยู่ใน PBM | `state.r01Data.filter(r=>r.nc===1).length` (หมวด `11.`) · `r.nc===2` (หมวด DELETE) |
 | ยังไม่ได้ทำ | Budget Alert · ย้าย Confirm ไป Cloud Function (Stage 2) | — |
 
 ---
@@ -246,6 +246,11 @@ state = {
   **แก้ที่ใดที่หนึ่งต้องแก้อีกที่เสมอ** แล้วยืนยันด้วย `node tools/check-r05-parity.js "<R05.106.CSV>"` (ต้อง exit 0)
   ตัวตรวจเทียบถึงระดับ **สตริง JSON ที่จะเขียนลง Firestore** ไม่ใช่แค่โครงข้อมูล เพราะทั้ง echo guard ของ listener (`_lastAppliedR05Json`) และด่าน "เนื้อหาเหมือนเดิมจึงไม่เขียน" ของบอท ต่างก็เทียบสตริงตรงๆ — ต่างกันแม้ช่องว่างเดียวก็ทำให้บอทเขียนซ้ำทุกวันโดยเปล่าประโยชน์ และทุกเครื่องเด้ง toast ทุกเช้า
   ⚠️ **ห้ามเปลี่ยนชื่อ/signature ของ `parse_file()` กับ `serialize_r05()`** — `tools/check-r05-parity.js` import ตรงๆ
+- **การ์ด R05.106 โชว์ "อัปโหลดล่าสุด" แล้ว (ก.ย. 2026)** — อ่านจาก field `updated_at` ของ doc โดยตรงผ่าน `_r05UploadedAtFromDocData()` → `_setR05Ts()` (คู่ขนานกับ `_r01UploadedAtFromDocData`/`_setR01Ts`) ⇒ **เป็นเวลาที่เขียนขึ้น cloud จริง ไม่ใช่เวลาที่เครื่องนี้โหลด**
+  - ตั้งค่า 3 ทาง: `startR05Listener` · `loadR05` · `restoreMasterFromFirestore` · ล้างใน `selectBranch` + `clearAllData` (ตรงกับจุดที่ badge ถูกรีเซ็ต) · **ไม่ล้างใน `startNewCount()`** โดยเจตนา — R05 เป็น doc กลาง เริ่มนับใหม่ไม่แตะ
+  - ⚠️ **ต้องเรียก `_setR05Ts()` ก่อน echo guard ใน `startR05Listener`** — snapshot แรกหลัง login มี `data_json` ตรงกับที่ `restoreMasterFromFirestore` เพิ่งใส่ใน `_lastAppliedR05Json` แล้ว listener จึง `return` ตรงนั้นทุกครั้ง · ย้ายไปตั้งทีหลัง = การ์ดว่างจนกว่าจะมีคนอัปไฟล์ใหม่ (อาการที่ไม่มีใครสังเกตเห็น) · ตรึงไว้ที่ `tests/specs/e2e/upload-path.spec.js`
+  - การ์ดอยู่ใน `#r05UploadSection` ซึ่งซ่อนจนกว่าจะเข้า Admin Mode (เดิมเป็นแบบนี้อยู่แล้ว)
+  - ⚠️ **วันที่ไม่ขยับ ≠ บอทพัง** — `auto-r05` ไม่เขียนถ้าตารางบาร์โค้ดไม่เปลี่ยน เวลาจึงค้างที่รอบก่อนโดยตั้งใจ ต้องดู `auto_r05.log` ประกอบ
 - toast ตอนอัปโหลดโชว์ขนาดจริงทุกครั้ง เตือนเมื่อ ≥ 800 KB และ **ถ้าเขียน cloud ไม่ผ่านต้องเด้ง error ให้ผู้ใช้เห็น** (`syncMasterToFirestore` เดิม catch เงียบ)
 
 `_countResetAt` — module-level ISO timestamp, reset epoch (monotonic). ใช้ `>` เปรียบเทียบ lexicographic
