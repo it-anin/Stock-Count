@@ -1,7 +1,9 @@
 @echo off
 REM ============================================================
 REM  Auto R05.106 import -> Firestore
-REM  Called by Windows Task Scheduler daily at 07:30 (see README.md)
+REM  Called daily by Windows Task Scheduler. The time is chosen per machine when
+REM  the task is registered - this script does not care what time it runs, it only
+REM  checks that the CSV was written today. See README.md.
 REM
 REM  KEEP THIS FILE PURE ASCII.
 REM  Thai text in a .bat breaks the cmd.exe parser (it re-reads the file by byte
