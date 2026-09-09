@@ -20,7 +20,8 @@ R05 เป็น doc "กลาง" ใช้ร่วมกันทุกส�
     python auto_r05_import.py --dry-run  # ทดสอบ — พิมพ์ตัวเลขให้ดูอย่างเดียว ไม่เขียน
     python auto_r05_import.py --force    # ข้าม guard "ไฟล์ไม่ใช่ของวันนี้" (ใช้ตอนทดสอบเท่านั้น)
 
-ตั้งเวลา 07:30 ทุกวันด้วย Windows Task Scheduler (ดู README.md)
+ตั้งเวลารันทุกเช้าด้วย Windows Task Scheduler (ดู README.md §ขั้น 0 — เวลาต้องเลือกจาก
+LastWriteTime ของไฟล์บนเครื่องที่รันจริง ห้ามอนุมานจากเอกสารของบอท export)
 """
 
 import sys
@@ -51,7 +52,7 @@ except Exception:
 #   2. ตัวแปรระบบ AUTO_R05_WATCH_FOLDER      (ใช้เมื่อ path ไม่ตรงแบบมาตรฐาน)
 #   3. <โฟลเดอร์ผู้ใช้ปัจจุบัน>\Desktop\run-upload-stock   ← ค่าปกติ
 #
-# เป็นโฟลเดอร์เดียวกับที่บอท BOTR05106 (ProMaxx GUI automation) export ไฟล์ลงทุกเช้า 06:30
+# เป็นโฟลเดอร์เดียวกับที่บอท BOTR05106 (ProMaxx GUI automation) export ไฟล์ลงทุกเช้า
 # และเป็นโฟลเดอร์เดียวกับที่ auto-r01 ใช้อยู่แล้ว
 DEFAULT_WATCH_FOLDER = os.path.join(os.path.expanduser("~"), "Desktop", "run-upload-stock")
 
@@ -418,7 +419,8 @@ def main():
     if mtime.date() != datetime.now().date():
         if not force:
             log("❌ ไฟล์ไม่ได้ถูกแก้ไขวันนี้ — ยกเลิก (ไม่เขียน Firestore). ใช้ --force ถ้าตั้งใจ")
-            log("   สาเหตุที่พบบ่อย: Scheduled Task ของ BOTR05106 (export 06:30) ไม่ได้รัน — ไปแก้ตรงนั้นก่อน")
+            log("   สาเหตุที่พบบ่อย: Scheduled Task ของ BOTR05106 (ตัว export) ไม่ได้รัน — ไปแก้ตรงนั้นก่อน")
+            log("   อีกสาเหตุ: Task ตัวนี้ตั้งเวลาเร็วกว่าที่ไฟล์ export เสร็จ — ดู LastWriteTime แล้วเลื่อนเวลาตาม")
             sys.exit(4)
         log("⚠️ ไฟล์ไม่ได้ถูกแก้ไขวันนี้ แต่มี --force — ดำเนินการต่อ")
 

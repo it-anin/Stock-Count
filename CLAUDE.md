@@ -17,7 +17,7 @@ No build system. No framework.
 | `firestore.rules` | Publish รุ่น `confirm_ops` แล้ว | snippet ในหัวไฟล์ `firestore.rules` |
 | composite index `countResetAt`+`status` | มีแล้ว | snippet ใน §Automated Tests |
 | auto-r01 | **รันจริงทุกเช้า ~09:36 ครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
-| auto-r05 | ⏳ **โค้ดพร้อมแล้ว (9 ก.ย. 2026) แต่ยังไม่ได้ตั้ง Task บน `BIGYAMAINPC`** — ยังต้องก๊อป `auto-r05/` ไปวางแล้วตั้ง Task 07:30 · ตัวป้อนไฟล์ (`BOTR05106` export 06:30) ตั้ง Task ไว้แล้วบนเครื่องนั้น | `stock_sessions/global_r05.updated_at` ต้องเป็นเช้าวันนี้ |
+| auto-r05 | ⏳ **โค้ดพร้อมแล้ว (9 ก.ย. 2026) แต่ยังไม่ได้ตั้ง Task บน `BIGYAMAINPC`** — ยังต้องก๊อป `auto-r05/` ไปวางแล้วตั้ง Task · ⚠️ **เวลาที่ตั้งต้องดูจาก `LastWriteTime` ของ `R05.106.CSV` บนเครื่องนั้น ห้ามอนุมาน** — `BOTR05106/README.md` บันทึกแค่ว่า "ตั้ง Task แล้ว" ไม่ได้ระบุเวลา ส่วนเลข `06:30` ในไฟล์นั้นเป็นบล็อกตัวอย่างคำสั่ง (เคยหลงเชื่อมาแล้ว) | `stock_sessions/global_r05.updated_at` ต้องเป็นเช้าวันนี้ |
 | ธง `nc` บน `{branch}_r01` | **หมวด DELETE ถูกถอดธงแล้วครบ 4 สาขา (8 ก.ย. 16:57 ผ่าน `--resync-nc`)** ⇒ ของที่ยังมียอด 745 รายการเข้า Progress แล้ว · ⏳ **ธงชนิด `nc:2` ยังไม่ขึ้น cloud** — รอบอทรันด้วยสคริปต์รุ่นใหม่ (ต้องเอา `auto_r01_import.py` ไปวางที่ `BIGYAMAINPC` ก่อน) · ระหว่างนี้หมวด DELETE ถูกมองเป็นหมวดปกติ ซึ่งให้ผลเท่ากันเพราะไม่มีตัวไหนอยู่ใน PBM | `state.r01Data.filter(r=>r.nc===1).length` (หมวด `11.`) · `r.nc===2` (หมวด DELETE) |
 | ยังไม่ได้ทำ | Budget Alert · ย้าย Confirm ไป Cloud Function (Stage 2) | — |
 
@@ -118,7 +118,7 @@ android-app/        ← WebView wrapper (Kotlin)
 version.json        ← APK self-update manifest
 firestore.rules     ← สำเนา rules; deploy จริงต้อง Publish ผ่าน Firebase Console
 auto-r01/           ← R01 auto import ทุกเช้า 08:10 ครบ 4 branch แยกตาม Col D (Windows Task Scheduler)
-auto-r05/           ← R05.106 auto import ทุกเช้า 07:30 ลง `global_r05` (doc กลาง ใช้ร่วมทุกสาขา)
+auto-r05/           ← R05.106 auto import ทุกเช้า ลง `global_r05` (doc กลาง ใช้ร่วมทุกสาขา)
 api/ip.js           ← Vercel function สำหรับ login log IP
 ```
 

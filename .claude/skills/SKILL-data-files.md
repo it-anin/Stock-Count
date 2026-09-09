@@ -130,7 +130,7 @@ Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SS
 - `rebuildMaps()` เก็บราคาไว้ทั้งสองระดับ: ต่อบาร์โค้ดใน `skuMap.barcodes[].unitPrice` (ใช้ตอนสแกน) และต่อรายการใน `skuMap.unitPrice` ที่ `_baseUnitPrice()` เลือกจากบาร์โค้ดตัวคูณต่ำสุด (ใช้คุมช่อง QTY)
 - `global_r05` เป็น doc กลางใช้ร่วมทุกสาขา มีเพดาน 1 MiB — toast ตอนอัปโหลดโชว์ขนาดจริงและเตือนที่ 800 KB
 - **เก็บบน cloud เป็น array-of-arrays** `[[barcode,SKU,unitName,mult,price],...]` (`format:'r05a1'`) — object form ที่ 10,619 บาร์โค้ด = 1,069 KB **เกินเพดานจริง** เขียน/อ่านผ่าน `_serializeR05()` / `_parseR05Json()` เท่านั้น (parser ยังรองรับ object form เดิม)
-- **มีบอทอัปให้ทุกเช้า 07:30 แล้ว (`auto-r05/` · ก.ย. 2026)** — ตัวป้อนไฟล์คือ `BOTR05106` (ProMaxx GUI automation) ที่ export ลง `Desktop\run-upload-stock\R05.106.CSV` ตอน 06:30 บนเครื่องเดียวกับ auto-r01
+- **มีบอทอัปให้ทุกเช้าแล้ว (`auto-r05/` · ก.ย. 2026)** — ตัวป้อนไฟล์คือ `BOTR05106` (ProMaxx GUI automation) ที่ export ลง `Desktop\run-upload-stock\R05.106.CSV` บนเครื่องเดียวกับ auto-r01 · ⚠️ **เวลาที่บอทตัวนั้น export เสร็จจริงยังไม่เคยตรวจ** ต้องอ่าน `LastWriteTime` จากเครื่องที่รันจริงก่อนตั้ง Task เสมอ
   - ⚠️ **หัวคอลัมน์ที่สคริปต์ตรวจต้องตรงตำแหน่ง 5 ตัว** — `CF_BARCODE`(0) · `CF_FMLPRICE`(1) · `CF_ITEMID`(4) · `CF_UNITNAME`(6) · `CF_BASEMULTIPLE`(7) · ProMaxx เปลี่ยนรูปแบบรายงานเมื่อไร ต้องแก้ทั้งตารางด้านบน, `loadR05()` และ `auto-r05/auto_r05_import.py` พร้อมกัน
   - ⚠️ **ตรรกะ parse + serialize อยู่ 2 ภาษา** — แก้ฝั่งใดฝั่งหนึ่งต้องแก้อีกฝั่งเสมอ แล้วรัน `node tools/check-r05-parity.js "<R05.106.CSV>"` (เทียบถึงระดับสตริง JSON ไม่ใช่แค่โครงข้อมูล)
   - บอทไม่เขียนถ้าเนื้อหาเหมือนเดิมทุกไบต์ ⇒ วันปกติไม่มี write และไม่มี toast · รายละเอียดด่านทั้ง 8 อยู่ใน `auto-r05/README.md`
