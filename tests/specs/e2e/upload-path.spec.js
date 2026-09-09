@@ -161,4 +161,43 @@ test.describe('CSV upload path', () => {
 
     await closeApp(app);
   });
+
+  // การ์ด R05.106 โชว์ "อัปโหลดล่าสุด" ให้ admin ตรวจได้ว่าบอท auto-r05 ทำงานเมื่อไร (ก.ย. 2026)
+  // เวลามาจาก field updated_at ของ global_r05 ซึ่งทั้งหน้าเว็บและบอทเขียนอยู่แล้ว ไม่มี field ใหม่
+  //
+  // ⚠️ กับดักที่เทสนี้มีไว้จับ: _setR05Ts ต้องถูกเรียก **ก่อน** echo guard ใน startR05Listener
+  // snapshot แรกหลัง login มี data_json ตรงกับที่ restoreMasterFromFirestore เพิ่งใส่ใน
+  // _lastAppliedR05Json แล้ว listener จึง return ตรงนั้นทุกครั้ง — ย้ายไปตั้งทีหลังเมื่อไร
+  // การ์ดจะว่างจนกว่าจะมีคนอัปไฟล์ใหม่จริงๆ ซึ่งเป็นอาการที่ไม่มีใครสังเกตเห็น
+  //
+  // เช็ค textContent ไม่ใช่ toBeVisible() เพราะ #r05UploadSection ถูกซ่อนไว้จนกว่าจะเข้า Admin Mode
+  // (ตั้งใจ — การ์ดนี้มีไว้ให้ admin) ตัว _setR05Ts คุมแค่ display ของ element ตัวเอง
+  test('การ์ด R05.106 ได้เวลาอัปโหลดล่าสุดตั้งแต่ login โดยไม่ต้องรอให้ใครอัปไฟล์', async ({ browser }) => {
+    const app = await bootFreshCount(browser, { role: 'pharmacist', user: 'Pharm', mode: 'desktop' });
+
+    // seedMasters เขียน updated_at = 2026-09-09T02:30:00Z ให้ global_r05 (09:30 น. เวลาไทย)
+    await app.page.waitForFunction(
+      () => (document.getElementById('r05Timestamp')?.textContent || '').includes('อัปโหลดล่าสุด'),
+      undefined, { polling: 100 },
+    );
+    const card = await app.page.evaluate(() => {
+      const el = document.getElementById('r05Timestamp');
+      return { text: el.textContent, hidden: el.style.display === 'none' };
+    });
+    expect(card.hidden).toBe(false);
+    // formatThaiDateTime = "HH:MM น. DD/MM/YYYY" — ตรึงรูปแบบให้ตรงกับการ์ด R01.102
+    expect(card.text).toMatch(/^อัปโหลดล่าสุด: \d{2}:\d{2} น\. \d{2}\/\d{2}\/\d{4}$/);
+    expect(card.text).toContain('09/09/2026');
+
+    // อัปไฟล์ใหม่แล้วเวลาต้องขยับเป็นตอนนี้ ไม่ใช่ค้างที่ค่าจาก seed
+    await app.page.setInputFiles('#fileR05', csv('r05.csv', F.toR05Csv()));
+    await app.page.waitForFunction(
+      (old) => (document.getElementById('r05Timestamp')?.textContent || '') !== old,
+      card.text, { polling: 100 },
+    );
+    const afterUpload = await app.page.evaluate(() => document.getElementById('r05Timestamp').textContent);
+    expect(afterUpload).toMatch(/^อัปโหลดล่าสุด: \d{2}:\d{2} น\. \d{2}\/\d{2}\/\d{4}$/);
+
+    await closeApp(app);
+  });
 });

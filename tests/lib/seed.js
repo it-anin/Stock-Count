@@ -4,7 +4,8 @@
 //                 ← Product Branch Master: 1 doc ต่อสาขา (ส.ค. 2026 แทน global_pm เดิม)
 //                   cat_coded is a console-only marker; the countable rule reads `cat` on the rows.
 //                   pmCatCoded:false seeds pmRowsNoCat = a pre-ส.ค.-2026 file (no Col D anywhere).
-//   global_r05   (syncMasterToFirestore):        { data_json }   ← ยัง global อยู่ (ใช้ร่วมทุกสาขา)
+//   global_r05   (syncMasterToFirestore):        { data_json, format, row_count, updated_at }
+//                 ← ยัง global อยู่ (ใช้ร่วมทุกสาขา) · บอท auto-r05 เขียน 4 field ชุดเดียวกันเป๊ะ
 //   {branch}_r01 (+ syncR16MetaToFirestore):     { data_json, r01UploadedAt, r01Version, r16* meta }
 const { adminDb } = require('./emulator');
 const F = require('./fixtures');
@@ -20,7 +21,13 @@ async function seedMasters(projectId, { branch = 'SRC', r01Version = 'R01-TEST-1
       ...(pmCatCoded ? { cat_coded: true } : {}),
       updated_at_text: 'test-fixture',
     }),
-    db.doc('stock_sessions/global_r05').set({ data_json: JSON.stringify(F.r05Rows) }),
+    // format/row_count/updated_at ให้ครบเหมือน doc จริง — การ์ด R05 อ่าน updated_at ไปโชว์ "อัปโหลดล่าสุด"
+    db.doc('stock_sessions/global_r05').set({
+      data_json: JSON.stringify(F.r05Rows),
+      format: 'r05a1',
+      row_count: F.r05Rows.length,
+      updated_at: new Date('2026-09-09T02:30:00Z'),
+    }),
     db.doc(`stock_sessions/${branch}_r01`).set({
       // r01CloudRows = shape loadR01 writes (col P already collapsed to `nc`) — not the raw CSV shape
       data_json: JSON.stringify(F.r01CloudRows),
