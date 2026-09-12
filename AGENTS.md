@@ -49,6 +49,18 @@
   - ตัวป้อนไฟล์คือบอทคนละตัว (`BOTR05106` export จาก ProMaxx บนเครื่องเดียวกัน) — เห็น exit 4 "ไฟล์ไม่ใช่ของวันนี้" ติดกันหลายวัน ต้องไปแก้ที่ Task ตัวนั้น ไม่ใช่ที่นี่
   - ⚠️ **เวลาที่จะตั้ง Task ต้องอ่านจาก `LastWriteTime` ของ `R05.106.CSV` บนเครื่องที่รันจริง ห้ามอนุมาน** — `BOTR05106/README.md` บันทึกแค่ว่า "ตั้ง Task แล้ว ทดสอบผ่าน" **ไม่ได้ระบุเวลา** ส่วนเลข `06:30` ในไฟล์นั้นอยู่ในบล็อก**ตัวอย่างคำสั่ง** `register_task.ps1` · เคยหยิบมาพูดเหมือนเป็นข้อเท็จจริงมาแล้ว (ก.ย. 2026) = กับดักเดียวกับกฎ 0 ข้อ 1
   - ปิดฉุกเฉิน: `Disable-ScheduledTask -TaskName "AutoR05Import"` · ย้อนข้อมูล: อัปผ่านหน้าเว็บตามเดิม หรือคืนจาก `auto-r05/backup/`
+  - ⛔ **ห้ามแก้สคริปต์นี้เพื่อหลบไฟล์ R05.105 ของ auto-adj** (ผู้ใช้ยืนยัน 12 ก.ย. 2026 ว่ามันทำงานดีอยู่แล้ว) — `FILE_GLOB = "R05*.CSV"` กว้างกว่าชื่อที่ต้องการและกินชื่อ `R05.105.CSV` ไปด้วย จึงต้องกันที่**ชื่อไฟล์ของ auto-adj** แทน: ไฟล์ราคาต้องชื่อ `ADJ_R05.105.CSV` (รูปแบบผูกกับต้นชื่อ ชื่อที่มีคำนำหน้าจึงถูกมองข้าม)
+  - R05.105 กับ R05.106 **เป็นรายงานคนละตัว ไม่มีคอลัมน์ไหนตรงกันเลย** (ยืนยันกับไฟล์จริง 12 ก.ย. 2026: R05.106 = 27 คอลัมน์ เริ่ม `CF_BARCODE` = ตารางบาร์โค้ดสำหรับสแกน · R05.105 = 34 คอลัมน์ เริ่ม `CF_ITEMS_ORDINARY` = ตารางราคาสำหรับใบปรับปรุง) · ถ้าหยิบผิดไฟล์ ด่านหัวคอลัมน์กันไว้ (exit 4 ไม่เขียน) แต่วันนั้นตารางบาร์โค้ดไม่ถูกอัปแบบเงียบ
+  - ⚠️ **ชื่อไฟล์ทุกตัวในโฟลเดอร์นั้นต้องตายตัว ไม่ต่อวันที่** — วันที่บางวันมีเลข `105`/`106` ปนอยู่ (เช่น `R05.106-01052026.CSV` มี `105`) ทำให้รูปแบบของอีกบอทจับติด
+
+- **`auto-adj/` + Supabase — ป็อปอัพ 📦 ปรับปรุงสินค้า ไม่ต้องแนบไฟล์แล้ว (อัปข้อมูลจริงขึ้น Supabase สำเร็จครั้งแรก 12 ก.ย. 2026 · ยังไม่ตั้ง Task และยังไม่ deploy เว็บ — ตัวเลข/สิ่งที่เหลืออยู่ในตารางสถานะของ `CLAUDE.md`)**
+  - บอทอัป R14.102 (LOT/EXP) + R05.105 (ราคา Level 4) ทั้งไฟล์ขึ้น Supabase project `eogqnedbdpjuptwlqudn` (ตาราง `adj_*`) · ป็อปอัพดึงเฉพาะ SKU ในใบทุกครั้งที่เปิด
+  - **Supabase เป็นที่เดียวในระบบที่ไม่ใช่ Firestore** · เว็บใช้ anon key อ่านอย่างเดียว (RLS ใน `auto-adj/supabase-adj.sql`) · บอทใช้ service_role key จาก `.env`/env var · ⛔ **ห้ามใส่ service key ใน `index.html` หรือ commit `auto-adj/.env`**
+  - ลำดับที่มาแยกต่อไฟล์: แนบไฟล์เอง → Supabase → `{branch}_adjlot` ⇒ ยังไม่รัน SQL/บอทยังไม่รัน = กลับไปพฤติกรรมเดิมเอง
+  - เขียนแบบ **generation** (ใส่ชุดใหม่ก่อน → นับกลับ → สลับ `adj_meta.active_gen` จุดเดียว) · invariant: **reader ต้องกรอง `gen=active_gen` และวนเพจละ 1,000 แถวเสมอ**
+  - parse อยู่ 2 ภาษา → `node tools/check-adj-parity.js` ต้อง exit 0 (ผ่านแล้วกับ R05.105 จริง · **R14.102 ยังไม่ได้เทียบกับไฟล์จริง** — หัวคอลัมน์อนุมานจาก WH-Branch)
+  - ต้องมี Task export 2 ไฟล์จาก ProMaxx ก่อน (**ยังไม่มี** — อยู่นอก repo) ลง `Desktop\run-upload-stock` โฟลเดอร์เดียวกับ auto-r01/auto-r05 ⇒ **ไฟล์ราคาต้องชื่อ `ADJ_R05.105.CSV` ไม่ขึ้นต้นด้วย `R05`** (ดูข้อของ auto-r05 ด้านบน) · glob ของ auto-adj เป็น `*R14*102*.CSV` / `*R05*105*.CSV` และเตือนใน log ถ้าเจอชื่อขึ้นต้น `R05` · ขั้นตอนเต็มใน `auto-adj/README.md`
+  - ⛔ ห้ามเพิ่ม flag ข้ามด่านหัวคอลัมน์ · สคริปต์ปฏิเสธ flag ที่ไม่รู้จัก (exit 2) โดยตั้งใจ ห้ามถอด
 
 ## 2. โครงสร้างระบบ
 
@@ -65,6 +77,7 @@
 | `firestore.rules` | สำเนา rules เพื่อ track ใน Git | แก้ไฟล์นี้ไม่ใช่การ deploy; ต้อง Publish ใน Firebase Console |
 | `auto-r01/` | import R01 ของ WH/SRC/KKL/SSS อัตโนมัติทุกเช้า แยกตาม Col D | ทดสอบด้วย `--dry-run` ก่อนเขียน Firestore จริง · ต้องคง parity กับ `loadR01()` |
 | `auto-r05/` | import R05.106 (ตารางบาร์โค้ด) ลง `global_r05` อัตโนมัติทุกเช้า | ทดสอบด้วย `--dry-run` ก่อน · ต้องคง parity กับ `loadR05()` + `_serializeR05()` **ถึงระดับสตริง** (`node tools/check-r05-parity.js`) |
+| `auto-adj/` | import R14.102 + R05.105 ขึ้น **Supabase** (`adj_*`) ให้ป็อปอัพปรับปรุงสินค้า | `--dry-run` ก่อน · ต้องคง parity กับ `_parseAdjLotRows()`/`_parseAdjPriceRows()` (`node tools/check-adj-parity.js`) · `.env` มี service key ห้าม commit · ตาราง/สิทธิ์สร้างด้วย `supabase-adj.sql` |
 | `คู่มือการใช้งาน.html` | คู่มือรวมทุก role | เป็น standalone HTML |
 | `คู่มือ-สาขา.html` | คู่มือ assistant/pharmacist | ไม่กระทบ runtime หลัก |
 | `คู่มือ-คลัง.html` | คู่มือ warehouse/supervisor | ไม่กระทบ runtime หลัก |
@@ -290,6 +303,7 @@ Toast บน PDA ต้องกระชับผ่าน `_toastMessageForDev
 - sample CSV, backup, `.windsurf/`, `.claude/settings.local.json` และไฟล์ local อื่น: ห้ามลบหรือ commit เว้นแต่ผู้ใช้สั่งชัดเจน
 - คู่มือ/HTML ตัวอย่าง: ห้ามเหมารวมว่าเป็น runtime
 - PIN, credential, API secret และ keystore material: ห้ามใส่ในเอกสาร, log หรือคำตอบ
+- Supabase **service_role key** (`auto-adj/.env` หรือ env `SUPABASE_SERVICE_KEY`): ข้าม RLS ได้ทุกตาราง รวมตารางของระบบขายใน project เดียวกัน — ห้าม commit ห้ามใส่ใน `index.html` · ใน `index.html` มีได้เฉพาะ anon key
 
 Git safety:
 
@@ -335,6 +349,8 @@ Git safety:
 - Service Worker: bump `CACHE` ใน `sw.js` เมื่อแก้ assets/cache behavior
 - Firestore Rules: copy และ Publish ผ่าน Firebase Console หลัง review; ถ้า runtime เพิ่ม subcollection ใหม่ต้อง Publish Rules ที่รองรับก่อน deploy เว็บ มิฉะนั้น client ทุกเครื่องจะได้ `permission-denied`
 - Android: bump version, update `version.json`, commit, tag release และ push tags
+- Supabase (`auto-adj`): ตาราง/สิทธิ์อยู่ใน `auto-adj/supabase-adj.sql` ต้องรันใน Supabase SQL Editor เอง (แก้ไฟล์ใน Git ไม่มีผลกับของจริง เหมือน `firestore.rules`) · เว็บ deploy ก่อนรัน SQL ได้ ป็อปอัพถอยไปพฤติกรรมเดิมเอง
+- `auto-r01/`, `auto-r05/`, `auto-adj/` บน BIGYAMAINPC **ไม่ใช่ git clone** — push แล้วต้องก๊อปไฟล์ไปวางเองและตรวจเวอร์ชันก่อนรันทุกครั้ง
 - **Product Branch Master ต้องอัปทีละสาขา 4 รอบ** (SRC/KKL/SSS/WH) — สลับสาขาก่อนอัปทุกครั้งและตรวจชื่อสาขาบนหัวจอ
   ไฟล์ลงที่ `{branch}_pm` ของ**สาขาที่เลือกอยู่ตอนนั้น** อัปผิดสาขา = catalog **และตัวหาร Progress** ของสาขานั้นผิดทันทีผ่าน listener
   ตั้งแต่ ส.ค. 2026 การอัป PBM **เปลี่ยนตัวหาร Progress ทุกเครื่องของสาขานั้นทันที** (PBM Col D ∈ A/B/C/REVIEW เป็นตัวตัดสิน) — คำนวณเลขที่คาดหวังใน Excel ไว้ก่อน, ตรวจ toast ว่าจำนวน `A/B/C/REVIEW` ไม่เป็น 0 และแจ้งหน้างานล่วงหน้า ไม่งั้นจะถูกรายงานว่า "ระบบพัง"

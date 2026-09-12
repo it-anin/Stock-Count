@@ -320,26 +320,44 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 - เทส: `tests/specs/logic/adjust-doc-dropped.spec.js`
 
 **คอลัมน์:** ลำดับ / รหัสสินค้า(SKU) / ชื่อสินค้า / หน่วย(`skuDirectMap`) / จำนวน / ราคา / LOT / EXP / รวมเงิน
-→ ราคา + รวมเงิน จาก R05.105 · **EXP จาก R14.102 (ของ LOT ที่เลือก)** · ช่องที่ยังไม่แนบไฟล์ = `—`
+→ ราคา + รวมเงิน จาก R05.105 · **EXP จาก R14.102 (ของ LOT ที่เลือก)** · ช่องที่ยังไม่มีข้อมูล = `—`
 
-**ปุ่ม 📂 แนบไฟล์ LOT/EXP R14.102 (`handleAdjLotFile`):**
+**ที่มาของ LOT/ราคา (ก.ย. 2026) — ไม่ต้องแนบไฟล์แล้ว:** บอท `auto-adj/` อัป R14.102 + R05.105 ขึ้น Supabase (`adj_r14_lots` / `adj_r05_prices` / `adj_meta`) ทุกเช้า
+`openAdjustDocPopup()` → `_refreshAdjMaster()` **ทุกครั้งที่เปิด** (เดิมโหลดเฉพาะตอน local ว่าง ⇒ SKU ที่เพิ่งกลายเป็น Stock Adjustment ไม่ได้ข้อมูล) ดึงเฉพาะ SKU ในใบผ่าน `_fetchAdjMasterFromSupabase(need)`
+- ลำดับความสำคัญ **แยกต่อไฟล์** (`_adjSource.Lot` / `_adjSource.Price`): **ไฟล์ที่แนบเองในรอบนี้** (`'file'`) → **Supabase** (`'supabase'`) → ถ้า Supabase ไม่มี/ไม่ตอบ ใช้ `lotMap`/`priceMap` ใน `{branch}_adjlot` (`'cloud'` · `_applyAdjCloudFallback`)
+  ⇒ **deploy เว็บก่อนรัน SQL/ก่อนบอทรันก็ไม่พัง** — ถอยกลับไปพฤติกรรมเดิมเอง
+- ⚠️ **ต้องกรอง `gen=eq.<adj_meta.active_gen>` ทุก query** — ตารางเก็บหลาย generation (ชุดที่บอทกำลังเขียน + ชุดก่อนหน้าไว้ย้อนกลับ) ไม่กรอง = LOT ซ้ำ/ของเก่าโผล่
+- ⚠️ **ต้องวนเพจละ 1,000 แถว** (`ADJ_SB_PAGE`) — Supabase ตัดผลที่ 1,000 แถวต่อ request โดยปริยาย ไม่วน = LOT หายเงียบ · เรียง `sku,seq` ให้เพจนิ่ง
+- `_adjLoading` กั้น Export ระหว่างโหลด (`_adjExportBusy`) · ⚠️ **ต้องล้างธงนี้ที่ต้น `_refreshAdjMaster` ทุกรอบ** — รอบที่ถูกแซงจะ return ก่อนล้าง ถ้ารอบใหม่ไม่มี SKU ธงค้าง = Export ถูกบล็อกถาวร
+- ตัวอ่าน `{branch}_adjlot` (`_readAdjlotDoc`) วิ่งคู่ขนาน **ไม่ขวาง Supabase** · ไม่แตะ state เอง · ใช้ `lotSelected` เมื่อ local ยังไม่ได้เลือกอะไร
+- การ์ดโชว์ที่มา + เวลา (`_adjCardState`): `checked_at` ไม่ใช่วันนี้ → `⚠️ บอทยังไม่ได้ตรวจวันนี้` (บอทอัปเดต `checked_at` ทุกรอบแม้เนื้อหาไม่เปลี่ยน — ต่างจาก `global_r05`)
+- ⛔ anon key ใน `index.html` อ่านได้อย่างเดียว (RLS) · **ห้ามใส่ service_role key** · ข้อมูลในตาราง adj_* อ่านได้โดยทุกคนที่มี anon key (ผู้ใช้ยืนยันแล้วว่ารับได้)
+
+**การ์ดแนบไฟล์ LOT/EXP R14.102 (`handleAdjLotFile`) — เป็นทางสำรองแล้ว:**
 - ไฟล์ **ColJ=SKU, ColL=LOT, ColB=EXP** (ไม่ skip header — ค่า SKU ในแถว header ไม่ตรง adjustment set เลยถูกกรองทิ้งเอง)
-- อ่านผ่าน `parseFile` กรอง **เฉพาะ SKU ที่ `stock_adjustment` ตอนอ่าน** → `_lotMap: Map<SKU, [{lot, exp}]>` (ไฟล์ใหญ่เหลือหลักสิบ–ร้อย)
+- ลูป parse อยู่ใน **`_parseAdjLotRows(rows, need)`** (ฟังก์ชันบริสุทธิ์) → `_lotMap: Map<SKU, [{lot, exp}]>` คู่ SKU+LOT ซ้ำเก็บตัวแรก
 - คอลัมน์ LOT = `<select>` ต่อ SKU (1 SKU หลาย LOT), เลือกแล้วเก็บใน `_lotSelected` + **คอลัมน์ EXP โชว์ `exp` ของ LOT ที่เลือก** (`onAdjLotSelect` สั่ง re-render)
+- **แนบไฟล์แล้วไม่ล้าง `_lotSelected` อีก** (เดิมล้างทิ้งหมด) — LOT ที่เลือกแต่ไม่มีในไฟล์ถูกกันด้วย `_adjSelectedEntry()` แทน
 - render normalize format เก่า (`_lotMap` เคยเก็บ string) → `_adjlot` doc ที่ sync ไว้ก่อนเปลี่ยนยังโหลดได้ไม่ crash
 
-**ปุ่ม 💵 แนบไฟล์ราคา R05.105 (`handleAdjPriceFile`):**
-- **ColB=SKU, ColE=หน่วย, ColH=ราคา, กรองเฉพาะแถว `ColF===4`** → `_priceMap: Map<SKU, {unit, price}>` (กรองเฉพาะ SKU ที่ปรับ เหมือน LOT)
+**การ์ดแนบไฟล์ราคา R05.105 (`handleAdjPriceFile`) — เป็นทางสำรองแล้ว:**
+- **ColB=SKU, ColE=หน่วย, ColH=ราคา, กรองเฉพาะแถว `ColF===4`** → ลูปอยู่ใน **`_parseAdjPriceRows(rows, need)`** → `_priceMap: Map<SKU, {unit, price}>`
 - หน่วยใช้ R05.105 ก่อน fallback `skuDirectMap`; ราคา raw (ไม่ใส่ comma); รวมเงิน = ราคา × จำนวน
+
+⚠️ **`_parseAdjLotRows`/`_parseAdjPriceRows` มีคู่แฝดใน `auto-adj/auto_adj_import.py`** (`parse_lot_rows`/`parse_price_rows`)
+แก้ที่ใดต้องแก้อีกที่ แล้วรัน `node tools/check-adj-parity.js "<R14.102.CSV>" "<R05.105.CSV>"` (ต้อง exit 0) · **ห้ามเปลี่ยนชื่อ/signature** — ตัวตรวจดึงไปรันตรง ๆ
 
 **ปุ่ม 💾 บันทึก LOT (`saveAdjustDocToCloud`) — Sync ข้ามเครื่อง:**
 - เขียน `_lotMap`+`_lotSelected`+`_priceMap` (JSON strings) ลง doc แยก **`${branch}_adjlot`** — **เขียนตอนกดบันทึกเท่านั้น** (ไม่ใช่ทุก 3 วิ)
-- เครื่องอื่นเปิด popup → `openAdjustDocPopup` (async) เรียก `loadAdjustDocFromCloud` **เฉพาะเมื่อ local ว่าง** (กันทับงานที่กำลังแนบค้างในเครื่องตัวเอง)
-- ⚠️ sync ได้เพราะ **กรองเหลือเฉพาะ SKU ที่ปรับ = เล็ก** — **ไฟล์ raw 200k ห้ามขึ้น cloud** (ดู Known Pitfalls)
-- ล้าง local ตอน logout (`updateAdjustDocPanel`) · ล้าง local + ลบ cloud doc ตอน `startNewCount`
+- ตั้งแต่มี Supabase งานหลักของ doc นี้คือ **"LOT ที่เลือก"** · `lotMap`/`priceMap` ยังเขียนต่อเพื่อเครื่องที่ยังไม่ reload ระหว่าง rollout และเป็นข้อมูลสำรองตอน Supabase ไม่ตอบ
+- ⚠️ sync ได้เพราะ **กรองเหลือเฉพาะ SKU ที่ปรับ = เล็ก** — **ไฟล์ raw 200k ห้ามขึ้น Firestore** (ดู Known Pitfalls)
+- ล้าง local + สถานะแหล่งข้อมูลตอน logout (`updateAdjustDocPanel`) · ล้าง local + ลบ cloud doc ตอน `startNewCount` (**ไม่แตะ Supabase** — ไม่ผูกรอบนับ แนวเดียวกับ `global_r05`)
 
 **ปุ่ม ⬇️ Export Text (`exportAdjustDocText`):** ตามแท็บที่เลือก · format `SKU⇥จำนวน⇥ราคา⇥⇥⇥⇥⇥⇥LOT⇥EXP` (1,1,6,1 TAB) · CRLF · ไฟล์ `stockadj_<ords|irps>_<date>.txt`
 - EXP = ของ LOT ที่เลือก แปลงเป็น `DD/MM/YYYY` ปี **พ.ศ.** (`_toBeDMY`, +543 จากปี ค.ศ. ที่ `parseTranDate` parse ได้) — ว่างถ้ายังไม่เลือก LOT หรือ parse วันที่ไม่ได้
+- ⚠️ **LOT อ่านผ่าน `_adjSelectedEntry(sku)` เท่านั้น** (ทั้ง Text และ Excel) — LOT ที่เลือกไว้แต่ไม่มีในข้อมูลชุดปัจจุบัน = ว่าง
+  เดิมอ่าน `_lotSelected` ตรง ๆ ⇒ พอข้อมูลบน Supabase เปลี่ยน ไฟล์จะมี LOT ที่จอแสดง "— เลือก —" (ไม่ถูกลบจาก `_lotSelected` — เลือกใหม่ได้ ไม่ทำลายงานที่บันทึกไว้)
+- เทส: `tests/specs/logic/adjust-doc-supabase.spec.js` (Supabase จำลองด้วย `tests/lib/supabase-fake.js`)
 
 ---
 
@@ -350,7 +368,8 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 | localStorage | `stockCountSession_${branch}` | ทุก `saveSession()` debounce 400ms |
 | Firestore `stock_sessions/${branch}` | scan data | 3s หลัง localStorage |
 | Firestore `stock_sessions/${branch}_r01` | R01 master + R16 upload metadata | หลัง upload R01; R16: `r16UploadedAt`/`r16Loaded` merge เข้า `_r01` doc ทุกครั้ง `loadR16()` |
-| Firestore `stock_sessions/${branch}_adjlot` | LOT+ราคา ใบปรับปรุง (เฉพาะ SKU ที่ปรับ) | **กดปุ่ม 💾 บันทึก LOT เท่านั้น**; อ่านตอนเปิด popup ถ้า local ว่าง |
+| Firestore `stock_sessions/${branch}_adjlot` | LOT ที่เลือก + LOT/ราคา สำรอง ใบปรับปรุง (เฉพาะ SKU ที่ปรับ) | **กดปุ่ม 💾 บันทึก LOT เท่านั้น**; อ่านทุกครั้งที่เปิด popup (`_readAdjlotDoc`) |
+| **Supabase** `adj_r14_lots` / `adj_r05_prices` / `adj_meta` (project `eogqnedbdpjuptwlqudn`) | R14.102 + R05.105 **ทั้งไฟล์** (ใช้ร่วมทุกสาขา · ไม่ผูกรอบนับ) | บอท `auto-adj` ทุกเช้าเท่านั้น (service key) · เว็บอ่านอย่างเดียว เฉพาะ SKU ในใบ + `gen=active_gen` |
 | Firestore `stock_sessions/${branch}_pm` | **Product Branch Master** — catalog ต่อสาขา รวม WH (ส.ค. 2026 — เดิม `global_pm` ใช้ร่วมกัน) | หลัง PM upload; real-time listener · **ไม่ persist localStorage** ทุก reload ดึงจาก cloud |
 | Firestore `stock_sessions/global_r05` | R05 Barcode mapping (ใช้ร่วมทุกสาขา ก.ค. 2026 —เดิม `${branch}_r05`) | หลัง R05 upload (`loadR05`); real-time listener (`startR05Listener`, mirror PM) |
 | Firestore `stock_sessions/WH_location` | Location + zone-staff | หลัง Save ใน Location popup |
@@ -364,7 +383,7 @@ Strip เฉพาะ: `retries`, `scans`
 ⚠️ `clearAllData()` (admin PIN) ก็**ไม่ลบ** `global_r05` และ `${branch}_pm` — ล้างแค่ local state, resync กลับจาก cloud ตอน reload
 ⚠️ `global_pm` เดิมเป็น **legacy read-only** ไม่มีโค้ดอ่าน/เขียนแล้ว **ห้ามลบบน cloud** (เส้นชีวิตของ rollback) และ **ห้ามใส่ fallback กลับไปอ่าน** — สาขาที่ยังไม่อัป PBM ต้องเห็น badge "ยังไม่โหลด"
 ⚠️ ลำดับ: `syncToFirestore(true)` → `rebuildMaps()` (scanData ว่างก่อน)
-⚠️ **ไฟล์ raw LOT/ราคา (200k แถว) ห้ามขึ้น cloud** — sync เฉพาะ "ผลกรอง" (`_lotMap`/`_lotSelected`/`_priceMap` ของ SKU ที่ปรับ = เล็ก) ผ่านปุ่ม 💾 บันทึก → `${branch}_adjlot` ดู Known Pitfalls
+⚠️ **ไฟล์ raw LOT/ราคา (200k แถว) ห้ามขึ้น Firestore** (ทั้งไฟล์อยู่บน Supabase แทนแล้ว ก.ย. 2026 · ดูหัวข้อป็อปอัพปรับปรุงสินค้า) — sync เฉพาะ "ผลกรอง" (`_lotMap`/`_lotSelected`/`_priceMap` ของ SKU ที่ปรับ = เล็ก) ผ่านปุ่ม 💾 บันทึก → `${branch}_adjlot` ดู Known Pitfalls
 
 ---
 
@@ -382,7 +401,8 @@ Strip เฉพาะ: `retries`, `scans`
 - master file เดิม (R01/R05) เก็บเป็น JSON string ก้อนเดียวใน 1 Firestore doc (`data_json`) — Firestore จำกัด **1 MB/doc ตายตัว**, localStorage ~5–10 MB
 - 200k แถวเป็น JSON ~10–40 MB → `.set()` **throw ทั้งก้อน** / `QuotaExceededError` + stringify ทุก `saveSession` = แอปค้าง
 - **วิธีที่ใช้:** ใบปรับปรุงมีแค่ item `stock_adjustment` (หลักสิบ–ร้อย) → `handleAdjLotFile()` กรองเฉพาะ SKU เหล่านั้น**ตอนอ่าน** เก็บ `_lotMap` in-memory เท่านั้น ไม่ sync ไม่ persist
-- **Cross-device sync (ทำแล้ว ก.ค. 2026):** ปุ่ม 💾 บันทึก LOT → `saveAdjustDocToCloud()` เก็บ **เฉพาะผลกรอง** (`_lotMap`/`_lotSelected`/`_priceMap` ของ SKU ที่ปรับ ~ร้อยแถว) ลง doc เดียว `${branch}_adjlot` (JSON strings) เขียนตอนกดเท่านั้น + อ่านตอนเปิด popup ถ้า local ว่าง — **ยังคงห้ามเอาไฟล์ raw ทั้งก้อนขึ้น cloud**
+- **Cross-device sync (ทำแล้ว ก.ค. 2026):** ปุ่ม 💾 บันทึก LOT → `saveAdjustDocToCloud()` เก็บ **เฉพาะผลกรอง** (`_lotMap`/`_lotSelected`/`_priceMap` ของ SKU ที่ปรับ ~ร้อยแถว) ลง doc เดียว `${branch}_adjlot` (JSON strings) เขียนตอนกดเท่านั้น — **ยังคงห้ามเอาไฟล์ raw ทั้งก้อนขึ้น Firestore**
+- **ทั้งไฟล์ย้ายไป Supabase (ก.ย. 2026):** ข้อจำกัดข้างบนทำให้ต้องแนบไฟล์ใหม่ทุกครั้งที่มี SKU ใหม่ในใบ ⇒ บอท `auto-adj/` อัปทั้งไฟล์ขึ้น Postgres ของ Supabase (ไม่มีเพดาน 1 MiB ต่อ document และค้นด้วย `sku in (...)` ได้) · ป็อปอัพดึงเฉพาะ SKU ในใบทุกครั้งที่เปิด (ไม่ใช่ "เฉพาะตอน local ว่าง" แบบเดิมแล้ว)
 
 **Audit count ไม่ตรงข้ามเครื่อง — badge R16 sync แต่การคำนวณไม่ sync (ก.ค. 2026, แก้บางส่วน):**
 - **อาการ:** เภสัชเปิดหลาย browser/เครื่อง เห็นจำนวน Audit ไม่เท่ากัน (เช่น 36 / 19 / 19) ทั้งที่ badge วันที่ R16 ตรงกันหมด

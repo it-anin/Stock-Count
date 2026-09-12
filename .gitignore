@@ -19,6 +19,12 @@ auto-r05/__pycache__/
 # สำเนา data_json ก่อนเขียนทับ — มีบาร์โค้ด+ราคาจริงทั้งบริษัท (~490 KB/ไฟล์) ห้ามเข้า repo
 auto-r05/backup/
 
+# auto-adj: log เฉพาะเครื่อง + service_role key ของ Supabase (ข้าม RLS ได้ทุกตาราง) — ⛔ .env ห้ามเข้า repo เด็ดขาด
+auto-adj/.env
+auto-adj/auto_adj.log
+auto-adj/auto_adj.log.1
+auto-adj/__pycache__/
+
 # automated tests (tests/.gitignore คุมรายละเอียดอีกชั้น)
 tests/node_modules/
 tests/vendor/

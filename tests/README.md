@@ -58,6 +58,7 @@ $env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8791'; npm run e2e:attach   # แล้�
 | `lib/scenario.js` | flow ระดับสูง: `bootFreshCount` (เครื่องแรก → `startNewCount()` จริง), `bootJoinCount` (เครื่องที่ 2), `armR16`/`armWhR16` |
 | `lib/wh-workflow.js` | fixture/helper สังเคราะห์สำหรับ WH Count/Recheck, committed operations และ legacy compatibility (**ไม่มีข้อมูล production**) |
 | `lib/fixtures.js` | catalog สังเคราะห์ 20 SKU + ตัวสร้าง CSV (**ห้ามใส่ข้อมูลจริง**) |
+| `lib/supabase-fake.js` | PostgREST จำลองสำหรับตาราง `adj_*` (ป็อปอัพปรับปรุงสินค้า) ด้วย `page.route` — ตอบจาก fixture สังเคราะห์ ไม่ออกนอกเครื่อง · รองรับ `gen=eq.` `sku=in.()` `limit/offset` · สั่งให้ล้ม (`fail`) หรือกั้นคำตอบไว้ (`gate`) ได้ · ตัวกรองที่ไม่รู้จัก = throw |
 | `lib/seed.js` / `lib/emulator.js` | seed master docs / items · `clearAll`, `waitForDoc` |
 | `specs/logic/**` | เทสสูตรและ merge — ไม่ใช้ emulator |
 | `specs/e2e/**` | เทสเต็ม flow ผ่าน emulator |

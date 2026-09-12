@@ -1145,6 +1145,11 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "830923725135",
   appId: "1:830923725135:web:9f80c7a05bd73803f3cd3a"
 };
+// Supabase (ก.ย. 2026) — ใช้กับป็อปอัพ 📦 ปรับปรุงสินค้า เท่านั้น: ดึง LOT/EXP (R14.102) + ราคา Level 4 (R05.105)
+// ที่บอท auto-adj อัปไว้ทุกเช้า · anon key เป็น public key โดยออกแบบ — RLS ของตาราง adj_* เปิดแค่ SELECT
+// (สร้างตาราง/สิทธิ์ด้วย auto-adj/supabase-adj.sql) · ห้ามใส่ service_role key ในไฟล์นี้เด็ดขาด
+const SUPABASE_URL = 'https://eogqnedbdpjuptwlqudn.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3FuZWRiZHBqdXB0d2xxdWRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4MTc5MzUsImV4cCI6MjA5MTM5MzkzNX0.M9g4iCV7T0xoWdStNO4DNiT15m5dsEWcKc3ZV1TMlhE';
 let currentBranch = localStorage.getItem('selectedBranch') || '';
 let _db = null;
 let _firestoreSyncTimer = null;
@@ -7992,49 +7997,109 @@ function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById
 // แสดงเฉพาะ role ที่ยืนยัน: เภสัช (สาขายา) + supervisor (WH). Panel อยู่ใน .left-panel → desktop-only อัตโนมัติ
 // ดึงเฉพาะ status 'stock_adjustment' (รีเช็คแล้วยังไม่ตรง) ยึด convention เดียวกับ exportStockAdjExcel:
 //   count = recheckQty ?? countedQty, diff = count - systemQty → เกิน(diff>0)=IRPS เขียว, ขาด(diff<0)=ORDS
-// ราคา/LOT/EXP/รวมเงิน = placeholder ('—') ยังไม่มีข้อมูล
+// ราคา/LOT/EXP/รวมเงิน มาจาก R05.105/R14.102 (Supabase หรือแนบเอง) — ช่องที่ยังไม่มีข้อมูลแสดง '—'
 let _adjDocFilter='ords';
-// LOT lookup — local only (ไม่ sync/ไม่ persist). กรองเฉพาะ SKU ที่ stock_adjustment ตอนแนบไฟล์ → ไม่เก็บทั้ง 200k แถว
+// LOT/ราคา — in-memory · เก็บเฉพาะ SKU ที่ stock_adjustment (ไม่เก็บทั้ง 200k แถว)
+// ที่มา (ก.ย. 2026): Supabase ที่บอท auto-adj อัปทุกเช้า → ไฟล์ที่แนบเองชนะ → ถ้า Supabase ล้มใช้ {branch}_adjlot แบบเดิม
 let _lotMap=new Map();      // SKU → [{lot, exp}, ...] (R14.102: ColL=LOT, ColB=EXP)
-let _lotSelected=new Map(); // SKU → LOT ที่เลือกจาก dropdown (คงไว้ข้าม re-render/สลับแท็บ)
-let _priceMap=new Map();    // SKU → {unit, price} จาก R05.105 (เฉพาะแถว ColF===4) — local only
+let _lotSelected=new Map(); // SKU → LOT ที่เลือกจาก dropdown (คงไว้ข้าม re-render/สลับแท็บ · sync ผ่านปุ่ม 💾)
+let _priceMap=new Map();    // SKU → {unit, price} จาก R05.105 (เฉพาะแถว ColF===4)
+let _adjSource={Lot:'',Price:''}; // ที่มาของ map ตอนนี้ แยกต่อไฟล์: '' | 'supabase' | 'cloud' ({branch}_adjlot) | 'file' (แนบเอง)
+let _adjMeta={Lot:null,Price:null}; // แถว adj_meta ของชุดที่ใช้อยู่ (เวลาอัปเดต/ตรวจล่าสุด ไว้โชว์บนการ์ด)
+let _adjCloud=null;         // ผลอ่าน {branch}_adjlot รอบล่าสุด — ใช้เป็นข้อมูลสำรองเมื่อ Supabase ไม่มี/ไม่ตอบ
+let _adjSbError='';         // ข้อความเมื่อดึงจาก Supabase ไม่สำเร็จ
+let _adjSbMissing={Lot:false,Price:false}; // ดึงสำเร็จแต่บอทยังไม่เคยอัปไฟล์นั้น (adj_meta ไม่มีชุดที่ใช้งาน)
+let _adjLoading=false;      // กำลังดึงจาก Supabase — Export ต้องรอ (กันไฟล์ที่ไม่มีราคาหลุดออกไป)
+let _adjLoadToken=0;        // ตัวนับรอบ — ผลของรอบที่ถูกแซง (เปิดป็อปอัพซ้ำ/logout) ถูกทิ้ง
 // set ของ SKU ที่ต้องใช้จริง (เฉพาะ stock_adjustment) — ใช้กรองไฟล์ใหญ่ตอนอ่าน เก็บเฉพาะที่เกี่ยว
 function _adjustDocSkuSet(){const s=new Set();for(const[sku,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')s.add(sku);return s;}
 function _fmtMoney(n){return Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// ── parse ไฟล์ (คู่แฝดกับ parse_lot_rows / parse_price_rows ใน auto-adj/auto_adj_import.py) ──────────
+// ⚠️ แก้ที่ใดที่หนึ่งต้องแก้อีกที่เสมอ แล้วรัน node tools/check-adj-parity.js "<R14.102.CSV>" "<R05.105.CSV>"
+//    ห้ามเปลี่ยนชื่อ/signature — tools/check-adj-parity.js ดึงสองฟังก์ชันนี้ไปรันตรง ๆ
+// R14.102: ColJ=SKU, ColL=LOT, ColB=EXP · คู่ SKU+LOT ซ้ำเก็บตัวแรก · need = SKU ที่ต้องใช้ (แถวอื่นทิ้งระหว่างอ่าน)
+function _parseAdjLotRows(rows,need){
+  const map=new Map();let matched=0;
+  for(let i=0;i<rows.length;i++){                 // ไม่ skip header — SKU ใน header ไม่ตรง need เลยถูกกรองทิ้งเอง
+    const r=rows[i];if(!r||!r.length)continue;
+    const sku=(r[9]??'').toString().trim();        // ColJ = SKU
+    const lot=(r[11]??'').toString().trim();       // ColL = LOT
+    const exp=(r[1]??'').toString().trim();        // ColB = EXP (ผูกกับ LOT ในแถวเดียวกัน)
+    if(!sku||!lot||!need.has(sku))continue;
+    let arr=map.get(sku);if(!arr){arr=[];map.set(sku,arr);}
+    if(!arr.some(e=>e.lot===lot)){arr.push({lot,exp});matched++;} // เก็บเป็น {lot, exp}
+  }
+  return {map,matched};
+}
+// R05.105: ColB=SKU, ColE=หน่วย, ColH=ราคา · เฉพาะแถว ColF===4 · 1 SKU เอาแถวแรก
+function _parseAdjPriceRows(rows,need){
+  const map=new Map();let matched=0;
+  for(let i=0;i<rows.length;i++){                 // ไม่ skip header — SKU ใน header ไม่ตรง need เลยถูกกรองทิ้งเอง
+    const r=rows[i];if(!r||!r.length)continue;
+    if(Number((r[5]??'').toString().trim())!==4)continue;   // ColF filter = 4
+    const sku=(r[1]??'').toString().trim();        // ColB = SKU
+    if(!sku||!need.has(sku)||map.has(sku))continue;         // 1 SKU เอาแถว ColF=4 แถวแรก
+    const unit=(r[4]??'').toString().trim();        // ColE = หน่วย
+    const pRaw=(r[7]??'').toString().replace(/,|\s/g,'').trim(); // ColH = ราคา
+    const price=pRaw!==''&&isFinite(+pRaw)?+pRaw:null;
+    map.set(sku,{unit,price});
+    matched++;
+  }
+  return {map,matched};
+}
 // การ์ดแนบไฟล์ (แนว .upload-file-item ของแอป): toggle badge/icon เขียว↔เทา + อัพเดทข้อความ sub
-function _setAdjCard(which,attached,subText){
+function _setAdjCard(which,attached,subText,badgeText){
   const badge=document.getElementById('adj'+which+'Badge');
   const icon=document.getElementById('adj'+which+'Icon');
   const sub=document.getElementById('adj'+which+'Info');
   if(sub&&subText!=null)sub.textContent=subText;
   if(icon)icon.classList.toggle('upload-file-icon-optional',!attached);
-  if(badge){badge.classList.toggle('upload-file-badge-optional',!attached);const s=badge.querySelector('span');if(s)s.textContent=attached?'แนบแล้ว':'ยังไม่แนบ';}
+  if(badge){badge.classList.toggle('upload-file-badge-optional',!attached);const s=badge.querySelector('span');if(s)s.textContent=badgeText||(attached?'แนบแล้ว':'ยังไม่แนบ');}
   const card=icon&&icon.closest('.upload-file-item');
   if(card)card.classList.toggle('adj-card-done',!!attached); // พื้นการ์ดเขียวอ่อนเมื่อแนบแล้ว
 }
-function _refreshAdjCards(){ // สะท้อนสถานะการ์ดตามขนาด map ปัจจุบัน (ใช้ตอนเปิด popup)
+function _adjIsToday(iso){if(!iso)return false;const d=new Date(iso),n=new Date();return !isNaN(d)&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+// ข้อความบนการ์ดตามที่มาของข้อมูล — การ์ดยังคลิกแนบไฟล์เองได้ทุกสถานะ (ทางสำรอง)
+function _adjCardState(which){
   const need=_adjustDocSkuSet().size;
-  _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`${_lotMap.size}${need?'/'+need:''} SKU มี LOT/EXP`:'ดึงข้อมูล (LOT / EXP)');
-  _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`${_priceMap.size}${need?'/'+need:''} SKU มีราคา`:'ดึงข้อมูลราคาสินค้า (Price Level 4)');
+  const map=which==='Lot'?_lotMap:_priceMap;
+  const has=map.size>0;
+  const cnt=`${map.size}${need?'/'+need:''} SKU ${which==='Lot'?'มี LOT':'มีราคา'}`;
+  const src=_adjSource[which];
+  if(src==='file')return [has,`แนบไฟล์เอง · ${cnt}`,'แนบแล้ว'];
+  if(_adjLoading)return [has,'กำลังโหลดจาก Supabase…','กำลังโหลด'];
+  if(src==='supabase'){
+    const m=_adjMeta[which]||{};
+    const up=m.uploaded_at&&!isNaN(new Date(m.uploaded_at))?' · อัปเดต '+formatThaiDateTime(new Date(m.uploaded_at)):'';
+    // checked_at = เวลาที่บอทรันล่าสุด (แม้เนื้อหาเหมือนเดิม) — ไม่ใช่วันนี้ = บอท/ตัว export เช้านี้ไม่ได้รัน
+    const stale=_adjIsToday(m.checked_at)?'':' · ⚠️ บอทยังไม่ได้ตรวจวันนี้';
+    const again=_adjSbError?' · ⚠️ โหลดรอบล่าสุดไม่สำเร็จ (ใช้ชุดเดิม)':'';
+    return [has,`Supabase${up} · ${cnt}${stale}${again}`,'จาก Supabase'];
+  }
+  const fail=_adjSbError?'โหลดจาก Supabase ไม่ได้ · ':'';
+  if(src==='cloud'){
+    const by=_adjCloud&&_adjCloud.updatedBy?` · โดย ${_adjCloud.updatedBy}`:'';
+    return [has,`${fail}ใช้ที่บันทึกไว้ · ${cnt}${by}`,'ที่บันทึกไว้'];
+  }
+  if(fail)return [false,`${fail}คลิกเพื่อแนบไฟล์เอง`,'ยังไม่มีข้อมูล'];
+  if(has)return [true,cnt,'แนบแล้ว'];
+  if(_adjSbMissing[which])return [false,'ยังไม่มีข้อมูลบน Supabase (บอทยังไม่เคยอัป) — คลิกเพื่อแนบไฟล์เอง','ยังไม่มีข้อมูล'];
+  return [false,which==='Lot'?'ดึงข้อมูล (LOT / EXP)':'ดึงข้อมูลราคาสินค้า (Price Level 4)','ยังไม่แนบ'];
+}
+function _refreshAdjCards(){ // สะท้อนสถานะการ์ดตามที่มา + ขนาด map ปัจจุบัน
+  ['Lot','Price'].forEach(w=>{const[ok,text,badge]=_adjCardState(w);_setAdjCard(w,ok,text,badge);});
 }
 function handleAdjLotFile(event){
   const file=event.target.files[0];if(!file)return;
   const need=_adjustDocSkuSet(); // แถวที่ SKU ไม่อยู่ในนี้ ทิ้งทันทีระหว่างอ่าน
   if(!need.size){toast('ยังไม่มีรายการ Stock Adjustment ให้จับคู่ LOT','warn');return;}
   parseFile(file,rows=>{
-    _lotMap=new Map();_lotSelected=new Map();
-    let matched=0;
-    for(let i=0;i<rows.length;i++){                 // ไม่ skip header — SKU ใน header ไม่ตรง need เลยถูกกรองทิ้งเอง
-      const r=rows[i];if(!r||!r.length)continue;
-      const sku=(r[9]??'').toString().trim();        // ColJ = SKU
-      const lot=(r[11]??'').toString().trim();       // ColL = LOT
-      const exp=(r[1]??'').toString().trim();        // ColB = EXP (ผูกกับ LOT ในแถวเดียวกัน)
-      if(!sku||!lot||!need.has(sku))continue;
-      let arr=_lotMap.get(sku);if(!arr){arr=[];_lotMap.set(sku,arr);}
-      if(!arr.some(e=>e.lot===lot)){arr.push({lot,exp});matched++;} // เก็บเป็น {lot, exp}
-    }
-    _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`พบ LOT ${matched} รายการ · ${_lotMap.size}/${need.size} SKU`:'ไม่พบ LOT ของ SKU ที่ปรับในไฟล์');
-    toast(`โหลด LOT/EXP สำเร็จ · จับคู่ได้ ${_lotMap.size}/${need.size} SKU`,'success');
+    const{map,matched}=_parseAdjLotRows(rows,need);
+    // ไฟล์ที่แนบเองชนะ Supabase ทั้งรอบนี้ (ผล Supabase ที่กำลังโหลดของไฟล์นี้จะถูกทิ้ง)
+    // ไม่ล้าง _lotSelected แล้ว — LOT ที่เลือกแต่ไม่มีในไฟล์นี้ก็ไม่ถูกแสดง/ไม่ถูก Export อยู่แล้ว (ดู _adjSelectedEntry)
+    _lotMap=map;_adjSource.Lot='file';_adjMeta.Lot=null;
+    _refreshAdjCards();
+    toast(`โหลด LOT/EXP สำเร็จ · พบ LOT ${matched} รายการ · จับคู่ได้ ${_lotMap.size}/${need.size} SKU`,'success');
     renderAdjustDocTable();
   });
 }
@@ -8044,23 +8109,105 @@ function handleAdjPriceFile(event){
   const need=_adjustDocSkuSet();
   if(!need.size){toast('ยังไม่มีรายการ Stock Adjustment ให้จับคู่ราคา','warn');return;}
   parseFile(file,rows=>{
-    _priceMap=new Map();
-    let matched=0;
-    for(let i=0;i<rows.length;i++){                 // ไม่ skip header — SKU ใน header ไม่ตรง need เลยถูกกรองทิ้งเอง
-      const r=rows[i];if(!r||!r.length)continue;
-      if(Number((r[5]??'').toString().trim())!==4)continue;   // ColF filter = 4
-      const sku=(r[1]??'').toString().trim();        // ColB = SKU
-      if(!sku||!need.has(sku)||_priceMap.has(sku))continue;   // 1 SKU เอาแถว ColF=4 แถวแรก
-      const unit=(r[4]??'').toString().trim();        // ColE = หน่วย
-      const pRaw=(r[7]??'').toString().replace(/,|\s/g,'').trim(); // ColH = ราคา
-      const price=pRaw!==''&&isFinite(+pRaw)?+pRaw:null;
-      _priceMap.set(sku,{unit,price});
-      matched++;
-    }
-    _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`ได้ราคา/หน่วย ${matched}/${need.size} SKU`:'ไม่พบราคาของ SKU ที่ปรับ (ColF=4)');
+    const{map,matched}=_parseAdjPriceRows(rows,need);
+    _priceMap=map;_adjSource.Price='file';_adjMeta.Price=null;
+    _refreshAdjCards();
     toast(`โหลดราคา R05.105 สำเร็จ · ${matched}/${need.size} SKU`,'success');
     renderAdjustDocTable();
   });
+}
+// LOT entries ของ SKU (normalize format เก่าที่เคยเก็บเป็น string) + entry ที่ถูกเลือก
+// LOT ที่เลือกไว้แต่ไม่มีในข้อมูลชุดปัจจุบัน (ข้อมูลอัปเดต/แนบไฟล์ใหม่) = ถือว่ายังไม่เลือก
+// ⇒ ตาราง · Export Text · Export Excel เห็นตรงกันเสมอ ไม่มี LOT ที่จอไม่แสดงหลุดเข้าไฟล์
+function _adjLotEntries(sku){return(_lotMap.get(sku)||[]).map(e=>typeof e==='string'?{lot:e,exp:''}:e);}
+function _adjSelectedEntry(sku){const sel=_lotSelected.get(sku);return sel?_adjLotEntries(sku).find(e=>e.lot===sel)||null:null;}
+// ── Supabase: ดึง LOT/ราคา เฉพาะ SKU ที่อยู่ในใบ ──────────────────────────────────────
+// ตาราง adj_r14_lots / adj_r05_prices ใช้แบบ generation — ต้องกรอง gen = adj_meta.active_gen เสมอ
+// (ชุดใหม่ที่บอทกำลังเขียนอยู่มี gen อื่น ผู้ใช้ต้องไม่เห็นจนกว่าบอทจะสลับตัวชี้)
+const ADJ_SB_TIMEOUT_MS=15000;
+const ADJ_SB_SKU_CHUNK=150;   // SKU ต่อ request — URL ยาวไม่กี่ KB
+const ADJ_SB_PAGE=1000;       // Supabase ตัดผลที่ 1,000 แถวต่อ request โดยปริยาย — ต้องวนเพจ ไม่งั้น LOT หายเงียบ
+async function _sbGet(pathQuery,signal){
+  const res=await fetch(SUPABASE_URL+'/rest/v1/'+pathQuery,{
+    headers:{apikey:SUPABASE_ANON_KEY,Authorization:'Bearer '+SUPABASE_ANON_KEY,Accept:'application/json'},
+    signal,cache:'no-store'});
+  if(!res.ok){let d='';try{d=(await res.text()).slice(0,160);}catch(e){}throw new Error(`Supabase HTTP ${res.status}${d?' — '+d:''}`);}
+  return res.json();
+}
+async function _fetchAdjMasterFromSupabase(need){
+  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),ADJ_SB_TIMEOUT_MS);
+  try{
+    const metaRows=await _sbGet('adj_meta?select=kind,active_gen,row_count,sku_count,uploaded_at,checked_at',ctl.signal);
+    const meta={};(Array.isArray(metaRows)?metaRows:[]).forEach(m=>{if(m&&m.kind)meta[m.kind]=m;});
+    const skus=[...need];const chunks=[];
+    for(let i=0;i<skus.length;i+=ADJ_SB_SKU_CHUNK)chunks.push(skus.slice(i,i+ADJ_SB_SKU_CHUNK));
+    // ครอบ SKU ด้วย "..." ตามไวยากรณ์ in.() ของ PostgREST แล้ว encode ทั้งก้อน
+    const inList=arr=>encodeURIComponent('('+arr.map(s=>'"'+String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"').join(',')+')');
+    const pull=async(table,select,gen)=>{
+      const out=[];
+      for(const c of chunks){
+        for(let off=0;;off+=ADJ_SB_PAGE){
+          const page=await _sbGet(`${table}?select=${select}&gen=eq.${encodeURIComponent(gen)}&sku=in.${inList(c)}&order=sku.asc,seq.asc&limit=${ADJ_SB_PAGE}&offset=${off}`,ctl.signal);
+          if(!Array.isArray(page))throw new Error('Supabase ตอบรูปแบบไม่ถูกต้อง');
+          out.push(...page);
+          if(page.length<ADJ_SB_PAGE)break;
+        }
+      }
+      return out;
+    };
+    const r14=meta.r14&&meta.r14.active_gen!=null?meta.r14:null;
+    const r05=meta.r05_105&&meta.r05_105.active_gen!=null?meta.r05_105:null;
+    const[lotRows,priceRows]=await Promise.all([
+      r14?pull('adj_r14_lots','sku,lot,exp,seq',r14.active_gen):null,
+      r05?pull('adj_r05_prices','sku,unit,price,seq',r05.active_gen):null,
+    ]);
+    let lotMap=null,priceMap=null;   // null = บอทยังไม่เคยอัปไฟล์นั้น (ต่างจาก Map ว่าง = อัปแล้วแต่ไม่มี SKU ในใบ)
+    if(lotRows){lotMap=new Map();for(const r of lotRows){let a=lotMap.get(r.sku);if(!a){a=[];lotMap.set(r.sku,a);}a.push({lot:r.lot,exp:r.exp||''});}}
+    if(priceRows){priceMap=new Map();for(const r of priceRows)priceMap.set(r.sku,{unit:r.unit||'',price:r.price==null?null:Number(r.price)});}
+    return{lotMap,priceMap,meta:{Lot:r14,Price:r05}};
+  }finally{clearTimeout(timer);}
+}
+// ไฟล์ไหนยังไม่มีที่มา (Supabase ไม่มีข้อมูลหรือไม่ตอบ) → ใช้ lotMap/priceMap ใน {branch}_adjlot แบบเดิม
+function _applyAdjCloudFallback(){
+  if(!_adjCloud)return;
+  if(!_adjSource.Lot&&_adjCloud.lotMap){_lotMap=_adjCloud.lotMap;_adjSource.Lot='cloud';}
+  if(!_adjSource.Price&&_adjCloud.priceMap){_priceMap=_adjCloud.priceMap;_adjSource.Price='cloud';}
+}
+// เรียกทุกครั้งที่เปิดป็อปอัพ — SKU ที่เพิ่งกลายเป็น Stock Adjustment ต้องได้ LOT/ราคาด้วย (เดิมโหลดเฉพาะตอน local ว่าง)
+async function _refreshAdjMaster(){
+  const token=++_adjLoadToken;
+  _adjLoading=false;   // รอบก่อนที่ยังค้างถูกแซงแล้ว — ห้ามปล่อยธงค้าง ไม่งั้น Export ถูกบล็อกถาวรเมื่อรอบนี้ไม่มี SKU
+  const need=_adjustDocSkuSet();
+  // ไฟล์ที่แนบเองแต่จับคู่ไม่ได้สักตัว (หรือถูกล้างตอนเริ่มนับใหม่) ไม่ถือว่าเป็นที่มา — ให้ Supabase เติมได้
+  ['Lot','Price'].forEach(w=>{if(_adjSource[w]==='file'&&!(w==='Lot'?_lotMap:_priceMap).size)_adjSource[w]='';});
+  // {branch}_adjlot (Firestore): LOT ที่เลือก + ข้อมูลสำรอง — วิ่งคู่ขนาน ไม่ขวาง Supabase
+  _readAdjlotDoc().then(c=>{
+    if(token!==_adjLoadToken||!c)return;
+    _adjCloud=c;
+    if(c.lotSelected&&!_lotSelected.size)_lotSelected=c.lotSelected;   // ไม่ทับ LOT ที่กำลังเลือกค้างในเครื่องนี้
+    if(!_adjLoading)_applyAdjCloudFallback();
+    _refreshAdjCards();renderAdjustDocTable();
+  });
+  if(!need.size){_refreshAdjCards();return;}
+  _adjLoading=true;_adjSbError='';_refreshAdjCards();
+  let sb=null;
+  try{sb=await _fetchAdjMasterFromSupabase(need);}
+  catch(e){_adjSbError=e&&e.name==='AbortError'?'หมดเวลา':String(e&&e.message||e);console.warn('[adj supabase]',_adjSbError);}
+  if(token!==_adjLoadToken)return;
+  _adjLoading=false;
+  if(sb){
+    _adjSbMissing={Lot:!sb.lotMap,Price:!sb.priceMap};
+    // เช็ค 'file' ตอนนี้ (ไม่ใช่ตอนเริ่ม) — ถ้าแนบไฟล์ระหว่างรอ ไฟล์ชนะ
+    if(_adjSource.Lot!=='file'&&sb.lotMap){_lotMap=sb.lotMap;_adjSource.Lot='supabase';_adjMeta.Lot=sb.meta.Lot;}
+    if(_adjSource.Price!=='file'&&sb.priceMap){_priceMap=sb.priceMap;_adjSource.Price='supabase';_adjMeta.Price=sb.meta.Price;}
+  }
+  _applyAdjCloudFallback();
+  _refreshAdjCards();renderAdjustDocTable();
+}
+function _adjExportBusy(){
+  if(!_adjLoading)return false;
+  toast('กำลังโหลด LOT/ราคา จาก Supabase — รอสักครู่แล้วกด Export ใหม่','warn');
+  return true;
 }
 // ── กติกาใบปรับปรุง (ก.ย. 2026) ───────────────────────────────────────────────
 // เป้าหมายของใบคือ "ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้" (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
@@ -8198,8 +8345,8 @@ async function openAdjustDocPopup(){
   _openModal('adjustDocPopupOverlay','adjustDocPopupCard');
   renderAdjustDocTable();
   _refreshAdjCards(); // สะท้อนสถานะการ์ดแนบไฟล์ตาม local ปัจจุบัน (กันการ์ดค้างจากรอบก่อน/หลัง logout)
-  // ดึง LOT/ราคา ที่บันทึกไว้จาก cloud — เฉพาะเมื่อเครื่องนี้ยังไม่มีข้อมูล local (กันทับงานที่กำลังแนบค้างในเครื่องนี้)
-  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){await loadAdjustDocFromCloud();renderAdjustDocTable();}
+  // ดึง LOT/ราคา ของ SKU ในใบจาก Supabase ทุกครั้งที่เปิด + LOT ที่เลือกไว้จาก {branch}_adjlot (ดู _refreshAdjMaster)
+  await _refreshAdjMaster();
 }
 function closeAdjustDocPopup(){_closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
@@ -8207,14 +8354,14 @@ function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('a
 // ราคา = ยอดจาก R05.105 (raw ไม่ใส่ comma เพื่อให้ ERP import ได้), LOT = ค่าที่เลือกจาก dropdown (ว่างถ้ายังไม่เลือก)
 // EXP = ของ LOT ที่เลือก แปลงเป็น DD/MM/YYYY ปี พ.ศ. (_toBeDMY) — ว่างถ้ายังไม่เลือก LOT หรือแปลงวันที่ไม่ได้
 function exportAdjustDocText(){
+  if(_adjExportBusy())return;
   const rows=_buildAdjustDocRows(_adjDocFilter);
   if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก','warn');return;}
   const lines=rows.map(r=>{
     const pr=_priceMap.get(r.sku);
     const price=pr&&pr.price!=null?pr.price:'';
-    const lot=_lotSelected.get(r.sku)||'';
-    const lotEntries=(_lotMap.get(r.sku)||[]).map(e=>typeof e==='string'?{lot:e,exp:''}:e);
-    const selEntry=lotEntries.find(e=>e.lot===lot);
+    const selEntry=_adjSelectedEntry(r.sku);             // LOT ที่ไม่มีในข้อมูลชุดนี้ = ว่าง (จอก็ไม่ได้แสดง)
+    const lot=selEntry?selEntry.lot:'';
     const exp=_toBeDMY((selEntry&&selEntry.exp)||'');
     return `${r.sku}\t${r.qty}\t${price}\t\t\t\t\t\t${lot}\t${exp}`; // 1 TAB, 1 TAB, 6 TAB, 1 TAB
   });
@@ -8235,14 +8382,14 @@ function _warnAdjustDocDropped(){
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
+  if(_adjExportBusy())return;
   const rows=_buildAdjustDocRows(_adjDocFilter);
   if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก','warn');return;}
   const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'];
   const aoa=[header];
   rows.forEach((r,i)=>{
-    const lotEntries=(_lotMap.get(r.sku)||[]).map(e=>typeof e==='string'?{lot:e,exp:''}:e);
-    const sel=_lotSelected.get(r.sku)||'';
-    const selEntry=lotEntries.find(e=>e.lot===sel);
+    const selEntry=_adjSelectedEntry(r.sku);             // ประตูเดียวกับ Export Text
+    const sel=selEntry?selEntry.lot:'';
     const exp=(selEntry&&selEntry.exp)||'';
     const pr=_priceMap.get(r.sku);
     const unit=(pr&&pr.unit)||r.unit||'';
@@ -8260,11 +8407,13 @@ function exportAdjustDocExcel(){
 }
 // ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────
 // เก็บใน doc แยก ${id}_adjlot เขียน "ตอนกดบันทึกเท่านั้น" (ไม่ใช่ทุก 3 วิ เหมือน session doc)
-// เก็บเฉพาะ LOT+ราคาของ SKU ที่ปรับ (กรองแล้ว = เล็ก หลักสิบ–ร้อย) — ไฟล์ raw 200k ไม่เคยขึ้น cloud (กัน 1MB limit)
+// เก็บเฉพาะ LOT+ราคาของ SKU ที่ปรับ (กรองแล้ว = เล็ก หลักสิบ–ร้อย) — ไฟล์ raw 200k ไม่เคยขึ้น Firestore (กัน 1MB limit)
+// ตั้งแต่มี Supabase (ก.ย. 2026) งานหลักของ doc นี้คือ "LOT ที่เลือก" · lotMap/priceMap ยังเขียนต่อเพื่อ
+// (1) เครื่องที่ยังไม่ reload ระหว่าง rollout (2) เป็นข้อมูลสำรองตอน Supabase ไม่ตอบ (_applyAdjCloudFallback)
 function _adjLotRef(){return _db.collection('stock_sessions').doc(getSessionId()+'_adjlot');}
 async function saveAdjustDocToCloud(){
   if(!_db||!currentBranch){toast('ไม่ได้เชื่อมต่อ Cloud','warn');return;}
-  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){toast('ยังไม่มี LOT/ราคา ให้บันทึก — แนบไฟล์ก่อน','warn');return;}
+  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){toast('ยังไม่มี LOT/ราคา ให้บันทึก — รอโหลดจาก Supabase หรือแนบไฟล์ก่อน','warn');return;}
   const lotObj={};for(const[k,v]of _lotMap.entries())lotObj[k]=v;
   const selObj={};for(const[k,v]of _lotSelected.entries())selObj[k]=v;
   const priceObj={};for(const[k,v]of _priceMap.entries())priceObj[k]=v;
@@ -8276,29 +8425,30 @@ async function saveAdjustDocToCloud(){
       updatedBy:currentUser||'',
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
-    toast(`บันทึก LOT/ราคาขึ้น Cloud สำเร็จ (${_lotMap.size} SKU) — เครื่องอื่นเปิดจะเห็นข้อมูลนี้`,'success');
+    toast(`บันทึก LOT ที่เลือก ${_lotSelected.size} รายการขึ้น Cloud สำเร็จ — เครื่องอื่นเปิดจะเห็นข้อมูลนี้`,'success');
   }catch(e){console.warn('[adjlot save]',e.message);toast('บันทึกไม่สำเร็จ: '+e.message,'error');}
 }
-async function loadAdjustDocFromCloud(){
-  if(!_db||!currentBranch)return;
+// อ่าน {branch}_adjlot เฉย ๆ ไม่แตะ state — _refreshAdjMaster เป็นคนตัดสินว่าจะใช้ field ไหน
+// (เดิม loadAdjustDocFromCloud เขียนทับ map ทั้งหมดตรง ๆ ซึ่งจะทับข้อมูลสดจาก Supabase)
+async function _readAdjlotDoc(){
+  if(!_db||!currentBranch)return null;
   try{
     const doc=await _adjLotRef().get();
-    if(!doc.exists)return;
+    if(!doc.exists)return null;
     const d=doc.data();
-    if(d.lotMap_json){_lotMap=new Map();const o=JSON.parse(d.lotMap_json);for(const k in o)_lotMap.set(k,o[k]);}
-    if(d.lotSelected_json){_lotSelected=new Map();const o=JSON.parse(d.lotSelected_json);for(const k in o)_lotSelected.set(k,o[k]);}
-    if(d.priceMap_json){_priceMap=new Map();const o=JSON.parse(d.priceMap_json);for(const k in o)_priceMap.set(k,o[k]);}
-    const by=d.updatedBy?` · โดย ${d.updatedBy}`:'';
-    _setAdjCard('Lot',_lotMap.size>0,_lotMap.size>0?`โหลดจาก Cloud · ${_lotMap.size} SKU มี LOT${by}`:'ดึงข้อมูล (LOT / EXP)');
-    _setAdjCard('Price',_priceMap.size>0,_priceMap.size>0?`โหลดจาก Cloud · ${_priceMap.size} SKU มีราคา${by}`:'ดึงข้อมูลราคาสินค้า (Price Level 4)');
-  }catch(e){console.warn('[adjlot load]',e.message);}
+    const toMap=j=>{if(!j)return null;const m=new Map();const o=JSON.parse(j);for(const k in o)m.set(k,o[k]);return m;};
+    return{lotMap:toMap(d.lotMap_json),lotSelected:toMap(d.lotSelected_json),priceMap:toMap(d.priceMap_json),updatedBy:d.updatedBy||''};
+  }catch(e){console.warn('[adjlot load]',e.message);return null;}
 }
 function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();}
 function updateAdjustDocPanel(){
   const p=document.getElementById('adjustDocPanel');if(!p)return;
   const canSee=currentRole==='pharmacist'||currentRole==='supervisor';
   p.style.display=canSee?'':'none';
-  if(!canSee){_lotMap.clear();_lotSelected.clear();_priceMap.clear();} // logout/เปลี่ยน role ที่ไม่มีสิทธิ์ → ล้างไฟล์ที่แนบไว้ (local)
+  if(!canSee){ // logout/เปลี่ยน role ที่ไม่มีสิทธิ์ → ล้าง LOT/ราคา (local) + ทิ้งผลที่กำลังโหลดค้าง
+    _lotMap.clear();_lotSelected.clear();_priceMap.clear();
+    _adjSource={Lot:'',Price:''};_adjMeta={Lot:null,Price:null};_adjCloud=null;_adjSbError='';_adjSbMissing={Lot:false,Price:false};_adjLoading=false;_adjLoadToken++;
+  }
   updateAdjustDocCount();
 }
 

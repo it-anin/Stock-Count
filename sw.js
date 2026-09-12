@@ -1,4 +1,4 @@
-const CACHE = 'stock-count-v4';
+const CACHE = 'stock-count-v5';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './icon-192.svg', './icon-512.svg',
@@ -27,6 +27,8 @@ self.addEventListener('fetch', e => {
   if (url.includes('_vchk=')) return; // version-check probe (auto-refresh heartbeat) → network ตรงเสมอ
   // Firestore/Firebase/Google APIs: network only
   if (url.includes('firestore') || url.includes('firebase') || url.includes('googleapis') || url.includes('gstatic')) return;
+  // Supabase (LOT/ราคา ของป็อปอัพปรับปรุงสินค้า): network only — ข้อมูลเปลี่ยนทุกเช้า ห้าม cache
+  if (url.includes('supabase.co')) return;
 
   // Network-first for HTML (always get latest UI/JS)
   if (e.request.mode === 'navigate' || url.endsWith('.html') || url.endsWith('/')) {
