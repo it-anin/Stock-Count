@@ -471,6 +471,8 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 ตอนนี้บอท `auto-adj/` อัปทั้งไฟล์ขึ้น Supabase (`adj_r14_lots` / `adj_r05_prices` / `adj_meta`) แล้วป็อปอัพดึง**เฉพาะ SKU ในใบ**เอง **ทุกครั้งที่เปิด** — รายละเอียดใน [[SKILL-data-files]] และ `auto-adj/README.md`
 - **Supabase เป็นที่เดียวในระบบที่ไม่ใช่ Firestore** · เว็บใช้ anon key อ่านอย่างเดียว (RLS) · ⛔ ห้ามใส่ service_role key ใน `index.html` · ไม่ผูกรอบนับ (`startNewCount()` ไม่แตะ)
 - ลำดับที่มา **แยกต่อไฟล์** (`_adjSource`): ไฟล์ที่แนบเอง → Supabase → `{branch}_adjlot` (ข้อมูลสำรอง) ⇒ Supabase ไม่มี/ไม่ตอบ = กลับไปพฤติกรรมเดิมเอง
+- **การ์ดแนบไฟล์กดไม่ได้แล้ว ยกเว้น Admin Mode** (ก.ย. 2026 · `openAdjFilePicker()` เป็นด่านจุดเดียว · คลาส `adj-card-locked` ถอด cursor/hover ออกเพื่อไม่ให้เข้าใจผิด) — `handleAdjLotFile`/`handleAdjPriceFile` ยังเรียกตรงได้จาก Console และจากเทส
+- ⚠️ **ข้อความบนการ์ด/toast ห้ามเอ่ยชื่อ "Supabase" ให้ผู้ใช้เห็น** — ใช้คำว่า `Ready` (ป้ายและข้อความ) · เคสโหลดไม่ได้บอกให้ "ลองเปิดหน้านี้ใหม่ หรือแจ้ง IT" ไม่ใช่ "คลิกเพื่อแนบไฟล์เอง" เพราะกดไม่ได้แล้ว · เทสตรึงข้อความชุดนี้ไว้ (`adjust-doc-supabase.spec.js`)
 - ⚠️ ทุก query ต้องกรอง `gen=eq.<adj_meta.active_gen>` (ตารางเก็บหลาย generation) และ**ต้องวนเพจละ 1,000 แถว** (Supabase ตัดผลที่ 1,000 แถว — ไม่วน = LOT หายเงียบ)
 - ⚠️ `_adjLoading` กั้น Export ระหว่างโหลด และ**ต้องถูกล้างที่ต้น `_refreshAdjMaster()` ทุกรอบ** — ไม่งั้นรอบที่ถูกแซงทิ้งธงค้าง Export ถูกบล็อกถาวร
 - ⚠️ Export Text/Excel อ่าน LOT ผ่าน `_adjSelectedEntry()` เท่านั้น — LOT ที่เลือกไว้แต่ไม่มีในข้อมูลชุดปัจจุบันต้องไม่หลุดเข้าไฟล์ (จอแสดง "— เลือก —") และต้องไม่ถูกลบจาก `_lotSelected`

@@ -402,6 +402,7 @@ Strip เฉพาะ: `retries`, `scans`
 - 200k แถวเป็น JSON ~10–40 MB → `.set()` **throw ทั้งก้อน** / `QuotaExceededError` + stringify ทุก `saveSession` = แอปค้าง
 - **วิธีที่ใช้:** ใบปรับปรุงมีแค่ item `stock_adjustment` (หลักสิบ–ร้อย) → `handleAdjLotFile()` กรองเฉพาะ SKU เหล่านั้น**ตอนอ่าน** เก็บ `_lotMap` in-memory เท่านั้น ไม่ sync ไม่ persist
 - **Cross-device sync (ทำแล้ว ก.ค. 2026):** ปุ่ม 💾 บันทึก LOT → `saveAdjustDocToCloud()` เก็บ **เฉพาะผลกรอง** (`_lotMap`/`_lotSelected`/`_priceMap` ของ SKU ที่ปรับ ~ร้อยแถว) ลง doc เดียว `${branch}_adjlot` (JSON strings) เขียนตอนกดเท่านั้น — **ยังคงห้ามเอาไฟล์ raw ทั้งก้อนขึ้น Firestore**
+- **การ์ดแนบไฟล์กดไม่ได้แล้ว ยกเว้น Admin Mode (ก.ย. 2026):** `openAdjFilePicker()` เป็นด่านจุดเดียว · ข้อความบนการ์ดใช้คำว่า `Ready` ไม่เอ่ยชื่อ Supabase · เคสโหลดไม่ได้ให้ "แจ้ง IT" ไม่ใช่ชวนแนบไฟล์
 - **ทั้งไฟล์ย้ายไป Supabase (ก.ย. 2026):** ข้อจำกัดข้างบนทำให้ต้องแนบไฟล์ใหม่ทุกครั้งที่มี SKU ใหม่ในใบ ⇒ บอท `auto-adj/` อัปทั้งไฟล์ขึ้น Postgres ของ Supabase (ไม่มีเพดาน 1 MiB ต่อ document และค้นด้วย `sku in (...)` ได้) · ป็อปอัพดึงเฉพาะ SKU ในใบทุกครั้งที่เปิด (ไม่ใช่ "เฉพาะตอน local ว่าง" แบบเดิมแล้ว)
 
 **Audit count ไม่ตรงข้ามเครื่อง — badge R16 sync แต่การคำนวณไม่ sync (ก.ค. 2026, แก้บางส่วน):**

@@ -114,6 +114,12 @@
     .upload-file-item:hover::before { opacity:1; }
     .upload-file-item.adj-card-done { background:rgba(26,158,92,0.09); border-color:rgba(26,158,92,0.35); } /* การ์ดแนบไฟล์แล้ว = พื้นเขียวอ่อน */
     .upload-file-item.adj-card-done::before { opacity:1; }
+    /* การ์ด LOT/ราคา ปิดการแนบไฟล์เองสำหรับผู้ใช้ทั่วไป (ก.ย. 2026) — ข้อมูลมาจากบอทอัตโนมัติ · เปิดเฉพาะ Admin Mode */
+    .upload-file-item.adj-card-locked { cursor:default; }
+    .upload-file-item.adj-card-locked:hover { border-color:#e8e6e0; transform:none; box-shadow:none; }
+    .upload-file-item.adj-card-locked.adj-card-done:hover { border-color:rgba(26,158,92,0.35); }
+    .upload-file-item.adj-card-locked:hover::before { opacity:0; }
+    .upload-file-item.adj-card-locked.adj-card-done:hover::before { opacity:1; }
     .upload-file-info { display:flex; align-items:center; gap:10px; }
     .upload-file-icon { width:32px; height:32px; border-radius:8px; background:#e1f5ee; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     .upload-file-icon-optional { background:#f1efe8; }
@@ -952,7 +958,7 @@
     </div>
     <div style="padding:10px 22px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;">
       <input type="file" id="adjLotFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjLotFile(event)">
-      <div class="upload-file-item" style="flex:1 1 320px;margin-bottom:0;" onclick="document.getElementById('adjLotFileInput').click()">
+      <div class="upload-file-item" style="flex:1 1 320px;margin-bottom:0;" onclick="openAdjFilePicker('Lot')">
         <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
           <div class="upload-file-icon upload-file-icon-optional" id="adjLotIcon" style="font-size:1rem;">📄</div>
           <div style="min-width:0;">
@@ -963,7 +969,7 @@
         <div class="upload-file-badge upload-file-badge-optional" id="adjLotBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
       </div>
       <input type="file" id="adjPriceFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleAdjPriceFile(event)">
-      <div class="upload-file-item" style="flex:1 1 320px;margin-bottom:0;" onclick="document.getElementById('adjPriceFileInput').click()">
+      <div class="upload-file-item" style="flex:1 1 320px;margin-bottom:0;" onclick="openAdjFilePicker('Price')">
         <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
           <div class="upload-file-icon upload-file-icon-optional" id="adjPriceIcon" style="font-size:1rem;">💵</div>
           <div style="min-width:0;">
@@ -8056,10 +8062,22 @@ function _setAdjCard(which,attached,subText,badgeText){
   if(icon)icon.classList.toggle('upload-file-icon-optional',!attached);
   if(badge){badge.classList.toggle('upload-file-badge-optional',!attached);const s=badge.querySelector('span');if(s)s.textContent=badgeText||(attached?'แนบแล้ว':'ยังไม่แนบ');}
   const card=icon&&icon.closest('.upload-file-item');
-  if(card)card.classList.toggle('adj-card-done',!!attached); // พื้นการ์ดเขียวอ่อนเมื่อแนบแล้ว
+  if(card){
+    card.classList.toggle('adj-card-done',!!attached); // พื้นการ์ดเขียวอ่อนเมื่อแนบแล้ว
+    card.classList.toggle('adj-card-locked',!_adminMode); // ผู้ใช้ทั่วไปกดไม่ได้ (ไม่มี cursor/hover ให้เข้าใจผิด)
+  }
+}
+// การ์ด LOT/ราคา ปิดการแนบไฟล์เองสำหรับผู้ใช้ทั่วไป (ก.ย. 2026) — ข้อมูลมาจากบอท auto-adj ทุกเช้าแล้ว
+// เปิดเฉพาะ Admin Mode ไว้เป็นทางกู้สถานการณ์เวลาบอท/Supabase มีปัญหา
+// (ด่านอยู่ที่นี่จุดเดียว · handleAdjLotFile/handleAdjPriceFile ยังเรียกตรงได้จาก Console และจากเทส)
+function openAdjFilePicker(which){
+  if(!_adminMode){toast('ข้อมูล LOT/ราคามาจากระบบอัตโนมัติแล้ว — แนบไฟล์เองได้เฉพาะ Admin Mode','warn');return;}
+  const el=document.getElementById(which==='Lot'?'adjLotFileInput':'adjPriceFileInput');
+  if(el)el.click();
 }
 function _adjIsToday(iso){if(!iso)return false;const d=new Date(iso),n=new Date();return !isNaN(d)&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
-// ข้อความบนการ์ดตามที่มาของข้อมูล — การ์ดยังคลิกแนบไฟล์เองได้ทุกสถานะ (ทางสำรอง)
+// ข้อความบนการ์ดตามที่มาของข้อมูล — ไม่เอ่ยชื่อ "Supabase" ให้ผู้ใช้เห็น (ก.ย. 2026) ใช้คำว่า Ready แทน
+// และไม่ชวนให้ "คลิกเพื่อแนบไฟล์เอง" เพราะผู้ใช้ทั่วไปกดไม่ได้แล้ว (ดู openAdjFilePicker)
 function _adjCardState(which){
   const need=_adjustDocSkuSet().size;
   const map=which==='Lot'?_lotMap:_priceMap;
@@ -8067,23 +8085,23 @@ function _adjCardState(which){
   const cnt=`${map.size}${need?'/'+need:''} SKU ${which==='Lot'?'มี LOT':'มีราคา'}`;
   const src=_adjSource[which];
   if(src==='file')return [has,`แนบไฟล์เอง · ${cnt}`,'แนบแล้ว'];
-  if(_adjLoading)return [has,'กำลังโหลดจาก Supabase…','กำลังโหลด'];
+  if(_adjLoading)return [has,'กำลังโหลดข้อมูล…','กำลังโหลด'];
   if(src==='supabase'){
     const m=_adjMeta[which]||{};
     const up=m.uploaded_at&&!isNaN(new Date(m.uploaded_at))?' · อัปเดต '+formatThaiDateTime(new Date(m.uploaded_at)):'';
     // checked_at = เวลาที่บอทรันล่าสุด (แม้เนื้อหาเหมือนเดิม) — ไม่ใช่วันนี้ = บอท/ตัว export เช้านี้ไม่ได้รัน
     const stale=_adjIsToday(m.checked_at)?'':' · ⚠️ บอทยังไม่ได้ตรวจวันนี้';
     const again=_adjSbError?' · ⚠️ โหลดรอบล่าสุดไม่สำเร็จ (ใช้ชุดเดิม)':'';
-    return [has,`Supabase${up} · ${cnt}${stale}${again}`,'จาก Supabase'];
+    return [has,`Ready${up} · ${cnt}${stale}${again}`,'Ready'];
   }
-  const fail=_adjSbError?'โหลดจาก Supabase ไม่ได้ · ':'';
+  const fail=_adjSbError?'โหลดข้อมูลไม่ได้ · ':'';
   if(src==='cloud'){
     const by=_adjCloud&&_adjCloud.updatedBy?` · โดย ${_adjCloud.updatedBy}`:'';
     return [has,`${fail}ใช้ที่บันทึกไว้ · ${cnt}${by}`,'ที่บันทึกไว้'];
   }
-  if(fail)return [false,`${fail}คลิกเพื่อแนบไฟล์เอง`,'ยังไม่มีข้อมูล'];
+  if(fail)return [false,`${fail}ลองเปิดหน้านี้ใหม่ หรือแจ้ง IT`,'ยังไม่มีข้อมูล'];
   if(has)return [true,cnt,'แนบแล้ว'];
-  if(_adjSbMissing[which])return [false,'ยังไม่มีข้อมูลบน Supabase (บอทยังไม่เคยอัป) — คลิกเพื่อแนบไฟล์เอง','ยังไม่มีข้อมูล'];
+  if(_adjSbMissing[which])return [false,'ยังไม่มีข้อมูลในระบบ (บอทยังไม่เคยอัป) — แจ้ง IT','ยังไม่มีข้อมูล'];
   return [false,which==='Lot'?'ดึงข้อมูล (LOT / EXP)':'ดึงข้อมูลราคาสินค้า (Price Level 4)','ยังไม่แนบ'];
 }
 function _refreshAdjCards(){ // สะท้อนสถานะการ์ดตามที่มา + ขนาด map ปัจจุบัน
@@ -8206,7 +8224,7 @@ async function _refreshAdjMaster(){
 }
 function _adjExportBusy(){
   if(!_adjLoading)return false;
-  toast('กำลังโหลด LOT/ราคา จาก Supabase — รอสักครู่แล้วกด Export ใหม่','warn');
+  toast('กำลังโหลด LOT/ราคา — รอสักครู่แล้วกด Export ใหม่','warn');
   return true;
 }
 // ── กติกาใบปรับปรุง (ก.ย. 2026) ───────────────────────────────────────────────
@@ -8413,7 +8431,7 @@ function exportAdjustDocExcel(){
 function _adjLotRef(){return _db.collection('stock_sessions').doc(getSessionId()+'_adjlot');}
 async function saveAdjustDocToCloud(){
   if(!_db||!currentBranch){toast('ไม่ได้เชื่อมต่อ Cloud','warn');return;}
-  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){toast('ยังไม่มี LOT/ราคา ให้บันทึก — รอโหลดจาก Supabase หรือแนบไฟล์ก่อน','warn');return;}
+  if(!_lotMap.size&&!_lotSelected.size&&!_priceMap.size){toast('ยังไม่มี LOT/ราคา ให้บันทึก — รอโหลดข้อมูลให้เสร็จก่อน','warn');return;}
   const lotObj={};for(const[k,v]of _lotMap.entries())lotObj[k]=v;
   const selObj={};for(const[k,v]of _lotSelected.entries())selObj[k]=v;
   const priceObj={};for(const[k,v]of _priceMap.entries())priceObj[k]=v;

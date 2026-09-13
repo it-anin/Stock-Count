@@ -97,9 +97,10 @@ test('เปิดป็อปอัพแล้วได้ LOT/ราคาจ
   expect(sb.requests[0].headers.apikey).toBeTruthy();
   expect(sb.requests[0].headers.authorization).toBe('Bearer ' + sb.requests[0].headers.apikey);
 
-  // การ์ด: ที่มา + จำนวน · ราคา checked_at ไม่ใช่วันนี้ → ต้องเตือนว่าบอทยังไม่ได้ตรวจวันนี้
+  // การ์ด: ขึ้น "Ready" (ห้ามเอ่ยชื่อ Supabase ให้ผู้ใช้เห็น) + จำนวน · ราคา checked_at ไม่ใช่วันนี้ → ต้องเตือน
   const lotCard = await cardText(app.page, 'Lot');
-  expect(lotCard).toContain('Supabase');
+  expect(lotCard).toContain('Ready');
+  expect(lotCard).not.toContain('Supabase');
   expect(lotCard).toContain('1/2 SKU มี LOT');
   expect(lotCard).not.toContain('บอทยังไม่ได้ตรวจวันนี้');
   expect(await cardText(app.page, 'Price')).toContain('บอทยังไม่ได้ตรวจวันนี้');
@@ -126,7 +127,7 @@ test('LOT เกิน 1,000 แถวต้องมาครบและเร
   const offsets = sb.requests.filter((q) => q.table === 'adj_r14_lots').map((q) => q.params.offset);
   expect(offsets).toEqual(['0', '1000']);
   // ราคา: บอทยังไม่เคยอัป R05.105 → บอกตรง ๆ
-  expect(await cardText(app.page, 'Price')).toContain('ยังไม่มีข้อมูลบน Supabase');
+  expect(await cardText(app.page, 'Price')).toContain('ยังไม่มีข้อมูลในระบบ');
   await closeApp(app);
 });
 
@@ -141,7 +142,7 @@ test('Supabase ล้ม → ใช้ที่บันทึกไว้ + เ
   await app.page.waitForFunction(() => _adjSource.Lot === 'cloud' && _adjSource.Price === 'cloud', null, { polling: 100 });
 
   const card = await cardText(app.page, 'Lot');
-  expect(card).toContain('โหลดจาก Supabase ไม่ได้');
+  expect(card).toContain('โหลดข้อมูลไม่ได้');
   expect(card).toContain('ใช้ที่บันทึกไว้');
   expect((await exportText(app.page)).split('\r\n')[0]).toBe('A1\t2\t7\t\t\t\t\t\tCL1\t31/12/2570');
 
@@ -222,6 +223,46 @@ test('★ รอบโหลดที่ถูกแซงต้องไม่�
   await closeApp(app);
 });
 
+test('★ การ์ดแนบไฟล์กดไม่ได้ ยกเว้นเข้า Admin Mode', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await fakeSupabase(app.page, { meta: META, lots: LOTS, prices: PRICES });
+  await seed(app.page);
+  await app.page.evaluate(() => openAdjustDocPopup());
+
+  const r = await app.page.evaluate(() => {
+    const out = { picked: [], locked: [], badge: '' };
+    ['Lot', 'Price'].forEach((w) => {
+      const id = w === 'Lot' ? 'adjLotFileInput' : 'adjPriceFileInput';
+      document.getElementById(id).click = () => out.picked.push(w);   // ดักไม่ให้เปิดหน้าต่างเลือกไฟล์จริง
+      out.locked.push(document.getElementById('adj' + w + 'Icon').closest('.upload-file-item').classList.contains('adj-card-locked'));
+    });
+    out.badge = document.querySelector('#adjLotBadge span').textContent;
+    _adminMode = false;
+    document.getElementById('adjLotIcon').closest('.upload-file-item').click();   // คลิกการ์ดจริง
+    document.getElementById('adjPriceIcon').closest('.upload-file-item').click();
+    return out;
+  });
+  expect(r.locked).toEqual([true, true]);        // การ์ดถูกล็อก (ไม่มี cursor/hover ชวนให้กด)
+  expect(r.picked).toEqual([]);                  // กดแล้วไม่เปิดหน้าต่างเลือกไฟล์
+  expect(r.badge).toBe('Ready');                 // ป้ายเป็น Ready ไม่ใช่ชื่อบริการ
+  expect(await toastText(app.page)).toContain('แนบไฟล์เองได้เฉพาะ Admin Mode');
+
+  // Admin Mode = เปิดให้แนบเองได้ (ทางกู้สถานการณ์เวลาบอทมีปัญหา)
+  const picked = await app.page.evaluate(() => {
+    const out = [];
+    document.getElementById('adjLotFileInput').click = () => out.push('Lot');
+    _adminMode = true;
+    _refreshAdjCards();
+    const card = document.getElementById('adjLotIcon').closest('.upload-file-item');
+    const stillLocked = card.classList.contains('adj-card-locked');
+    card.click();
+    return { out, stillLocked };
+  });
+  expect(picked.stillLocked).toBe(false);
+  expect(picked.out).toEqual(['Lot']);
+  await closeApp(app);
+});
+
 test('บอทยังไม่เคยอัปทั้งสองไฟล์ → การ์ดบอกตรง ๆ และไม่ยิงขอข้อมูลเปล่า ๆ', async ({ browser }) => {
   const app = await bootBare(browser);
   const sb = await fakeSupabase(app.page, { meta: [] });
@@ -229,7 +270,7 @@ test('บอทยังไม่เคยอัปทั้งสองไฟ�
   await app.page.evaluate(() => openAdjustDocPopup());
 
   expect(sb.requests.map((q) => q.table)).toEqual(['adj_meta']);
-  expect(await cardText(app.page, 'Lot')).toContain('ยังไม่มีข้อมูลบน Supabase');
-  expect(await cardText(app.page, 'Price')).toContain('ยังไม่มีข้อมูลบน Supabase');
+  expect(await cardText(app.page, 'Lot')).toContain('ยังไม่มีข้อมูลในระบบ');
+  expect(await cardText(app.page, 'Price')).toContain('ยังไม่มีข้อมูลในระบบ');
   await closeApp(app);
 });
