@@ -8076,6 +8076,13 @@ function openAdjFilePicker(which){
   if(el)el.click();
 }
 function _adjIsToday(iso){if(!iso)return false;const d=new Date(iso),n=new Date();return !isNaN(d)&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+// "อัปเดต วันที่ 12/09/2026 เวลา 10:41" — รูปแบบที่ผู้ใช้ขอสำหรับการ์ด LOT/ราคา
+// (ต่างจาก formatThaiDateTime ที่ขึ้นเวลาก่อนวันที่ ซึ่งการ์ด R01/R05 ใช้อยู่ — ห้ามสลับให้เหมือนกันโดยพลการ)
+function _adjFmtUpdated(iso){
+  const d=iso?new Date(iso):null;if(!d||isNaN(d))return '';
+  const p=n=>String(n).padStart(2,'0');
+  return `อัปเดต วันที่ ${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} เวลา ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 // ข้อความบนการ์ดตามที่มาของข้อมูล — ไม่เอ่ยชื่อ "Supabase" ให้ผู้ใช้เห็น (ก.ย. 2026) ใช้คำว่า Ready แทน
 // และไม่ชวนให้ "คลิกเพื่อแนบไฟล์เอง" เพราะผู้ใช้ทั่วไปกดไม่ได้แล้ว (ดู openAdjFilePicker)
 function _adjCardState(which){
@@ -8088,11 +8095,13 @@ function _adjCardState(which){
   if(_adjLoading)return [has,'กำลังโหลดข้อมูล…','กำลังโหลด'];
   if(src==='supabase'){
     const m=_adjMeta[which]||{};
-    const up=m.uploaded_at&&!isNaN(new Date(m.uploaded_at))?' · อัปเดต '+formatThaiDateTime(new Date(m.uploaded_at)):'';
+    // วันปกติเห็นแค่ "อัปเดต วันที่ ... เวลา ..." — สถานะอื่นอยู่ที่ป้าย Ready ด้านขวาแล้ว
+    const when=_adjFmtUpdated(m.uploaded_at)||'อัปเดตข้อมูลแล้ว';
     // checked_at = เวลาที่บอทรันล่าสุด (แม้เนื้อหาเหมือนเดิม) — ไม่ใช่วันนี้ = บอท/ตัว export เช้านี้ไม่ได้รัน
+    // ⚠️ คำเตือน 2 ตัวนี้ต้องคงไว้ ไม่งั้นบอทหยุดแล้วไม่มีใครรู้ (โผล่เฉพาะวันที่มีปัญหา)
     const stale=_adjIsToday(m.checked_at)?'':' · ⚠️ บอทยังไม่ได้ตรวจวันนี้';
     const again=_adjSbError?' · ⚠️ โหลดรอบล่าสุดไม่สำเร็จ (ใช้ชุดเดิม)':'';
-    return [has,`Ready${up} · ${cnt}${stale}${again}`,'Ready'];
+    return [has,`${when}${stale}${again}`,'Ready'];
   }
   const fail=_adjSbError?'โหลดข้อมูลไม่ได้ · ':'';
   if(src==='cloud'){

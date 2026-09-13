@@ -97,12 +97,12 @@ test('เปิดป็อปอัพแล้วได้ LOT/ราคาจ
   expect(sb.requests[0].headers.apikey).toBeTruthy();
   expect(sb.requests[0].headers.authorization).toBe('Bearer ' + sb.requests[0].headers.apikey);
 
-  // การ์ด: ขึ้น "Ready" (ห้ามเอ่ยชื่อ Supabase ให้ผู้ใช้เห็น) + จำนวน · ราคา checked_at ไม่ใช่วันนี้ → ต้องเตือน
+  // การ์ด: วันปกติเห็นแค่ "อัปเดต วันที่ ... เวลา ..." · ป้ายเป็น Ready · ห้ามเอ่ยชื่อ Supabase ให้ผู้ใช้เห็น
   const lotCard = await cardText(app.page, 'Lot');
-  expect(lotCard).toContain('Ready');
+  expect(lotCard).toMatch(/^อัปเดต วันที่ \d{2}\/\d{2}\/2026 เวลา \d{2}:\d{2}$/);
   expect(lotCard).not.toContain('Supabase');
-  expect(lotCard).toContain('1/2 SKU มี LOT');
-  expect(lotCard).not.toContain('บอทยังไม่ได้ตรวจวันนี้');
+  expect(await app.page.evaluate(() => document.querySelector('#adjLotBadge span').textContent)).toBe('Ready');
+  // ราคา checked_at ไม่ใช่วันนี้ → คำเตือนต้องยังโผล่ (ไม่งั้นบอทหยุดแล้วไม่มีใครรู้)
   expect(await cardText(app.page, 'Price')).toContain('บอทยังไม่ได้ตรวจวันนี้');
 
   // Export Text: รูปแบบเดิม SKU⇥จำนวน⇥ราคา⇥×6⇥LOT⇥EXP · ราคามาเลยโดยไม่ต้องแนบไฟล์
