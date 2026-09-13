@@ -8071,7 +8071,7 @@ function _setAdjCard(which,attached,subText,badgeText){
 // เปิดเฉพาะ Admin Mode ไว้เป็นทางกู้สถานการณ์เวลาบอท/Supabase มีปัญหา
 // (ด่านอยู่ที่นี่จุดเดียว · handleAdjLotFile/handleAdjPriceFile ยังเรียกตรงได้จาก Console และจากเทส)
 function openAdjFilePicker(which){
-  if(!_adminMode){toast('ข้อมูล LOT/ราคามาจากระบบอัตโนมัติแล้ว — แนบไฟล์เองได้เฉพาะ Admin Mode','warn');return;}
+  if(!_adminMode){toast('อัปเดทข้อมูลแล้ว');return;}
   const el=document.getElementById(which==='Lot'?'adjLotFileInput':'adjPriceFileInput');
   if(el)el.click();
 }

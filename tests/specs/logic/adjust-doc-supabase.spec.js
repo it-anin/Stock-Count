@@ -245,7 +245,7 @@ test('★ การ์ดแนบไฟล์กดไม่ได้ ยกเ
   expect(r.locked).toEqual([true, true]);        // การ์ดถูกล็อก (ไม่มี cursor/hover ชวนให้กด)
   expect(r.picked).toEqual([]);                  // กดแล้วไม่เปิดหน้าต่างเลือกไฟล์
   expect(r.badge).toBe('Ready');                 // ป้ายเป็น Ready ไม่ใช่ชื่อบริการ
-  expect(await toastText(app.page)).toContain('แนบไฟล์เองได้เฉพาะ Admin Mode');
+  expect(await toastText(app.page)).toContain('อัปเดทข้อมูลแล้ว');
 
   // Admin Mode = เปิดให้แนบเองได้ (ทางกู้สถานการณ์เวลาบอทมีปัญหา)
   const picked = await app.page.evaluate(() => {
