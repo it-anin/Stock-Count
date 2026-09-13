@@ -97,6 +97,10 @@ Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SS
 - สคริปต์ **แตะ session doc ไม่ได้** เพราะ `scanData` ฝังรวมอยู่ในก้อน `session_data_json` (schema v1) จึงพา baseline ผ่าน master doc แทน
 - ส่ง `data` (doc ที่ listener ได้มาแล้ว) เป็น param ที่ 2 เพื่อไม่ต้อง `.get()` ซ้ำ — doc ใหญ่ (SRC ~540 KB) การอ่านซ้ำคือ read เปล่า
 - `_adoptedMasterBaselineAt` จำค่าที่ adopt แล้วใน page session นี้ · **ห้ามลบ** — `startNewCount()` ตั้ง `_r01BaselineAt=''` ถ้าไม่มีตัวจำ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
+- **toast ของเส้นทางออโต้เหลือแค่ `กำลังโหลดข้อมูล..` (ก.ย. 2026)** — เดิมอธิบายยาวว่า R16 ถูกล้างและต้องอัปใหม่ก่อน Confirm (ผู้ใช้ขอให้สั้นลงเพราะเห็นทุกเช้าที่บอทรัน)
+  ตัดได้เพราะสถานะยังบอกอยู่ 2 จุด: **badge R16 เปลี่ยนเป็น "ยังไม่โหลด"** และ **ปุ่ม Confirm ถูก disable** (`updateConfirmBtn` อิง `state.r16Loaded`) · กดยังไงก็ติด toast `กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน`
+  ⚠️ ถ้าจะแก้ให้สั้นกว่านี้หรือตัด toast ทิ้ง **ห้ามแตะ 2 จุดนั้น** ไม่งั้นอัป R16 เก่าซ้ำแล้ว Confirm ผิดแบบเงียบ · ข้อความของ**เส้นทางอัพมือผ่านเว็บ** ยังยาวเหมือนเดิมโดยเจตนา (คนกดเองรู้ว่าต้องทำอะไรต่อ)
+  เทสตรึงไว้ที่ `tests/specs/logic/r01-baseline-toast.spec.js`
 - **WH ไม่ใช้เส้นทางนี้** — `_applyWhR01Doc()` adopt ด้วย `r01Version` อยู่แล้ว และ `_loadWhR16CloudTimelines()` ล้าง R16 ให้เองเมื่อ `meta.r01Version` ไม่ตรง
 
 **Cross-device sync:** `_r01BaselineAt` (module-level, ไม่ใช่ใน state) persist ใน `r01BaselineAt` field — ทุกเครื่องเช็ค `cloud.r01BaselineAt > local._r01BaselineAt` ใน `startScanSessionListener`/`syncToFirestore`/`pullFromCloud`/`restoreFromFirestore` → ถ้าใหม่กว่า เรียก `_applyR01BaselineUpdate()` โหลด R01 จาก `${branch}_r01` master doc + `_clearR16ForNewBaseline()` (นี่คือกลไกล้าง R16 ข้ามเครื่อง — จุด adopt R16 จาก session doc ทั้งหมด gate ด้วย `s.r16Loaded===true` เครื่องอื่นจึงไม่มีทาง "ล้างตาม" เอง) · เครื่องอัพ R01 เรียก `syncR16MetaToFirestore()` เขียน `r16Loaded:false` ลง `_r01` doc ด้วย

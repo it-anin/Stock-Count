@@ -1,6 +1,6 @@
 // _applyR01BaselineUpdate ต้อง apply ทุกรอบเหมือนเดิม แต่ toast แค่ครั้งเดียวต่อการโหลดหนึ่งครั้ง
 //
-// เคสจริง ก.ย. 2026: toast "R01 ใหม่จากเครื่องอื่น" เด้ง 2 รอบตอนเปิดหน้า
+// เคสจริง ก.ย. 2026: toast ตอน R01 เปลี่ยน (ปัจจุบันข้อความคือ "กำลังโหลดข้อมูล..") เด้ง 2 รอบตอนเปิดหน้า
 // สาเหตุ: session doc เก็บ "สำเนา" r01BaselineAt ที่ค้างเก่ากว่า master doc {branch}_r01
 //   local เริ่มที่ ''  →  session ป้อน 2026-08-21 (ผ่าน guard เพราะ > '')      → toast 1
 //                      →  master ป้อน 2026-09-07 (ผ่าน guard เพราะ > 08-21)  → toast 2
@@ -55,7 +55,7 @@ test('session เก่า → master ใหม่ ติดกัน: apply ท
   expect(out.map((o) => o.returned)).toEqual([1, 1]);        // apply จริงทั้งสองรอบ
   expect(out[1].baseline).toBe(NEW);                          // ยึดค่าใหม่สุด
   expect(toasts).toHaveLength(1);                             // ★ แต่เห็นข้อความเดียว
-  expect(toasts[0]).toContain('R01 ใหม่จากเครื่องอื่น');
+  expect(toasts[0]).toBe('กำลังโหลดข้อมูล..');
 
   await closeApp(app);
 });

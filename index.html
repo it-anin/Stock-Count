@@ -3384,8 +3384,11 @@ async function _applyR01BaselineUpdate(baselineAt,docData=null){
   // ไม่เรียก saveSession/syncR16MetaToFirestore ที่นี่ — listener handler ห้าม saveSession (กัน sync loop), meta เครื่องอัพ R01 เขียนแล้ว
   _clearR16ForNewBaseline();
   // toast เท่านั้นที่ถูก debounce — ทุกอย่างด้านบนทำงานทุกรอบเหมือนเดิม (ดู R01_BASELINE_TOAST_GAP_MS)
+  // ข้อความสั้นตามที่ผู้ใช้ขอ (ก.ย. 2026 — เดิมอธิบายยาวว่า R16 ถูกล้างและต้องอัปใหม่ก่อน Confirm)
+  // ที่ตัดได้เพราะสถานะยังบอกผู้ใช้อยู่ 2 จุด: badge R16 เปลี่ยนเป็น "ยังไม่โหลด" และปุ่ม Confirm ถูก disable
+  // (updateConfirmBtn ใช้ state.r16Loaded) แล้วถ้ากดยังไงก็ติด toast "กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน"
   if(Date.now()-_lastR01BaselineToastAt>R01_BASELINE_TOAST_GAP_MS)
-    toast('R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','info');
+    toast('กำลังโหลดข้อมูล..','info');
   _lastR01BaselineToastAt=Date.now();
   return 1;
 }
@@ -6081,7 +6084,6 @@ const _PDA_TOAST_SHORT=new Map([
   ['อัปโหลดรายละเอียด R16.104 ขึ้น Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','อัปโหลด R16.104 ไม่สำเร็จ'],
   ['อัปโหลดรายละเอียด R16.103 ขึ้น Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','อัปโหลด R16.103 ไม่สำเร็จ'],
   ['R16.103: ไม่สามารถจับคู่ข้อมูลได้ — ตรวจสอบว่าไฟล์มี code IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN ใน Col C','R16.103 จับคู่ไม่ได้ — ตรวจไฟล์'],
-  ['R01 ใหม่จากเครื่องอื่น — ล้าง R16 เดิมแล้ว อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)','R01 ใหม่ — อัป R16 ก่อน Confirm'],
   ['ใช้ได้เฉพาะโหมด Administrator เท่านั้น','ใช้ได้เฉพาะ Administrator'],
   ['ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','ออก Admin — กำลัง Sync'],
   ['R01/R16 บน Cloud มี version ใหม่หรือยังโหลดไม่ครบ — กรุณารอให้ขึ้น Ready แล้วกด Confirm ใหม่','R01/R16 ยังไม่พร้อม — รอแล้วกดใหม่'],
