@@ -71,11 +71,32 @@ python auto_adj_import.py --folder "D:\ที่วางไฟล์" --force  
 **2. ใส่ service key** — Dashboard → Settings → API → `service_role` (ตัวเดียวกับที่ `BOTR05106\.env` ใช้)
 เลือกทางใดทางหนึ่ง:
 ```powershell
-# ทาง ก: ไฟล์ .env ข้างสคริปต์ (อยู่ใน .gitignore แล้ว)
-Set-Content -Path .\.env -Value "SUPABASE_SERVICE_KEY=<วาง key ตรงนี้>" -Encoding UTF8
+# ทาง ก (แนะนำ): ก๊อปคีย์จาก .env ของบอทตัวอื่นบนเครื่องเดียวกัน — ไม่ต้องพิมพ์เอง ไม่หลุดเข้า log
+$src = "$env:USERPROFILE\Desktop\run-upload-stock\.env"     # <-- ไฟล์ที่มีคีย์อยู่แล้ว
+$val = ((Get-Content $src -Encoding UTF8 | Where-Object { $_ -match 'SUPABASE_SERVICE_KEY|SUPABASE_KEY' })[0] -split '=', 2)[1].Trim().Trim('"')
+Set-Content -Path .\.env -Value "SUPABASE_SERVICE_KEY=$val" -Encoding UTF8
+
 # ทาง ข: ตัวแปรระบบ (แล้วเปิด PowerShell ใหม่)
-setx SUPABASE_SERVICE_KEY "<วาง key ตรงนี้>"
+setx SUPABASE_SERVICE_KEY "<วางค่าจริง>"
 ```
+
+⚠️ **อย่าวางข้อความตัวอย่างในวงเล็บมุมลงไฟล์ตรง ๆ** (เกิดขึ้นจริง 14 ก.ย. 2026) — ตั้งแต่รุ่นนี้สคริปต์ตรวจให้แล้ว
+ขึ้น `❌ service key ใช้ไม่ได้: ยังเป็นข้อความตัวอย่าง...` แล้วออกด้วย exit 1 ตั้งแต่ก่อนอ่านไฟล์ CSV
+
+**ดูว่าไฟล์ `.env` ไหนเป็นคีย์ของ project ไหน** (ไม่แสดงค่าคีย์):
+```powershell
+Get-ChildItem "$env:USERPROFILE\Desktop" -Recurse -Depth 2 -Filter ".env" -Force | ForEach-Object {
+  $f = $_.FullName
+  Get-Content $f -Encoding UTF8 | Where-Object { $_ -match 'SUPABASE.*KEY\s*=' } | ForEach-Object {
+    $name = ($_ -split '=', 2)[0].Trim(); $val = ($_ -split '=', 2)[1].Trim().Trim('"'); $info = 'ไม่ใช่ JWT'
+    try { $p = $val.Split('.')[1]; $pad = $p + ('=' * ((4 - $p.Length % 4) % 4))
+          $j = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($pad.Replace('-','+').Replace('_','/'))) | ConvertFrom-Json
+          $info = "ref=$($j.ref) role=$($j.role)" } catch {}
+    [pscustomobject]@{ File = $f; Key = $name; Info = $info }
+  }
+} | Format-Table -AutoSize
+```
+ต้องเลือกอันที่ `ref=eogqnedbdpjuptwlqudn` และ `role=service_role`
 ⛔ service key ข้าม RLS ได้ทุกตาราง (รวมตารางของระบบขาย) — ห้าม commit · ห้ามใส่ใน `index.html` · ห้ามส่งในแชต
 
 **3. หัวคอลัมน์ ✅ ยืนยันกับไฟล์จริงแล้ว (12 ก.ย. 2026)** — ไม่ต้องทำอะไรเพิ่ม เก็บไว้อ้างอิง

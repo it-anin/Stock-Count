@@ -202,6 +202,24 @@ def get_service_key():
     return None, None
 
 
+def key_problem(k):
+    """คืนคำอธิบายถ้าคีย์ใช้ไม่ได้ — ว่าง = ผ่าน
+
+    มีไว้เพราะเคสจริง 14 ก.ย. 2026: มีคนวางข้อความตัวอย่าง '<วางคีย์ตรงนี้>' ลง .env ตรงตัว
+    แล้วสคริปต์ไปพังตอนใส่ค่าลง HTTP header ด้วย UnicodeEncodeError ซึ่งอ่านไม่รู้เรื่อง
+    (header ของ http.client เข้ารหัสแบบ latin-1 ภาษาไทยจึงใส่ไม่ได้)
+    """
+    if k.startswith("<") or k.endswith(">"):
+        return "ยังเป็นข้อความตัวอย่างในวงเล็บมุม ไม่ใช่คีย์จริง"
+    try:
+        k.encode("latin-1")
+    except UnicodeEncodeError:
+        return "มีอักขระที่ไม่ใช่ ASCII (เช่นภาษาไทย) — น่าจะยังไม่ได้วางคีย์จริง"
+    if len(k) < 40:
+        return f"สั้นผิดปกติ ({len(k)} ตัวอักษร) — service_role key ยาวกว่านี้มาก"
+    return ""
+
+
 def find_latest_file(folder, pattern):
     files = glob.glob(os.path.join(folder, pattern))
     if not files:
@@ -649,6 +667,15 @@ def main():
     log(f"เครื่อง: {os.environ.get('COMPUTERNAME', '?')} · ผู้ใช้: {os.environ.get('USERNAME', '?')}")
     log(f"โฟลเดอร์: {folder}   [จาก {folder_src}]")
     log(f"ปลายทาง: {SUPABASE_URL}  · key: {key_src or '(ไม่พบ)'}")
+
+    # ตรวจคีย์ก่อนเริ่มอ่านไฟล์ — ไฟล์ R14 ใหญ่ 44 MB ไม่ต้องเสียเวลา parse ถ้าเขียนไม่ได้อยู่แล้ว
+    if key:
+        bad = key_problem(key)
+        if bad:
+            log(f"❌ service key ใช้ไม่ได้: {bad}   [จาก {key_src}]")
+            log("   ต้องเป็นค่า service_role จริงจาก Supabase Dashboard → Settings → API")
+            log('   หรือก๊อปบรรทัด SUPABASE_SERVICE_KEY จาก .env ของบอทตัวอื่นบนเครื่องเดียวกัน')
+            sys.exit(1)
 
     if not os.path.isdir(folder):
         log("❌ ไม่มีโฟลเดอร์นี้ในเครื่อง — ยกเลิก")
