@@ -70,14 +70,24 @@ python auto_adj_import.py --folder "D:\ที่วางไฟล์" --force  
 
 **2. ใส่ service key** — Dashboard → Settings → API → `service_role` (ตัวเดียวกับที่ `BOTR05106\.env` ใช้)
 เลือกทางใดทางหนึ่ง:
+สคริปต์หาคีย์ตามลำดับนี้ — **มีที่ใดที่หนึ่งก็พอ**
+
+| ลำดับ | ที่มา | ใช้เมื่อ |
+|---|---|---|
+| 1 | ตัวแปรระบบ `SUPABASE_SERVICE_KEY` | ตั้งครั้งเดียวด้วย `setx` ใช้ได้ทุกโฟลเดอร์ |
+| 2 | `.env` **ข้างสคริปต์** (`auto-adj\.env`) | อยากแยกคีย์ของบอทตัวนี้ต่างหาก |
+| 3 | `.env` **ในโฟลเดอร์ CSV** (`run-upload-stock\.env`) | ⭐ เครื่องที่บอทอื่นเก็บคีย์ไว้ที่นั่นแล้ว — ไม่ต้องก๊อปซ้ำ (ก.ย. 2026) |
+
+⚠️ **ลำดับ 2 ชนะลำดับ 3 เสมอ** — ถ้าเคยวางไฟล์ผิดไว้ข้างสคริปต์ ต้องลบทิ้งก่อน ไม่งั้นมันจะบังคีย์ที่ถูก
 ```powershell
-# ทาง ก (แนะนำ): ก๊อปคีย์จาก .env ของบอทตัวอื่นบนเครื่องเดียวกัน — ไม่ต้องพิมพ์เอง ไม่หลุดเข้า log
+Remove-Item .\.env -ErrorAction SilentlyContinue     # ถ้าจะใช้คีย์รวมจากโฟลเดอร์ CSV
+```
+
+ถ้าจะแยกคีย์ไว้ข้างสคริปต์ ให้ก๊อปด้วยคำสั่ง ไม่ต้องพิมพ์เอง:
+```powershell
 $src = "$env:USERPROFILE\Desktop\run-upload-stock\.env"     # <-- ไฟล์ที่มีคีย์อยู่แล้ว
 $val = ((Get-Content $src -Encoding UTF8 | Where-Object { $_ -match 'SUPABASE_SERVICE_KEY|SUPABASE_KEY' })[0] -split '=', 2)[1].Trim().Trim('"')
 Set-Content -Path .\.env -Value "SUPABASE_SERVICE_KEY=$val" -Encoding UTF8
-
-# ทาง ข: ตัวแปรระบบ (แล้วเปิด PowerShell ใหม่)
-setx SUPABASE_SERVICE_KEY "<วางค่าจริง>"
 ```
 
 ⚠️ **อย่าวางข้อความตัวอย่างในวงเล็บมุมลงไฟล์ตรง ๆ** (เกิดขึ้นจริง 14 ก.ย. 2026) — ตั้งแต่รุ่นนี้สคริปต์ตรวจให้แล้ว

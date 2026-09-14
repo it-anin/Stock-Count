@@ -183,22 +183,36 @@ def resolve_watch_folder(folder_arg):
     return DEFAULT_WATCH_FOLDER, "ค่าปกติ (โฟลเดอร์ผู้ใช้ปัจจุบัน)"
 
 
-def get_service_key():
-    """service_role key — env SUPABASE_SERVICE_KEY ก่อน ไม่มีค่อยอ่าน .env ข้างสคริปต์
-    ธรรมเนียมเดียวกับ BOTR05106/upload-products.mjs · ⛔ ห้าม commit .env (อยู่ใน .gitignore แล้ว)
-    """
-    k = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
-    if k:
-        return k, "env SUPABASE_SERVICE_KEY"
-    path = os.path.join(SCRIPT_DIR, ".env")
+def _key_from_env_file(path):
     try:
         with open(path, encoding="utf-8-sig") as f:
             for line in f:
                 m = re.match(r"^\s*SUPABASE_SERVICE_KEY\s*=\s*(.+?)\s*$", line)
                 if m:
-                    return m.group(1).strip().strip('"').strip("'"), ".env ข้างสคริปต์"
-    except FileNotFoundError:
+                    return m.group(1).strip().strip('"').strip("'")
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
         pass
+    return None
+
+
+def get_service_key(folder=None):
+    """service_role key — หาตามลำดับ:
+        1. ตัวแปรระบบ SUPABASE_SERVICE_KEY
+        2. .env ข้างสคริปต์
+        3. .env ในโฟลเดอร์ CSV (run-upload-stock) — บอทตัวอื่นบนเครื่องเดียวกันเก็บคีย์ไว้ที่นี่อยู่แล้ว
+           ⇒ เครื่องที่ export ทุกไฟล์มารวมโฟลเดอร์เดียว ใช้คีย์ไฟล์เดียวร่วมกันได้ ไม่ต้องก๊อปซ้ำ (ก.ย. 2026)
+    ⛔ ห้าม commit .env (อยู่ใน .gitignore แล้ว) · ⚠️ .env ข้างสคริปต์ชนะเสมอ — วางไฟล์ผิดไว้ตรงนั้นจะบังของที่ถูก
+    """
+    k = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+    if k:
+        return k, "env SUPABASE_SERVICE_KEY"
+    k = _key_from_env_file(os.path.join(SCRIPT_DIR, ".env"))
+    if k:
+        return k, ".env ข้างสคริปต์"
+    if folder:
+        k = _key_from_env_file(os.path.join(folder, ".env"))
+        if k:
+            return k, ".env ในโฟลเดอร์ CSV"
     return None, None
 
 
@@ -659,7 +673,7 @@ def main():
         sys.exit(2)
 
     folder, folder_src = resolve_watch_folder(opts["folder"])
-    key, key_src = get_service_key()
+    key, key_src = get_service_key(folder)
     kinds = [opts["only"]] if opts["only"] else list(KINDS)
 
     log(f"เริ่มงาน auto-adj  (dry_run={opts['dry_run']}, force={opts['force']}, "
