@@ -84,6 +84,14 @@ API_KEY    = "AIzaSyDba_44vuyh-DyXeSYUoppm925oFCfr010"
 # doc กลาง ใช้ร่วมทุกสาขา (getR05Ref() ใน index.html)
 DOC_ID = "global_r05"
 
+# doc สถานะของบอท — แยกจาก global_r05 โดยเจตนา (ก.ย. 2026)
+# เหตุผล: การอัป R05 ผ่านหน้าเว็บเป็น set() ทั้ง document ⇒ field ส่วนเกินใน global_r05 จะถูกลบทิ้ง
+#         สัญญาณ "บอทตรวจแล้ววันนี้" จึงต้องอยู่คนละ doc ไม่งั้นหายเงียบเมื่อมีคนอัปผ่านเว็บ
+# หน้าเว็บอ่าน checked_at มาโชว์บนการ์ด R05.106 (refreshR05CheckedTs ใน index.html)
+# ⚠️ เขียนเฉพาะ "รอบที่ตรวจสำเร็จ" (เขียนจริง หรือเนื้อหาเหมือนเดิม) — ตกด่านห้ามเขียน
+#    ไม่งั้นการ์ดขึ้นเขียวทั้งที่บอทหยุดทำงาน ซึ่งแย่กว่าไม่มีสัญญาณเลย
+STATUS_DOC_ID = "global_r05_status"
+
 # ต้องตรงกับ R05_CLOUD_FORMAT ใน index.html
 R05_CLOUD_FORMAT = "r05a1"
 
@@ -312,9 +320,31 @@ def serialize_r05(rows):
 # ============================================================
 
 
-def _doc_url(query=""):
+def _doc_url(query="", doc_id=None):
     return (f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}"
-            f"/databases/(default)/documents/stock_sessions/{DOC_ID}?{query}key={API_KEY}")
+            f"/databases/(default)/documents/stock_sessions/{doc_id or DOC_ID}?{query}key={API_KEY}")
+
+
+def write_status(result, row_count, src_path):
+    """บันทึกว่า 'บอทตรวจสำเร็จเมื่อไร' ลง doc แยก — ล้มเหลวไม่ถือว่างานล้ม (ข้อมูลจริงเขียนไปแล้ว)
+
+    result: 'written' (เขียนข้อมูลใหม่) หรือ 'unchanged' (เนื้อหาเหมือนเดิมจึงไม่เขียน)
+    """
+    fields = ["checked_at", "result", "row_count", "source_file", "source_mtime", "machine"]
+    body = {"fields": {
+        "checked_at":   {"timestampValue": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")},
+        "result":       {"stringValue": result},
+        "row_count":    {"integerValue": str(row_count)},
+        "source_file":  {"stringValue": os.path.basename(src_path)},
+        "source_mtime": {"timestampValue": datetime.fromtimestamp(os.path.getmtime(src_path), timezone.utc)
+                         .strftime("%Y-%m-%dT%H:%M:%S.%fZ")},
+        "machine":      {"stringValue": os.environ.get("COMPUTERNAME", "?")},
+    }}
+    mask = "&".join(f"updateMask.fieldPaths={urllib.parse.quote(f)}" for f in fields)
+    req = urllib.request.Request(_doc_url(mask + "&", STATUS_DOC_ID), data=json.dumps(body).encode("utf-8"),
+                                 method="PATCH", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        resp.read()
 
 
 def read_cloud():
@@ -486,6 +516,14 @@ def main():
         # guard 7: เนื้อหาเหมือนเดิม = ไม่ต้องเขียน (วันปกติจะจบตรงนี้)
         if data_json == cloud["data_json"]:
             log(f"✅ เนื้อหาเหมือนเดิมทุกไบต์ ({len(rows)} แถว · {size_kb:.0f} KB) — ไม่เขียน จบงาน")
+            if dry_run:
+                log("[DRY] ข้ามการบันทึกเวลาตรวจ (checked_at)")
+                sys.exit(0)
+            try:
+                write_status("unchanged", len(rows), path)
+                log(f"🕒 บันทึกเวลาตรวจลง {STATUS_DOC_ID} แล้ว — การ์ดในเว็บจะรู้ว่าบอทรันวันนี้")
+            except Exception as e:
+                log(f"⚠️ บันทึกเวลาตรวจไม่สำเร็จ ({e}) — ข้อมูลบาร์โค้ดไม่กระทบ")
             sys.exit(0)
 
         delta = len(rows) - cloud["row_count"]
@@ -512,6 +550,11 @@ def main():
     except Exception as e:
         log(f"❌ เขียนไม่สำเร็จ: {e}")
         sys.exit(1)
+
+    try:
+        write_status("written", len(rows), path)
+    except Exception as e:
+        log(f"⚠️ บันทึกเวลาตรวจไม่สำเร็จ ({e}) — ข้อมูลบาร์โค้ดเขียนสำเร็จแล้ว ไม่กระทบ")
 
     log(f"✅ เขียน {DOC_ID} แล้ว: {len(rows)} แถว · มีราคา {stats['priced']} · {size_kb:.0f} KB")
     log("ทุกเครื่องที่เปิดค้างจะเห็นภายในไม่กี่วินาที (listener) และเด้ง toast 'R05.106 อัปเดตจากเครื่องอื่น'")

@@ -252,7 +252,11 @@ state = {
   - ตั้งค่า 3 ทาง: `startR05Listener` · `loadR05` · `restoreMasterFromFirestore` · ล้างใน `selectBranch` + `clearAllData` (ตรงกับจุดที่ badge ถูกรีเซ็ต) · **ไม่ล้างใน `startNewCount()`** โดยเจตนา — R05 เป็น doc กลาง เริ่มนับใหม่ไม่แตะ
   - ⚠️ **ต้องเรียก `_setR05Ts()` ก่อน echo guard ใน `startR05Listener`** — snapshot แรกหลัง login มี `data_json` ตรงกับที่ `restoreMasterFromFirestore` เพิ่งใส่ใน `_lastAppliedR05Json` แล้ว listener จึง `return` ตรงนั้นทุกครั้ง · ย้ายไปตั้งทีหลัง = การ์ดว่างจนกว่าจะมีคนอัปไฟล์ใหม่ (อาการที่ไม่มีใครสังเกตเห็น) · ตรึงไว้ที่ `tests/specs/e2e/upload-path.spec.js`
   - การ์ดอยู่ใน `#r05UploadSection` ซึ่งซ่อนจนกว่าจะเข้า Admin Mode (เดิมเป็นแบบนี้อยู่แล้ว)
-  - ⚠️ **วันที่ไม่ขยับ ≠ บอทพัง** — `auto-r05` ไม่เขียนถ้าตารางบาร์โค้ดไม่เปลี่ยน เวลาจึงค้างที่รอบก่อนโดยตั้งใจ ต้องดู `auto_r05.log` ประกอบ
+  - ⚠️ **วันที่ "อัปโหลดล่าสุด" ไม่ขยับ ≠ บอทพัง** — `auto-r05` ไม่เขียนถ้าตารางบาร์โค้ดไม่เปลี่ยน เวลาจึงค้างที่รอบก่อนโดยตั้งใจ (เคสจริง 11–14 ก.ย. 2026 ค้าง 3 วันเพราะบาร์โค้ดไม่เปลี่ยนจริง ๆ)
+  - **การ์ดจึงมี 2 เวลาแล้ว (ก.ย. 2026):** `อัปโหลดล่าสุด` (จาก `global_r05.updated_at`) คู่กับ `ตรวจล่าสุด` (จาก **`stock_sessions/global_r05_status.checked_at`** — doc แยกที่บอทเขียนทุกรอบที่ตรวจสำเร็จ รวมรอบที่ไม่ได้เขียนข้อมูล) · `checked_at` ไม่ใช่วันนี้ = การ์ดขึ้น `⚠️ บอทยังไม่ได้ตรวจวันนี้`
+    - ⛔ **ห้ามย้าย `checked_at` ไปไว้ใน `global_r05`** — การอัปผ่านเว็บเป็น `set()` ทั้ง document จะลบ field ส่วนเกินทิ้ง สัญญาณจะหายเงียบ
+    - ⛔ **บอทห้ามเขียน `checked_at` เมื่อตกด่าน** (ไฟล์ไม่สด/หัวคอลัมน์เพี้ยน/หยิบไฟล์ผิด) ไม่งั้นการ์ดเขียวทั้งที่บอทหยุด
+    - อ่านผ่าน `refreshR05CheckedTs()` ตอน login + ตอน listener เห็นข้อมูลใหม่ · ไม่ต้องแก้ `firestore.rules` (doc ใหม่ใต้ `stock_sessions` เขียนได้ตามกฎที่ Publish อยู่) · เทส `tests/specs/logic/r05-checked-ts.spec.js`
 - toast ตอนอัปโหลดโชว์ขนาดจริงทุกครั้ง เตือนเมื่อ ≥ 800 KB และ **ถ้าเขียน cloud ไม่ผ่านต้องเด้ง error ให้ผู้ใช้เห็น** (`syncMasterToFirestore` เดิม catch เงียบ)
 
 `_countResetAt` — module-level ISO timestamp, reset epoch (monotonic). ใช้ `>` เปรียบเทียบ lexicographic

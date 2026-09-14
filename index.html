@@ -2648,6 +2648,7 @@ function startR05Listener(){
     {const _ts=_r05UploadedAtFromDocData(doc.data());if(_ts)_setR05Ts(_ts);}
     const dj=doc.data().data_json;
     if(!dj||dj===_lastAppliedR05Json){_r05ListenerReady=true;return;} // ไม่เปลี่ยน/own-write → ข้าม
+    refreshR05CheckedTs();   // ตารางเพิ่งเปลี่ยน = บอท/คนเพิ่งอัป → ดึงเวลาตรวจล่าสุดมาด้วย (doc เล็ก นานๆ ครั้ง)
     try{
       _lastAppliedR05Json=dj;
       state.r05Data=_parseR05Json(dj);
@@ -4308,10 +4309,48 @@ function _setR01Ts(tsStr){
 }
 // R05 ไม่เก็บลง state/localStorage เหมือน R01 โดยตั้งใจ — ตารางบาร์โค้ดมาจาก cloud อย่างเดียว
 // (ไม่มี r05Data ใน saveSession) จึงไม่มีเคส "ออฟไลน์แล้วมีข้อมูลแต่ไม่รู้เวลา" ให้ต้องรองรับ
-function _setR05Ts(tsStr){
+// การ์ด R05.106 มี 2 เวลาที่ความหมายต่างกัน — อย่ารวมเป็นค่าเดียว (ก.ย. 2026)
+//   อัปโหลดล่าสุด (`global_r05.updated_at`)          = ตารางบาร์โค้ดเปลี่ยนล่าสุดเมื่อไร · ค้างหลายวันได้ตามปกติ
+//   ตรวจล่าสุด   (`global_r05_status.checked_at`)   = บอท auto-r05 ตรวจไฟล์สำเร็จล่าสุดเมื่อไร · ต้องเป็นวันนี้
+// ⚠️ `checked_at` ต้องอยู่คนละ doc — `global_r05` ถูกเขียนด้วย set() ทั้ง document ตอนอัปผ่านเว็บ
+//    field ส่วนเกินจะถูกลบทิ้ง กลายเป็นสัญญาณที่เชื่อไม่ได้ (ดู AGENTS.md §auto-r05)
+// ⚠️ บอทเขียน checked_at เฉพาะรอบที่ตรวจสำเร็จ — ตกด่าน (ไฟล์ไม่สด/หัวคอลัมน์เพี้ยน) ต้องไม่เขียน
+//    ไม่งั้นการ์ดเขียวทั้งที่บอทหยุดทำงาน ซึ่งแย่กว่าไม่มีสัญญาณเลย
+let _r05TsUploaded='',_r05TsChecked='';
+function _renderR05Ts(){
   const el=document.getElementById('r05Timestamp');
   if(!el)return;
-  if(tsStr){el.textContent='อัปโหลดล่าสุด: '+tsStr;el.style.display='';}
+  if(!_r05TsUploaded&&!_r05TsChecked){el.textContent='';el.style.display='none';return;}
+  const parts=[];
+  if(_r05TsUploaded)parts.push('อัปโหลดล่าสุด: '+_r05TsUploaded);
+  if(_r05TsChecked)parts.push('ตรวจล่าสุด: '+_r05TsChecked+(_isTodayThaiTs(_r05TsChecked)?'':' ⚠️ บอทยังไม่ได้ตรวจวันนี้'));
+  el.textContent=parts.join(' · ');el.style.display='';
+}
+// รับรูปแบบของ formatThaiDateTime ("HH:MM น. DD/MM/YYYY") — เทียบเฉพาะส่วนวันที่กับวันนี้
+function _isTodayThaiTs(tsStr){
+  const m=String(tsStr||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(!m)return false;
+  const n=new Date();
+  return +m[1]===n.getDate()&&+m[2]===n.getMonth()+1&&+m[3]===n.getFullYear();
+}
+function _setR05CheckedTs(tsStr){_r05TsChecked=tsStr||'';_renderR05Ts();}
+// อ่าน doc สถานะของบอท (เล็กมาก) — ล้มเหลวเงียบได้ การ์ดแค่ไม่มีบรรทัด "ตรวจล่าสุด"
+async function refreshR05CheckedTs(){
+  if(!_db)return;
+  try{
+    const doc=await _db.collection('stock_sessions').doc('global_r05_status').get();
+    if(!doc.exists)return _setR05CheckedTs('');
+    const d=doc.data().checked_at;
+    const dt=d&&d.toDate?d.toDate():(d instanceof Date?d:null);
+    _setR05CheckedTs(dt?formatThaiDateTime(dt):'');
+  }catch(e){console.warn('[r05 status]',e.message);}
+}
+function _setR05Ts(tsStr){
+  _r05TsUploaded=tsStr||'';
+  if(!tsStr)_r05TsChecked='';   // ล้างคู่กันเสมอ (selectBranch / clearAllData)
+  const el=document.getElementById('r05Timestamp');
+  if(!el)return;
+  if(tsStr){_renderR05Ts();}
   else{el.textContent='';el.style.display='none';}
 }
 function formatThaiDateTime(date){
@@ -6272,7 +6311,7 @@ async function restoreMasterFromFirestore(force=false){
         getR05Ref().get() // global doc — ไม่ผูก branch
       ]);
       if(r01Doc.exists&&r01Doc.data().data_json){state.r01Data=JSON.parse(r01Doc.data().data_json);state.r01Version=r01Doc.data().r01Version||'';document.getElementById('badgeR01').textContent='Ready';const uploadedAt=_r01UploadedAtFromDocData(r01Doc.data());if(uploadedAt)_setR01Ts(uploadedAt);_applyR16MetaFromDoc(r01Doc.data());}
-      if(r05Doc.exists){state.r05Data=_parseR05Json(r05Doc.data().data_json);_lastAppliedR05Json=r05Doc.data().data_json;document.getElementById('badgeR05').textContent='Ready';const r05Ts=_r05UploadedAtFromDocData(r05Doc.data());if(r05Ts)_setR05Ts(r05Ts);}
+      if(r05Doc.exists){state.r05Data=_parseR05Json(r05Doc.data().data_json);_lastAppliedR05Json=r05Doc.data().data_json;document.getElementById('badgeR05').textContent='Ready';const r05Ts=_r05UploadedAtFromDocData(r05Doc.data());if(r05Ts)_setR05Ts(r05Ts);refreshR05CheckedTs();}
       if(!state.r01Data.length&&!state.r05Data.length){
         const old=await _db.collection('stock_sessions').doc(id+'_master').get();
         if(old.exists){const s=old.data().session_data;if(s&&s.r01Data?.length){state.r01Data=s.r01Data;document.getElementById('badgeR01').textContent='Ready';}if(s&&s.r05Data?.length){state.r05Data=s.r05Data;document.getElementById('badgeR05').textContent='Ready';}}
