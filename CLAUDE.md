@@ -510,6 +510,25 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - เริ่มนับใหม่/ล้างข้อมูลต้องล้าง inbox/legacy markers, WH R16 meta/chunks/cache และลบ `results` ใต้ op ก่อนลบ op parent (Firestore ไม่ลบ subcollection ตาม parent); reader กรอง `countResetAt` เสมอเพื่อให้เศษ cleanup รอบเก่าไม่มีผล
 - `firestore.rules` ต้องมี match แยกสำหรับ `WH/confirm_ops/{opId}` และ `results/{sku}` และต้อง Publish ก่อน deploy runtime; Rules ต้องคง immutable result + monotonic op state ตามด้านบน และ update `WH/items/{sku}` ใน epoch เดียวกันต้องคง `whCountOpId`/`whRecheckOpId` ที่มีอยู่แล้ว เพื่อกัน delayed PDA replace ลบ final provenance (branch อื่น, epoch ใหม่, create/delete คง behavior เดิม)
 
+### รายงานผลการนับ (count_report) — ค่าสด vs ค่าที่แช่ไว้ (ก.ย. 2026)
+
+`_buildCountReportRows()` ผลิตแถวให้ทั้งตารางบนจอและ `exportCountReportExcel()` (ประตูเดียวกันโดยเจตนา)
+**คอลัมน์ในนี้มาจาก 2 ช่วงเวลา ห้ามรวมกันแล้วเข้าใจว่าเป็นชุดเดียว:**
+
+| คอลัมน์ | ที่มา | ขยับไหม |
+|---|---|---|
+| `SystemQty` · `DIFF` · `DIFF(Recheck)` | `si.systemQty` **ค่าสด ณ ตอน render/export** | ✅ ขยับทุกเช้าที่บอทอัป R01 |
+| `SysQty(ตอน Confirm)` · `DIFF(จริง)` | `sd.systemQty` / `sd.effectiveQty` **แช่ไว้ตอน Confirm** | ❌ ตรึง = เลขที่ทำให้เกิดสถานะนั้น |
+| `Count` · `STATUS` | แช่ไว้ตอนนับ/Confirm | ❌ ตรึง |
+
+- ⚠️ **`DIFF` เดิมคือ "ยอดวันนี้ − ยอดที่นับเมื่อวาน" = เทียบข้ามเวลา ใช้วัดการนับผิดไม่ได้** — ยิ่ง export ห่างจากวันนับยิ่งเพี้ยน และบอทอัป R01 **ทุกเช้า** จึงเพี้ยนเป็นปกติ ไม่ใช่เคสหายาก (สำรวจของจริง ก.ย. 2026 เจอ "หลายตัว")
+- **เคสจริงที่ทำให้ต้องเพิ่มคอลัมน์ (SKU 100659 · WH):** ตัดสินด้วยยอดระบบ 36 (นับได้ 33 · R16 ขาย 4 → `33+4=37 ≠ 36` → audit) แต่เช้าถัดมา R01 ลดเหลือ 33 ⇒ ไฟล์โชว์ `SystemQty 33 · Count 33 · DIFF 0` **ทั้งที่สถานะเป็น Stock Adjustment** — อ่านแล้วสรุปว่า "นับถูก" ซึ่งผิด
+  ต้นเหตุจริงคือ **R01 กับ R16 เหลื่อมเวลากัน**: R01 ตัดขายไปแล้ว 1 ชิ้นจาก 4 แต่ R16 รายงานครบ 4 ⇒ บวกกลับซ้ำ 1 · ของบนชั้นถูกต้องมาตลอด
+- ⛔ **ห้ามแก้ `DIFF`/`SystemQty` เดิมให้เป็นค่าที่แช่ไว้** — ผู้ใช้มีสูตร Excel อ้างคอลัมน์เดิมอยู่ · เพิ่มคอลัมน์ใหม่ต่อท้าย `DIFF` แทน (ทำแล้ว ก.ย. 2026: 12 → 15 คอลัมน์ · ช่อง A–I ตำแหน่งเดิมครบ)
+- ⚠️ **snapshot ใน `stock_countreport` ที่บันทึกก่อน ก.ย. 2026 ไม่มี field ใหม่** — เลือกวันเก่าจาก dropdown จะได้ `—` เป็นปกติ ไม่ใช่บั๊ก (ข้อมูลเก่าไม่มีให้ย้อนคำนวณ) · `saveCountReportSnapshot()` เก็บ `rows_json` ทั้งก้อน ⇒ เพิ่ม field ใหม่มีผลเฉพาะ snapshot ที่บันทึกหลังจากนี้
+- แถวที่ `sysDrift` ไม่เป็น 0 = ยอดระบบขยับหลัง Confirm ⇒ ขึ้น ⚠️ ในตารางและนับรวมบนหัวตาราง · กลุ่มนี้ **ใบปรับสต็อกตัดออกให้เองอยู่แล้ว** ผ่าน `_isAdjustRowFresh()` (ดู §ใบปรับปรุง) จึงไม่มีใบผิดหลุดออกไป แต่ต้องรีเช็คใหม่ถึงจะปิดงานได้
+- ⛔ **`sysDrift` เป็นตัวรายงาน ห้ามเอาไปตัดสินสถานะ** — การย้อนสถานะที่ Confirm แล้วมีทางเดียวคือ `reopenPharmacyAudit()` (สาขายา) หรือรีเช็ค/Confirm รอบสอง (WH)
+
 ### PDA power/audio/toast policy
 
 - Native Android ใช้ screen-on idle timer 2 นาที ไม่ใช้ bright WakeLock และไม่ปลุกจอเองหลังดับ

@@ -8667,9 +8667,10 @@ function renderHistoryStatsTable(){
   }
   else if(_hsFilter==='countreport'){
     const rows=_countReportRowsForSelected();
-    if(thead)thead.innerHTML=`<tr><th>วันที่สแกน</th><th>Location</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">SystemQty</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Count</th><th style="text-align:center;">DIFF</th><th style="text-align:center;">Recheck</th><th style="text-align:center;">DIFF<br>(Recheck)</th><th>Check By</th></tr>`;
-    if(cnt)cnt.textContent=rows.length+' รายการ';
-    if(!rows.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีรายการที่ Confirm</td></tr>';return;}
+    if(thead)thead.innerHTML=`<tr><th>วันที่สแกน</th><th>Location</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">SystemQty</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Count</th><th style="text-align:center;">DIFF</th><th style="text-align:center;">SysQty<br>(ตอน Confirm)</th><th style="text-align:center;">DIFF<br>(จริง)</th><th style="text-align:center;">Recheck</th><th style="text-align:center;">DIFF<br>(Recheck)</th><th>Check By</th></tr>`;
+    const _nStale=rows.filter(r=>r.sysDrift!==null&&r.sysDrift!==0).length;
+    if(cnt)cnt.textContent=rows.length+' รายการ'+(_nStale?` · ⚠️ ยอดระบบขยับหลัง Confirm ${_nStale}`:'');
+    if(!rows.length){tbody.innerHTML='<tr><td colspan="14" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีรายการที่ Confirm</td></tr>';return;}
     const dCell=d=>d===null?'<td style="text-align:center;color:var(--text3);">—</td>':`<td style="text-align:center;font-weight:700;color:${d===0?'var(--green)':'var(--red)'};">${d>0?'+'+d:d}</td>`;
     tbody.innerHTML=rows.map(r=>`<tr>
       <td style="font-size:0.7rem;color:var(--text3);white-space:nowrap;">${r.scanAt||'—'}</td>
@@ -8681,6 +8682,8 @@ function renderHistoryStatsTable(){
       <td style="text-align:center;font-size:0.74rem;color:var(--text2);">${r.unit||'—'}</td>
       <td style="text-align:center;font-weight:700;">${r.count}</td>
       ${dCell(r.diffCount)}
+      <td style="text-align:center;font-weight:600;color:var(--text2);" title="${r.sysDrift?'ยอดระบบขยับ '+(r.sysDrift>0?'+':'')+r.sysDrift+' หลัง Confirm':''}">${r.sysAtConfirm===null?'—':r.sysAtConfirm}${r.sysDrift?' <span style="color:var(--orange);font-size:0.7rem;">⚠️</span>':''}</td>
+      ${dCell(r.diffReal)}
       <td style="text-align:center;font-weight:700;">${r.recheck===null?'—':r.recheck}</td>
       ${dCell(r.diffRecheck)}
       <td style="font-size:0.74rem;">${r.checkBy||'—'}</td>
@@ -8700,6 +8703,14 @@ function _buildCountReportRows(){
     const cnt=Number(sd.countedQty||0);
     const hasRecheck=sd.recheckQty!==undefined;
     const rq=hasRecheck?Number(sd.recheckQty||0):null;
+    // ── ยอดที่ระบบ "ใช้ตัดสินจริง" ตอน Confirm (แช่ไว้บน item) ─────────────────
+    // sysQty ด้านบนเป็นค่าสด ณ ตอน render/export ซึ่งขยับทุกเช้าที่บอทอัป R01
+    // ⇒ ช่อง DIFF เดิมเป็น "ยอดวันนี้ − ยอดที่นับเมื่อวาน" = เทียบข้ามเวลา
+    // เคสจริง ก.ย. 2026 (SKU 100659): ตัดสินด้วย 36 แต่ export เห็น 33 → DIFF โชว์ 0
+    // ทั้งที่สถานะเป็น Stock Adjustment ⇒ อ่านไฟล์แล้วสรุปว่า "นับถูก" ผิด
+    const sysAtConfirm=sd.systemQty!==undefined?Number(sd.systemQty):null;
+    const effQty=sd.effectiveQty!==undefined?Number(sd.effectiveQty):null;
+    const sysDrift=sysAtConfirm===null?null:sysQty-sysAtConfirm;
     rows.push({
       scanAt: sd.firstScanAt||sd.timestamp||'', // ColA: เวลาสแกนจริง (firstScanAt) — fallback timestamp สำหรับ data เก่า
       location: state.locationMap.get(sku)||sd.location||'',
@@ -8712,6 +8723,9 @@ function _buildCountReportRows(){
       diffCount: cnt-sysQty,                         // ColI: Count - SystemQty (บวก=เกิน, ลบ=ขาด)
       recheck: hasRecheck?rq:null,
       diffRecheck: hasRecheck?(rq-sysQty):null,       // ColK: Recheck - SystemQty
+      sysAtConfirm,                                   // ยอดระบบที่ใช้ตัดสินจริง (null = ยังไม่ผ่าน Confirm)
+      diffReal: (sysAtConfirm===null||effQty===null)?null:(effQty-sysAtConfirm), // DIFF ที่ทำให้เกิดสถานะนี้
+      sysDrift,                                       // ยอดระบบขยับไปเท่าไรหลัง Confirm (0 = ยังตรงกัน)
       checkBy: sd.scannedBy||''                       // ColL: คนนับครั้งแรก
     });
   }
@@ -8766,9 +8780,11 @@ async function _enterCountReportTab(){ // เรียกจาก setHsFilter �
 function exportCountReportExcel(){
   const rows=_countReportRowsForSelected();
   if(!rows.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
-  const header=['วันที่สแกน','Location','SKU','Barcode','Name','SystemQty','หน่วย','Count','DIFF','Recheck','DIFF(Recheck)','Check By'];
+  // คอลัมน์ 'SysQty(ตอน Confirm)' + 'DIFF(จริง)' = เลขที่ระบบใช้ตัดสินจริง (แช่ไว้ตอน Confirm)
+  // ส่วน 'SystemQty'/'DIFF' เดิมเป็นค่าสด ณ ตอน export — คงไว้เพื่อไม่ให้สูตร Excel เดิมพัง
+  const header=['วันที่สแกน','Location','SKU','Barcode','Name','SystemQty','หน่วย','Count','DIFF','SysQty(ตอน Confirm)','DIFF(จริง)','ยอดระบบขยับ','Recheck','DIFF(Recheck)','Check By'];
   const aoa=[header];
-  rows.forEach(r=>aoa.push([_fmtDateDMY(r.scanAt),r.location,r.sku,r.barcode,r.name,r.systemQty,r.unit,r.count,r.diffCount,r.recheck===null?'':r.recheck,r.diffRecheck===null?'':r.diffRecheck,r.checkBy]));
+  rows.forEach(r=>aoa.push([_fmtDateDMY(r.scanAt),r.location,r.sku,r.barcode,r.name,r.systemQty,r.unit,r.count,r.diffCount,r.sysAtConfirm===null?'':r.sysAtConfirm,r.diffReal===null?'':r.diffReal,r.sysDrift===null?'':r.sysDrift,r.recheck===null?'':r.recheck,r.diffRecheck===null?'':r.diffRecheck,r.checkBy]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(rr=>{const v=rr[c]==null?'':String(rr[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
