@@ -8667,10 +8667,9 @@ function renderHistoryStatsTable(){
   }
   else if(_hsFilter==='countreport'){
     const rows=_countReportRowsForSelected();
-    if(thead)thead.innerHTML=`<tr><th>วันที่สแกน</th><th>Location</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">SystemQty</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Count</th><th style="text-align:center;">DIFF</th><th style="text-align:center;">SysQty<br>(ตอน Confirm)</th><th style="text-align:center;">DIFF<br>(จริง)</th><th style="text-align:center;">Recheck</th><th style="text-align:center;">DIFF<br>(Recheck)</th><th>Check By</th></tr>`;
-    const _nStale=rows.filter(r=>r.sysDrift!=null&&r.sysDrift!==0).length;
-    if(cnt)cnt.textContent=rows.length+' รายการ'+(_nStale?` · ⚠️ ยอดระบบขยับหลัง Confirm ${_nStale}`:'');
-    if(!rows.length){tbody.innerHTML='<tr><td colspan="14" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีรายการที่ Confirm</td></tr>';return;}
+    if(thead)thead.innerHTML=`<tr><th>วันที่สแกน</th><th>Location</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Count</th><th style="text-align:center;">DIFF</th><th style="text-align:center;">System Qty<br>(ตอน Confirm)</th><th style="text-align:center;">Recheck</th><th style="text-align:center;">DIFF<br>(Recheck)</th><th>Check By</th></tr>`;
+    if(cnt)cnt.textContent=rows.length+' รายการ';
+    if(!rows.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีรายการที่ Confirm</td></tr>';return;}
     // ใช้ != null (ไม่ใช่ !==) เพราะ snapshot ที่บันทึกก่อน ก.ย. 2026 ไม่มี field ใหม่เลย
     // field ที่หายไปเป็น undefined ไม่ใช่ null — เช็คแบบเข้มจะหลุดไปแสดงคำว่า undefined
     const dCell=d=>d==null?'<td style="text-align:center;color:var(--text3);">—</td>':`<td style="text-align:center;font-weight:700;color:${d===0?'var(--green)':'var(--red)'};">${d>0?'+'+d:d}</td>`;
@@ -8680,13 +8679,11 @@ function renderHistoryStatsTable(){
       <td style="font-family:'Inter',sans-serif;font-size:0.72rem;">${r.sku}</td>
       <td style="font-family:'Inter',sans-serif;font-size:0.68rem;color:var(--text3);">${r.barcode}</td>
       <td class="ptd-name">${r.name}</td>
-      <td style="text-align:center;font-weight:600;color:var(--text2);">${r.systemQty}</td>
       <td style="text-align:center;font-size:0.74rem;color:var(--text2);">${r.unit||'—'}</td>
       <td style="text-align:center;font-weight:700;">${r.count}</td>
       ${dCell(r.diffCount)}
-      <td style="text-align:center;font-weight:600;color:var(--text2);" title="${r.sysDrift?'ยอดระบบขยับ '+(r.sysDrift>0?'+':'')+r.sysDrift+' หลัง Confirm':''}">${r.sysAtConfirm==null?'—':r.sysAtConfirm}${r.sysDrift?' <span style="color:var(--orange);font-size:0.7rem;">⚠️</span>':''}</td>
-      ${dCell(r.diffReal)}
-      <td style="text-align:center;font-weight:700;">${r.recheck===null?'—':r.recheck}</td>
+      <td style="text-align:center;font-weight:600;color:var(--text2);">${r.sysAtConfirm==null?'—':r.sysAtConfirm}</td>
+      <td style="text-align:center;font-weight:700;">${r.recheck==null?'—':r.recheck}</td>
       ${dCell(r.diffRecheck)}
       <td style="font-size:0.74rem;">${r.checkBy||'—'}</td>
     </tr>`).join('');
@@ -8712,23 +8709,25 @@ function _buildCountReportRows(){
     // ทั้งที่สถานะเป็น Stock Adjustment ⇒ อ่านไฟล์แล้วสรุปว่า "นับถูก" ผิด
     const sysAtConfirm=sd.systemQty!==undefined?Number(sd.systemQty):null;
     const effQty=sd.effectiveQty!==undefined?Number(sd.effectiveQty):null;
-    const sysDrift=sysAtConfirm===null?null:sysQty-sysAtConfirm;
+    // ฐานเทียบของทุกช่อง DIFF = ยอดระบบตอน Confirm · ถ้า item เก่าไม่มีให้ตกไปใช้ค่าสด
+    // (ก.ย. 2026 รอบ 2) เดิมใช้ค่าสดเป็นฐาน ⇒ DIFF เป็น "ยอดวันนี้ − ยอดที่นับเมื่อวาน"
+    // = เทียบข้ามเวลา อ่านแล้วสรุปว่านับถูก/ผิดไม่ได้ · ดู CLAUDE.md §รายงานผลการนับ
+    const base=sysAtConfirm===null?sysQty:sysAtConfirm;
     rows.push({
       scanAt: sd.firstScanAt||sd.timestamp||'', // ColA: เวลาสแกนจริง (firstScanAt) — fallback timestamp สำหรับ data เก่า
       location: state.locationMap.get(sku)||sd.location||'',
       sku,
       barcode: (si.barcodes[0]&&si.barcodes[0].barcode)||sd.barcode||'',
       name: si.productName||'',
-      systemQty: sysQty,
+      systemQty: sysQty,                              // ค่าสด — ไม่มีคอลัมน์แสดงแล้ว เก็บไว้ให้ reader อื่นใช้
       unit: unitInfo?unitInfo.unitName:'',
       count: cnt,
-      diffCount: cnt-sysQty,                         // ColI: Count - SystemQty (บวก=เกิน, ลบ=ขาด)
+      // DIFF = เลขที่ทำให้เกิดสถานะนี้จริง (ยอดที่ควรเป็นตามสูตร ลบ ยอดระบบตอน Confirm)
+      diffCount: effQty===null?(cnt-base):(effQty-base),
       recheck: hasRecheck?rq:null,
-      diffRecheck: hasRecheck?(rq-sysQty):null,       // ColK: Recheck - SystemQty
+      diffRecheck: hasRecheck?(rq-base):null,         // Recheck เทียบฐานเดียวกันกับ DIFF
       sysAtConfirm,                                   // ยอดระบบที่ใช้ตัดสินจริง (null = ยังไม่ผ่าน Confirm)
-      diffReal: (sysAtConfirm===null||effQty===null)?null:(effQty-sysAtConfirm), // DIFF ที่ทำให้เกิดสถานะนี้
-      sysDrift,                                       // ยอดระบบขยับไปเท่าไรหลัง Confirm (0 = ยังตรงกัน)
-      checkBy: sd.scannedBy||''                       // ColL: คนนับครั้งแรก
+      checkBy: sd.scannedBy||''                       // คนนับครั้งแรก
     });
   }
   rows.sort((a,b)=>String(a.scanAt||'').localeCompare(String(b.scanAt||'')));
@@ -8782,11 +8781,12 @@ async function _enterCountReportTab(){ // เรียกจาก setHsFilter �
 function exportCountReportExcel(){
   const rows=_countReportRowsForSelected();
   if(!rows.length){toast('ไม่มีข้อมูลให้ Export','warn');return;}
-  // คอลัมน์ 'SysQty(ตอน Confirm)' + 'DIFF(จริง)' = เลขที่ระบบใช้ตัดสินจริง (แช่ไว้ตอน Confirm)
-  // ส่วน 'SystemQty'/'DIFF' เดิมเป็นค่าสด ณ ตอน export — คงไว้เพื่อไม่ให้สูตร Excel เดิมพัง
-  const header=['วันที่สแกน','Location','SKU','Barcode','Name','SystemQty','หน่วย','Count','DIFF','SysQty(ตอน Confirm)','DIFF(จริง)','ยอดระบบขยับ','Recheck','DIFF(Recheck)','Check By'];
+  // ⚠️ คอลัมน์ต้องตรงกับตารางบนจอเป๊ะ (ผู้ใช้สั่งไว้ ก.ย. 2026 รอบ 2) — แก้ที่ไหนแก้อีกที่ด้วย
+  // ทุกช่อง DIFF เทียบกับ 'System Qty (ตอน Confirm)' = เลขชุดเดียวเวลาเดียว
+  // ค่าสด (r.systemQty) ไม่มีคอลัมน์แล้วโดยเจตนา — เคยทำให้อ่านไฟล์แล้วสรุปว่านับถูกทั้งที่ไม่ใช่
+  const header=['วันที่สแกน','Location','SKU','Barcode','Name','หน่วย','Count','DIFF','System Qty (ตอน Confirm)','Recheck','DIFF(Recheck)','Check By'];
   const aoa=[header];
-  rows.forEach(r=>aoa.push([_fmtDateDMY(r.scanAt),r.location,r.sku,r.barcode,r.name,r.systemQty,r.unit,r.count,r.diffCount,r.sysAtConfirm==null?'':r.sysAtConfirm,r.diffReal==null?'':r.diffReal,r.sysDrift==null?'':r.sysDrift,r.recheck==null?'':r.recheck,r.diffRecheck==null?'':r.diffRecheck,r.checkBy]));
+  rows.forEach(r=>aoa.push([_fmtDateDMY(r.scanAt),r.location,r.sku,r.barcode,r.name,r.unit,r.count,r.diffCount==null?'':r.diffCount,r.sysAtConfirm==null?'':r.sysAtConfirm,r.recheck==null?'':r.recheck,r.diffRecheck==null?'':r.diffRecheck,r.checkBy]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(rr=>{const v=rr[c]==null?'':String(rr[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
