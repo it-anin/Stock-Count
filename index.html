@@ -3093,12 +3093,19 @@ function loadR16(event) {
     let tranDateColIdx=-1;
     if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
     console.log('[R16] headers:',rows[0]?.slice(0,10));console.log('[R16] TRANDATE col index:',tranDateColIdx);if(rows[1])console.log('[R16] row[1] sample TRANDATE:',tranDateColIdx>=0?rows[1][tranDateColIdx]:'(no TRANDATE col)');}
-    let sk=0,matched=0,mismatch=0,missing=0;
+    let sk=0,matched=0,mismatch=0,missing=0,nCancel=0;
     const isWhBranch=currentBranch==='WH'; // WH: ORCM/OCTM บวกกลับ (ตามไฟล์ที่ใช้จริง)
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
       const colA=(r[0]??'').toString().trim(); // Col A (index 0): ทิศ OTFI ของสาขา (จาก POS export) — '1'=สาขา→คลัง บวกกลับ, '0'=คลัง→สาขา หัก
+      // Col J (index 9) = FCANCEL · '1' = บิลถูกยกเลิก สินค้าไม่ได้ออกจากชั้นจริง → ห้ามนับเป็นยอดขาย
+      // (ก.ย. 2026) เดิมไม่เคยอ่านคอลัมน์นี้ ⇒ บิลยกเลิกถูกบวกกลับเข้า effectiveQty ทำให้ของที่นับตรงติด audit
+      // ⚠️ เช็คเฉพาะค่า '1' ไม่ใช่ "เก็บเฉพาะ 0" โดยเจตนา — ถ้าวันหนึ่ง export ไม่มีคอลัมน์นี้หรือส่งค่าว่างมา
+      //    กติกา "เก็บเฉพาะ 0" จะทิ้งทุกแถวเงียบๆ แล้วยอดขายเป็น 0 ทั้งไฟล์ ⇒ ติด audit ยกแผง = แย่กว่าเดิม
+      //    แบบนี้ถ้าคอลัมน์หาย จะกลับไปให้ผลเท่าพฤติกรรมเดิมเป๊ะ · ต้องอยู่ก่อน push เพราะ r16Data ไม่เก็บ Col J
+      const colJ=(r[9]??'').toString().trim();
+      if(colJ==='1'){sk++;nCancel++;continue;}
       const isWhSale=isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ใช้ ORCM/OCTM เป็นรายการบวกกลับ
       const isSale=_matchR16Prefix(colC,R16_SALES_PREFIXES)&&(!isWhBranch||isWhSale); // WH: รับ ORCM/OCTM, สาขา: ORCM/OCTM
       // SRC: "อนิน สาขาแยกชากค้อ" = สาขา SRC + คลังรวมใน POS (แยกไม่ได้) → OTFB ใช้ Col A บอกผู้ส่ง: 0=คลัง / 1=สาขาชากค้อ
@@ -3175,7 +3182,7 @@ function loadR16(event) {
       }else{
         toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
       }
-      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch}`);
+      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch} / บิลยกเลิก ${nCancel}`);
     } else {
       let msg=`R16.104: ไม่สามารถจับคู่ข้อมูลได้`;
       if(state.r16Data.length>0){

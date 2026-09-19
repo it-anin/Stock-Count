@@ -160,10 +160,27 @@ Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SS
 logic: `isOutbound = !isWhBranch && match(OTFI) && colA==='1'`
 
 **Columns อื่น R16.104:**
+- **Col J (9) = FCANCEL** — `1` = บิลถูกยกเลิก **ข้ามทั้งแถว** · ดูด้านล่าง
 - Col O (14) = Barcode
 - Col R (17) = BASEQUANTITY (แปลงเป็นหน่วยเล็กสุดแล้ว)
 - Col X (23) = SKU
 - TRANDATE = auto-detect จาก header row (case-insensitive match `TRANDATE`)
+
+**Col J — FCANCEL (บิลยกเลิก · ก.ย. 2026):**
+
+บิลที่ถูกยกเลิกยังอยู่ในไฟล์ R16 แต่**สินค้าไม่ได้ออกจากชั้นจริง** → นับเป็นยอดขายไม่ได้
+เดิมไม่เคยอ่านคอลัมน์นี้ ⇒ `soldQty` พองเกินจริง → `effectiveQty` ไม่ตรงยอดระบบ → **ของที่พนักงานนับถูกต้องติด audit** (เคสที่ทำให้ต้องแก้)
+
+ด่านอยู่ใน `loadR16()` ต้น loop **ก่อน**ตรรกะแยกทิศทุกตัว ⇒ กรองเหมือนกันทุกสาขา ไม่มี carve-out
+
+⛔ **เช็คเฉพาะค่าเท่ากับ `'1'` ห้ามเปลี่ยนเป็น "เก็บเฉพาะ `0`"** — ถ้าวันหนึ่ง export ไม่มีคอลัมน์นี้ หรือส่งค่าว่าง/`null` มา กติกา "เก็บเฉพาะ 0" จะทิ้งทุกแถวเงียบๆ แล้วยอดขายเป็น 0 ทั้งไฟล์ ⇒ **ติด audit ยกแผง = แย่กว่าบั๊กเดิม**
+แบบที่ใช้อยู่ ถ้าคอลัมน์หายจะกลับไปให้ผลเท่าพฤติกรรมก่อน ก.ย. 2026 เป๊ะ (ตรึงไว้ที่ `tests/specs/logic/r16-cancel-filter.spec.js`)
+
+⚠️ **ต้องกรองตอน parse เท่านั้น** — `_whR16Rows()` ย่อข้อมูลเหลือ `[sku, ยอดขายรวม, ยอดรับเข้ารวม, raw[], raw[]]` **ไม่มีคอลัมน์ดิบเหลือเลย** ทั้งใน Firestore chunks และ IndexedDB cache ⇒ กรองทีหลังทำไม่ได้
+
+⚠️ **ไม่มีตัวไหนทำให้ chunk เก่าหมดอายุตามรุ่นของ parser** (`version`/`generation`/`countResetAt`/`r01Version` ไม่ผูกกับตรรกะ) ⇒ **หลัง deploy ต้องอัปโหลด R16.104 ใหม่ 1 ครั้ง** ถึงจะมีผล
+
+⚠️ **ไม่ใช้กับ R16.103** (`loadR16_103`) — เป็นรายงานคนละตัว ยังไม่ยืนยันว่ามีคอลัมน์นี้ · จะใส่ต้องตรวจกับไฟล์จริงก่อน
 
 **Upload date sync (cross-device):** `loadR16()` เขียน `r16UploadedAt`+`r16Loaded` ลง master doc `${branch}_r01` ผ่าน `syncR16MetaToFirestore()` (merge, ไม่ใช่ session doc) — อ่านกลับทุก login ผ่าน `_applyR16MetaFromDoc()` ใน `restoreMasterFromFirestore()` เหมือน pattern ของ R01 ดู Known Pitfalls ด้านล่าง
 
