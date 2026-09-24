@@ -10,7 +10,8 @@
 // ⇒ recheckSystemQty ใช้เป็น "ตัวจับว่าหมดอายุ" ไม่ใช่ตัวคำนวณ
 //
 // เทสนี้ตรึง 3 ด้าน และด้านที่ 3 สำคัญที่สุด:
-//   1. ยอดหมดอายุต้องออกจากใบ และต้องถูกรายงานพร้อมรหัส SKU
+//   1. ยอดหมดอายุต้องออกจากใบ และต้องถูกรายงาน (รหัส SKU ใน _adjustDocAudit + toast ตอน Export)
+//      แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกตามที่ผู้ใช้สั่ง (ก.ย. 2026) — toast ตอน Export จึงเป็นสัญญาณเดียวที่เหลือ
 //   2. แยก "ต้องรีเช็คใหม่" ออกจาก "ไม่ต้องปรับแล้ว" — คนละงานคนละวิธีแก้
 //   3. ★ ของที่ยังสดต้องผ่านตามปกติ ตัวเลขต้องไม่เปลี่ยน และต้องไม่เตือนผิดตัว
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
@@ -37,18 +38,22 @@ async function seed(page, items) {
   }, { items });
 }
 
-// อ่านแถบเตือน "จากที่ render จริง" ไม่ใช่จากสตริงกลางทาง — พังตอนต่อสายเข้า DOM จะถูกจับด้วย
+// อ่าน toast ตอน Export จากตัวที่เรียกจริง (_warnAdjustDocDropped) ไม่ใช่ประกอบสตริงเอง
 const read = (page) => page.evaluate(() => {
   const a = _adjustDocAudit();
-  renderAdjustDocTable();
-  const box = document.getElementById('adjustDocWarn');
+  renderAdjustDocTable();                  // ต้อง render ได้โดยไม่พึ่งแถบเตือนที่ถอดไปแล้ว
   const ids = (arr) => arr.map((x) => x.sku);
+  let exportWarn = '';
+  const orig = toast;
+  toast = (msg) => { exportWarn = String(msg); };
+  try { _warnAdjustDocDropped(); } finally { toast = orig; }
   return {
     ords: _buildAdjustDocRows('ords').map((x) => ({ sku: x.sku, qty: x.qty })),
     irps: _buildAdjustDocRows('irps').map((x) => ({ sku: x.sku, qty: x.qty })),
     badge: _countAdjustDocItems(),
     stale: ids(a.stale), noSku: ids(a.noSku), settled: ids(a.settled),
-    warn: box.style.display === 'none' ? '' : box.textContent,
+    exportWarn,
+    hasBar: !!document.getElementById('adjustDocWarn'),
   };
 });
 
@@ -63,8 +68,9 @@ test('รีเช็คแล้วยอดระบบขยับจนผ�
   expect(r.badge).toBe(1);                 // ปุ่มยังนับ = ความไม่ตรงที่เคยเงียบ
   expect(r.stale).toEqual(['GONE']);
   expect(r.settled).toEqual([]);           // ★ ไม่ใช่ "ไม่ต้องปรับแล้ว" — ของยังขาดอยู่จริง
-  expect(r.warn).toContain('ต้องรีเช็คใหม่');
-  expect(r.warn).toContain('GONE');        // ★ ต้องหารหัสสินค้าเจอ ไม่ใช่บอกแค่จำนวน
+  expect(r.exportWarn).toContain('1 รายการไม่ได้อยู่ในไฟล์นี้');
+  expect(r.exportWarn).toContain('ต้องรีเช็คใหม่');
+  expect(r.hasBar).toBe(false);            // แถบเตือนในป็อปอัพถูกถอดออกแล้ว ห้ามโผล่กลับมา
   await closeApp(app);
 });
 
@@ -80,14 +86,14 @@ test('ยอดระบบขยับจนสลับทิศ ขาด↔�
   await closeApp(app);
 });
 
-test('ไม่มีข้อมูลสินค้า (R05 ยังไม่โหลด) → ใบว่างทั้งใบ ต้องเตือน ไม่ใช่ขึ้น "ไม่มีรายการ" เฉยๆ', async ({ browser }) => {
+test('ไม่มีข้อมูลสินค้า (R05 ยังไม่โหลด) → ใบว่างทั้งใบ ต้องถูกรายงาน ไม่ใช่หายเงียบ', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page, [{ sku: 'NOSKU', live: null, cnt: 3 }]);
   const r = await read(app.page);
 
   expect(r.ords).toEqual([]);
   expect(r.noSku).toEqual(['NOSKU']);
-  expect(r.warn).toContain('R05.106');
+  expect(r.exportWarn).toContain('R05.106');
   await closeApp(app);
 });
 
@@ -101,7 +107,7 @@ test('ยอดสดแล้วแต่ตรงพอดี → "ไม่�
   expect(r.irps).toEqual([]);
   expect(r.stale).toEqual([]);             // ★ ห้ามไล่ให้ไปรีเช็คซ้ำทั้งที่ไม่มีอะไรต้องทำ
   expect(r.settled).toEqual(['DONE']);
-  expect(r.warn).toContain('ไม่ต้องปรับ');
+  expect(r.exportWarn).toBe('');           // งานจบแล้ว ไม่ใช่ของตกหล่น — Export ต้องไม่เตือน
   await closeApp(app);
 });
 
@@ -115,7 +121,7 @@ test('ของที่ยังสดต้องผ่านตามปก�
 
   expect(r.ords).toEqual([{ sku: 'SHORT', qty: 1 }]);
   expect(r.irps).toEqual([{ sku: 'OVER', qty: 5 }]);
-  expect(r.warn).toBe('');                 // ★ เงียบสนิทเมื่อทุกอย่างสด
+  expect(r.exportWarn).toBe('');           // ★ เงียบสนิทเมื่อทุกอย่างสด
   await closeApp(app);
 });
 
@@ -128,6 +134,6 @@ test('รายการรอบนับแรก (noStock) ไม่มี fr
   expect(r.ords).toEqual([{ sku: 'NOSTOCK', qty: 5 }]);
   expect(r.stale).toEqual([]);
   expect(r.settled).toEqual([]);
-  expect(r.warn).toBe('');
+  expect(r.exportWarn).toBe('');
   await closeApp(app);
 });

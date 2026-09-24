@@ -334,7 +334,8 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 ⇒ เดิมหลุด**ทั้งสองแท็บพร้อมกัน** (`diff>=0` / `diff<=0`) ขณะที่ badge (`_countAdjustDocItems()`) ยังนับทุก `stock_adjustment`
 - `_isAdjustRowFresh(sku,sd,liveSys)` = ด่านใน `_buildAdjustDocRows()` — `_recheckBaselineSystemQty()===live` เท่านั้นถึงขึ้นใบ
   ⚠️ **ตัวกรองต้องอยู่ในฟังก์ชันนั้นจุดเดียว** เพื่อให้ตาราง · Export Text · Export Excel ใช้ประตูเดียวกัน
-- `_adjustDocAudit()` คืน `{stale, noSku, settled}` · `_renderAdjustDocWarn()` วาดแถบ `#adjustDocWarn` (หัวข้อสั้นบรรทัดเดียวต่อเรื่อง + รหัสสินค้าแยกกลุ่มใน `<details>`) + toast ตอน Export
+- `_adjustDocAudit()` คืน `{stale, noSku, settled}` · `_warnAdjustDocDropped()` เด้ง toast ตอน Export (จำนวน + สาเหตุ ไม่มีรหัสสินค้า)
+  แถบ `#adjustDocWarn` ในป็อปอัพ**ถูกถอดออกตามที่ผู้ใช้สั่ง (24 ก.ย. 2026)** ⇒ toast นี้เป็นสัญญาณเดียวที่เหลือ ห้ามถอดตาม
   `stale` = ต้องรีเช็คใหม่ · `noSku` = R05.106 ยังไม่โหลด · `settled` = สดแล้วตรงพอดี **ไม่ต้องปรับ (งานจบ ห้ามไล่ไปรีเช็คซ้ำ)**
 - ไม่เตือนผิดตัว: `noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ ถือว่าสด ⇒ ขึ้นใบเหมือนเดิม
 - **`exportStockAdjExcel()` จงใจไม่ใช้ด่านนี้** — เป็นรายงานภาพรวม ไม่ใช่ไฟล์ import เข้า ERP · มี `skipZero`/`skipNoSku` + toast ของตัวเอง **อย่าทำให้ตรงกัน**

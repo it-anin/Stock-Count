@@ -472,7 +472,8 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
     และแถวหลุด**พร้อมกันทั้ง** ORDS (`diff>=0`) และ IRPS (`diff<=0`) แบบเงียบสนิท ขณะที่ badge (`_countAdjustDocItems()`) ยังนับอยู่
   - ⇒ `_isAdjustRowFresh(sku,sd,liveSys)` = ด่านใน `_buildAdjustDocRows()`: `_recheckBaselineSystemQty() === live` เท่านั้นถึงขึ้นใบ
     **`recheckSystemQty` เป็นตัวจับว่า "ยอดหมดอายุ" ไม่ใช่ตัวคำนวณ** · ตัวกรองต้องอยู่ในฟังก์ชันนี้จุดเดียว เพื่อให้ตาราง/Export Text/Export Excel ใช้ประตูเดียวกัน
-  - `_adjustDocAudit()` คืน `{stale, noSku, settled}` → `_renderAdjustDocWarn()` วาดแถบ `#adjustDocWarn` + toast ตอน Export
+  - `_adjustDocAudit()` คืน `{stale, noSku, settled}` → `_warnAdjustDocDropped()` เด้ง toast ตอน Export (บอกจำนวน + สาเหตุ)
+    ⚠️ **แถบเตือน `#adjustDocWarn` ในป็อปอัพถูกถอดออกแล้วตามที่ผู้ใช้สั่ง (24 ก.ย. 2026)** — toast ตอน Export จึงเป็นสัญญาณเดียวที่เหลือว่ามีรายการหลุดจากใบ **ห้ามถอด toast นี้ตามไปด้วย** ไม่งั้นกลับไปหายเงียบ
     `stale` = ต้องรีเช็คใหม่ (ตัดออกจากใบ) · `noSku` = R05 ยังไม่โหลด · `settled` = สดแล้วและตรงพอดี ไม่ต้องปรับ (งานจบ ไม่ใช่ของตกหล่น)
     ⚠️ **ห้ามไล่ `settled` ไปรีเช็คซ้ำ** และ **`noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ ถือว่าสด ⇒ พฤติกรรมเดิมไม่กระทบ**
     เทสตรึงไว้ที่ `tests/specs/logic/adjust-doc-dropped.spec.js` (ตรึงทั้ง "หมดอายุต้องออกจากใบ + ถูกรายงาน", "แยก stale ออกจาก settled" และ **"ของสดต้องผ่านตัวเลขเดิม ไม่เตือนผิดตัว"**)

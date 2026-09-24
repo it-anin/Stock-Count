@@ -980,8 +980,6 @@
         <div class="upload-file-badge upload-file-badge-optional" id="adjPriceBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
       </div>
     </div>
-    <!-- แถบเตือน "ใบไม่ครบ/ตัวเลขขยับ" — เติมด้วย createElement/textContent เท่านั้น (ดู _renderAdjustDocWarn) -->
-    <div id="adjustDocWarn" style="display:none;padding:10px 22px;border-bottom:1px solid var(--border);background:rgba(224,140,0,0.10);color:var(--text2);font-size:0.76rem;line-height:1.6;"></div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="adjustDocThead"></thead>
@@ -8330,37 +8328,6 @@ function _adjustDocAudit(){
   }
   return {stale,noSku,settled};
 }
-// แถบเตือนในป็อปอัพ — หัวข้อสั้นบรรทัดเดียวต่อเรื่อง · รหัสสินค้าซ่อนใน <details> (28 รายการยาวเกินอ่านไหว)
-// สร้างด้วย createElement/textContent เท่านั้น ห้ามประกอบ innerHTML จากข้อมูล
-function _renderAdjustDocWarn(){
-  const box=document.getElementById('adjustDocWarn');if(!box)return;
-  box.textContent='';
-  const{stale,noSku,settled}=_adjustDocAudit();
-  if(!stale.length&&!noSku.length&&!settled.length){box.style.display='none';return;}
-  const line=(t,bold)=>{const d=document.createElement('div');if(bold)d.style.fontWeight='700';d.textContent=t;box.appendChild(d);};
-  if(stale.length)line(`⚠️ ${stale.length} รายการต้องรีเช็คใหม่ก่อนออกใบปรับปรุง — ยอดระบบขยับหลังเภสัชรีเช็ค`,true);
-  if(noSku.length)line(`⚠️ ${noSku.length} รายการไม่มีข้อมูลสินค้า — ยังไม่ได้โหลด R05.106`,true);
-  if(settled.length)line(`ℹ️ ${settled.length} รายการระบบตรงกับที่นับแล้ว ไม่ต้องปรับ`);
-  // WH supervisor ไม่มีปุ่ม ↺ (ป็อปอัพ Audit Verify เป็น read-only) — ต้องให้พนักงานคลังสแกนแทน
-  if(stale.length)line(currentBranch==='WH'
-    ?'👉 ให้พนักงานคลังสแกนรีเช็คใหม่ รายการถึงจะกลับเข้าใบปรับปรุง'
-    :'👉 กด ↺ สแกนใหม่ ในหน้า Audit Verify แล้วให้เภสัชรีเช็คใหม่ รายการถึงจะกลับเข้าใบปรับปรุง');
-  const det=document.createElement('details');det.style.marginTop='5px';
-  const sum=document.createElement('summary');
-  sum.style.cssText='cursor:pointer;color:var(--text3);font-size:0.72rem;';
-  sum.textContent=`ดูรหัสสินค้า (${stale.length+noSku.length+settled.length})`;
-  det.appendChild(sum);
-  // แยกกลุ่มตอนกาง — คนละสาเหตุ คนละวิธีแก้ ถ้ารวมเป็นก้อนเดียวจะหาไม่เจอว่าตัวไหนต้องทำอะไร
-  [['ต้องรีเช็คใหม่',stale],['ไม่มีข้อมูลสินค้า',noSku],['ไม่ต้องปรับแล้ว',settled]].forEach(([label,arr])=>{
-    if(!arr.length)return;
-    const d=document.createElement('div');
-    d.style.cssText="margin-top:4px;font-size:0.72rem;color:var(--text3);word-break:break-all;";
-    d.textContent=`${label} (${arr.length}): ${arr.map(x=>x.sku).join(', ')}`;
-    det.appendChild(d);
-  });
-  box.appendChild(det);
-  box.style.display='';
-}
 function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')n++;return n;}
 function renderAdjustDocTable(){
   const thead=document.getElementById('adjustDocThead');
@@ -8370,8 +8337,6 @@ function renderAdjustDocTable(){
   if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th></tr>';
   const rows=_buildAdjustDocRows(_adjDocFilter);
   if(rc)rc.textContent=`${rows.length} รายการ`;
-  // ต้องอยู่ "ก่อน" early-return ข้างล่าง — ใบว่างเพราะ skuMap ยังไม่โหลดคือเคสที่ต้องเตือนที่สุด
-  _renderAdjustDocWarn();
   if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   tbody.innerHTML=rows.map((r,i)=>{
@@ -8449,11 +8414,16 @@ function exportAdjustDocText(){
   toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
   _warnAdjustDocDropped();
 }
-// ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกซ้ำตอนนี้ ไม่ใช่เตือนแค่ในป็อปอัพ
+// ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
+// (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
 function _warnAdjustDocDropped(){
   const{stale,noSku}=_adjustDocAudit();
   const n=stale.length+noSku.length;   // settled ไม่นับ — ไม่มีอะไรต้องปรับอยู่แล้ว ไม่ใช่ของตกหล่น
-  if(n)toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ — ดูแถบเตือนด้านบน`,'warn',9000);
+  if(!n)return;
+  const why=[];
+  if(stale.length)why.push(`ต้องรีเช็คใหม่ ${stale.length}`);
+  if(noSku.length)why.push(`ยังไม่โหลด R05.106 ${noSku.length}`);
+  toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ (${why.join(' · ')})`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
