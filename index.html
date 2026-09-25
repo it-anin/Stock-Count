@@ -7349,16 +7349,18 @@ function renderAuditVerifyTable(){
     if(rc)rc.textContent=rows.length+' รายการ Stock Adj';
     const _adjCols=canReopen?9:8;
     if(!rows.length){tbody.innerHTML=`<tr><td colspan="${_adjCols}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ Stock Adjustment</td></tr>`;return;}
+    const isWhAdj=currentBranch==='WH';
     tbody.innerHTML=rows.map((r,i)=>{
       const{sku,sd,si}=r;
       const bc=si.barcodes.map(b=>b.barcode).join(', ');
       const bcShort=bc.length>22?bc.slice(0,22)+'…':bc;
       const recheckVal=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
-      // แสดงยอดระบบ "ที่ใช้ตัดสินจริง" (freeze ตอนสแกน) ไม่ใช่ค่าสด — ไม่งั้น Diff บนจอไม่ตรงกับเหตุผลที่ระบบตัดสิน
-      const baseSys=_recheckBaselineSystemQty(sku,sd);
+      // แสดงยอดระบบ "ที่ใช้ตัดสินจริง" ไม่ใช่ค่าสด — ไม่งั้น Diff บนจอไม่ตรงกับเหตุผลที่ระบบตัดสิน
+      // สาขายา = freeze ตอนสแกนรีเช็ค · WH = R01 ของวันที่ยืนยันรีเช็ค (ดู _whStockAdjBaseQty)
+      const baseSys=isWhAdj?_whStockAdjBaseQty(sku,sd):_recheckBaselineSystemQty(sku,sd);
       const liveSys=Number(si.systemQty??0);
       const sysCell=baseSys!==liveSys
-        ?`<span title="ยอดระบบตอนนี้ ${liveSys} — ตัดสินด้วยยอด ณ เวลาสแกนรีเช็ค" style="border-bottom:1px dashed var(--text3);cursor:help;">${baseSys}</span> <span style="font-size:0.68rem;color:var(--text3);">(ตอนนี้ ${liveSys})</span>`
+        ?`<span title="ยอดระบบตอนนี้ ${liveSys} — ${isWhAdj?'คิดจากยอด R01 วันที่ยืนยันรีเช็ค':'ตัดสินด้วยยอด ณ เวลาสแกนรีเช็ค'}" style="border-bottom:1px dashed var(--text3);cursor:help;">${baseSys}</span> <span style="font-size:0.68rem;color:var(--text3);">(ตอนนี้ ${liveSys})</span>`
         :`${baseSys}`;
       const diff=recheckVal-baseSys;
       const diffCell=diff<0
@@ -8049,6 +8051,7 @@ function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById
 // แสดงเฉพาะ role ที่ยืนยัน: เภสัช (สาขายา) + supervisor (WH). Panel อยู่ใน .left-panel → desktop-only อัตโนมัติ
 // ดึงเฉพาะ status 'stock_adjustment' (รีเช็คแล้วยังไม่ตรง) ยึด convention เดียวกับ exportStockAdjExcel:
 //   count = recheckQty ?? countedQty, diff = count - systemQty → เกิน(diff>0)=IRPS เขียว, ขาด(diff<0)=ORDS
+//   systemQty: สาขายา = ค่าสด · WH = ยอด R01 ของวันที่ Recheck (_whStockAdjBaseQty) — ต้องเหมือนกันทั้งสองที่
 // ราคา/LOT/EXP/รวมเงิน มาจาก R05.105/R14.102 (Supabase หรือแนบเอง) — ช่องที่ยังไม่มีข้อมูลแสดง '—'
 let _adjDocFilter='ords';
 // LOT/ราคา — in-memory · เก็บเฉพาะ SKU ที่ stock_adjustment (ไม่เก็บทั้ง 200k แถว)
@@ -8292,17 +8295,34 @@ function _adjExportBusy(){
 //   ใบคิด 1−1 = 0 → ไม่ทำอะไร ทั้งที่ของยังขาด และแถวหลุดหายทั้ง ORDS+IRPS แบบเงียบ (บอทอัป R01 ทุกเช้า = เจอทุกวัน)
 // ⇒ recheckSystemQty (freeze ตอนสแกน) ใช้เป็น "ตัวจับว่ายอดหมดอายุ" ไม่ใช่ตัวคำนวณ
 //   ไม่เท่ายอดระบบตอนนี้ = มีการเคลื่อนไหวหลังรีเช็ค = ตัดออกจากใบ ให้ไปรีเช็คใหม่ (ดู _adjustDocAudit)
+//
+// ⚠️ ข้อยกเว้น WH (ก.ย. 2026 · ผู้ใช้สั่ง): Stock Adj ของคลังคิดจาก "R01 ของวันที่ Recheck" ไม่ใช่ค่าสด
+//   ใช้ยอดระบบที่แช่ไว้ตอน Supervisor ยืนยันรีเช็ค (sd.systemQty จากผล Recheck Confirm) คู่กับยอด Recheck วันนั้น
+//   = ตัวเลขชุดเดียวกับที่ใช้ตัดสินว่า "ไม่ตรง → Stock Adj" ⇒ บอทอัป R01 ทุกเช้าจึงไม่ทำให้ตัวเลขขยับ และไม่มีด่านความสด
+//   ใช้ทุกจุดที่แสดง Stock Adj ของ WH: ใบ ORDS/IRPS · แท็บ Stock Adj ใน Audit Verify · ประวัติการนับ + Export Excel
+//   ⛔ สาขายายังใช้กติกาเดิม (ค่าสด + ด่าน _isAdjustRowFresh) — ห้ามเหมารวม
+function _whStockAdjBaseQty(sku,sd){
+  const v=sd?.systemQty;const n=Number(v);
+  if(v!=null&&v!==''&&Number.isFinite(n))return n;
+  // ข้อมูลรุ่นเก่าไม่มีค่านี้ (marker รีเช็คก่อน workflow v2 ไม่ได้เก็บ systemQty → Number(undefined) = NaN) → ถอยไปใช้ค่าสดเหมือนเดิม
+  return Number(state.skuMap.get(sku)?.systemQty??0);
+}
 function _isAdjustRowFresh(sku,sd,liveSys){
   // ไม่มี recheckSystemQty (เช่น noStock จากรอบนับแรก) → fallback เป็นค่าสดเอง ⇒ ถือว่าสด = พฤติกรรมเดิม
   return _recheckBaselineSystemQty(sku,sd)===Number(liveSys||0);
 }
 function _buildAdjustDocRows(dir){
   const rows=[];
+  const wh=currentBranch==='WH';
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
     const si=state.skuMap.get(sku);if(!si)continue;
-    const sysQty=Number(si.systemQty||0);
-    if(!_isAdjustRowFresh(sku,sd,sysQty))continue;   // ยอดนับหมดอายุ → ห้ามส่งเลขนี้เข้าระบบ
+    let sysQty;
+    if(wh)sysQty=_whStockAdjBaseQty(sku,sd);           // WH: ยอดวัน Recheck (แช่ไว้แล้ว ไม่มีวันหมดอายุ)
+    else{
+      sysQty=Number(si.systemQty||0);
+      if(!_isAdjustRowFresh(sku,sd,sysQty))continue;   // ยอดนับหมดอายุ → ห้ามส่งเลขนี้เข้าระบบ
+    }
     const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
     const diff=cnt-sysQty;
     if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
@@ -8316,13 +8336,16 @@ function _buildAdjustDocRows(dir){
 // badge บนปุ่มนับทุก stock_adjustment จึงมากกว่าจำนวนแถวบนใบเสมอเมื่อมีสามกลุ่มนี้
 function _adjustDocAudit(){
   const stale=[],noSku=[],settled=[];
+  const wh=currentBranch==='WH';
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
     const si=state.skuMap.get(sku);
     if(!si){noSku.push({sku,name:''});continue;}      // R05.106 ยังไม่โหลด → skuMap ว่าง → ใบว่างทั้งใบ
-    const live=Number(si.systemQty||0);
     const name=si.productName||'';
     const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+    // WH ไม่มีด่านความสด (ฐานแช่ไว้แล้ว) — ต้องตรงกับ _buildAdjustDocRows ทุกเงื่อนไข
+    if(wh){const base=_whStockAdjBaseQty(sku,sd);if(cnt-base===0)settled.push({sku,name,live:base,cnt});continue;}
+    const live=Number(si.systemQty||0);
     if(!_isAdjustRowFresh(sku,sd,live)){stale.push({sku,name,live,frozen:_recheckBaselineSystemQty(sku,sd),cnt});continue;}
     if(cnt-live===0)settled.push({sku,name,live,cnt});  // สดแล้วและตรงพอดี = ไม่มีอะไรต้องปรับ (งานจบ)
   }
@@ -8601,7 +8624,7 @@ function renderHistoryStatsTable(){
       const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'—';
       const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
       const unitName=unitInfo?.unitName||'—';
-      const sysQty=si.systemQty;
+      const sysQty=isWhS?_whStockAdjBaseQty(sku,sd):si.systemQty;   // WH = R01 ของวันที่ Recheck (ดู _whStockAdjBaseQty)
       const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
       const diff=sysQty-rv;
       const dc=diff>0?`<span style="color:var(--red);font-weight:700;">-${diff}</span>`:diff<0?`<span style="color:var(--green);font-weight:700;">+${Math.abs(diff)}</span>`:`<span style="color:var(--green);font-weight:700;">0</span>`;
@@ -8874,7 +8897,7 @@ function exportStockAdjExcel(){
     const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'';
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
     const unitName=unitInfo?.unitName||'';
-    const sysQty=si.systemQty;
+    const sysQty=currentBranch==='WH'?_whStockAdjBaseQty(sku,sd):si.systemQty;   // WH = R01 ของวันที่ Recheck (ดู _whStockAdjBaseQty)
     const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
     const diff=rv-sysQty; // ColG - ColF
     if(diff===0){skipZero++;continue;}

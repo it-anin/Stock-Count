@@ -340,6 +340,9 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 - ไม่เตือนผิดตัว: `noStock` จากรอบนับแรกไม่มี `recheckSystemQty` → fallback เป็นค่าสด ⇒ ถือว่าสด ⇒ ขึ้นใบเหมือนเดิม
 - **`exportStockAdjExcel()` จงใจไม่ใช้ด่านนี้** — เป็นรายงานภาพรวม ไม่ใช่ไฟล์ import เข้า ERP · มี `skipZero`/`skipNoSku` + toast ของตัวเอง **อย่าทำให้ตรงกัน**
 - เทส: `tests/specs/logic/adjust-doc-dropped.spec.js`
+- ⚠️ **ทั้งหมดข้างบนเป็นกติกาสาขายา — WH คิด Stock Adj จาก "R01 ของวันที่ Recheck" (24 ก.ย. 2026 · ผู้ใช้สั่ง)**
+  ฐาน = `sd.systemQty` ที่แช่ไว้ตอนยืนยันรีเช็ค (ตัวเดียวกับที่ใช้ตัดสิน) ผ่าน `_whStockAdjBaseQty()` ครบ 4 จุด: ใบ ORDS/IRPS · Audit Verify แท็บ Stock Adj · ประวัติการนับ · `exportStockAdjExcel()` · ไม่มีด่านความสด · ข้อมูลเก่าไม่มีค่า → ค่าสด
+  ผลข้างเคียง: ใบ WH ไม่หายเองหลังส่ง ERP ⇒ Export ซ้ำได้เลขเดิม ระวังส่งซ้ำ · เทส: `tests/specs/logic/wh-stock-adj-base.spec.js`
 
 **คอลัมน์:** ลำดับ / รหัสสินค้า(SKU) / ชื่อสินค้า / หน่วย(`skuDirectMap`) / จำนวน / ราคา / LOT / EXP / รวมเงิน
 → ราคา + รวมเงิน จาก R05.105 · **EXP จาก R14.102 (ของ LOT ที่เลือก)** · ช่องที่ยังไม่มีข้อมูล = `—`
