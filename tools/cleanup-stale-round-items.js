@@ -18,7 +18,10 @@
  *        await resetResurrectedItems()                   ← ตรวจอย่างเดียว
  *        await resetResurrectedItems({dryRun:false})     ← ลบจริง
  *      ตัดสินว่า "ถูกเขียนกลับ" = อยู่ในรอบนี้ + สถานะ Confirm แล้ว (pass/audit/audit_check/stock_adjustment)
- *      + เวลานับ (firstScanAt หรือ timestamp) เก่ากว่าตอนเริ่มรอบเกิน 5 นาที
+ *      + **ไม่มีร่องรอยในรอบนี้เลย**: ทั้ง firstScanAt และ timestamp เก่ากว่าตอนเริ่มรอบเกิน 5 นาที
+ *      + ไม่อยู่ใน marker เภสัชของรอบนี้ (marker = งาน Audit/ผลยืนยันของรอบนี้ ลบ item ไปก็ถูกสร้างกลับ)
+ *      ⚠️ ห้ามดู firstScanAt อย่างเดียว: รายการที่โดนดึงผลเก่าแล้วกด ✕ สแกนใหม่ firstScanAt ยังค้างเป็นวันรอบเก่า
+ *         (✕ ไม่ล้าง) แต่ยอด/สถานะ/timestamp เป็นของรอบนี้จริง — SRC 26 ก.ย.: 800424 / 600677 ถูก Confirm ในรอบนี้แล้ว
  *      รายการ scanning ไม่แตะ (ยอด scanning เป็นยอดที่สแกนในรอบนี้จริง)
  *
  * Safety properties:
@@ -168,20 +171,44 @@ window.resetResurrectedItems = async function resetResurrectedItems(opts = {}) {
   console.log(`%c[cleanup ②] สาขา ${branch} · รอบปัจจุบันเริ่ม ${fmtEpoch(epoch)} · ${dryRun ? 'DRY-RUN (ไม่เขียน)' : 'ลบจริง'}`, 'font-weight:bold');
 
   const snap = await getScanItemsRef(branch).where('countResetAt', '==', epoch).get({ source: 'server' });
-  const isResurrected = d => {
+  // marker เภสัชของรอบนี้ — SKU ที่อยู่ในนี้เป็นงาน Audit/ผลยืนยันของรอบนี้ (ลบ item ไป marker ก็สร้างกลับ) → ไม่แตะ
+  let markerItems = {};
+  try {
+    const m = await getPharmacyAuditMarkerRef(branch).get({ source: 'server' });
+    const md = m.exists ? (m.data() || {}) : {};
+    if ((md.countResetAt || '') === epoch) markerItems = md.items || {};
+  } catch (e) { console.warn('อ่าน marker ไม่ได้ — หยุดเพื่อความปลอดภัย:', e.code || e.message); throw e; }
+  // เวลาล่าสุดที่รายการนี้ถูกแตะ = ค่าที่ใหม่กว่าระหว่าง firstScanAt กับ timestamp
+  const lastTouchMs = d => { const v = [tsMs(d.firstScanAt), tsMs(d.timestamp)].filter(Number.isFinite); return v.length ? Math.max(...v) : NaN; };
+  const oldFirstScan = d => { const ms = tsMs(d.firstScanAt); return Number.isFinite(ms) && ms < epochMs - OLD_TOL_MS; };
+  const isResurrected = (d, id) => {
     if (String(d.countResetAt || '') !== epoch || !CONFIRMED.has(d.status)) return false;
-    const ms = tsMs(d.firstScanAt || d.timestamp);
+    if (markerItems[id]) return false;
+    const ms = lastTouchMs(d);
     return Number.isFinite(ms) && ms < epochMs - OLD_TOL_MS;
   };
-  const found = [];
-  snap.forEach(d => { const x = d.data() || {}; if (isResurrected(x)) found.push({ id: d.id, rev: Number(x.rev) || 0, status: x.status, x }); });
-  found.sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
+  const found = []; const kept = [];
+  snap.forEach(d => {
+    const x = d.data() || {};
+    if (isResurrected(x, d.id)) found.push({ id: d.id, rev: Number(x.rev) || 0, status: x.status, x });
+    // ดูเผินๆ เหมือนเศษ (Confirm แล้ว + เวลาสแกนครั้งแรกเก่า) แต่มีร่องรอยในรอบนี้ → ไม่แตะ แค่รายงานให้เห็น
+    else if (CONFIRMED.has(x.status) && oldFirstScan(x)) kept.push({ id: d.id, x, why: markerItems[d.id] ? 'อยู่ใน marker รอบนี้' : 'สแกนในรอบนี้ (timestamp ใหม่)' });
+  });
+  const bySku = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
+  found.sort(bySku); kept.sort(bySku);
+  const row = (id, x) => ({ SKU: id, สถานะ: x.status, นับได้: x.countedQty, นับโดย: x.scannedBy || '', สแกนครั้งแรก: x.firstScanAt || '', สแกนล่าสุด: x.timestamp || '', auditor: x.auditor || '', เขียนโดย: x.updatedBy || '', rev: Number(x.rev) || 0 });
   console.log(`items รอบนี้ ${snap.size} รายการ · เข้าเกณฑ์ "ถูกเขียนกลับ" ${found.length} รายการ`);
-  if (found.length) console.table(found.map(f => ({ SKU: f.id, สถานะ: f.status, นับได้: f.x.countedQty, นับโดย: f.x.scannedBy || '', เวลานับ: f.x.firstScanAt || f.x.timestamp || '', เขียนโดย: f.x.updatedBy || '', rev: f.rev })));
-  const report = { branch, epoch, count: found.length, skus: found.map(f => f.id) };
+  if (found.length) console.table(found.map(f => row(f.id, f.x)));
+  if (kept.length) {
+    console.log(`ไม่แตะ ${kept.length} รายการ — เวลาสแกนครั้งแรกเก่า แต่เป็นงานจริงของรอบนี้ (โดนดึงผลเก่า → กด ✕ สแกนใหม่ → ✕ ไม่ล้างเวลาสแกนครั้งแรก):`);
+    console.table(kept.map(k => ({ ...row(k.id, k.x), เหตุผล: k.why })));
+  }
+  const report = { branch, epoch, count: found.length, skus: found.map(f => f.id), keptCount: kept.length, keptSkus: kept.map(k => k.id),
+    rows: found.map(f => row(f.id, f.x)), keptRows: kept.map(k => ({ ...row(k.id, k.x), เหตุผล: k.why })) };
   window.resetResurrectedReport = report;
   if (dryRun || !found.length) {
     console.log(dryRun ? 'DRY-RUN จบ — ยังไม่ได้ลบอะไร · ถ้ารายการถูกต้อง รัน  await resetResurrectedItems({dryRun:false})' : 'ไม่มีอะไรต้องคืน');
+    if (dryRun) console.log('คัดลอกผลเป็นข้อความ:  copy(JSON.stringify(resetResurrectedReport, null, 1))');
     return report;
   }
 
@@ -196,7 +223,7 @@ window.resetResurrectedItems = async function resetResurrectedItems(opts = {}) {
   // ลบเฉพาะตัวที่ยังเหมือนตอนสำรวจทุกอย่าง (รอบ/สถานะ/rev) — ถ้ามีใครแตะระหว่างนั้นให้ข้าม
   const revOf = new Map(found.map(f => [f.id, f.rev]));
   const res = await deleteInTransactions(branch, epoch, found.map(f => f.id),
-    (d, id) => isResurrected(d) && (Number(d.rev) || 0) === revOf.get(id), 'cleanup ②');
+    (d, id) => isResurrected(d, id) && (Number(d.rev) || 0) === revOf.get(id), 'cleanup ②');
   Object.assign(report, res, { dryRun: false });
   console.log(`%c[cleanup ②] เสร็จ — คืน ${res.deleted} · ข้าม ${res.skipped}`, 'font-weight:bold');
   if (res.skippedIds.length) console.log('SKU ที่ข้าม (มีการเปลี่ยนระหว่างทำ):', res.skippedIds.join(', '));
