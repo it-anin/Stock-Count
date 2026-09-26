@@ -399,11 +399,14 @@ await db.doc(getSessionId()+'_r01').delete(); // หลัง syncToFirestore(tr
 ```
 
 **เศษรอบเก่าหลังเริ่มนับใหม่ (schema v2 · SRC ก.ย. 2026):**
-- `startNewCount()` เขียน epoch ใหม่ก่อน แล้วค่อย `_deleteScanItemsForEpoch(_prevEpoch)` แบบ best-effort (ไม่มีแถบความคืบหน้า · toast สำเร็จขึ้นตอนลบเสร็จ) — **รีเฟรช/ปิดหน้าระหว่างนั้น = เศษรอบเก่าค้าง** และลบเฉพาะรอบก่อนหน้ารอบเดียว เศษจากรอบที่เก่ากว่าไม่ถูกเก็บ
+- `startNewCount()` เขียน epoch ใหม่ก่อน แล้วค่อยลบของรอบเก่า — เดิมลบแค่ `_prevEpoch` แบบ best-effort ไม่มีแถบความคืบหน้า **รีเฟรช/ปิดหน้าระหว่างนั้น = เศษรอบเก่าค้าง** (SRC 22 ก.ย.)
+  **ตั้งแต่ 26 ก.ย. 2026:** ถือ branch lock ทุกสาขาที่ใช้ lock (เดิมเฉพาะ WH) → `_restampBranchConfirmLock` ป้ายรอบใหม่ (เครื่องที่ adopt แล้วยังพักสแกน) → `_deleteScanItemsNotInEpoch` ลบ**ทุกรอบที่ไม่ใช่รอบใหม่** → ปลด lock · แถบ "กำลังเริ่มนับใหม่" + `beforeunload` + heartbeat ข้าม (`_countResetInProgress`) · ลบไม่ครบ = toast เตือน
 - ⚠️ **doc id คือ SKU ใช้ร่วมทุกรอบ** — query ตามรอบ (`where countResetAt ==`) กรองเศษได้ แต่ **อ่านตาม id (`tx.get(ref)`) เจอเศษเสมอ** ⇒ ทุกจุดที่อ่าน item ตาม id ต้องเช็ค `countResetAt` เอง
 - `_writeScanningItem`: เอกสารที่ไม่ใช่รอบนี้ = "ไม่มี" (ยอดในเครื่องคือยอดทั้งหมด) · abort `confirmed` เฉพาะเอกสาร **รอบเดียวกัน** — เดิมไม่เช็ค ทำให้ pass ของรอบเก่าถูกดึงมาทับยอดที่เพิ่งสแกนแล้วถูกเขียนกลับในนามรอบใหม่ (ลายเซ็น rev 2)
 - login สาขายา (`restoreFromFirestore` เส้นทางใช้ข้อมูลในเครื่อง): confirmed ในเครื่องที่ Cloud รอบนี้ไม่มีเอกสาร → รีเซ็ตเป็น pending ก่อน reconcile · คืนกติกาเดียวกับ blob เดิม ("ไม่ re-upload confirmed ที่ cloud ไม่มี") ที่หายไปตอนย้ายเป็น v2 · marker รอบนี้สร้าง Audit กลับเองได้ · ไม่ใช้กับ WH (มี committed op เป็นเจ้าของผล)
+- abort `confirmed` (รอบเดียวกันจริง) ต้องอัปเดตแถว RESULT ตามผลที่รับมา และ ✕ (`removeScanItem`) ต้องปฏิเสธรายการที่ Confirm แล้ว — เดิมแถวค้าง scanning + ✕ บน PDA ผู้ช่วย (`_listCleared` ไม่ rebuild) กดแล้ว `_removeSkuFromFirestore` ลบผลยืนยันทิ้ง
 - ล้างเศษที่ค้างบน cloud: `tools/cleanup-stale-round-items.js` (dry-run ก่อนเสมอ) · ไล่อาการ: `tools/diagnose-reset-resurrect.js` · เทส: `tests/specs/e2e/stale-round-resurrect.spec.js`
+- เกณฑ์ "ของรอบเก่าที่ถูกเขียนกลับ" ต้องใช้ค่าที่**ใหม่กว่า**ระหว่าง `firstScanAt`/`timestamp` — ✕ ไม่ล้าง `firstScanAt`
 
 **R01 cross-device sync ตอนเริ่มนับใหม่ (แก้แล้ว มิ.ย. 2026):** `startNewCount()` ล้าง `state.r01Data`+badge+timestamp **เฉพาะเครื่องที่กดปุ่ม** เครื่องอื่นรอผ่าน `_r01BaselineAt` (`startNewCount` เซ็ตเป็น `''` ไม่ใช่ timestamp ใหม่กว่า → เครื่องอื่นเทียบ `>` แล้วเห็นว่า "ไม่ใหม่กว่า" เลยไม่ sync ตาม) — เกาะ `_resetLocalR01ToEmpty()` เข้ากับ epoch `countResetAt` (ตัวเดียวกับที่รีเซ็ต scanData) แทน เพราะเดินหน้าทางเดียวจริงเสมอ เรียกคู่กับ `_resetLocalScanDataToPending()` ทุกจุด (`syncToFirestore`, `_applyCloudScanData`, `restoreFromFirestore`)
 

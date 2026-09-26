@@ -10,7 +10,7 @@
 const { test, expect, closeApp, requireEmulator } = require('../../lib/hooks');
 const { bootFreshCount, bootJoinCount, PROJECT_ID } = require('../../lib/scenario');
 const { seedItems } = require('../../lib/seed');
-const { waitForDoc, getDoc, setDoc } = require('../../lib/emulator');
+const { waitForDoc, getDoc, setDoc, adminDb } = require('../../lib/emulator');
 
 const OLD_EPOCH = '2026-07-19T02:39:21.626Z'; // รอบก่อนหน้าของ SRC ตัวจริง — เก่ากว่าทุกรอบที่เทสสร้าง
 const ITEM = (sku) => `stock_sessions/SRC/items/${sku}`;
@@ -92,6 +92,18 @@ test.describe('stale round items must not resurrect into a new count', () => {
     const doc = await getDoc(PROJECT_ID, ITEM('S-F07'));
     expect(doc.rev).toBe(3);          // scanning สดต้องไม่เขียนทับผลที่ยืนยันแล้ว
     expect(doc.countedQty).toBe(7);
+
+    // B4: แถว RESULT ต้องเปลี่ยนตาม — เดิมค้างเป็น scanning พร้อมปุ่ม ✕
+    expect(await a.page.evaluate(() => scanListMap.get('S-F07')?.status)).toBe('pass');
+    // ✕ ต้องปฏิเสธรายการที่ Confirm แล้ว — เดิม removeScanItem ลบเอกสารผลยืนยันทิ้งทั้งอัน
+    await a.page.evaluate(() => removeScanItem('S-F07'));
+    await a.page.evaluate(() => _flushDirtySkus());
+    await quiesce(a.page);
+    expect((await localOf(a.page, 'S-F07')).status).toBe('pass');
+    const after = await getDoc(PROJECT_ID, ITEM('S-F07'));
+    expect(after).not.toBeNull();
+    expect(after.rev).toBe(3);
+    expect(after.status).toBe('pass');
     await closeApp(a);
   });
 
@@ -125,6 +137,49 @@ test.describe('stale round items must not resurrect into a new count', () => {
     expect((await localOf(b.page, 'S-F06')).status).toBe('pending');
 
     await closeApp(b);
+    await closeApp(a);
+  });
+
+  // B3: เริ่มนับใหม่ต้องลบ "ทุกรอบที่ไม่ใช่รอบใหม่" — เดิมลบแค่รอบก่อนหน้า เศษจากรอบที่เคยลบไม่เสร็จจึงค้างถาวร
+  test('startNewCount clears items of every older round (not only the previous one) and releases its lock', async ({ browser }) => {
+    const a = await bootFreshCount(browser, { role: 'pharmacist', user: 'Desk-A', mode: 'desktop' });
+    const ts = nowTs();
+    await seedItems(PROJECT_ID, 'SRC', OLD_EPOCH, [{ sku: 'S-F01', status: 'pass', countedQty: 1, firstScanAt: '2026-07-19 09:53:24', timestamp: '2026-07-19 09:53:25' }]);
+    await seedItems(PROJECT_ID, 'SRC', a.epoch, [{ sku: 'S-F02', status: 'scanning', countedQty: 2, firstScanAt: ts, timestamp: ts }]);
+
+    await a.page.evaluate(async () => {
+      const orig = window.prompt; window.prompt = () => CLEAR_PIN;
+      try { await startNewCount(); } finally { window.prompt = orig; }
+    });
+
+    const newEpoch = await a.page.evaluate(() => _countResetAt);
+    expect(newEpoch > a.epoch).toBe(true);
+    const left = (await adminDb(PROJECT_ID).collection('stock_sessions/SRC/items').get()).docs
+      .filter((d) => d.data().countResetAt !== newEpoch).map((d) => d.id);
+    expect(left).toEqual([]);                                                    // ทั้งรอบก่อนหน้าและรอบที่เก่ากว่า
+    expect(await getDoc(PROJECT_ID, 'stock_sessions/SRC_confirm_lock')).toBeNull(); // ปลด lock แล้ว
+    expect(await a.page.evaluate(() => ({ busy: _countResetInProgress, overlay: document.getElementById('branchConfirmProgressOverlay').style.display })))
+      .toEqual({ busy: false, overlay: 'none' });
+    await closeApp(a);
+  });
+
+  // B3: สาขายาเดิมไม่เช็ค lock → กดเริ่มนับใหม่ชน Confirm ของ Desktop อื่นได้
+  test('pharmacy: startNewCount is refused while another Desktop holds the confirm lock', async ({ browser }) => {
+    const a = await bootFreshCount(browser, { role: 'pharmacist', user: 'Desk-A', mode: 'desktop' });
+    await setDoc(PROJECT_ID, 'stock_sessions/SRC_confirm_lock', {
+      token: 'other-desktop', branch: 'SRC', owner: 'Desk-B', role: 'pharmacist',
+      countResetAt: a.epoch, expiresAt: new Date(Date.now() + 60_000),
+    }, { merge: false });
+    await a.page.waitForFunction(() => _isBranchConfirmLockActive(), null, { timeout: 10000, polling: 100 });
+
+    await a.page.evaluate(async () => {
+      const orig = window.prompt; window.prompt = () => CLEAR_PIN;
+      try { await startNewCount(); } finally { window.prompt = orig; }
+    });
+
+    expect(await a.page.evaluate(() => _countResetAt)).toBe(a.epoch);            // ไม่เริ่มรอบใหม่
+    const lock = await getDoc(PROJECT_ID, 'stock_sessions/SRC_confirm_lock');
+    expect(lock && lock.token).toBe('other-desktop');                             // lock ของเครื่องอื่นไม่ถูกแตะ
     await closeApp(a);
   });
 });

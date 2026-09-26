@@ -1118,7 +1118,7 @@
 <div id="branchConfirmLockBanner">กำลัง Confirm ที่ Desktop — พักการสแกนชั่วคราว</div>
 <div id="branchConfirmProgressOverlay" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10030;align-items:center;justify-content:center;padding:20px;">
   <div style="width:min(420px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.4);text-align:center;">
-    <div style="font-size:1.05rem;font-weight:800;color:var(--accent);margin-bottom:8px;">กำลัง Confirm สินค้า</div>
+    <div id="branchConfirmProgressTitle" style="font-size:1.05rem;font-weight:800;color:var(--accent);margin-bottom:8px;">กำลัง Confirm สินค้า</div>
     <div id="branchConfirmProgressText" style="font-size:0.8rem;color:var(--text2);margin-bottom:14px;">กำลังเตรียมข้อมูล...</div>
     <div style="height:10px;background:var(--surface2);border-radius:999px;overflow:hidden;"><div id="branchConfirmProgressFill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--green));transition:width 0.15s linear;"></div></div>
     <div style="font-size:0.7rem;color:var(--text3);margin-top:12px;">ห้ามปิดหน้าเว็บจนกว่าระบบจะแจ้งว่าเสร็จ</div>
@@ -1595,6 +1595,19 @@ async function _acquireBranchConfirmLock(){
     tx.set(ref,{...lockData,startedAt:firebase.firestore.FieldValue.serverTimestamp()});
   });
   _branchConfirmToken=token;_setBranchScanPaused(true,lockData);return token;
+}
+// เริ่มนับใหม่: หลังรอบใหม่ขึ้น Cloud ต้องเปลี่ยนป้ายรอบบน lock เป็นรอบใหม่ด้วย
+// เครื่องที่รับรอบใหม่แล้วจะมองว่า lock ป้ายรอบเก่า "ไม่ active" (_isBranchConfirmLockActive เทียบ countResetAt)
+// แล้วสแกนแทรกได้ระหว่างที่ยังลบเศษรอบเก่า — ตรึงไว้ให้ทุกเครื่องที่อยู่รอบใหม่พักการสแกนจนกว่าจะปลด lock ตอนจบ
+async function _restampBranchConfirmLock(token,epoch){
+  if(!_db||!token||!_branchUsesConfirmLock())return;
+  const ref=getBranchConfirmLockRef();
+  const expiresAt=firebase.firestore.Timestamp.fromMillis(Date.now()+BRANCH_CONFIRM_LOCK_MS);
+  await _db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);
+    if(!snap.exists||snap.data()?.token!==token)throw new Error('BRANCH_CONFIRM_LOCK_LOST');
+    tx.update(ref,{countResetAt:epoch||'',expiresAt});
+  });
 }
 async function _releaseBranchConfirmLock(token){
   if(!_db||!token||!_branchUsesConfirmLock())return false;
@@ -3463,12 +3476,23 @@ async function startNewCount(){
   const pin=prompt('🔒 เริ่มนับใหม่ — ล้างยอดที่นับ, R01 และ LOT ที่แนบไว้ ของสาขานี้ทั้งหมด\n(ปุ่มนี้ไม่ได้สำรองอะไรให้ · ประวัติการ Confirm ใน Audit Log ยังอยู่)\n\nกรุณาใส่รหัส PIN:');
   if(pin===null)return;
   if(pin!==CLEAR_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
-  if(currentBranch==='WH'&&(_branchConfirming||_isBranchConfirmLockActive())){toast('มีการ Confirm อยู่ — รอให้เสร็จก่อนเริ่มนับใหม่','warn',5000);return;}
+  // ทุกสาขาที่ใช้ branch lock (สาขายา + WH) — เดิมเช็คเฉพาะ WH ทำให้สาขายากดเริ่มนับใหม่ชน Confirm ของ Desktop อื่นได้
+  // (Confirm ที่กำลังเขียนผลจะเขียนลงรอบใหม่ผิดๆ) · ถือ lock ตลอดการเริ่มนับใหม่: กัน Confirm แทรก + PDA พักการสแกน
+  if(_branchUsesConfirmLock()&&(_branchConfirming||_isBranchConfirmLockActive())){toast('มีการ Confirm อยู่ — รอให้เสร็จก่อนเริ่มนับใหม่','warn',5000);return;}
   let resetLockToken='';
-  if(_db&&!_adminMode&&currentBranch==='WH'){
-    try{resetLockToken=await _acquireBranchConfirmLock();await new Promise(resolve=>setTimeout(resolve,3800));}
+  if(_db&&!_adminMode&&_branchUsesConfirmLock()){
+    try{
+      resetLockToken=await _acquireBranchConfirmLock();
+      if(currentBranch==='WH')await new Promise(resolve=>setTimeout(resolve,3800)); // WH: รอ PDA หยุดเขียน inbox ก่อนลบ (เดิม) · สาขายาไม่มี inbox
+    }
     catch(e){toast(e.message==='BRANCH_CONFIRM_LOCKED'?'มี Desktop เครื่องอื่นกำลัง Confirm อยู่':'ล็อกสาขาเพื่อเริ่มนับใหม่ไม่สำเร็จ','warn',5000);return;}
   }
+  // ห้ามปิด/รีเฟรชระหว่างเริ่มนับใหม่ — SRC 22 ก.ย. 2026: login ใหม่ 8 วินาทีหลังกด ขั้นลบ items รอบก่อนถูกตัดกลางคัน
+  // เศษรอบเก่าค้างแล้วถูกดึงกลับเป็น Pass ในรอบใหม่ · แถบความคืบหน้าบังจอ + เบราว์เซอร์ถามก่อนออก + heartbeat ไม่รีโหลด
+  const _guardUnload=e=>{e.preventDefault();e.returnValue='';return '';};
+  _countResetInProgress=true;
+  window.addEventListener('beforeunload',_guardUnload);
+  _setBranchConfirmProgress('กำลังเตรียมรอบนับใหม่ — ห้ามปิดหรือรีเฟรชหน้านี้',0,0,'กำลังเริ่มนับใหม่');
   try{
   // (เดิมมี _d/dateStr/savedAt ค้างอยู่ตรงนี้ — เศษจากรุ่นที่เคยตั้งใจเซฟ snapshot ไม่มีใครใช้ ลบทิ้งแล้ว)
   clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
@@ -3509,8 +3533,17 @@ async function startNewCount(){
     toast('เริ่มนับใหม่ไม่สำเร็จ — ยังไม่ได้ลบข้อมูลรอบเดิม กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','error',7000);
     return;
   }
-  // epoch ใหม่เป็น authoritative แล้ว จึงค่อยลบ cache/results ของรอบเก่าแบบ best-effort
-  if(_db&&!_adminMode){try{await _deleteScanItemsForEpoch(_prevEpoch);}catch(e){console.warn('[startNewCount] clear items:',e.message);}if(currentBranch==='WH'){try{await _deleteWhConfirmOpsForEpoch(_prevEpoch);}catch(e){console.warn('[startNewCount] clear WH confirm ops:',e.message);}}}
+  // epoch ใหม่เป็น authoritative แล้ว → ตรึง lock ด้วยรอบใหม่ (ให้เครื่องที่รับรอบใหม่แล้วยังพักการสแกน) แล้วค่อยลบของรอบเก่า
+  if(resetLockToken){try{await _restampBranchConfirmLock(resetLockToken,_countResetAt);}catch(e){console.warn('[startNewCount] restamp lock:',e.message);}}
+  // ลบ items "ทุกรอบที่ไม่ใช่รอบใหม่" ไม่ใช่แค่รอบก่อนหน้า — เศษจากรอบที่เคยลบไม่เสร็จถูกเก็บไปด้วย
+  let staleLeft=false;
+  if(_db&&!_adminMode){
+    const _clearMsg=n=>`กำลังล้างข้อมูลรอบเก่า${n?` ${n.toLocaleString()} รายการ`:''} — ห้ามปิดหรือรีเฟรชหน้านี้`;
+    _setBranchConfirmProgress(_clearMsg(0),0,0,'กำลังเริ่มนับใหม่');
+    try{const r=await _deleteScanItemsNotInEpoch(_countResetAt,n=>_setBranchConfirmProgress(_clearMsg(n),0,0,'กำลังเริ่มนับใหม่'));if(!r.complete)staleLeft=true;}
+    catch(e){staleLeft=true;console.warn('[startNewCount] clear items:',e.message);}
+    if(currentBranch==='WH'){try{await _deleteWhConfirmOpsForEpoch(_prevEpoch);}catch(e){console.warn('[startNewCount] clear WH confirm ops:',e.message);}}
+  }
   startScanItemsListener();
   startWhConfirmOpsListener();
   if(currentBranch==='WH'&&_db&&!_adminMode){try{await _clearWhR16CloudTimelines();}catch(e){console.warn('[startNewCount] clear WH R16 chunks:',e.message);}}
@@ -3520,11 +3553,18 @@ async function startNewCount(){
   if(_db&&currentBranch&&!_adminMode){try{const deletes=[_db.collection('stock_sessions').doc(getSessionId()+'_r01').delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(_isPharmacyBranch())deletes.push(getPharmacyAuditMarkerRef().delete());if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/workflow markers:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
-  toast(`เริ่มนับใหม่เรียบร้อย`,'success');
+  // ลบเศษไม่ครบไม่กระทบการนับแล้ว (_writeScanningItem ถือเอกสารรอบอื่นเป็น "ไม่มี") แต่ต้องบอกให้รู้ ห้ามเงียบ
+  if(staleLeft)toast('เริ่มนับใหม่เรียบร้อย แต่ล้างข้อมูลรอบเก่าไม่ครบ — ไม่กระทบการนับ แจ้ง IT ให้รัน tools/cleanup-stale-round-items.js','warn',9000);
+  else toast(`เริ่มนับใหม่เรียบร้อย`,'success');
   }finally{
+    _countResetInProgress=false;
+    window.removeEventListener('beforeunload',_guardUnload);
+    _hideBranchConfirmProgress();
     if(resetLockToken){const released=await _releaseBranchConfirmLock(resetLockToken);if(released&&_branchConfirmLockData?.token===resetLockToken)_setBranchScanPaused(false,null);}
   }
 }
+// true ระหว่าง startNewCount — heartbeat อัปเดตเวอร์ชันต้องไม่รีโหลดหน้ากลางคัน (ขั้นลบรอบเก่าจะถูกตัด)
+let _countResetInProgress=false;
 
 
 async function clearAllData() {
@@ -3715,6 +3755,13 @@ async function _writeScanningItem(itemsRef,sku,epoch){
       state.scanData.set(sku,_scanItemToLocal(rev.server,state.scanData.get(sku)));
       _scanItemRev.set(sku,Number(rev.server.rev)||0);
       _scanItemSynced.set(sku,_scanItemFingerprint(state.scanData.get(sku)));
+      // แถว RESULT ต้องเปลี่ยนตามผลที่รับมาด้วย — เดิมค้างเป็น scanning พร้อมปุ่ม ✕ ทั้งที่ Confirm แล้ว
+      // (PDA ผู้ช่วยเริ่มด้วย RESULT ว่าง _listCleared=true จึงไม่มี rebuild มาแก้ให้) · ตรงกับ _applyPendingScanEvaluation
+      const _row=scanListMap.get(sku);
+      if(_row){
+        if(rev.server.status==='audit'&&window.innerWidth<=600&&currentBranch==='WH')scanListMap.delete(sku);
+        else{_row.status=rev.server.status;_row.totalQty=Number(rev.server.countedQty)||0;}
+      }
       scheduleScanListRender();scheduleStats();scheduleRender();
     }
     return;
@@ -3908,6 +3955,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   }
 
   function _reloadGateOk(minIdleMs){
+    if(_countResetInProgress)return false;    // กำลังเริ่มนับใหม่ — รีโหลดกลางคันทำให้เศษรอบเก่าค้าง (SRC ก.ย. 2026)
     if(scanQueue.length||scanProcessing||_pendingPatches.size)return false;
     if(_scanDebounceTimer)return false;       // มี scan ค้างใน debounce
     const si=document.getElementById('scanInput');
@@ -4416,10 +4464,12 @@ async function validateAndProcess(forceDateMismatch=false){
   processScan();evaluatePendingScans();
 }
 
-function _setBranchConfirmProgress(text,done=0,total=0){
+// title: หัวข้อของแถบ (ค่าเริ่มต้นคือ Confirm) — startNewCount ใช้แถบเดียวกันแต่ต้องไม่ขึ้นว่า "กำลัง Confirm"
+function _setBranchConfirmProgress(text,done=0,total=0,title='กำลัง Confirm สินค้า'){
   const overlay=document.getElementById('branchConfirmProgressOverlay');
   const label=document.getElementById('branchConfirmProgressText');
   const fill=document.getElementById('branchConfirmProgressFill');
+  const head=document.getElementById('branchConfirmProgressTitle');if(head)head.textContent=title;
   if(overlay)overlay.style.display='flex';
   if(label)label.textContent=text;
   if(fill)fill.style.width=`${total>0?Math.min(100,Math.round(done*100/total)):0}%`;
@@ -5746,6 +5796,14 @@ function updatePopupQty(sku,v){
 function removeScanItem(sku){
   if(_blockScanForBranchConfirm())return;
   const sd=state.scanData.get(sku);if(!sd)return;
+  // ✕ มีไว้ยกเลิกยอดที่ยังสแกนค้างเท่านั้น — รายการที่ Confirm แล้วห้ามลบด้วยปุ่มนี้
+  // แถวบนจออาจค้างเป็น scanning (เช่น เครื่องรับผล Confirm จาก Cloud ระหว่างสแกน) ถ้าปล่อยผ่าน
+  // _removeSkuFromFirestore จะลบเอกสารผลยืนยันทิ้งทั้งอัน (Pass หาย ต้องนับใหม่ · Audit ถูก marker สร้างกลับ)
+  if(_CONFIRMED_STATUSES.has(sd.status)){
+    beepWarn();toast('รายการนี้ Confirm แล้ว — ลบด้วยปุ่ม ✕ ไม่ได้','warn');
+    const e=scanListMap.get(sku);if(e){e.status=sd.status;scheduleScanListRender();}
+    return;
+  }
   sd.countedQty=0;sd.status='pending';sd.timestamp='';sd.barcode='';sd.manualEditAt=Date.now();
   sd.scans=[];sd.scannedBy='';sd.auditor='';sd.auditStatus='pending';
   delete sd.soldQty;delete sd.rawCountedQty;delete sd.initialStatus;delete sd.recheckQty;delete sd.noStock;delete sd.countAt;delete sd.backorder;
@@ -6589,8 +6647,26 @@ async function _loadScanItemsFromCloud(loadedOut=null){
   if(currentBranch==='WH'){_applyWhCountConfirmationsToState();_applyWhRecheckConfirmationsToState();}
   return scanned;
 }
-// ลบ items ของ epoch ที่ระบุ — ใช้ตอนเริ่มนับใหม่/ล้างข้อมูล
-// ถ้าลบไม่หมด (offline/timeout) ไม่เป็นไร: listener และ _loadScanItemsFromCloud กรองด้วย countResetAt อยู่แล้ว
+// ลบ items ทุกรอบที่ "ไม่ใช่" รอบที่ระบุ — startNewCount ใช้ตัวนี้ (ก.ย. 2026) เก็บเศษจากรอบที่เคยลบไม่เสร็จไปด้วย
+// ⚠️ เศษไม่ได้ไร้พิษอย่างที่เคยเชื่อ: doc id คือ SKU ใช้ร่วมทุกรอบ query ตามรอบกรองได้ แต่อ่านตาม id (tx.get) เจอเศษเสมอ
+//    (SRC 22 ก.ย. 2026 — ดู _writeScanningItem และ tests/specs/e2e/stale-round-resurrect.spec.js)
+// วนจน query ว่างจริง (ไม่หยุดที่ชุดไม่เต็ม) เผื่อเครื่องรอบเก่าเขียนแทรกระหว่างลบ · เพดาน 100 ชุดกันวนไม่จบ → complete:false
+async function _deleteScanItemsNotInEpoch(epoch,onProgress){
+  if(!_db||!currentBranch||!epoch)return{deleted:0,complete:false};
+  const itemsRef=getScanItemsRef();
+  let deleted=0;
+  for(let round=0;round<100;round++){
+    const snap=await itemsRef.where('countResetAt','!=',epoch).limit(SCAN_ITEM_BATCH_SIZE).get({source:'server'});
+    if(snap.empty)return{deleted,complete:true};
+    const batch=_db.batch();
+    snap.forEach(doc=>batch.delete(doc.ref));
+    await batch.commit();
+    deleted+=snap.size;
+    if(onProgress)onProgress(deleted);
+  }
+  return{deleted,complete:false};
+}
+// ลบ items ของ epoch ที่ระบุ — ไม่มีจุดเรียกแล้วตั้งแต่ ก.ย. 2026 (startNewCount ใช้ _deleteScanItemsNotInEpoch) · คงไว้ใช้จาก Console
 async function _deleteScanItemsForEpoch(epoch){
   if(!_db||!currentBranch)return 0;
   const itemsRef=getScanItemsRef();

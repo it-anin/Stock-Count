@@ -60,7 +60,7 @@ No build system. No framework.
 `showZeroSysModal`, `confirmZeroSys` (dead code ก.ค. 2026 — modal ถูกถอด แทนด้วย `_zeroSysFirstScan` แต่ `_zeroSysHold` ยังเป็น hold-guard ทุกจุด ห้ามลบ),
 `handleAuditVerifyScan`, `confirmAuditVerifyItem`, `confirmAllAuditVerify`, `confirmRecheckBtn`, `confirmAllRecheckSupervisor`,
 `_confirmWhCountItems`, `confirmCountByStaff`, `confirmRecheckByStaff`, WH Count/Recheck inbox + confirmation listeners,
-branch confirm lock (`_acquireBranchConfirmLock`, `_releaseBranchConfirmLock`, lock listener และ scan guards),
+branch confirm lock (`_acquireBranchConfirmLock`, `_restampBranchConfirmLock`, `_releaseBranchConfirmLock`, lock listener และ scan guards),
 `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`,
 time gates ใน scan, role check ใน `rebuildScanListMap`
 
@@ -396,9 +396,12 @@ Audit Verify ของเภสัชก็เช่นกัน — สแก�
   - login สาขายา: confirmed ในเครื่องที่ Cloud รอบนี้ไม่มีเอกสาร → รีเซ็ตเป็น pending ก่อน reconcile (กติกาเดียวกับ blob เดิมที่หายไปตอนย้ายเป็น v2)
   - เทส `tests/specs/e2e/stale-round-resurrect.spec.js` · ล้างเศษบน cloud `tools/cleanup-stale-round-items.js` · ไล่อาการ `tools/diagnose-reset-resurrect.js`
   - ⚠️ ตัดสินว่า "ของรอบเก่าที่ถูกเขียนกลับ" ต้องใช้ค่าที่**ใหม่กว่า**ระหว่าง `firstScanAt` กับ `timestamp` — ✕ (`removeScanItem`) ไม่ล้าง `firstScanAt` งานจริงที่โดนดึงผลเก่าแล้วกด ✕ สแกนใหม่จึงมีเวลาสแกนครั้งแรกเป็นวันรอบเก่า (SRC 26 ก.ย.: เกณฑ์แรกเกือบลบ 800424 ที่ Confirm ในรอบนี้แล้ว) · ผลจริงที่ล้างไป: เศษรอบ 19 ก.ค. หมด + คืน 40 รายการ
-  - ⏳ **ยังไม่ได้ทำ (ผู้ใช้สั่งให้เตือน 26 ก.ย. 2026):** `startNewCount` ลบทุกรอบที่ไม่ใช่รอบใหม่ (ตอนนี้ลบแค่รอบก่อนหน้า) + แถบความคืบหน้า "ห้ามปิดหน้านี้" · เลื่อนไว้เพราะตอนนั้นพนักงาน SRC มียอดสแกนค้างอยู่
-    ระหว่างนี้: กดเริ่มนับใหม่แล้ว **ห้ามรีเฟรช/ปิดหน้า จนกว่าจะขึ้น "เริ่มนับใหม่เรียบร้อย"** แล้วรัน `cleanupStaleRoundItems()` (dry-run) ยืนยันว่าเศษเป็น 0
+  - ✅ **`startNewCount` แข็งแรงขึ้นแล้ว (26 ก.ย. 2026):** ลบ items **ทุกรอบที่ไม่ใช่รอบใหม่** (`_deleteScanItemsNotInEpoch` — เดิมลบแค่รอบก่อนหน้า · วนจน query ว่างจริง เพดาน 100 ชุด)
+    · ถือ branch lock **ทุกสาขาที่ใช้ lock** (เดิมเฉพาะ WH — สาขายากดชน Confirm ของ Desktop อื่นได้ ผล Confirm บางส่วนจะถูกเขียนลงรอบใหม่ผิดๆ)
+    · `_restampBranchConfirmLock` เปลี่ยนป้ายรอบบน lock เป็นรอบใหม่**ก่อนลบ** — ไม่งั้นเครื่องที่รับรอบใหม่แล้วมองว่า lock ป้ายรอบเก่า "ไม่ active" แล้วสแกนแทรกระหว่างลบ
+    · แถบ "กำลังเริ่มนับใหม่" บังจอ + `beforeunload` ถามก่อนออก + heartbeat ไม่รีโหลด (`_countResetInProgress`) · ลบไม่ครบ = toast เตือน ห้ามเงียบ
     ⛔ **ห้ามกดเริ่มนับใหม่เพื่อแก้อาการ "ผลรอบเก่าโผล่"** — ล้างยอดที่พนักงานสแกนค้างทั้งสาขา ให้ใช้ `tools/cleanup-stale-round-items.js` แทน
+  - ✅ ✕ (`removeScanItem`) ปฏิเสธรายการที่ Confirm แล้ว และ abort `confirmed` ใน `_writeScanningItem` อัปเดตแถว RESULT ตามผลที่รับมา — เดิมแถวค้างเป็น scanning พร้อม ✕ (PDA ผู้ช่วย `_listCleared` ไม่มี rebuild มาแก้) แล้วกด ✕ = ลบเอกสารผลยืนยันทิ้ง (Pass หาย) · ✕ ยังไม่ล้าง `firstScanAt` โดยตัดสินใจข้าม (กระทบแค่เวลาในรายงาน)
 - **`firestore.rules` ต้องแยก parent `stock_sessions/{document}` ออกจาก `stock_sessions/{branch}/items/{sku}`**
   และห้ามมี recursive broad allow `{document=**}` ซ้อนอยู่ เพราะ allow ใช้แบบ OR แล้วจะข้าม schema guard
   - parent ที่ยังเป็น v1 อัปเดตและ cutover เป็น v2 ได้ตามเดิม
