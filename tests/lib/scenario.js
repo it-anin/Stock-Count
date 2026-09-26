@@ -74,8 +74,20 @@ async function bootFreshCount(browser, opts = {}) {
 }
 
 async function bootJoinCount(browser, opts = {}) {
-  const { branch = 'SRC', role = 'assistant', user = 'Tester2', mode = 'pda', projectId = PROJECT_ID, expectEpoch } = opts;
+  const { branch = 'SRC', role = 'assistant', user = 'Tester2', mode = 'pda', projectId = PROJECT_ID, expectEpoch, localSession } = opts;
   const app = await newAppContext(browser, { branch, role, user, mode, projectId, firestorePort: emuPort(), login: true });
+  // localSession: จำลองเครื่องที่มี localStorage ค้างจากการใช้งานครั้งก่อน (รูปเดียวกับที่ saveSession เขียน)
+  // seed ครั้งเดียวก่อนหน้าเว็บโหลด — init script รันทุกครั้งที่ navigate จึงต้องกันไม่ให้ทับตอนรีโหลด
+  if (localSession) {
+    await app.context.addInitScript(({ key, json }) => {
+      try {
+        if (!sessionStorage.getItem('__seededLocalSession')) {
+          localStorage.setItem(key, json);
+          sessionStorage.setItem('__seededLocalSession', '1');
+        }
+      } catch (e) {}
+    }, { key: `stockCountSession_${branch}`, json: JSON.stringify(localSession) });
+  }
   await app.page.goto('/index.html');
   await waitForAppReady(app.page);
   // Epoch adoption (session snapshot with a newer countResetAt) wipes local r01 via
@@ -84,6 +96,13 @@ async function bootJoinCount(browser, opts = {}) {
   // epoch first, then force one more master restore so the catalog is complete afterwards.
   if (expectEpoch) {
     await app.page.waitForFunction((e) => _countResetAt === e, expectEpoch, { timeout: 15000, polling: 100 });
+  }
+  // localSession: loadSession() ตั้ง _countResetAt จาก localStorage ทันที expectEpoch จึงไม่ใช่จุดรออีกต่อไป
+  // ต้องรอ initAfterLogin ผ่าน restoreFromFirestore ก่อน (startScanSessionListener ถูกเรียกหลังจากนั้น)
+  // ไม่งั้น restoreMasterFromFirestore(true) ด้านล่างล้าง r01Data ระหว่างที่หน้าเว็บกำลังตัดสิน hasLocalMasterData
+  // → หน้าเว็บวิ่งเส้นทาง full-replace ที่ล้าง scanData ทั้งหมด = ไม่ได้ทดสอบเส้นทาง login ที่ตั้งใจ (flaky)
+  if (localSession) {
+    await app.page.waitForFunction(() => !!_scanSessionUnsubscribe, null, { timeout: 20000, polling: 100 });
   }
   await restoreMastersUntilReady(app);
   app.epoch = await app.page.evaluate(() => _countResetAt);

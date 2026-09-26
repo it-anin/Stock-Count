@@ -3692,13 +3692,18 @@ async function _writeScanningItem(itemsRef,sku,epoch){
     const server=snap.exists?(snap.data()||{}):null;
     // epoch บน server ใหม่กว่า = มีเครื่องอื่นกด "เริ่มนับใหม่" → ทิ้งการเขียนนี้
     if(server&&String(server.countResetAt||'')>epoch)return{abort:'epoch'};
-    // server confirm ไปแล้ว → ห้าม scanning สดทับผลที่ยืนยันแล้ว (คงกฎเดิมของ merge guard)
-    if(server&&_CONFIRMED_STATUSES.has(server.status))return{abort:'confirmed',server};
-    const base=server&&String(server.countResetAt||'')===epoch?(Number(server.countedQty)||0):0;
+    // doc id คือ SKU ใช้ร่วมทุกรอบ — เอกสารของรอบที่เก่ากว่า (เศษที่ startNewCount ลบไม่หมด) ต้องถือว่า "ไม่มี"
+    // ⛔ ห้ามเอาสถานะรอบเก่ามาตัดสินว่า "Confirm แล้ว": SRC ก.ย. 2026 pass ของ 19 ก.ค. ถูกดึงมาทับยอดที่เพิ่งสแกน
+    //    แล้วถูกเขียนกลับขึ้น Cloud ในนามรอบใหม่ทั้งชุด (tests/specs/e2e/stale-round-resurrect.spec.js)
+    const current=server&&String(server.countResetAt||'')===epoch?server:null;
+    // server confirm ไปแล้วในรอบนี้ → ห้าม scanning สดทับผลที่ยืนยันแล้ว (คงกฎเดิมของ merge guard)
+    if(current&&_CONFIRMED_STATUSES.has(current.status))return{abort:'confirmed',server:current};
+    const base=current?(Number(current.countedQty)||0):0;
     const merged={...startLocal};
     // ถ้า server มียอดจากเครื่องอื่นอยู่แล้ว ให้บวก delta ของเครื่องนี้เข้าไป ไม่ใช่เขียนทับ
     // delta=0 ก็ต้องใช้ base: server อาจมียอดใหม่กว่าระหว่าง transaction ห้าม local เก่าทับกลับ
-    merged.countedQty=(server&&!absolute)?base+delta:startQty;
+    // ไม่มียอดของรอบนี้บน server (ไม่มีเอกสาร/เป็นเศษรอบเก่า) → ยอดในเครื่องคือยอดทั้งหมดของรอบนี้
+    merged.countedQty=(current&&!absolute)?base+delta:startQty;
     const nextRev=(Number(server?.rev)||0)+1;
     tx.set(ref,_scanItemPayload(sku,merged,nextRev),{merge:false});
     return{rev:nextRev,countedQty:merged.countedQty};
@@ -6565,7 +6570,8 @@ function _resetLocalScanDataToPending(){
 
 // v2: โหลด items ของ epoch ปัจจุบันทั้งชุด (ใช้ตอน login/pull/restore — ไม่ใช่ระหว่างสแกน)
 // อ่านเฉพาะ SKU ที่ถูกแตะจริง ไม่ใช่ทั้ง catalog เหมือน blob เดิม
-async function _loadScanItemsFromCloud(){
+// loadedOut (Set, ไม่บังคับ) = เติม SKU ที่มีเอกสารรอบนี้บน Cloud และถูกโหลดลงเครื่องจริง
+async function _loadScanItemsFromCloud(loadedOut=null){
   if(!_db||!currentBranch||!_isScanSchemaV2())return 0;
   const snap=await getScanItemsRef().where('countResetAt','==',_countResetAt||'').get();
   let scanned=0;
@@ -6574,6 +6580,7 @@ async function _loadScanItemsFromCloud(){
     const sku=doc.id;
     const whOpId=currentBranch==='WH'&&(data.whRecheckOpId||data.whCountOpId);
     if(whOpId&&!_whCommittedOps.has(whOpId))return;
+    if(loadedOut)loadedOut.add(sku);
     state.scanData.set(sku,_scanItemToLocal(data,state.scanData.get(sku)));
     _scanItemRev.set(sku,Number(data.rev)||0);
     _scanItemSynced.set(sku,_scanItemFingerprint(state.scanData.get(sku)));
@@ -6970,7 +6977,21 @@ async function restoreFromFirestore(force=false){
         const pendingDirty=new Set(_dirtySkus);
         const beforeDirty=new Map();
         for(const sku of pendingDirty)beforeDirty.set(sku,state.scanData.get(sku));
-        await _loadScanItemsFromCloud();
+        const loaded=new Set();
+        await _loadScanItemsFromCloud(loaded);
+        // สาขายา: ผลที่ "Confirm แล้ว" ในเครื่อง แต่ Cloud รอบนี้ไม่มีเอกสาร = ถูกลบไปแล้ว (เริ่มนับใหม่/ล้างเศษ)
+        // หรือเป็นของค้างจากรอบก่อน → ห้ามดันกลับ (กติกาเดียวกับ blob เดิม: syncToFirestore "ไม่ re-upload confirmed ที่ cloud ไม่มี")
+        // ถ้าปล่อยไว้ _reconcileScanItems เห็นว่ายังไม่เคย sync แล้วเขียนขึ้นไปในนามรอบนี้ — SRC ก.ย. 2026 (stale-round-resurrect.spec.js)
+        // ปลอดภัยเพราะ Confirm/Audit Verify ต้องออนไลน์และเขียนผลขึ้น Cloud เสมอ ผลยืนยันจริงจึงไม่มีทางอยู่แต่ในเครื่อง
+        // Audit ที่มี marker รอบนี้ถูกสร้างกลับโดย _applyPharmacyAuditMarkersToState() ด้านล่างอยู่แล้ว
+        // ไม่ใช้กับ WH: item ที่รอ committed op ถูกข้ามตอนโหลดโดยตั้งใจ และมี op overlay เป็นเจ้าของผลยืนยัน
+        if(_isPharmacyBranch()){
+          for(const[sku,sd]of state.scanData.entries()){
+            if(!sd||!_CONFIRMED_STATUSES.has(sd.status)||loaded.has(sku)||pendingDirty.has(sku))continue;
+            state.scanData.set(sku,{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:sd.location||'',scans:[]});
+            scanListMap.delete(sku);
+          }
+        }
         for(const[sku,sd]of beforeDirty)if(sd)state.scanData.set(sku,sd); // ของสดที่ยังไม่ขึ้น cloud ต้องไม่หาย
         _applyPharmacyAuditMarkersToState();
         invalidatePopupRowsCache();rebuildScanListMap(true);renderScanList();updateStats();renderTable();updateConfirmBtn();

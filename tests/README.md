@@ -95,6 +95,9 @@ canonical hash และ rules ป้องกัน stale PDA/legacy final map
 - `firebase-admin` ใน `lib/emulator.js` **bypass rules** — ใช้ seed/ตรวจเท่านั้น อะไรที่ต้องพิสูจน์ rules ให้ยิงผ่าน web SDK ในหน้า
 - **ห้ามรันสองรอบพร้อมกัน** — ทุกเทสเรียก `clearAll()` ล้าง emulator ถ้าซ้อนกันจะลบข้อมูลที่อีกรอบเพิ่ง seed แล้วขึ้น timeout 20 วิ กระจายมั่ว
   (`npm run test:e2e` เช็คพอร์ต 8791/4400 ให้แล้ว ถ้าไม่ว่างจะหยุดพร้อมบอกเหตุผล — เจอเมื่อไหร่ให้ปิดรอบเก่าก่อน)
+- **`bootJoinCount({ localSession })` = จำลองเครื่องที่มี localStorage ค้าง** (รูปเดียวกับที่ `saveSession` เขียน) — ตัวช่วยจะรอ `_scanSessionUnsubscribe` ก่อนโหลด master ซ้ำ
+  เพราะ `loadSession()` ตั้ง `_countResetAt` จาก localStorage ทันที `expectEpoch` จึงไม่ใช่จุดรอ ถ้าไม่รอ `restoreMasterFromFirestore(true)` จะล้าง `r01Data` ระหว่างที่หน้าเว็บตัดสิน `hasLocalMasterData`
+  → หน้าเว็บวิ่งเส้นทาง full-replace ที่ล้าง scanData ทั้งหมด แล้วเทสผ่านแบบไม่ได้พิสูจน์อะไร (เจอจริงตอนเขียน `stale-round-resurrect.spec.js` — ล้ม/ผ่านสลับกัน) · เทสแนวนี้ควร assert precondition ว่าข้อมูลในเครื่องยังอยู่หลัง login
 - **`bootFreshCount`/`bootJoinCount` ต้องผ่าน `restoreMastersUntilReady`** ห้ามเรียก `restoreMasterFromFirestore` ตรงๆ แล้วเชื่อว่า catalog พร้อม มีสองกับดักที่เจอมาแล้ว:
   1. `startNewCount()` ลบ `{branch}_r01` ผ่าน SDK ของหน้านั้น → cache จำว่า doc ถูกลบ พอ seed ด้วย admin แล้ว `.get()` ยังคืนค่า cache เก่า → `r01Data` ว่างถาวร (ต้อง retry)
   2. `skuMap` ถูก derive โดยไฟล์ที่โหลดเสร็จทีหลัง อาจถูกสร้างจาก PM ล้วน → **`systemQty` เป็น 0 ทุกตัว** เทสจะผ่านแบบผิดๆ หรือล้มงงๆ (ต้อง `rebuildMaps()` + ตรวจ canary `S-NORM.systemQty===10`)

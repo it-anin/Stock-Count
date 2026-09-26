@@ -390,6 +390,14 @@ Audit Verify ของเภสัชก็เช่นกัน — สแก�
   ถ้าล้างทิ้ง สินค้า `negSys`/`systemQty===0` จะถูกมองว่า "สแกนครั้งแรก" ซ้ำแล้วบันทึก 0 อีกรอบ
 - `_reconcileScanItems()` (ทุก 60 วิ + ก่อน sync metadata) เป็น safety net หา SKU ที่ mutation site ลืม mark
 - Confirm อ่านเฉพาะ status ที่ต้องใช้ (`scanning` / `audit`) และตรวจ "เปลี่ยนกลางงาน" ด้วย `rev`
+- ⚠️ **doc id คือ SKU ใช้ร่วมทุกรอบ ⇒ เศษรอบเก่าที่ `startNewCount` ลบไม่หมดอยู่ใต้ id เดียวกับของรอบใหม่** (SRC 22 ก.ย. 2026 · รีเฟรชระหว่างลบ → ค้าง ≥500 docs)
+  query ตามรอบกรองได้ แต่อ่านตาม id (`tx.get(ref)`) เจอเศษเสมอ ⇒ **ทุกจุดที่อ่าน item ตาม id ต้องเช็ค `countResetAt` เอง**
+  - `_writeScanningItem` ถือเอกสารรอบอื่นเป็น "ไม่มี" · ⛔ ห้าม abort `confirmed` จากเอกสารที่ไม่ใช่รอบนี้ — เดิมดึง pass ของรอบ 19 ก.ค. มาทับยอดที่เพิ่งสแกนแล้วเขียนกลับในนามรอบใหม่ (26 ก.ย. เจอ 9 รายการ)
+  - login สาขายา: confirmed ในเครื่องที่ Cloud รอบนี้ไม่มีเอกสาร → รีเซ็ตเป็น pending ก่อน reconcile (กติกาเดียวกับ blob เดิมที่หายไปตอนย้ายเป็น v2)
+  - เทส `tests/specs/e2e/stale-round-resurrect.spec.js` · ล้างเศษบน cloud `tools/cleanup-stale-round-items.js` · ไล่อาการ `tools/diagnose-reset-resurrect.js`
+  - ⏳ **ยังไม่ได้ทำ (ผู้ใช้สั่งให้เตือน 26 ก.ย. 2026):** `startNewCount` ลบทุกรอบที่ไม่ใช่รอบใหม่ (ตอนนี้ลบแค่รอบก่อนหน้า) + แถบความคืบหน้า "ห้ามปิดหน้านี้" · เลื่อนไว้เพราะตอนนั้นพนักงาน SRC มียอดสแกนค้างอยู่
+    ระหว่างนี้: กดเริ่มนับใหม่แล้ว **ห้ามรีเฟรช/ปิดหน้า จนกว่าจะขึ้น "เริ่มนับใหม่เรียบร้อย"** แล้วรัน `cleanupStaleRoundItems()` (dry-run) ยืนยันว่าเศษเป็น 0
+    ⛔ **ห้ามกดเริ่มนับใหม่เพื่อแก้อาการ "ผลรอบเก่าโผล่"** — ล้างยอดที่พนักงานสแกนค้างทั้งสาขา ให้ใช้ `tools/cleanup-stale-round-items.js` แทน
 - **`firestore.rules` ต้องแยก parent `stock_sessions/{document}` ออกจาก `stock_sessions/{branch}/items/{sku}`**
   และห้ามมี recursive broad allow `{document=**}` ซ้อนอยู่ เพราะ allow ใช้แบบ OR แล้วจะข้าม schema guard
   - parent ที่ยังเป็น v1 อัปเดตและ cutover เป็น v2 ได้ตามเดิม
