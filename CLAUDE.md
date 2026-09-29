@@ -632,10 +632,29 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - PDA สแกนห่าง ~1-3 วิ > ทุก debounce ⇒ debounce ไม่ลดงาน ต้อง "ข้ามงานที่เปลี่ยนไม่ได้" หรือทำแบบ O(1) · วัดด้วย `SCAN_COST_MEASURE=1 npm run test:e2e -- scan-cost` **ก่อนและหลัง** แก้เส้นทางหลังสแกนทุกครั้ง
 - `scheduleSave()` (backup localStorage) = trailing 4 วิ + maxWait 12 วิ ออนไลน์ / 1.5 + 3 วิ ออฟไลน์ + flush ตอน background/pagehide/offline · ใช้ `_cancelPendingSave()` แทน `clearTimeout(_saveTimer)` · items ขึ้น Firestore ทุก 800 ms เหมือนเดิม
 - แถว RESULT ที่ได้ SKU/Unknown ใหม่ = ใส่แถวเดียว (`insertScanRowTop`) ไม่ rebuild 30 แถว · **template แถวมีที่เดียว `_scanRowHtml`** — ห้ามก๊อปไปวางที่อื่น · DOM ไม่สอดคล้อง = fallback `renderScanList()` เสมอ
-- สวิตช์ rollback: `SCAN_LIGHT_REFRESH` · `SCAN_INCREMENTAL_ROW` (`let` — ตั้ง `false` แล้ว deploy) · ผลวัด: ~49 → ~10 ms ต่อสแกน (catalog 5,400 · CPU 6× · สแกนห่าง 1.5 วิ)
+- ผลวัด: ~49 → ~10 ms ต่อสแกน (catalog 5,400 · CPU 6× · สแกนห่าง 1.5 วิ · PDA ผู้ช่วย)
+
+#### ⏪ ย้อนกลับงานหลังสแกนได้ทุกเมื่อ (ผู้ใช้สั่ง 29 ก.ย. 2026 — "ถ้าไม่ดีหรือ Bug เกินให้ย้อนกลับไปก่อนแก้ได้")
+
+- **จุดก่อนแก้ = `ab95bf0`** (ผ่าน `npm test` เต็มชุดก่อน push: logic 93 · e2e 61) · คอมมิตของงานนี้: `a366e14` (Phase A) · `4da376e` (Phase B) · และคอมมิตข้อความขึ้นต้น **`perf(rollback):`** (สวิตช์หลัก + คู่มือนี้) — หาทั้งหมดด้วย `git log --oneline --grep='^perf' ab95bf0..HEAD`
+- **ไม่มีการเปลี่ยน schema / รูปแบบข้อมูล / `firestore.rules` / APK / `sw.js`** ⇒ ย้อนได้ทั้งสองทางโดยไม่ต้อง migrate: localStorage · session doc · `items/{sku}` เขียนรูปแบบเดิมทุกไบต์ (ที่ต่างมีแค่ "จังหวะ" การบันทึกในเครื่องและงานที่ UI ข้าม)
+- **สวิตช์หลักตัวเดียว = `SCAN_LIGHT_REFRESH`** คุม Phase A ครบทั้ง 3 ส่วน (ข้าม stats ต่อสแกน · ตัด echo ตัวเอง · backup ในเครื่อง — ปิดแล้ว `scheduleSave` กลับ trailing 400 ms เดิม) · `SCAN_INCREMENTAL_ROW` คุม Phase B (แถว RESULT) · ทั้งสองเป็น `let` ใกล้ `_afterScanRefresh` ใน `index.html` · เส้นทางเดิมยังอยู่ครบและมีเทสคุมทั้งคู่
+
+| ระดับ | ทำอะไร | ใช้เมื่อ |
+|---|---|---|
+| **1 สวิตช์** (เร็วสุด) | แก้ 2 บรรทัดเป็น `let SCAN_LIGHT_REFRESH=false;` และ `let SCAN_INCREMENTAL_ROW=false;` → commit → `git push origin main` | อาการเจาะจงในงานหลังสแกน (สถิติ/แถว/backup) หรือยังไม่รู้ว่าตัวไหน — ใช้ทดลองแยกได้ทีละตัว |
+| **2 revert ทั้งหมด** | `git revert --no-edit $(git log --format=%h --grep='^perf' ab95bf0..HEAD)` → `git push origin main` | ระดับ 1 ไม่พอ หรืออยากได้ไฟล์ตรง `ab95bf0` เป๊ะ · **ดูรายการก่อนรัน** (`git log --oneline --grep='^perf' ab95bf0..HEAD` ต้องเป็นของงานนี้ล้วน — คอมมิต `perf…` อื่นที่มาทีหลังจะถูกย้อนไปด้วย ให้ระบุ SHA เองแทน) · ⛔ ห้าม `reset --hard` / force-push (`git revert` ไม่ทำลายประวัติ) |
+| **3 Vercel** | Dashboard → Deployments → promote deployment ก่อนหน้า (ถ้าแผนที่ใช้มี Instant Rollback) | เว็บพังหนักและต้องการเร็วกว่ารอ build · ⚠️ ต้อง revert ใน git ตามด้วย ไม่งั้น push ถัดไปดึงของใหม่กลับมา |
+
+- **⚠️ อย่าเชื่อว่า PDA จะรับรุ่นที่ย้อนเอง — deploy/ย้อนแล้วต้องรีสตาร์ทเครื่องที่กำลังใช้งาน:** heartbeat เทียบ ETag ทุก 15 นาที + ตอนเปิดจอ (ห่างกัน ≥5 นาที) แต่จะ reload ได้ต่อเมื่อผ่าน `_reloadGateOk` ซึ่งเช็ค `_pendingPatches.size` — `drainQueue` ล้าง Set นี้เฉพาะ "ตอนเริ่ม drain ถัดไป" (และ `resetScanRuntimeState`) ⇒ **เครื่องที่สแกนแล้วหลัง login/reset ค้างด่านปิดไปตลอด ไม่รีโหลดเอง** (พฤติกรรมเดิมตั้งแต่ก่อนงานนี้ — `ab95bf0` ก็เป็น · ยังไม่ได้แก้เพราะเป็นโค้ด scan-related ต้องขออนุมัติ) ⇒ หลังย้อน/deploy ให้ **ปิดแอปให้จบแล้วเปิดใหม่** ที่ PDA ทุกเครื่องที่ใช้งานอยู่ (HTML เป็น network-first จึงได้รุ่นใหม่ทันที) · Desktop กด F5 · **แจ้งหน้างานก่อนย้อนบนสาขาที่กำลังนับ**
+- **ตรวจว่าเครื่องไหนรุ่นไหน (Desktop Console):** `typeof SCAN_LIGHT_REFRESH` = `'boolean'` → รุ่นใหม่ (ค่า `false` = โหมดเดิม) · `'undefined'` → ก่อนแก้
+- **อาการที่ควรสงสัยงานนี้:** แถว RESULT ไม่ขึ้น/ลำดับผิด/ซ้ำ · ยอดในแถวไม่ตรงที่สแกน · การ์ด Pass/Audit/Progress ไม่ขยับหลัง Confirm หรือหลังเพื่อนสแกน · ปุ่มยืนยันนับรายพนักงาน (supervisor) ค้าง · ปิดแอปตอนออฟไลน์แล้วสแกนล่าสุดหาย (backup ในเครื่องช้ากว่าเดิม ≤12 วิ/≤3 วิ) — ลองระดับ 1 ทีละตัวเพื่อแยกสาเหตุก่อนย้อนทั้งหมด
+- **ตรวจแล้ว 29 ก.ย. 2026:** ทดลอง `git revert` ครบทุกคอมมิตของงานนี้ใน worktree แยก (ไม่แตะโฟลเดอร์งาน) → `git diff ab95bf0 HEAD` **ว่างทั้งต้นไม้** (ไม่ใช่แค่ `index.html`) · สวิตช์มีเทสคุมทั้งเปิดและปิด (`scan-light-refresh` · `scan-row-parity` · `scan-cost`) · `npm test` ทั้งชุดผ่าน (logic 123 · e2e 67 + เทสวัด 2 ข้อที่ opt-in) · ⏳ **ยังไม่ได้ทดสอบบน PDA จริง** (สแกนต่อเนื่อง/ออฟไลน์/สองเครื่อง — ตาม §เมื่องานเสร็จ)
+- หลังย้อนระดับ 2 รัน `cd tests && npm test` ให้ผ่านครบ (เทสของงานนี้ `scan-cost`/`scan-light-refresh`/`scan-row-parity` ถูก revert ไปพร้อมกัน — ถูกต้อง)
 
 ### Known limitations / rollout assumptions
 
+- **Auto-refresh (heartbeat ETag) ไม่รีโหลดเครื่องที่สแกนแล้วหลัง login/reset** — ด่าน `_reloadGateOk` เช็ค `_pendingPatches.size` แต่ Set นี้ถูกล้างแค่ตอนเริ่ม drain ถัดไป/`resetScanRuntimeState` (ตรวจแล้ว 29 ก.ย. 2026: `ab95bf0` เป็นแบบนี้อยู่แล้ว) ⇒ deploy ใหม่ไม่ถึง PDA ที่กำลังใช้งานจนกว่าจะปิด-เปิดแอป · อย่าสรุปว่า "deploy แล้ว PDA ได้รุ่นใหม่เอง" — ยืนยันด้วยตา/สั่งรีสตาร์ท · แก้ได้ (ล้าง Set หลังจบ drain) แต่เป็น scan-related ต้องขออนุมัติ
 - PDA ที่ออฟไลน์รับ branch lock ไม่ได้ทันที รายการใหม่จะ sync ภายหลังและรอ Confirm รอบถัดไป
 - Pharmacy Desktop ต้องออนไลน์ระหว่าง Confirm และระหว่างยืนยัน Audit Verify
 - WH สแกนได้ 24 ชั่วโมง ส่วนสาขายายังมี time gate ตามเวลาทำการ

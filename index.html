@@ -3633,10 +3633,13 @@ async function clearAllData() {
 // flush ทันทีเมื่อแอปไป background / ปิดหน้า / หลุดเน็ต · จุดที่เรียก saveSession() ตรงๆ (Confirm/login/reload/startNewCount) ไม่เปลี่ยน
 // รูปแบบข้อมูลใน localStorage ไม่เปลี่ยน → loadSession / restoreFromFirestore / tools/recover-src-local-backup.js ไม่กระทบ
 // ⚠️ ทุกจุดที่เดิม clearTimeout(_saveTimer) ต้องใช้ _cancelPendingSave() แทน — ไม่งั้น maxWait timer ค้างแล้ว save กลางงาน reset/Confirm
-// let เพื่อให้เทสปรับให้สั้นได้
+// rollback: SCAN_LIGHT_REFRESH=false คืน trailing 400 ms เดิม (ดู scheduleSave) · ค่า SAVE_*_MS เป็น let เพื่อให้เทสปรับให้สั้นได้
 let SAVE_DEBOUNCE_MS=4000,SAVE_MAXWAIT_MS=12000,SAVE_OFFLINE_DEBOUNCE_MS=1500,SAVE_OFFLINE_MAXWAIT_MS=3000;
 let _saveTimer=null,_saveMaxTimer=null,_saveDirty=false;
 function scheduleSave(){
+  // สวิตช์หลัก SCAN_LIGHT_REFRESH ปิด = พฤติกรรมเดิมเป๊ะ (trailing 400 ms · ไม่มี maxWait) — ตั้ง false ตัวเดียวย้อนงานหลังสแกน Phase A ครบทั้ง stats / echo / backup
+  // (ผู้ใช้สั่ง 29 ก.ย. 2026: ต้องย้อนกลับก่อนแก้ได้ทุกเมื่อ · ขั้นตอนเต็มอยู่ CLAUDE.md §ย้อนกลับงานหลังสแกน)
+  if(!SCAN_LIGHT_REFRESH){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveSession,400);return;}
   _saveDirty=true;
   const offline=navigator.onLine===false;
   clearTimeout(_saveTimer);

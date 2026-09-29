@@ -205,7 +205,8 @@ if (SCAN_INCREMENTAL_ROW && scanListMap.size === prevSize + 1 && _pendingPatches
   - **fallback เป็น render เต็มเสมอเมื่อ DOM ไม่สอดคล้อง:** ไม่มีแถวใน DOM (placeholder "รอการสแกน...") · จำนวนแถวไม่เท่า `min(scanListMap.size-1, 30)` · แถวนี้อยู่ใน DOM แล้ว — เทส `scan-row-parity.spec.js` ตรึง (รวมกรณี DOM ถูกแก้กลางทาง)
   - ⚠️ ห้ามขยายไปกรณีหลายสแกนใน drain เดียวโดยไม่แก้ลำดับ: `_pendingPatches` เป็น `Set` (ลำดับ = แตะครั้งแรก ไม่ใช่ล่าสุด) แถวที่สแกนซ้ำจะเรียงผิด
   - เทสเทียบ **snapshot จาก DOM** ไม่ใช่ `innerHTML` (`patchScanRow` ตั้ง `input.value` เป็น property ไม่สะท้อนใน attribute) และเทียบทีละสแกนทั้ง 4 บทบาท (ผู้ช่วย PDA · คลัง PDA · หัวหน้าคลัง Desktop · เภสัช Desktop) · เคยทำ mutation check (ใส่ผิดตำแหน่ง) แล้วเทสล้มตามที่ควร
-- **สวิตช์:** `let SCAN_LIGHT_REFRESH` (ข้อความข้างบน + listener + echo) · `let SCAN_INCREMENTAL_ROW` (Phase B) · rollback = ตั้ง `false` แล้ว deploy · เทสสลับได้ · ค่าคงที่ backup `SAVE_*_MS` เป็น `let` ให้เทสปรับ
+- **สวิตช์:** `let SCAN_LIGHT_REFRESH` = สวิตช์หลักของ Phase A **ครบทั้ง 3 ส่วน** (ข้าม stats ต่อสแกน + ตัด echo + `scheduleSave` — ปิดแล้วกลับ trailing 400 ms เดิม) · `let SCAN_INCREMENTAL_ROW` (Phase B) · เทสสลับได้ · ค่าคงที่ backup `SAVE_*_MS` เป็น `let` ให้เทสปรับ
+  - **ขั้นตอนย้อนกลับเต็ม (สวิตช์ / `git revert` / Vercel) + SHA จุดก่อนแก้ อยู่ที่ CLAUDE.md §"ย้อนกลับงานหลังสแกนได้ทุกเมื่อ"** — เพิ่มพฤติกรรมใหม่ในเส้นทางหลังสแกนต้องผูกกับสวิตช์เดิมหรือสวิตช์ใหม่เสมอ เพื่อไม่ให้ "ปิดสวิตช์แล้วยังไม่กลับเท่าเดิม"
 - **เทสตรึง:** `tests/specs/logic/scan-light-refresh.spec.js` (ระดับฟังก์ชัน) · `tests/specs/logic/scan-row-parity.spec.js` (แถว RESULT ใส่ทีละแถว = render เต็ม) · `tests/specs/e2e/scan-cost.spec.js` (นับจำนวนครั้ง + backup + supervisor เห็นปุ่มรายพนักงาน/การ์ด Pass ทันที)
 
 ---

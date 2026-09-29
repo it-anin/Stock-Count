@@ -210,6 +210,37 @@ test.describe('scheduleSave — backup ในเครื่องรวมง�
     await closeApp(app);
   });
 
+  test('สวิตช์หลัก SCAN_LIGHT_REFRESH=false → backup กลับ trailing 400 ms แบบเดิม (ไม่มี maxWait / dirty flag) — ย้อนกลับครบทั้ง Phase A', async ({ browser }) => {
+    const app = await bootBare(browser);
+    const out = await app.page.evaluate(async () => {
+      SCAN_LIGHT_REFRESH = false;
+      let saves = 0; const o = window.saveSession; window.saveSession = function () { saves++; return o.apply(this, arguments); };
+      scheduleSave();
+      const armed = { trailing: _saveTimer !== null, maxWait: _saveMaxTimer, dirty: _saveDirty };
+      await new Promise((r) => setTimeout(r, 700));   // 400 ms เดิม — ไม่ใช่ trailing 4 วิ ของโหมดเบา
+      return { armed, saves };
+    });
+    expect(out.armed).toEqual({ trailing: true, maxWait: null, dirty: false });
+    expect(out.saves).toBe(1);
+    await closeApp(app);
+  });
+
+  test('สวิตช์หลักเปิดกลับ (true) → กลับสู่หน้าต่าง backup ยาว · ตัวจับเวลาที่ค้างจากโหมดเดิมไม่ทำให้ save ซ้อน', async ({ browser }) => {
+    const app = await bootBare(browser);
+    const out = await app.page.evaluate(async () => {
+      let saves = 0; const o = window.saveSession; window.saveSession = function () { saves++; return o.apply(this, arguments); };
+      SCAN_LIGHT_REFRESH = false; scheduleSave();       // ตั้ง trailing 400 ms แบบเดิมค้างไว้
+      SCAN_LIGHT_REFRESH = true; SAVE_DEBOUNCE_MS = 2000; SAVE_MAXWAIT_MS = 5000;
+      scheduleSave();                                   // โหมดเบา: เขียนทับ trailing เดิม (clearTimeout) แล้วตั้ง maxWait
+      const armed = { trailing: _saveTimer !== null, maxWait: _saveMaxTimer !== null, dirty: _saveDirty };
+      await new Promise((r) => setTimeout(r, 700));     // เกิน 400 ms เดิมแล้ว แต่ยังต้องไม่ save (trailing ใหม่ 2 วิ)
+      return { armed, savesAfter700: saves };
+    });
+    expect(out.armed).toEqual({ trailing: true, maxWait: true, dirty: true });
+    expect(out.savesAfter700).toBe(0);
+    await closeApp(app);
+  });
+
   test('pagehide / visibilitychange→hidden / offline → flush ทันที เมื่อมีของค้างเท่านั้น', async ({ browser }) => {
     const app = await bootBare(browser);
     const out = await app.page.evaluate(() => {
