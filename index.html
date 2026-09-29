@@ -2524,15 +2524,20 @@ function startScanItemsListener(){
   _scanItemsUnsubscribe=getScanItemsRef().where('countResetAt','==',epoch).onSnapshot(snap=>{
     // การเขียนของเครื่องนี้เอง (local echo) — state ถูกต้องอยู่แล้ว ไม่ต้อง apply ซ้ำ
     if(snap.metadata.hasPendingWrites)return;
-    let touched=false;
+    let touched=false,statusTouched=false;
     snap.docChanges().forEach(ch=>{
       const sku=ch.doc.id;
-      if(ch.type==='removed'){touched=_applyScanItemRemoved(sku)||touched;return;}
-      touched=_applyScanItemChange(sku,ch.doc.data())||touched;
+      const prev=state.scanData.get(sku)?.status;
+      const applied=ch.type==='removed'?_applyScanItemRemoved(sku):_applyScanItemChange(sku,ch.doc.data());
+      if(!applied)return;
+      touched=true;
+      // เพื่อนสแกนอยู่ (pending/scanning → pending/scanning) เปลี่ยนผล updateStats() ไม่ได้ — ดู SCAN_LIGHT_REFRESH
+      if(!(_isScanCountStatus(prev)&&_isScanCountStatus(state.scanData.get(sku)?.status)))statusTouched=true;
     });
     if(!touched)return;
     if(!_listCleared){rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();}
-    updateStats();renderTable();updateConfirmBtn();updatePharmacistAuditConfirmBtn();
+    if(SCAN_LIGHT_REFRESH&&!statusTouched){_refreshScanCounters();renderTable();}
+    else{updateStats();renderTable();updateConfirmBtn();updatePharmacistAuditConfirmBtn();}
     if(document.getElementById('auditVerifyPopupOverlay')?.style.display==='flex')renderAuditVerifyTable();
     document.getElementById('dbStatus').textContent='Synced ☁️';
   },e=>console.warn('[scanItems listener]',e.message));
@@ -2563,10 +2568,20 @@ function _applyScanItemChange(sku,data){
   if(_dirtySkus.has(sku)||_scanItemInFlight.has(sku))return false;
   const local=state.scanData.get(sku);
   if(local?.auditor&&data.status==='audit'&&!data.auditor)return false;
-  state.scanData.set(sku,_scanItemToLocal(data,local));
+  const next=_scanItemToLocal(data,local);
+  const nextFp=_scanItemFingerprint(next);
+  // echo ของการเขียนเครื่องนี้เอง (transaction ไม่มี local echo → snapshot กลับมาเป็น hasPendingWrites=false) หรือ doc ที่ผลเท่าของเดิม:
+  // ไม่มีอะไรให้ apply — ถ้า apply จะสร้าง object ใหม่แล้วสั่ง rebuild/render/stats ทั้งชุดโดยไม่ได้อะไรเลย (ดู SCAN_LIGHT_REFRESH)
+  // rev/synced ยังต้องอัป (Confirm ใช้ rev ตรวจ "เปลี่ยนกลางงาน") · WH ยังให้ committed op ตรวจซ้ำตามเดิม
+  if(SCAN_LIGHT_REFRESH&&local&&nextFp===_scanItemFingerprint(local)){
+    _scanItemRev.set(sku,Number(data.rev)||0);
+    _scanItemSynced.set(sku,nextFp);
+    return currentBranch==='WH'?_whReapplyAuthoritativeResult(sku):false;
+  }
+  state.scanData.set(sku,next);
   _scanItemRev.set(sku,Number(data.rev)||0);
   // สำคัญ: อัพ fingerprint ที่ sync แล้วด้วย ไม่งั้น delta ใน _writeScanningItem จะนับยอดของเครื่องอื่นซ้ำ
-  _scanItemSynced.set(sku,_scanItemFingerprint(state.scanData.get(sku)));
+  _scanItemSynced.set(sku,nextFp);
   // item เป็น materialized cache; committed op/legacy final ของ epoch เดียวกันต้องชนะ delayed PDA snapshot
   if(currentBranch==='WH')_whReapplyAuthoritativeResult(sku);
   return true;
@@ -2919,7 +2934,7 @@ async function selectBranch(branch){
   if(_pinVerified){
     // สลับสาขาระหว่างใช้งาน — save สาขาเดิมก่อน
     clearTimeout(_firestoreSyncTimer);
-    clearTimeout(_saveTimer);
+    _cancelPendingSave();
     saveSession();
     await syncToFirestore();
   }
@@ -3504,7 +3519,7 @@ async function startNewCount(){
   _setBranchConfirmProgress('กำลังเตรียมรอบนับใหม่ — ห้ามปิดหรือรีเฟรชหน้านี้',0,0,'กำลังเริ่มนับใหม่');
   try{
   // (เดิมมี _d/dateStr/savedAt ค้างอยู่ตรงนี้ — เศษจากรุ่นที่เคยตั้งใจเซฟ snapshot ไม่มีใครใช้ ลบทิ้งแล้ว)
-  clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
+  clearTimeout(_firestoreSyncTimer);_cancelPendingSave();
   resetScanRuntimeState();
   state.scanData.clear();state.unknownScans=[];scanListMap.clear();
   state.r01Data=[];state.r01Version='';state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();state.r16Loaded=false;state.r16DateMismatch=false;
@@ -3581,7 +3596,7 @@ async function clearAllData() {
   const pin=prompt('🔒 ข้อมูลที่สแกนแล้วทั้งหมดจะถูกลบ กรุณาใส่รหัส PIN เพื่อล้างข้อมูล:');
   if(pin===null)return;
   if(pin!==CLEAR_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
-  clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
+  clearTimeout(_firestoreSyncTimer);_cancelPendingSave();
   resetScanRuntimeState();
   localStorage.removeItem(lsKey());
   _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
@@ -3609,8 +3624,30 @@ async function clearAllData() {
   toast('ล้างข้อมูลทั้งหมดเรียบร้อย','info');
 }
 
-let _saveTimer=null;
-function scheduleSave(){ clearTimeout(_saveTimer); _saveTimer=setTimeout(saveSession,400); }
+// ── backup ในเครื่อง (localStorage) ถี่แค่ไหนถึงพอ (ก.ย. 2026 · ผู้ใช้เลือกหน้าต่างนี้) ──
+// saveSession() serialize scanData ทั้ง catalog (~5,400 SKU) + R16 maps + scanListMap เป็น JSON ~1 MB ทุกครั้ง
+// วัดจริง (tests/specs/e2e/scan-cost.spec.js · catalog 5,400 · CPU 6× · สแกนห่าง 1.5 วิ): ~40 ms ต่อสแกน = ~80% ของงานหลังสแกนทั้งหมด
+// เดิม trailing 400 ms — PDA สแกนห่างกัน ~1-3 วิ จึง save ทุกสแกน (debounce สั้นช่วยอะไรไม่ได้ ต้องลดความถี่จริง)
+// ตอนนี้ trailing 4 วิ + maxWait 12 วิ (ออนไลน์) · 1.5 + 3 วิ (ออฟไลน์ — backup นี้คือสำเนาเดียว จึงถี่กว่า)
+// ข้อมูลรายการนับ (items) ยัง flush ขึ้น Firestore ทุก 800 ms เหมือนเดิม (SCAN_ITEM_FLUSH_MS) — หน้าต่างนี้กระทบแค่สำเนาในเครื่อง
+// flush ทันทีเมื่อแอปไป background / ปิดหน้า / หลุดเน็ต · จุดที่เรียก saveSession() ตรงๆ (Confirm/login/reload/startNewCount) ไม่เปลี่ยน
+// รูปแบบข้อมูลใน localStorage ไม่เปลี่ยน → loadSession / restoreFromFirestore / tools/recover-src-local-backup.js ไม่กระทบ
+// ⚠️ ทุกจุดที่เดิม clearTimeout(_saveTimer) ต้องใช้ _cancelPendingSave() แทน — ไม่งั้น maxWait timer ค้างแล้ว save กลางงาน reset/Confirm
+// let เพื่อให้เทสปรับให้สั้นได้
+let SAVE_DEBOUNCE_MS=4000,SAVE_MAXWAIT_MS=12000,SAVE_OFFLINE_DEBOUNCE_MS=1500,SAVE_OFFLINE_MAXWAIT_MS=3000;
+let _saveTimer=null,_saveMaxTimer=null,_saveDirty=false;
+function scheduleSave(){
+  _saveDirty=true;
+  const offline=navigator.onLine===false;
+  clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(saveSession,offline?SAVE_OFFLINE_DEBOUNCE_MS:SAVE_DEBOUNCE_MS);
+  if(!_saveMaxTimer)_saveMaxTimer=setTimeout(saveSession,offline?SAVE_OFFLINE_MAXWAIT_MS:SAVE_MAXWAIT_MS);
+}
+function _cancelPendingSave(){clearTimeout(_saveTimer);clearTimeout(_saveMaxTimer);_saveTimer=_saveMaxTimer=null;_saveDirty=false;}
+function _flushPendingSave(){if(_saveDirty)saveSession();}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)_flushPendingSave();});
+window.addEventListener('pagehide',_flushPendingSave);
+window.addEventListener('offline',_flushPendingSave);
 
 // ─── Stage 1 write path: dirty queue ต่อ SKU แทนการ rewrite blob ทั้งก้อน ────────────────────
 // เดิมทุกการสแกน 1 ครั้ง = อ่าน+เขียน session_data_json ทั้งก้อน (~700 KB) ตอนนี้เหลือ ~300 B ต่อ SKU
@@ -3838,6 +3875,7 @@ function startScanItemReconcile(){
 }
 
 function saveSession() {
+  _cancelPendingSave(); // ทุกทางเข้า (timer / เรียกตรง / flush) — save เต็มรอบนี้ครอบทุกอย่างที่ค้างอยู่แล้ว
   try {
     const sdObj={};for(const[k,v]of state.scanData.entries()){
       const{retries,scans,...keep}=v;sdObj[k]=keep;
@@ -3981,7 +4019,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
     _reloadArmed=true;
     try{
       if(currentUser){                        // flush — pattern เดียวกับ selectBranch
-        clearTimeout(_firestoreSyncTimer);clearTimeout(_saveTimer);
+        clearTimeout(_firestoreSyncTimer);_cancelPendingSave();
         saveSession();
         clearTimeout(_firestoreSyncTimer);    // saveSession ตั้ง sync timer ใหม่ — เคลียร์ทิ้ง
         // race 8s: offline → Firestore SDK คิว write ไม่ resolve จนกว่าจะ online — ห้ามรอไม่งั้น heartbeat ค้างถาวร
@@ -4126,6 +4164,39 @@ function scheduleStatsAfterScan(){
     ?WH_PDA_SCAN_STATS_DEBOUNCE_MS:80;
   statsDebounceTimer=setTimeout(updateStats,delay);
 }
+// ── ลดงานหลังสแกน (ก.ย. 2026 · ผู้ใช้สั่ง) ─────────────────────────────────────────────────────────
+// PDA สแกนห่างกัน ~1-3 วิ กว้างกว่าทุก debounce (80/400/800/1000 ms) → debounce ไม่ลดงาน ต้อง "ข้ามงานที่สแกนเปลี่ยนผลไม่ได้"
+// วัดจริง (tests/specs/e2e/scan-cost.spec.js · catalog 5,400 · CPU 6× · สแกนห่าง 1.5 วิ): ต่อสแกน 1 ครั้ง
+//   saveSession ~40 ms · updateStats ~6 ms · renderScanList ~3 ms · (Desktop ที่ดูเครื่องอื่นสแกน ~23 ms ต่อสแกนของเพื่อน)
+// SCAN_LIGHT_REFRESH = สแกนล้วน (status pending/scanning) ไม่เรียก updateStats() ทั้ง catalog
+//   เหตุผล: updateStats() ข้าม pending/scanning ทั้งหมด (Counted/Pass/Audit/Stock Adj นับเฉพาะสถานะที่ Confirm แล้ว)
+//   → สแกนล้วนเปลี่ยนผลของมันไม่ได้ · สิ่งเดียวที่สแกนล้วนเปลี่ยนคือ (ก) จำนวน Unknown (ข) tab จำนวนของ WH PDA (ค) ปุ่มยืนยันนับรายพนักงานของ supervisor
+//   สามอย่างนี้อัปเดตแยกใน _refreshScanCounters() · สถานะอื่น (WH recheck, สแกนซ้ำของที่ Confirm แล้ว) ยังเดินเส้นทางเดิมเต็ม
+// SCAN_INCREMENTAL_ROW = ได้ SKU ใหม่ = ใส่แถวเดียวบนสุด ไม่ rebuild ทั้ง 30 แถว (ดู _applyScanRows)
+// rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบเส้นทางเก่า/ใหม่ได้
+// ⛔ ห้ามนำ updateStats() ต่อสแกนกลับมาโดยไม่วัดซ้ำ · updateStats() เนื้อในไม่ได้ถูกแก้ — แก้ที่ผู้เรียกเท่านั้น
+let SCAN_LIGHT_REFRESH=true;
+let SCAN_INCREMENTAL_ROW=true;
+const SCAN_STATS_SAFETY_MS=20000;   // updateStats() เต็มแบบ trailing ยาว — กันการพึ่งพาที่ตกหล่น ไม่ใช่ทางหลัก
+let _scanStatsSafetyTimer=null;
+const _isScanCountStatus=s=>s==='pending'||s==='scanning';
+function _refreshScanCounters(){
+  updateWhResultTabs();                                            // WH PDA warehouse: จำนวนใน tab เริ่มนับ/รีเช็ค (มี guard บทบาทในตัว)
+  if(currentRole==='supervisor')renderSupervisorCountButtons();    // ปุ่มยืนยันนับรายพนักงาน = นับ scanning ต่อคน
+}
+// เรียกท้าย drainQueue — keys = SKU/unknown:* ที่ handleBarcode แตะใน drain นี้ (_pendingPatches)
+function _afterScanRefresh(keys){
+  if(!SCAN_LIGHT_REFRESH){scheduleStatsAfterScan();return;}
+  let full=false,unknown=false;
+  keys.forEach(k=>{
+    if(String(k).startsWith('unknown:'))unknown=true;
+    else if(!_isScanCountStatus(state.scanData.get(k)?.status))full=true;   // WH recheck (audit) / สแกนซ้ำของที่ Confirm แล้ว
+  });
+  if(full){scheduleStatsAfterScan();return;}
+  if(unknown){const el=document.getElementById('statUnknown');if(el)el.textContent=state.unknownScans.length;}
+  _refreshScanCounters();
+  clearTimeout(_scanStatsSafetyTimer);_scanStatsSafetyTimer=setTimeout(updateStats,SCAN_STATS_SAFETY_MS);
+}
 function scheduleScanListRender(){clearTimeout(scanListRenderTimer);scanListRenderTimer=setTimeout(renderScanList,20);}
 // ─── Scan Sound System (Web Audio API — ไม่ต้องมีไฟล์เสียง) ──────────────────
 let _audioCtx=null,_audioSuspendTimer=null;
@@ -4197,6 +4268,7 @@ function resetScanRuntimeState(){
   clearTimeout(scanListRenderTimer);scanListRenderTimer=null;
   clearTimeout(renderDebounceTimer);renderDebounceTimer=null;
   clearTimeout(statsDebounceTimer);statsDebounceTimer=null;
+  clearTimeout(_scanStatsSafetyTimer);_scanStatsSafetyTimer=null;
   scanQueue.length=0;
   scanProcessing=false;
   _pendingPatches.clear();
@@ -4619,7 +4691,7 @@ async function _confirmPharmacyBatched(){
       await _writePharmacyAuditMarkers(auditMarkers);
     }
 
-    clearTimeout(_saveTimer);_saveTimer=null;
+    _cancelPendingSave();
     clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
     for(const result of results)_applyPendingScanEvaluation(result);
     _applyPharmacyAuditMarkersToState();
@@ -4739,7 +4811,7 @@ async function _confirmPharmacyAuditBatched(){
     _setBranchConfirmProgress('กำลังบันทึกผล Audit กลาง...',0,candidates.length);
     await _writePharmacyAuditMarkers(finalMarkers);
 
-    clearTimeout(_saveTimer);_saveTimer=null;
+    _cancelPendingSave();
     clearTimeout(_firestoreSyncTimer);_firestoreSyncTimer=null;
     const total=candidates.length;let nPass=0,nAdj=0;
     for(let i=0;i<total;i+=BRANCH_CONFIRM_BATCH_SIZE){
@@ -5255,7 +5327,7 @@ function drainQueue(){
     _pendingPatches.forEach(key=>{if(!patchScanRow(key))needsRender=true;});
     if(needsRender)renderScanList();
   }
-  scheduleStatsAfterScan();scheduleRender();scanProcessing=false;
+  _afterScanRefresh(_pendingPatches);scheduleRender();scanProcessing=false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

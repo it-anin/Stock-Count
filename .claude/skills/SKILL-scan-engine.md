@@ -170,6 +170,35 @@ if (scanListMap.size > prevSize) {
 `patchScanRow(key)` — in-place DOM update เซลล์ QTY + ย้ายแถวขึ้นบนสุด
 คืน `true` = patch สำเร็จ, `false` = ไม่เจอ row/cell → caller ต้อง fallback full render
 
+## ต้นทุนงานหลังสแกน (ก.ย. 2026 · ผู้ใช้สั่ง "ลดงานหลังสแกนบน PDA")
+
+**หลักคิด:** PDA สแกนห่างกัน ~1-3 วิ กว้างกว่าทุก debounce (80/400/800/1000 ms) → debounce **ไม่ลดงาน** (ยิงหลังทุกสแกนอยู่ดี)
+ที่ลดได้จริงมีสองอย่าง: **ข้ามงานที่สแกนเปลี่ยนผลไม่ได้** กับ **ทำแบบเพิ่มทีละแถว (O(1))** — batch ช่วยแค่ตอนสแกนรัว
+
+วัดจริง (`tests/specs/e2e/scan-cost.spec.js` · catalog 5,400 SKU · CPU 6× · สแกนห่าง 1.5 วิ · รัน `SCAN_COST_MEASURE=1 SCAN_COST_CPU=6 SCAN_COST_GAP_MS=1500 npm run test:e2e -- scan-cost`):
+
+| ต่อสแกน 1 ครั้ง (PDA ผู้ช่วย) | ก่อน | หลัง Phase A |
+|---|---|---|
+| `saveSession` (serialize ทั้ง catalog → localStorage) | ~40 ms · ทุกสแกน | ~5 ms · 3 ครั้ง/24 สแกน |
+| `updateStats` (5–8 ลูปทั้ง catalog) | ~5.6 ms · ทุกสแกน | ~1.3 ms · 3 ครั้ง/24 สแกน |
+| `renderScanList` (30 แถว) | ~2.5 ms | (Phase B) |
+| Desktop supervisor ที่ดูเพื่อนสแกน | ~23 ms/สแกนของเพื่อน | ~12 ms |
+
+**กติกา (ห้ามย้อนกลับโดยไม่วัดซ้ำ):**
+- **`updateStats()` ข้าม `pending`/`scanning` ทั้งหมด** ⇒ สแกนล้วนเปลี่ยนผลของมันไม่ได้ · `drainQueue` จึงเรียก `_afterScanRefresh(_pendingPatches)` แทน `scheduleStatsAfterScan()`
+  - key เป็น SKU ที่ status ยัง `pending`/`scanning` → ไม่คำนวณ stats · อัปเดตเฉพาะ `_refreshScanCounters()` (tab จำนวน WH PDA + ปุ่มยืนยันนับรายพนักงานของ supervisor — สองอย่างนี้นับ `scanning` จึงเปลี่ยนตามสแกน)
+  - key `unknown:*` → เขียน `#statUnknown` ตรงๆ · key ที่ status อื่น (WH recheck = `audit`, สแกนซ้ำของที่ Confirm แล้ว) → เส้นทางเดิม `scheduleStatsAfterScan()` · **มีแม้ตัวเดียวปนก็ต้องเดินเส้นทางเต็ม**
+  - safety refresh `updateStats()` แบบ trailing 20 วิ (`SCAN_STATS_SAFETY_MS`) กันการพึ่งพาที่ตกหล่น — ไม่ใช่ทางหลัก
+  - ⛔ เพิ่มตัวเลขบนจอที่ "สแกนล้วนเปลี่ยนได้" ต้องเพิ่มใน `_refreshScanCounters()` ห้ามแก้เป็นเรียก `updateStats()` ต่อสแกนอีก · `updateStats()` เนื้อในไม่ได้ถูกแก้ (แก้ที่ผู้เรียก)
+  - ⚠️ `_pendingPatches` ต้องมี key ของ **ทุกอย่างที่ `handleBarcode` แตะ** (drain ใช้ตัดสินเส้นทาง stats) — เพิ่ม branch ใหม่ใน `handleBarcode` ที่แก้ state ต้อง `_pendingPatches.add(key)` ด้วย
+- **listener `startScanItemsListener`:** เครื่องอื่นสแกนล้วน (สถานะเก่า/ใหม่เป็น `pending`/`scanning` ทั้งคู่) → เรียกแค่ `_refreshScanCounters()` + `renderTable()` · เปลี่ยนไปสถานะอื่น/ถูกลบ → `updateStats()` + `updateConfirmBtn()` + `updatePharmacistAuditConfirmBtn()` เหมือนเดิม
+- **echo ของการเขียนเครื่องตัวเอง:** `_writeScanningItem` ใช้ transaction ซึ่งไม่มี local echo → snapshot ที่ย้อนกลับมา `hasPendingWrites=false` หลุดด่านเดิม · `_applyScanItemChange` จึงเทียบ `_scanItemFingerprint` — เท่าของเดิม = ไม่ apply (คืน `false`) แต่ **ต้องอัป `_scanItemRev`/`_scanItemSynced` เสมอ** (Confirm ใช้ rev ตรวจ "เปลี่ยนกลางงาน") และ WH ยังเรียก `_whReapplyAuthoritativeResult` ตามเดิม · guard `_dirtySkus`/`_scanItemInFlight`/auditor ไม่เปลี่ยน
+- **`scheduleSave()` = backup ในเครื่อง:** trailing 4 วิ + maxWait 12 วิ (ออนไลน์) / 1.5 + 3 วิ (ออฟไลน์) แทน 400 ms · flush ทันทีตอน `visibilitychange→hidden`, `pagehide`, `offline` · **ข้อมูลรายการนับ (items) ยัง flush ขึ้น Firestore ทุก 800 ms เหมือนเดิม** — หน้าต่างนี้กระทบแค่สำเนาใน localStorage (ผู้ใช้ยอมรับ ก.ย. 2026)
+  - ⛔ ห้ามเขียน `clearTimeout(_saveTimer)` ตรงๆ ให้ใช้ `_cancelPendingSave()` (เคลียร์ทั้ง trailing + maxWait + `_saveDirty`) ไม่งั้น maxWait ค้างแล้ว save กลางงาน reset/Confirm · `saveSession()` เรียก `_cancelPendingSave()` เองต้นฟังก์ชัน
+  - รูปแบบข้อมูลใน localStorage ไม่เปลี่ยน · ⛔ **ห้ามข้ามการเก็บ `pending` ลง localStorage** เพื่อลดขนาด: `restoreFromFirestore` ตัดสินเส้นทางด้วย `state.scanData.size>0` และ `loadSession` ทำ `scanData.clear()` แล้วคืนเฉพาะที่บันทึกไว้ — `handleBarcode` ทำ `if(!sd)return` เงียบๆ ถ้า SKU ไม่มี entry (บั๊ก "สแกนไม่ติด" แบบ cascade มิ.ย. 2026)
+- **สวิตช์:** `let SCAN_LIGHT_REFRESH` (ข้อความข้างบน + listener + echo) · rollback = ตั้ง `false` แล้ว deploy · เทสสลับได้ · ค่าคงที่ backup `SAVE_*_MS` เป็น `let` ให้เทสปรับ
+- **เทสตรึง:** `tests/specs/logic/scan-light-refresh.spec.js` (ระดับฟังก์ชัน) · `tests/specs/e2e/scan-cost.spec.js` (นับจำนวนครั้ง + backup + supervisor เห็นปุ่มรายพนักงาน/การ์ด Pass ทันที)
+
 ---
 
 ## Scan List Filter by Role (rebuildScanListMap)
