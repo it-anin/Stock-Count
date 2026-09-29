@@ -1,5 +1,13 @@
 # auto-r01 — สถานะและวิธีปิดฉุกเฉิน
 
+> ⏳ **28 ก.ย. 2026:** repo มีรุ่นที่ส่งออก `Allstock.CSV` เองด้วย `AutoR01Export.exe` ก่อนอัป (Task ต้องย้ายไปก่อน 08:00)
+> แต่**ยังไม่ได้วางบน `BIGYAMAINPC`** — สถานะด้านล่างเป็นของรุ่นที่อ่านไฟล์จากตัววนของ bot-export · ขั้นตอนวางอยู่ใน `README.md`
+>
+> **29 ก.ย. 2026 07:28 อัปจริงครั้งแรกด้วยขั้นส่งออก จากเครื่องพัฒนา `BIG-IT`** (ผู้ใช้สั่ง · exe รุ่น `2026-09-28.4` ·
+> `r01Version` = `2026-09-29T00:28:31.387Z` ทั้ง 4 สาขา) — **ไม่ใช่บอทบน BIGYAMAINPC** อย่าใช้รอบนี้ยืนยันว่าบอทบนเครื่องนั้นทำงาน
+> ก่อนรอบนี้ R01 บน cloud: WH/SSS ค้างที่ 26 ก.ย. 08:21 (version เดียวกัน = รอบบอท) · KKL 27 ก.ย. 08:15 · SRC 28 ก.ย. 15:08 (อัปมือ)
+> ⇒ บอทบน BIGYAMAINPC น่าจะไม่ได้เขียนตั้งแต่ 27 ก.ย. — **ยังไม่ได้ดู `auto_r01.log` บนเครื่องนั้น** (กฎ 0: ต้องดู log ก่อนสรุปสาเหตุ)
+
 **สถานะ (7 ก.ย. 2026): ใช้งานจริงอยู่ ✅** — รันอยู่บนเครื่อง **`BIGYAMAINPC`** (ผู้ใช้ `AninMainPC`)
 โฟลเดอร์ `C:\Users\AninMainPC\Desktop\run-upload-stock` · เขียนครบทั้ง 4 branch ทุกเช้า ~09:36
 
@@ -28,6 +36,16 @@
 Disable-ScheduledTask -TaskName "AutoR01Import"
 ```
 ปิดเฉพาะบาง branch: เอาชื่อออกจาก `AUTO_BRANCHES` ในหัวไฟล์ `auto_r01_import.py` (ไม่ต้องแตะโค้ดอื่น)
+
+**ปิดเฉพาะขั้นส่งออก** (เพิ่ม 28 ก.ย. 2026 · กลับไปอ่านไฟล์ที่ตัววนของ bot-export ส่งออกไว้แบบเดิม) — ใส่ `--no-export` ให้ Task
+แล้ว**ย้ายเวลากลับไปหลังตัววนส่งออกรอบแรก** (เดิม 08:10) ไม่งั้นก่อน 08:00 ยังไม่มีไฟล์ของวันนี้ → exit 4 ทุกวัน:
+```powershell
+$Root = "$env:USERPROFILE\Desktop\auto-r01"
+$A = New-ScheduledTaskAction -Execute (Join-Path $Root "run_auto_r01.bat") -Argument "--no-export" -WorkingDirectory $Root
+Set-ScheduledTask -TaskName "AutoR01Import" -Action $A -Trigger (New-ScheduledTaskTrigger -Daily -At 08:10)
+```
+**อาการที่ควรปิดขั้นส่งออก:** exe ชนกับบอทอื่น (ข้อความแปลกๆ ถูกพิมพ์ลงหน้าต่าง ProMaxx) ·
+ตัววน 08:00 login ไม่ผ่านเพราะ ProMaxx ค้าง · `LastTaskResult = 5` ติดกันหลายวัน
 
 **อาการที่ควรปิดทันที:** Confirm ขึ้น `R01/R16 ในเครื่องไม่ตรงกับ Cloud` ซ้ำๆ ทุกเครื่อง ·
 `{branch}_r01` มี field หายไปหลังสคริปต์รัน · ยอด `systemQty` บนเว็บไม่ตรงกับ POS

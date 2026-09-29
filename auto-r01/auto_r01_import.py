@@ -3,8 +3,9 @@
 """
 Auto R01.102 importer  ->  Firestore  (Stock Count)
 
-อ่านไฟล์ R01.102 (CSV) ที่ใหม่ที่สุดในโฟลเดอร์ที่กำหนด แล้วแยกตาม Col D (CF_WNAME)
-เป็น 4 branch (WH / SRC / KKL / SSS) เขียนเข้า Firestore:
+ขั้นแรกสั่ง AutoR01Export.exe (โฟลเดอร์ bot-export/ = สำเนาบอท it-anin/bot-export ที่ตัด Supabase ออก)
+ส่งออก Allstock.CSV จาก ProMaxx ใหม่ 1 รอบ แล้วอ่านไฟล์นั้น แยกตาม Col D (CF_WNAME)
+เป็น 4 branch (WH / SRC / KKL / SSS) เขียนเข้า Firestore อย่างเดียว (ไม่แตะ Supabase):
     stock_sessions/<BRANCH>_r01
 
 รูปแบบข้อมูลตรงกับที่ index.html (loadR01 + syncMasterToFirestore) ใช้ทุกประการ
@@ -15,15 +16,19 @@ Auto R01.102 importer  ->  Firestore  (Stock Count)
    ทุกสาขาจะได้ยอดของ branch ที่อยู่ท้ายไฟล์
 
 วิธีรัน:
-    python auto_r01_import.py            # โหมดจริง — เขียนขึ้น Firestore
-    python auto_r01_import.py --dry-run  # ทดสอบ — แค่พิมพ์ยอดต่อ branch ไม่เขียน
+    python auto_r01_import.py            # โหมดจริง — ส่งออกไฟล์ใหม่ด้วย exe แล้วเขียนขึ้น Firestore
+    python auto_r01_import.py --no-export  # ข้ามขั้นส่งออก ใช้ไฟล์ล่าสุดในโฟลเดอร์ (กู้มือเมื่อบอทล้ม)
+    python auto_r01_import.py --dry-run  # ทดสอบ — ไม่ส่งออก ไม่เขียน แค่พิมพ์ยอดต่อ branch
+    python auto_r01_import.py --dry-run --with-export   # ซ้อมเต็ม — ส่งออกจริง (ขับ ProMaxx) แต่ไม่เขียน Firestore
     python auto_r01_import.py --force    # ข้าม guard "ไฟล์ไม่ใช่ของวันนี้" (ใช้ตอนทดสอบเท่านั้น)
+    python auto_r01_import.py --export-exe "<path>"   # ระบุ AutoR01Export.exe (ค่าปกติ: ข้างสคริปต์นี้)
 
     python auto_r01_import.py --resync-nc         # งานครั้งเดียวหลังแก้กติกาหมวด: ดูอย่างเดียว (dry-run)
     python auto_r01_import.py --resync-nc --yes    # เขียนธง nc ใหม่ลง data_json (ไม่แตะ version/baseline/r16)
     python auto_r01_import.py --resync-nc --yes --branch SRC   # ทีละสาขา
 
-ตั้งเวลา 8:10 ทุกวันด้วย Windows Task Scheduler (ดู README.md)
+ตั้งเวลาทุกเช้าก่อน 08:00 ด้วย Windows Task Scheduler — ต้องจบก่อนตัววนของ bot-export (08:00)
+และไม่ทับบอท BOT05106 เพราะบอทสองตัวขับ ProMaxx พร้อมกันไม่ได้ (ดู README.md §ตั้งเวลา)
 """
 
 import sys
@@ -32,6 +37,8 @@ import csv
 import io
 import json
 import glob
+import time
+import subprocess
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -133,6 +140,33 @@ WRITE_FIELDS = [
     "r16_103Loaded", "r16_103UploadedAt", "r16_103DetailVersion",
     "updated_at",
 ]
+
+# ── ขั้น export: สั่ง AutoR01Export.exe ส่งออก Allstock.CSV ใหม่ 1 รอบก่อนอ่านไฟล์ (README §ขั้น export) ──
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# build จาก bot-export/ (สำเนาบอท it-anin/bot-export ที่ตัด Supabase ออก) ด้วย bot-export\build_exe.bat
+# หาตามลำดับ: --export-exe "<path>" → ตัวแปรระบบ AUTO_R01_EXPORT_EXE → ข้างสคริปต์นี้ (ค่าปกติ)
+EXPORT_EXE_NAME = "AutoR01Export.exe"
+DEFAULT_EXPORT_EXE = os.path.join(SCRIPT_DIR, EXPORT_EXE_NAME)
+EXPORT_LOG_NAME = "auto_r01_export_log.txt"                        # log ละเอียดที่ exe เขียนข้างตัวมันเอง
+EXPORT_OUT_FILE = os.path.join(SCRIPT_DIR, "export_bot_last.txt")  # ข้อความสรุปของ exe รอบล่าสุด
+# ⚠️ เวลาเริ่ม Task + EXPORT_TIMEOUT_MIN ต้องจบก่อนบอทตัวอื่นที่ขับ ProMaxx เริ่ม (BOT05106 · ตัววน 08:00)
+EXPORT_TIMEOUT_MIN = 20     # ปกติไม่กี่นาที · เกินนี้ = ค้าง → ปิดทิ้งทั้ง process tree
+WAIT_OTHER_BOT_MIN = 20     # มีบอทอื่นขับ ProMaxx อยู่ → ไม่เปิดซ้อน รอไฟล์รอบถัดไปของมันแทน (ตัววนส่งออกทุก 5 นาที)
+PRESTART_SETTLE_SEC = 45    # รอแล้วตรวจซ้ำก่อนเปิด exe — เปิดเครื่องแล้ว Task หลายตัวรันชดเชยพร้อมกันได้
+EXPORT_POLL_SEC = 10
+EXPORT_LOG_TAIL = 60        # ยกข้อความของ exe มาใส่ log นี้กี่บรรทัดท้าย
+PROMAXX_IMAGE = "promaxxreport.exe"
+# โปรแกรมอื่นที่ขับ ProMaxx บนเครื่องเดียวกัน — เจอตัวไหนรันอยู่ = ไม่เปิด exe ซ้อน
+#   SeniorsoftExport.exe = ตัววนทุก 5 นาทีของ it-anin/bot-export (08:00–20:50) · ProMaxx เปิดอยู่ = มีคน/บอทใช้อยู่
+OTHER_PROMAXX_IMAGES = ("seniorsoftexport.exe", PROMAXX_IMAGE)
+# ต้องตรงกับ EXIT_* ใน bot-export/auto_r01_export.py
+EXPORT_RC_TEXT = {0: "ส่งออกสำเร็จ", 1: "ส่งออกไม่สำเร็จ", 2: "ค่าตั้งไม่ครบหรือตัวเลือกผิด",
+                  3: "มีบอทอื่นหรือ ProMaxx เปิดอยู่ จึงไม่ได้ทำอะไร"}
+EXIT_EXPORT_FAILED = 5
+
+# flag ที่รู้จัก — เจอตัวอื่น = ยกเลิก exit 2 (เดิมไม่ตรวจ: พิมพ์ --dryrun ผิดแล้วเข้าโหมดจริงทันที)
+FLAGS_BOOL = ("--dry-run", "-n", "--force", "--resync-nc", "--yes", "--no-export", "--with-export")
+FLAGS_VALUE = ("--folder", "--branch", "--export-exe")
 
 # ============================================================
 
@@ -566,7 +600,209 @@ def resync_nc(branches, apply_writes, only_branch):
     sys.exit(0 if ok else 1)
 
 
+# ============================================================
+#  ขั้น export : สั่ง AutoR01Export.exe ส่งออก Allstock.CSV ใหม่ 1 รอบ ก่อนอ่านไฟล์
+# ============================================================
+#
+# ⛔ ห้ามให้บอทสองตัวขับ ProMaxx พร้อมกัน — step_login() ของบอทหาหน้าต่างด้วย class FNWNS3125 อย่างเดียว
+#    (class เดียวกับ popup "เงื่อนไขการสร้างรายงาน") ⇒ ตัวที่สองพิมพ์รหัสผ่านลง popup ของตัวแรก
+#    เจอโปรแกรมอื่นขับ ProMaxx อยู่ = ไม่เปิด exe แต่รอไฟล์รอบถัดไปของตัวนั้นแทน
+# ⚠️ ตัดสินจาก "มีไฟล์ใหม่จริงไหม" ไม่ใช่ exit code · ไม่มีไฟล์ใหม่ = exit 5 และไม่ถอยไปใช้ไฟล์เก่า
+
+
+def unknown_flags(argv):
+    """flag ที่สคริปต์นี้ไม่รู้จัก — ต้องเรียกใน main() เท่านั้น
+    (tools/check-r01-parity.js import ไฟล์นี้ด้วย python -c ถ้าตรวจตอน import จะพัง)"""
+    bad, i = [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a in FLAGS_BOOL:
+            i += 1
+        elif a in FLAGS_VALUE:
+            i += 2
+        elif any(a.startswith(f + "=") for f in FLAGS_VALUE):
+            i += 1
+        else:
+            bad.append(a)
+            i += 1
+    return bad
+
+
+def resolve_export_exe(argv):
+    for i, a in enumerate(argv):
+        if a == "--export-exe" and i + 1 < len(argv):
+            return argv[i + 1], "--export-exe"
+        if a.startswith("--export-exe="):
+            return a.split("=", 1)[1], "--export-exe"
+    env = os.environ.get("AUTO_R01_EXPORT_EXE", "").strip()
+    if env:
+        return env, "AUTO_R01_EXPORT_EXE"
+    return DEFAULT_EXPORT_EXE, "ค่าปกติ (ข้างสคริปต์นี้)"
+
+
+def _running_images():
+    """ชื่อโปรเซสที่รันอยู่ทั้งหมด (ตัวพิมพ์เล็ก) จาก tasklist · อ่านไม่ได้คืน None
+    เทียบแค่ชื่อไฟล์ exe ซึ่งเป็น ASCII จึงไม่ขึ้นกับภาษาของ Windows"""
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, timeout=60).stdout
+    except Exception:
+        return None
+    names = set()
+    for row in csv.reader(io.StringIO(out.decode("latin-1"))):
+        if row:
+            names.add(row[0].strip().lower())
+    return names or None
+
+
+def _busy_programs(own_image):
+    """โปรแกรมที่ขับ ProMaxx อยู่ตอนนี้ (รวม exe ของเราเองที่อาจค้างจากรอบก่อน) · อ่านไม่ได้คืน None"""
+    running = _running_images()
+    if running is None:
+        return None
+    watch = set(OTHER_PROMAXX_IMAGES) | {own_image.lower()}
+    return sorted(n for n in watch if n in running)
+
+
+def _fresh_file(since):
+    """ไฟล์ Allstock ล่าสุดที่ถูกเขียน "หลัง since" และขนาดนิ่งแล้ว — ไม่มีคืน None"""
+    path = find_latest_file()
+    if not path:
+        return None
+    try:
+        if os.path.getmtime(path) < since - 1:
+            return None
+        size = os.path.getsize(path)
+        time.sleep(3)
+        if size == 0 or os.path.getsize(path) != size:
+            return None            # ยังเขียนไม่เสร็จ
+    except OSError:
+        return None                # ไฟล์ถูกลบ/เขียนทับระหว่างดู (ตัววนลบไฟล์เก่าก่อนเซฟทุกรอบ)
+    return path
+
+
+def _wait_fresh_file(since, minutes):
+    deadline = time.time() + minutes * 60
+    while True:
+        path = _fresh_file(since)
+        if path or time.time() >= deadline:
+            return path
+        time.sleep(EXPORT_POLL_SEC)
+
+
+def _log_fresh(path):
+    mt = datetime.fromtimestamp(os.path.getmtime(path))
+    log(f"  ✅ ได้ไฟล์ใหม่: {os.path.basename(path)} (เขียนเมื่อ {mt:%H:%M:%S} · "
+        f"{os.path.getsize(path) / 1024:,.0f} KB)")
+
+
+def _taskkill(args):
+    try:
+        subprocess.run(["taskkill"] + args, capture_output=True, timeout=60)
+    except Exception as e:
+        log(f"  ⚠️ taskkill {' '.join(args)} ไม่สำเร็จ: {e}")
+
+
+def _log_export_output():
+    try:
+        with open(EXPORT_OUT_FILE, "rb") as f:
+            lines = [ln.rstrip() for ln in decode_bytes(f.read()).splitlines() if ln.strip()]
+    except OSError:
+        return
+    if len(lines) > EXPORT_LOG_TAIL:
+        log(f"  [exe] ... (ตัด {len(lines) - EXPORT_LOG_TAIL} บรรทัดแรก · ฉบับเต็ม: {EXPORT_OUT_FILE})")
+        lines = lines[-EXPORT_LOG_TAIL:]
+    for ln in lines:
+        log(f"  [exe] {ln}")
+
+
+def _run_exporter(exe):
+    """รัน exe 1 ครั้ง · คืน exit code (None = เปิดไม่ได้ หรือเกินเวลาจนถูกปิดทิ้ง)"""
+    started = time.time()
+    try:
+        with open(EXPORT_OUT_FILE, "wb") as out:
+            # stdin = NUL → exe ไม่มีวันค้างรอกด Enter
+            # stdout ลงไฟล์ไม่ใช่ pipe → กัน pipe เต็มแล้วค้าง และกันโปรเซสลูก (ProMaxx) ถือ pipe ไว้จนรอไม่จบ
+            proc = subprocess.Popen([exe, "--save-dir", WATCH_FOLDER], cwd=os.path.dirname(exe) or None,
+                                    stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
+            log(f"  เริ่ม {datetime.now():%H:%M:%S} · pid {proc.pid} · ให้เวลาไม่เกิน {EXPORT_TIMEOUT_MIN} นาที")
+            try:
+                rc = proc.wait(timeout=EXPORT_TIMEOUT_MIN * 60)
+            except subprocess.TimeoutExpired:
+                log(f"  ❌ exe ไม่จบภายใน {EXPORT_TIMEOUT_MIN} นาที — ปิดทิ้งทั้ง process tree")
+                _taskkill(["/F", "/T", "/PID", str(proc.pid)])
+                try:
+                    proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    pass
+                # ก่อนเปิด exe ยืนยันแล้วว่าไม่มี ProMaxx เปิดอยู่ ⇒ ตัวที่ค้างเป็นของรอบนี้
+                # ต้องปิด ไม่งั้นตัววน 08:00 เจอ ProMaxx ค้างแล้ว login ไม่ผ่าน
+                if PROMAXX_IMAGE in (_running_images() or set()):
+                    log("  ปิด promaxxreport.exe ที่ค้างจากรอบนี้")
+                    _taskkill(["/F", "/IM", PROMAXX_IMAGE])
+                rc = None
+    except OSError as e:
+        log(f"  ❌ เปิด exe ไม่ได้: {e}")
+        return None
+    _log_export_output()
+    mins, secs = divmod(int(time.time() - started), 60)
+    meaning = EXPORT_RC_TEXT.get(rc, "เกินเวลา" if rc is None else "ไม่รู้จักรหัสนี้")
+    log(f"  exe จบใน {mins} นาที {secs} วินาที · exit {rc} ({meaning})")
+    return rc
+
+
+def run_export_step(argv):
+    """สั่ง AutoR01Export.exe ส่งออก Allstock.CSV ใหม่ → คืน path ของไฟล์ใหม่ · ไม่ได้ไฟล์ใหม่ = exit 5"""
+    exe, exe_src = resolve_export_exe(argv)
+    own_image = os.path.basename(exe)
+    log(f"ขั้น export: {exe}   [จาก {exe_src}]")
+    since = time.time()
+
+    busy = _busy_programs(own_image)
+    if busy is None:
+        log("  ⚠️ อ่านรายการโปรเซสไม่ได้ (tasklist) — ให้ exe ตรวจเองอีกชั้น")
+    if not busy:
+        # เปิดเครื่องสายแล้ว Task หลายตัวรันชดเชยพร้อมกันได้ — รอให้บอทที่กำลังจะเปิด ProMaxx โผล่ก่อนแล้วตรวจซ้ำ
+        log(f"  รอ {PRESTART_SETTLE_SEC} วินาทีแล้วตรวจซ้ำ (กันชนกับบอทที่ถูกเปิดพร้อมกัน)")
+        time.sleep(PRESTART_SETTLE_SEC)
+        busy = _busy_programs(own_image)
+
+    if not busy:
+        if not os.path.isfile(exe):
+            log(f"  ❌ ไม่พบ {exe} — ยกเลิก (ไม่เขียน Firestore)")
+            log(f"     build ด้วย bot-export\\build_exe.bat แล้ววางข้างสคริปต์นี้ หรือระบุที่อยู่ครั้งเดียว:")
+            log(f'     setx AUTO_R01_EXPORT_EXE "C:\\path\\to\\{EXPORT_EXE_NAME}"   (แล้วเปิด CMD ใหม่)')
+            log(f"     วันนี้กู้มือได้ด้วยไฟล์ที่ส่งออกเอง: run_auto_r01.bat --no-export")
+            sys.exit(EXIT_EXPORT_FAILED)
+        rc = _run_exporter(exe)
+        if rc == 3:
+            busy = ["(exe แจ้งว่ามีบอทอื่นหรือ ProMaxx เปิดอยู่)"]
+        else:
+            path = _fresh_file(since)
+            if path:
+                _log_fresh(path)
+                return path
+            log("  ❌ ไม่มีไฟล์ Allstock ใหม่ในโฟลเดอร์ — ยกเลิก (ไม่เขียน Firestore · ไม่ใช้ไฟล์เก่า)")
+            log(f"     log ละเอียดของ exe: {os.path.join(os.path.dirname(exe), EXPORT_LOG_NAME)}")
+            log(f"     วันนี้กู้มือได้ด้วยไฟล์ที่ส่งออกเอง: run_auto_r01.bat --no-export")
+            sys.exit(EXIT_EXPORT_FAILED)
+
+    log(f"  ⏳ มีโปรแกรมอื่นใช้ ProMaxx อยู่: {', '.join(busy)} — ไม่เปิด exe ซ้อน")
+    log(f"     รอไฟล์รอบถัดไปของตัวนั้นไม่เกิน {WAIT_OTHER_BOT_MIN} นาที")
+    if os.path.normcase(os.path.abspath(WATCH_FOLDER)) != os.path.normcase(os.path.abspath(DEFAULT_WATCH_FOLDER)):
+        log("     ⚠️ ตัววนของ bot-export เซฟลง Desktop\\run-upload-stock เสมอ — โฟลเดอร์นี้อาจไม่มีไฟล์ใหม่มา")
+    path = _wait_fresh_file(since, WAIT_OTHER_BOT_MIN)
+    if path:
+        _log_fresh(path)
+        return path
+    log(f"  ❌ ไม่มีไฟล์ Allstock ใหม่ภายใน {WAIT_OTHER_BOT_MIN} นาที — ยกเลิก (ไม่เขียน Firestore)")
+    sys.exit(EXIT_EXPORT_FAILED)
+
+
 def main():
+    bad = unknown_flags(sys.argv[1:])
+    if bad:
+        log(f"❌ ไม่รู้จัก flag: {' '.join(bad)} — ยกเลิก ไม่ทำอะไรเลย (flag ที่ใช้ได้อยู่หัวไฟล์นี้และ README)")
+        sys.exit(2)
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
     force = "--force" in sys.argv
     # --resync-nc = งานครั้งเดียวหลังแก้กติกาหมวด · dry-run เป็นค่าเริ่มต้น ต้องใส่ --yes ถึงจะเขียน
@@ -584,12 +820,27 @@ def main():
     if only_branch and only_branch not in AUTO_BRANCHES:
         log(f"❌ --branch {only_branch} ไม่อยู่ใน AUTO_BRANCHES ({', '.join(sorted(AUTO_BRANCHES))}) — ยกเลิก")
         sys.exit(2)
+    # ขั้นส่งออก: โหมดจริงทำเสมอ · --dry-run ทำเฉพาะเมื่อใส่ --with-export (ขับ ProMaxx จริง แย่งเมาส์)
+    # · --resync-nc ห้ามทำ (guard ข้อ 5 บังคับให้ใช้ไฟล์ชุดเดียวกับที่อัปขึ้นไปแล้ว)
+    no_export = "--no-export" in sys.argv
+    with_export = "--with-export" in sys.argv
+    if no_export and with_export:
+        log("❌ --no-export กับ --with-export ขัดกัน — ยกเลิก")
+        sys.exit(2)
+    if resync and with_export:
+        log("❌ --resync-nc ต้องใช้ไฟล์ Allstock ชุดเดิมที่อัปขึ้นไปแล้ว ห้ามส่งออกใหม่ (--with-export) — ยกเลิก")
+        sys.exit(2)
+    do_export = not resync and not no_export and (not dry_run or with_export)
 
     mode = f", resync-nc (เขียนจริง={apply_writes})" if resync else ""
-    log(f"เริ่มงาน auto R01 import  (dry_run={dry_run}, force={force}{mode})")
+    log(f"เริ่มงาน auto R01 import  (dry_run={dry_run}, force={force}, export={do_export}{mode})")
     log(f"เครื่อง: {os.environ.get('COMPUTERNAME', '?')} · ผู้ใช้: {os.environ.get('USERNAME', '?')}")
     log(f"โฟลเดอร์: {WATCH_FOLDER}   [จาก {WATCH_FOLDER_SOURCE}]")
     log(f"branch ที่เปิดใช้: {', '.join(sorted(AUTO_BRANCHES))}")
+    if not do_export:
+        why = ("--resync-nc ต้องใช้ไฟล์ชุดเดิม" if resync else "--no-export" if no_export
+               else "--dry-run · ใส่ --with-export ถ้าจะซ้อมส่งออกด้วย")
+        log(f"ส่งออกไฟล์ใหม่: ข้าม ({why}) — ใช้ไฟล์ล่าสุดในโฟลเดอร์")
 
     if not os.path.isdir(WATCH_FOLDER):
         log(f"❌ ไม่มีโฟลเดอร์นี้ในเครื่อง — ยกเลิก")
@@ -598,7 +849,8 @@ def main():
         log(f'   หรือทดสอบครั้งเดียว:  python auto_r01_import.py --folder "D:\\path" --dry-run')
         sys.exit(2)
 
-    path = find_latest_file()
+    # ขั้น export คืนเฉพาะไฟล์ที่เพิ่งเขียนใหม่ (ไม่ได้ = exit 5 ในตัว) · ข้ามขั้นนี้ = ไฟล์ล่าสุดแบบเดิม
+    path = run_export_step(sys.argv) if do_export else find_latest_file()
     if not path:
         log(f"❌ ไม่พบไฟล์ตรงรูปแบบ '{FILE_GLOB}' ในโฟลเดอร์ — ยกเลิก")
         try:

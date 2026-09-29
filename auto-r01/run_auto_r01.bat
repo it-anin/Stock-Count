@@ -1,7 +1,10 @@
 @echo off
 REM ============================================================
 REM  Auto R01.102 import -> Firestore
-REM  Called by Windows Task Scheduler daily at 08:10 (see README.md)
+REM  Called by Windows Task Scheduler every morning BEFORE 08:00 (see README.md).
+REM  The Python script first runs AutoR01Export.exe (next to this file) to export
+REM  a fresh Allstock.CSV from ProMaxx, then writes Firestore only.
+REM  Must run "only when user is logged on" - the exporter clicks the real screen.
 REM
 REM  KEEP THIS FILE PURE ASCII.
 REM  Thai text in a .bat breaks the cmd.exe parser (it re-reads the file by byte

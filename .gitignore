@@ -11,6 +11,19 @@ auto-r01/auto_r01.log.1
 auto-r01/__pycache__/
 # สำเนา data_json ก่อน --resync-nc เขียนทับ — มีชื่อสินค้า+ยอดจริงทั้งสาขา (~540 KB/ไฟล์) ห้ามเข้า repo
 auto-r01/backup/
+# ขั้น export (auto-r01/bot-export/ = สำเนาบอทจาก it-anin/bot-export ที่ตัด Supabase ออก)
+# ⛔ .env เก็บรหัสผ่าน ProMaxx — repo นี้เป็น PUBLIC ห้ามเข้า repo เด็ดขาด
+auto-r01/.env
+auto-r01/bot-export/.env
+# exe ~35 MB build เองจาก bot-export/ (ดู auto-r01/bot-export/CLAUDE.md) + log/ผลของรอบล่าสุด
+auto-r01/AutoR01Export.exe
+auto-r01/auto_r01_export_log.txt
+auto-r01/auto_r01_export_log.txt.1
+auto-r01/export_bot_last.txt
+auto-r01/bot-export/build/
+auto-r01/bot-export/__pycache__/
+auto-r01/bot-export/auto_r01_export_log.txt
+auto-r01/bot-export/auto_r01_export_log.txt.1
 
 # auto-r05: เหมือน auto-r01 ทุกประการ
 auto-r05/auto_r05.log
