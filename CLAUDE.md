@@ -297,36 +297,52 @@ WH R16 raw timeline เก็บ cache ใน IndexedDB (`stock-count-cache` / `
 ### Status Lifecycle
 
 ```
+สาขายา (SRC/KKL/SSS) — ตั้งแต่ 29 ก.ย. 2026 ไม่ผ่าน Audit:
+pending → scanning → pass
+                   → stock_adjustment  (ไม่ตรง: directAdj — แช่ effectiveQty/systemQty ตอน Confirm)
+                   → stock_adjustment  (noStock — ผู้ช่วยยืนยันชั้นว่างทั้งที่ระบบมีของ)
+
+WH · Audit ที่ค้างอยู่ก่อนสลับ · สวิตช์ PHARMACY_DIRECT_STOCK_ADJ ปิด:
 pending → scanning → pass
                    → audit → (verify pass)  → pass
                            → (verify fail)  → stock_adjustment
-                   → stock_adjustment  (สาขายา: noStock — ผู้ช่วยยืนยันชั้นว่างทั้งที่ระบบมีของ, ข้ามเภสัช verify)
 ```
 `unknown` = barcode ไม่พบในระบบ (parallel track)
 `audit_check` = legacy, ยังอยู่ใน codebase แต่ไม่ถูกผลิตใหม่แล้ว
 `negSys` = **ตายแล้ว (ส.ค. 2026 รอบ 2)** — เลิก clamp ค่าติดลบ ธงจึงเป็น `false` เสมอ · field ยังอยู่ใน `skuMap` ห้ามลบ (`showZeroSysModal` อ่านอยู่)
 
+**สาขายา — ตัดขั้น Audit (29 ก.ย. 2026 · ผู้ใช้สั่ง · สลับกลางรอบโดยไม่ `startNewCount`)**
+Confirm รอบแรกไม่ตรง → `stock_adjustment` ทันที · ตัดสินที่ `_buildPendingScanEvaluation` ผ่าน `_directStockAdjEnabled()` = สวิตช์ `PHARMACY_DIRECT_STOCK_ADJ` (`let` — เทสสลับกลับได้ · rollback = ตั้ง `false` แล้ว deploy) **&& `_isPharmacyBranch()`** ⇒ **WH คง `audit` เสมอ** (`evaluatePendingScans` ยังถูกเรียกจากทางที่ไม่ใช่สาขายา)
+- **ทุกกลุ่มไม่ผ่าน Audit รวม G≤0/ติดลบ** — ย้อนกติกา ก.ค. 2026 ("ระบบ 0 แต่สแกนเจอของ = เภสัชรีเช็คก่อน ห้ามลัดไป stock_adjustment") ตามคำสั่งผู้ใช้ที่รับทราบผลแล้ว: G=0 ยิงครั้งเดียว → IRPS เพิ่มสต็อก ERP ทันที · ติดลบที่ R16 อธิบายไม่ได้ → ปรับทุกวัน · ปุ่ม `📦 ค้างส่ง` ใช้ได้เฉพาะรายการ Audit เดิม
+- รายการที่ออกทางนี้ติด **`directAdj:true` + แช่ `effectiveQty`/`systemQty` ณ ตอน Confirm** (ชื่อ field เดียวกับที่ audit marker ใช้ · `_scanItemPayload` พาขึ้น Cloud เอง) · `initialStatus` ยังเป็น `'stock_adjustment'` (ไม่ใช่ `'audit'`) · **`noStock` ไม่ตั้ง `directAdj`**
+- **Audit ที่ค้างอยู่ตอนสลับคงอยู่ใน flow Audit เดิมต่อ ห้ามแปลงอัตโนมัติ** (ยอดรีเช็คที่เภสัชกรอกไว้จะหาย + ส่วนหนึ่งจะ Pass เอง) · **ห้ามลบโค้ด Audit Verify / markers / `confirmAuditVerifyItem` / `backorder`** — ยังใช้กับของเดิมและรายการที่ ↺ ย้อนกลับมา
+- **ฐานตัวเลข Stock Adj ตรง = `effectiveQty − systemQty` ที่แช่ไว้** ผ่าน `_directAdjPair(sd)` ครบ 5 จุด (`_buildAdjustDocRows` · `_adjustDocAudit` · Audit Verify แท็บ Stock Adj · ประวัติการนับแท็บ Stock Adj · `exportStockAdjExcel`) — ⛔ ห้ามใช้ `countedQty − ยอดสด`: `countedQty` เป็นยอดดิบ (ไม่รวม R16 ชดเชย) และเทียบข้ามเวลากับ R01 วันถัดไป · ไม่มีด่านความสด (ฐานแช่ไว้ ไม่หมดอายุ) · ดู §Pharmacy Audit Verify → ใบปรับปรุง
+- **ทางถอยทางเดียว = ↺ `reopenPharmacyAudit`** (รับ `directAdj` แล้ว · ล้างธง + `initialStatus='audit'` → Audit ปกติ) · `reEvaluateAuditItems` **ไม่แตะ** Stock Adj ตรง (R16 อัปทีหลังไม่ flip · ระบบยังไม่มี `issuedAt`)
+- `saveAuditLogToFirestore` ใช้ `_wasFirstCountMismatch(sd)` (= `initialStatus==='audit' || directAdj`) + log `directAdj/effectiveQty/systemQty` · **`_backfillPharmacyAuditMarkersFromLog` ข้ามรายการ `directAdj`** (ไม่งั้นถูกฟื้นเป็น Audit) · บาร์ "เภสัชตรวจแล้ว" ไม่นับ `directAdj` (`updateStats`)
+- ⚠️ **ข้อเสียที่ผู้ใช้รับทราบแล้ว:** SKU ที่นับไม่ครบตอน Confirm กลายเป็น Stock Adj (สแกนซ้ำ/✕ ไม่ได้ · ใช้ ↺ ย้อนทีละตัว) · R16/R01 คลาดเวลา → ลง ERP ตรงๆ (เคส 200379/OTFI ที่เคยติด Audit) · ไม่มีผู้ตรวจคนที่สอง (`auditor` ว่าง)
+- เทสตรึงไว้ที่ `tests/specs/{logic,e2e}/pharmacy-direct-adj.spec.js`
+
 **กฎ "สแกนครั้งแรกนับ 0" ถูกถอดออกหมดแล้ว (ส.ค. 2026) — ห้ามนำกลับมา**
 ทั้ง G=0 และ G ติดลบ สแกนแล้ว **บวกตามปกติ** เหมือน SKU อื่น
-- **G = 0** → ยิงมาจริง → `audit` · จะอยู่ใน Progress หรือไม่ขึ้นกับ PBM Col D (A/B/C/REVIEW = อยู่) ดู §Total SKU / Progress
+- **G = 0** → ยิงมาจริง → ไม่ตรง → `audit` (**สาขายาตั้งแต่ 29 ก.ย. 2026 = `stock_adjustment` ตรง** ดูบล็อกด้านบน) · จะอยู่ใน Progress หรือไม่ขึ้นกับ PBM Col D (A/B/C/REVIEW = อยู่) ดู §Total SKU / Progress
 - **G ติดลบ → ตัดสินด้วยสูตรปกติ `effectiveCnt === sys` (ส.ค. 2026 รอบ 2 — เปลี่ยนจากเดิมที่บังคับ audit เสมอ)**
   - **เลิก clamp แล้ว** — `_clampNeg=false` ทุก branch ใน `rebuildMaps()` → `skuMap.systemQty` เก็บค่าติดลบดิบ · `negSys` เป็น `false` เสมอ
   - เหตุผลที่ถอดกฎเดิม: สมมติฐาน *"ติดลบ = ข้อมูลผิดแน่นอน"* **ไม่จริง** — เคสจริงคือจ่ายของให้ลูกค้าเท่าที่มีแต่ R01 ของไม่พอ ยอดเลยติดลบ (ค้างลูกค้า) พอคลังส่งของมาเติมก็ถูกต้องแล้ว แต่ระบบยังบังคับ audit ทุกวันทั้งที่ไม่มีอะไรผิด
   - พอ `sys` เป็นค่าดิบ สูตรเดิมตัดสินได้ถูกเอง **ไม่ต้องแก้สูตร Confirm**:
     `R01 = −2` · คลังส่ง 5 (R16 inbound) · นับได้ 3 → `effectiveCnt = 3 − 5 = −2 === sys(−2)` → **pass**
   - ตัวคุมความปลอดภัยเปลี่ยนจาก "ธง `negSys`" เป็น **"สูตรต้องลงตัวพอดี"** ซึ่งเข้มกว่าเพราะต้องมีหลักฐาน R16 มายืนยัน:
-    `R01 = −2` · ไม่มีรับเข้า · นับ 0 → `0 ≠ −2` → **audit** ตามเดิม
+    `R01 = −2` · ไม่มีรับเข้า · นับ 0 → `0 ≠ −2` → **ไม่ตรง** (`audit` · สาขายาตั้งแต่ 29 ก.ย. 2026 = `stock_adjustment` ตรง)
   - ⛔ **ห้ามนำ clamp กลับมา** — clamp ทำให้ `sys` เป็น 0 แล้ว "นับ 0" จะ pass เงียบๆ จนต้องมีธง `negSys` มากันอีกชั้น (วงจรเดิมที่เพิ่งถอดออก)
   - ⚠️ `_buildPendingScanEvaluation` กับ `reEvaluateAuditItems` ต้องใช้กติกาเดียวกันเป๊ะ ไม่งั้นอัพ R16 ใหม่แล้วสถานะแกว่ง
   - **ผลพลอยได้: แก้บั๊กใบปรับสต็อกที่ซ่อนอยู่** — เดิม clamp ทำให้ `diff = cnt − 0` ของติดลบที่รีเช็คได้ 0 กลายเป็น `0`
     แล้วถูกกรองออกจาก **ทั้ง ORDS และ IRPS** (`diff>=0` / `diff<=0`) → แถวหายเงียบ ยอดติดลบไม่เคยถูกแก้ในระบบ · ตอนนี้ได้ IRPS `+2` ถูกต้อง
-  - เทสตรึงไว้ที่ `tests/specs/logic/negsys-pass.spec.js` (ตรึง "อธิบายได้ → pass", **"อธิบายไม่ได้ → ต้องยัง audit"** และ "ใบปรับสต็อกต้องไม่หายเงียบ")
+  - เทสตรึงไว้ที่ `tests/specs/logic/negsys-pass.spec.js` (ตรึง "อธิบายได้ → pass", **"อธิบายไม่ได้ → ต้องไม่ pass"** และ "ใบปรับสต็อกต้องไม่หายเงียบ") — ทำงานใน context ไม่มีสาขา (ทางเก่า `audit`) · ผลของสาขายาหลัง 29 ก.ย. 2026 อยู่ที่ `pharmacy-direct-adj.spec.js`
 - `zeroSysModal`/`showZeroSysModal`/`confirmZeroSys` ยังเป็น dead code ที่ต้องเก็บไว้ และ `_zeroSysHold` ยังเป็น hold-guard ทุกจุด **ห้ามลบ**
 - **ยอดรีเช็ค 0 รองรับแล้ว** (`updatePharmacyRecheckQty` + `getPharmacistAuditPendingMap`) = "เภสัชดูแล้วไม่มีของ" ต่างจาก "ยังไม่รีเช็ค" (`recheckQty == null`)
   จำเป็นเพราะ negSys ส่วนใหญ่ไม่มีของจริง ถ้ากรอก 0 ไม่ได้จะค้าง audit ถาวร · ผลตัดสินใช้สูตรเดิม (เทียบกับ `recheckSystemQty` ที่ freeze ไว้)
 `noStock` = สาขายาเท่านั้น: ระบบมี stock แต่ผู้ช่วยยืนยันว่าไม่มีของจริง → Confirm เป็น `stock_adjustment` ตามกติกาปัจจุบัน
 `backorder` = **สาขายาเท่านั้น: เภสัชมาร์คว่า "ค้างส่งลูกค้า" (ส.ค. 2026 รอบ 2)** — เคสกลับด้านของ `noStock`
-- ปุ่ม `📦 ค้างส่ง` ในป็อปอัพ Audit Verify · `_canMarkBackorder()` เปิดเฉพาะ `status==='audit'` + ยังไม่มี `auditor` + role เภสัช + **`_rawSystemQty(sku) <= 0`** (ระบบไม่มีของ)
+- ปุ่ม `📦 ค้างส่ง` ในป็อปอัพ Audit Verify · `_canMarkBackorder()` เปิดเฉพาะ `status==='audit'` + ยังไม่มี `auditor` + role เภสัช + **`_rawSystemQty(sku) <= 0`** (ระบบไม่มีของ) · **ตั้งแต่ 29 ก.ย. 2026 ใช้ได้เฉพาะรายการ Audit เดิม** — Confirm ใหม่ของสาขายาไม่ผ่าน audit จึงไม่มีที่ให้กด (ผู้ใช้รับทราบ) · ↺ ย้อนรายการกลับมาเป็น Audit แล้วกดได้
 - **ทำไมต้องมี:** ยอดติดลบเกิดเพราะการขายถูกบันทึกแล้วแต่ของยังไม่เข้า = เป็นหนี้ลูกค้าอยู่จริง
   ถ้าออกใบปรับสต็อกดันยอดกลับเป็น 0 = ลบร่องรอยหนี้ แล้วส่วนต่างไปโผล่ใหม่ตอนของเข้า
   (`ปรับเป็น 0` → คลังส่ง 5 → ระบบ 5 · ของจริง 5 → จ่ายของค้าง 2 ที่ขายไปแล้ว → ระบบ 5 · ของจริง 3 = **เพี้ยน**)
@@ -493,6 +509,8 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 
 ### Pharmacy Audit Verify (ก.ค. 2026)
 
+> ⚠️ **29 ก.ย. 2026: Confirm รอบแรกของสาขายาไม่ผ่าน Audit แล้ว** (ดู §Status Lifecycle) — หัวข้อนี้ใช้กับ **Audit ที่ค้างอยู่ก่อนสลับ + รายการที่ ↺ ย้อนกลับมา** เท่านั้น · ห้ามลบโค้ดฝั่งนี้
+
 - เภสัชสแกนรีเช็คบน PDA ได้ แต่กด "✓ ยืนยัน Audit" ได้เฉพาะ Desktop — guard ด้วย `_isPdaApp()` (User-Agent) ไม่อิง viewport
 - ยอดที่สแกนเก็บใน `sd.recheckQty`/`recheckBy`/`recheckAt` (sync ผ่าน session doc) ห้ามกลับไปใช้ map ใน memory ที่ไม่ persist
 - **`recheckQty` ต้องตัดสินเทียบกับ `recheckSystemQty` (ยอดระบบที่ freeze ตอนสแกน) เสมอ ห้ามใช้ `si.systemQty` สด** — ทุกจุดที่ตั้ง `recheckQty` ต้องเรียก `_freezeRecheckBaseline()` และทุกจุดที่ตัดสินต้องใช้ `_recheckBaselineSystemQty()` (ข้อยกเว้นเดียวคือใบปรับปรุง ดูด้านล่าง)
@@ -505,9 +523,13 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - เหตุผลที่ต้องเป็น Desktop: `getSoldQtyBefore()`/`getInboundQtyBefore()` fallback เป็นยอดรวมทั้งช่วงถ้าเครื่องไม่มี R16 raw timeline (`r16RawMap`) → PDA ตัดสิน pass/stock_adjustment ผิดได้
 - เครื่องที่กำลังสแกน/กด ✕ เอง ต้องไม่ถูก cloud snapshot เก่า mirror ทับ — ใช้ `manualEditAt` + `MANUAL_EDIT_PROTECT_MS` ทั้งใน `_applyCloudScanData()` และ merge ของ `syncToFirestore()`
 - **ย้อนผลที่ Confirm แล้วมีทางเดียว: `reopenPharmacyAudit()` (ก.ย. 2026)** — เขียน marker `reopenedAt` ขึ้น cloud **ก่อน** แก้ local (`reopenedAt` เป็นทางเดียวที่ชนะ guard "final ชนะ audit เสมอ" ใน `_writePharmacyAuditMarkers`) แล้วล้าง `recheckQty/recheckBy/recheckAt/recheckSystemQty/backorder` และคืน `sd.timestamp` เป็นเวลานับรอบแรก
+  - ⚠️ **ยอดที่กรอกหลัง ↺ ต้องไม่หายเอง (29 ก.ย. 2026 · แก้แล้ว)** — เดิม ↺ → กรอกรีเช็ค → ภายในไม่กี่วินาทียอดหาย แล้วกดยืนยันได้ "ไม่มีรายการรอยืนยัน" และ flush ถัดไปเขียนการสูญเสียขึ้น cloud ถาวร (ตรวจซ้ำบน index.html ก่อนแก้ ล้มทุกรอบ · ไม่เคยมีเทส e2e ของ ↺ มาก่อน)
+    ต้นเหตุ (trace จริง): flush ตอนกด ↺ จับ payload **ก่อน** marker snapshot apply → item บน cloud มี `pharmacyAuditMarkerAt` เป็นค่าเก่า → echo ของมันย้อน `sd` กลับเป็นค่าเก่า → session snapshot ถัดไป (`_applyCloudSessionMeta`) apply marker ซ้ำ และ reopen marker ปฏิเสธ `keepDraft` ทุกกรณี → ลบยอดที่เพิ่งกรอก
+    **แก้ 2 ชั้น ห้ามถอดชั้นใดชั้นหนึ่ง** (ถอดทีละชั้นแล้วเทส e2e ล้มตรงจุดที่ตั้งใจ): (ก) `reopenPharmacyAudit` ตั้ง `pharmacyAuditMarkerAt`/`pharmacyAuditCountConfirmedAt` = `at` เองก่อน `_markSkuDirty` · (ข) `keepDraft` ของ reopen marker คงยอดที่ `recheckAt` **ใหม่กว่า** `reopenedAt` (เทียบเป็น ms ผ่าน `_auditTimeMs` — ⛔ ห้ามเทียบสตริง: เวลามีทั้ง ISO และ `YYYY-MM-DD HH:mm:ss` ท้องถิ่น และ `' ' < 'T'`) · **ยอดเก่าที่ ↺ ตั้งใจล้างยังต้องไม่เด้งกลับ** (recheckAt เก่ากว่า/ไม่มี = ล้างเหมือนเดิม)
+    ข้อจำกัดที่รู้: ยอดที่กรอกบนเครื่องที่นาฬิกาช้ากว่าเครื่องกด ↺ เกินช่วงหน่วงระหว่างสองการกระทำ จะถูกมองว่าเก่ากว่า (ชั้น ข ไม่ช่วย แต่ชั้น ก ยังกันการ apply ซ้ำได้) · เทส `tests/specs/logic/reopen-marker-draft.spec.js` + `tests/specs/e2e/pharmacy-reopen-recheck.spec.js`
   - ⛔ **`removeScanItem()` / แก้ `state.scanData` ตรงๆ ใช้ย้อนไม่ได้** — ไม่เขียน marker แล้ว `_applyPharmacyAuditMarkersToState()` **สร้าง `sd` ใหม่ให้เอง** เมื่อ SKU อยู่ใน `skuMap` แล้วทับ status กลับใน snapshot ถัดไป · ยอดที่นับหายฟรี
   - ⛔ **PDA สแกนทับของที่ Confirm แล้วไม่ได้** — `handleBarcode` return ตั้งแต่ guard `!['pending','scanning'].includes(sd.status)` **ก่อน**บรรทัดบวก `countedQty` (ได้แค่ toast "สแกนและ Confirm ไปแล้ว") · ปุ่ม ✕ ก็ขึ้นเฉพาะแถว `scanning` ⇒ "ให้นับใหม่เฉพาะบาง SKU" ไม่มีในระบบ ทางเลือกมีแค่ `reopenPharmacyAudit` (→ `audit`) หรือ `startNewCount()` (ล้างทั้งสาขา)
-  - guard `sd.initialStatus!=='audit'` ทำให้ item ที่ `pass` ตั้งแต่ Count รอบแรกย้อนไม่ได้เลย · และ **`pass` ไม่โผล่ในแท็บไหนของ Audit Verify** (`_avFilter` มีแค่ `audit`/`stock_adj`) ⇒ ต้องหาจาก 📋 → ✅ Pass → **Export** (`exportExcel()` มีคอลัมน์ `SystemQty`) เพราะป็อปอัพซ่อนคอลัมน์นั้นบนสาขายา
+  - guard `initialStatus==='audit' || directAdj` (29 ก.ย. 2026 รับ Stock Adj ตรงด้วย — เป็นทางถอยทางเดียวของกลุ่มนั้น) ทำให้ item ที่ `pass` ตั้งแต่ Count รอบแรกย้อนไม่ได้เลย · และ **`pass` ไม่โผล่ในแท็บไหนของ Audit Verify** (`_avFilter` มีแค่ `audit`/`stock_adj`) ⇒ ต้องหาจาก 📋 → ✅ Pass → **Export** (`exportExcel()` มีคอลัมน์ `SystemQty`) เพราะป็อปอัพซ่อนคอลัมน์นั้นบนสาขายา
   - `tools/list-negative-confirmed.js` (ก.ย. 2026) — read-only survey วางใน Console แล้วเรียก `listNegativeConfirmed()` · **ไม่แตะ Firestore เลย** (อ่าน state ในหน่วยความจำ 0 reads) แยกกลุ่มให้ว่าตัวไหนมีปุ่ม ↺ อยู่แล้ว / ตัวไหนต้อง Console / ตัวไหน `initialStatus` ไม่ใช่ `audit` จึง reopen ไม่ได้ · คอลัมน์ `ฐานถูก_clamp` ชี้รายการที่ถูกตัดสินด้วยฐาน `0` สมัยยัง clamp
 - **ใบปรับปรุงคำนวณจากยอดระบบ "ค่าสด" เสมอ แต่รับเฉพาะยอดรีเช็คที่ยังสด (ก.ย. 2026 รอบ 2)**
   - เป้าหมายของใบคือ **"ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้"** (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
@@ -531,6 +553,11 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
     - WH **ไม่มีด่านความสด** (ฐานแช่ไว้แล้ว ไม่มีวันหมดอายุ) · ข้อมูลรุ่นเก่าที่ไม่มี `systemQty` (marker รีเช็คก่อน workflow v2 → `Number(undefined)` = NaN) ถอยไปใช้ค่าสด
     - ⚠️ **ผลข้างเคียงที่ต้องรู้: ใบของ WH ไม่ "หายเอง" หลังส่งเข้า ERP แล้ว** — ค่าสดเคยทำให้แถวเป็น 0 เองเมื่อ R01 ตามทัน แต่ฐานแช่ไม่ขยับ ⇒ Export ซ้ำวันถัดไปได้เลขเดิม **ต้องระวังส่งซ้ำ** (ระบบยังไม่มีตัวกัน ดูข้อบน)
     - เทสตรึงไว้ที่ `tests/specs/logic/wh-stock-adj-base.spec.js` (ตรึงทั้ง "WH ทุกจุดใช้ยอดวัน Recheck", "ทิศขาด/เกินต้องตามที่ตัดสิน", "ข้อมูลเก่าไม่เป็น NaN" และ **"สาขายาต้องได้พฤติกรรมเดิม"**)
+  - ⚠️ **ข้อยกเว้นสาขายา: Stock Adj ตรงจากรอบแรก (`directAdj` · 29 ก.ย. 2026 — ไม่ผ่าน Audit)** — ฐาน = `sd.effectiveQty − sd.systemQty` ที่แช่ไว้ตอน Confirm (DIFF ที่ทำให้เกิดสถานะนั้นจริง) ผ่าน `_directAdjPair(sd)` **ครบ 5 จุด:** `_buildAdjustDocRows` · `_adjustDocAudit` · แท็บ Stock Adj ใน Audit Verify · ประวัติการนับแท็บ Stock Adj · `exportStockAdjExcel` — **เพิ่มจุดแสดง Stock Adj ของสาขายาใหม่ต้องเรียกตัวนี้ด้วย** ไม่งั้นตัวเลขแต่ละหน้าไม่ตรงกัน
+    - ⛔ **ห้ามใช้ `countedQty − ยอดสด` กับรายการนี้** — `countedQty` เป็นยอดดิบ (ไม่รวม R16 ชดเชย) และเทียบข้ามเวลากับ R01 วันถัดไป (นับ 10 · R16 ขาย 2 · ระบบตอน Confirm 15 → ที่ถูกคือ `12−15 = −3` แต่สูตรเดิมได้ `10−11 = −1` เมื่อ R01 ใหม่เข้าแล้ว)
+    - ฐานแช่ไว้จึง **ไม่มีด่านความสด และไม่ขยับเมื่อ R01 ใหม่เข้า** · `directAdj` ที่ขาดคู่ตัวเลข (ข้อมูลไม่ครบ) ถอยไปกติกาเดิม ห้ามเป็น NaN · `noStock` และ Stock Adj ที่ผ่าน Audit เดิม **ไม่ใช้** ยังเป็นค่าสด + ด่านความสด
+    - ⚠️ ถูกต้องเท่าที่ R16 ถูก — R16 ครอบไม่ถึง/คลาดเวลา = ความคลาดไหลเข้าใบตรงๆ (เดิม Audit วันถัดไปเทียบ R01 ใหม่ช่วยกรอง) · ทางแก้รายตัวคือ ↺
+    - เทสตรึงไว้ที่ `tests/specs/logic/pharmacy-direct-adj.spec.js` (ตรึง "ตัวเลขเท่าเดิมหลัง R01 ใหม่เข้า" และ **"Stock Adj ที่ผ่าน Audit เดิม/noStock ได้ตัวเลขเดิม"**)
 
 ### ป็อปอัพ 📦 ปรับปรุงสินค้า — LOT/ราคาจาก Supabase (ก.ย. 2026)
 

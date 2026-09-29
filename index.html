@@ -906,7 +906,6 @@
       <button id="hsBtnAssistant" class="popup-filter active" onclick="setHsFilter('assistant',this)"><span>👥</span><span>ผู้ช่วยนับครั้งแรก</span></button>
       <button id="hsBtnPharmacist" class="popup-filter" onclick="setHsFilter('pharmacist',this)"><span>🧑‍⚕️</span><span>เภสัชตรวจ</span></button>
       <button id="hsBtnStockAdj" class="popup-filter" onclick="setHsFilter('stockadj',this)"><span>🔴</span><span>Stock Adj ทั้งหมด</span></button>
-      <button id="hsBtnUpload" class="popup-filter" onclick="setHsFilter('upload',this)"><span>📂</span><span>อัพโหลดใบนับสินค้า</span></button>
       <button id="hsBtnReport" class="popup-filter" style="display:none;" onclick="setHsFilter('countreport',this)"><span>📋</span><span>รายงานผลลัพธ์การนับ</span></button>
     </div>
     <div id="hsAssistantToolbar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:10px;flex-wrap:wrap;">
@@ -914,11 +913,6 @@
       <select id="hsAssistantSelect" onchange="onHsAssistantChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:0.82rem;cursor:pointer;outline:none;"></select>
       <button onclick="hsRefreshFromFirestore()" id="hsRefreshBtn" style="padding:5px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-family:inherit;font-size:0.78rem;font-weight:600;cursor:pointer;">🔄 โหลดจาก Cloud</button>
       <span id="hsFirestoreNote" style="font-size:0.72rem;color:var(--text3);"></span>
-    </div>
-    <div id="hsUploadToolbar" style="display:none;padding:10px 22px;border-bottom:1px solid var(--border);align-items:center;gap:12px;">
-      <input type="file" id="hsFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleHsUploadFile(event)">
-      <button onclick="document.getElementById('hsFileInput').click()" style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">📂 เลือกไฟล์</button>
-      <span id="hsUploadInfo" style="font-size:0.8rem;color:var(--text3);">รองรับ CSV / Excel · ต้องมีคอลัมน์ SKU และ จำนวนที่นับ</span>
     </div>
     <div id="hsReportToolbar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:10px;flex-wrap:wrap;">
       <label style="font-size:0.82rem;color:var(--text2);font-weight:600;white-space:nowrap;">เลือกวันที่:</label>
@@ -1701,6 +1695,9 @@ function _pharmacyAuditMarkerFromFinal(sku,source,confirmedAt,confirmedTimestamp
     r01Version:versions.r01Version||state.r01Version||'',r16Version:versions.r16Version||state.r16DetailVersion||'',
     r16_103Version:versions.r16_103Version||state.r16_103DetailVersion||''};
 }
+// เวลาของ marker/รีเช็คเป็นสองรูปแบบปนกันได้ (ISO 'Z' จาก toISOString · 'YYYY-MM-DD HH:mm:ss' เวลาท้องถิ่นจากรุ่นเก่า/backfill)
+// เทียบเป็น ms ผ่าน Date เสมอ ห้ามเทียบสตริง — ' ' < 'T' ทำให้ข้ามรูปแบบเทียบผิด · parse ไม่ได้ = NaN (เทียบแล้วเป็น false เสมอ)
+function _auditTimeMs(v){const t=Date.parse(String(v||'').replace(' ','T'));return Number.isFinite(t)?t:NaN;}
 function _applyPharmacyAuditMarkersToState(){
   if(!_isPharmacyBranch()||(_pharmacyAuditMarkerData.countResetAt||'')!==(_countResetAt||''))return [];
   const changed=[];
@@ -1713,9 +1710,14 @@ function _applyPharmacyAuditMarkersToState(){
     const same=sd.pharmacyAuditMarkerAt===markerAt&&sd.status===marker.status&&
       (sd.auditor||'')===(marker.auditor||'')&&(marker.recheckQty==null||Number(sd.recheckQty)===Number(marker.recheckQty));
     if(same)continue;
-    // reopen marker = สั่งล้างยอดรีเช็คโดยเจตนา ห้ามกู้ draft เดิมกลับ (ไม่งั้นกดปุ่ม ↺ แล้วยอดเก่าเด้งกลับ)
-    const keepDraft=marker.status==='audit'&&!marker.reopenedAt&&sd.pharmacyAuditCountConfirmedAt&&
-      sd.pharmacyAuditCountConfirmedAt===(marker.countConfirmedAt||marker.confirmedAt||'')&&sd.recheckQty!=null;
+    // reopen marker = สั่งล้างยอดรีเช็ค "เดิม" โดยเจตนา ห้ามกู้ draft เดิมกลับ (ไม่งั้นกดปุ่ม ↺ แล้วยอดเก่าเด้งกลับ)
+    // แต่ยอดที่เภสัชกรอก "หลัง" ↺ (recheckAt ใหม่กว่า reopenedAt) เป็นยอดใหม่ ต้องคงไว้ — ก.ย. 2026 เคยถูกล้างทิ้งเงียบๆ:
+    //   marker ถูก apply ซ้ำได้ทุกครั้งที่ session/item snapshot มา เพราะ sd.pharmacyAuditMarkerAt ถูก echo ของ flush ตอนกด ↺ ย้อนกลับเป็นค่าเก่า
+    //   (flush เขียน item ก่อนที่ marker snapshot จะ apply) → apply รอบถัดไปเห็น "ยังไม่เหมือน" แล้วลบยอดรีเช็คที่เพิ่งกรอกภายในไม่กี่วินาที
+    //   ผลคือกดยืนยันแล้วได้ "ไม่มีรายการรอยืนยัน" และ flush ถัดไปเขียนการสูญเสียนั้นขึ้น cloud ถาวร
+    const draftAfterReopen=!!marker.reopenedAt&&sd.recheckQty!=null&&_auditTimeMs(sd.recheckAt)>_auditTimeMs(marker.reopenedAt);
+    const keepDraft=marker.status==='audit'&&sd.recheckQty!=null&&(draftAfterReopen||(!marker.reopenedAt&&sd.pharmacyAuditCountConfirmedAt&&
+      sd.pharmacyAuditCountConfirmedAt===(marker.countConfirmedAt||marker.confirmedAt||'')));
     const draft=keepDraft?{qty:sd.recheckQty,by:sd.recheckBy||'',at:sd.recheckAt||'',sys:sd.recheckSystemQty,r01v:sd.recheckR01Version||'',backorder:!!sd.backorder}:null;
     if(marker.countedQty!=null)sd.countedQty=Number(marker.countedQty);
     sd.status=marker.status;sd.auditStatus=marker.auditStatus||(marker.status==='audit'?'pending':marker.status==='pass'?'approved':'stock_adjustment');
@@ -1803,6 +1805,8 @@ async function _backfillPharmacyAuditMarkersFromLog(){
     if(!doc.exists)continue;
     for(const item of doc.data()?.items||[]){
       const sku=String(item?.sku||'');if(!sku||!state.skuMap.has(sku)||!['audit','pass','stock_adjustment'].includes(item.status))continue;
+      // Stock Adj ตรงจากรอบแรก (ไม่ผ่าน Audit) ไม่ใช่งานของเภสัช — ถ้าปล่อยผ่านจะถูกสร้าง marker 'audit' แล้วฟื้นกลับเป็น Audit
+      if(item.directAdj===true)continue;
       const itemMs=Date.parse(String(item.timestamp||'').replace(' ','T'));
       if(!Number.isFinite(itemMs)||itemMs<epochMs-5*60*1000)continue;
       const old=bySku.get(sku);if(!old||String(old.timestamp||'')<String(item.timestamp||''))bySku.set(sku,item);
@@ -4650,7 +4654,8 @@ async function _confirmPharmacyBatched(){
     const pass=results.filter(r=>r.status==='pass').length;
     const audit=results.filter(r=>r.status==='audit').length;
     const adjust=results.filter(r=>r.status==='stock_adjustment').length;
-    toast(`Confirm สำเร็จ ${results.length} รายการ — Pass ${pass}, Audit ${audit}, ปรับ ${adjust}`,'success',5000);
+    // สาขายาไม่ผ่าน Audit แล้ว (audit = 0 เสมอเมื่อสวิตช์เปิด) — โชว์ Audit เฉพาะเมื่อมีจริง
+    toast(`Confirm สำเร็จ ${results.length} รายการ — Pass ${pass}${audit>0?`, Audit ${audit}`:''}, ปรับ ${adjust}`,'success',5000);
   }catch(e){
     console.warn('[branch confirm]',e.message);
     if(e.message==='BRANCH_CONFIRM_LOCKED')toast('มี Desktop เครื่องอื่นกำลัง Confirm อยู่','warn',5000);
@@ -5438,6 +5443,26 @@ function getR16103QtyBefore(sku,scanTimestamp){
   },0);
 }
 
+// ── สาขายา: Confirm รอบแรกไม่ตรง → stock_adjustment ทันที ไม่ผ่าน Audit (ก.ย. 2026 · ผู้ใช้สั่งตัดขั้น Audit) ──
+// ใช้ let ไม่ใช่ const เพื่อให้เทสสลับกลับทางเก่า (ไม่ตรง → audit) ได้ · rollback จริง = ตั้ง false แล้ว deploy
+// ⚠️ ตัดสินที่ Desktop Confirm เท่านั้น · WH ต้องคง audit เสมอ (evaluatePendingScans ยังถูกเรียกจากทางที่ไม่ใช่สาขายา)
+// รายการที่ออกทางนี้ติด directAdj:true + แช่ effectiveQty/systemQty ณ ตอน Confirm — ใบปรับสต็อกคิดจากคู่นี้ (effectiveQty − systemQty)
+//   ⛔ ไม่ใช่ countedQty − ยอดสด: countedQty เป็นยอดดิบ (ไม่รวม R16 ชดเชย) และเทียบข้ามเวลากับ R01 ของวันถัดไป
+// Audit เดิมที่ค้างอยู่คงเดินใน flow เดิมต่อ (confirmAuditVerifyItem / markers) — ห้ามลบโค้ดฝั่งนั้น
+// noStock ไม่ตั้ง directAdj — ใบของ noStock ใช้กติกาเดิม (ค่าสด + ด่านความสด) ทุกประการ
+let PHARMACY_DIRECT_STOCK_ADJ=true;
+function _directStockAdjEnabled(){return PHARMACY_DIRECT_STOCK_ADJ&&_isPharmacyBranch();}
+// Stock Adj ที่ออกตรงจากรอบแรก — ต้องมีคู่ตัวเลขที่แช่ไว้ครบ (item เก่า/ข้อมูลไม่ครบ = ไม่ใช่ direct → ใช้กติกาเดิม)
+function _isDirectAdjItem(sd){
+  return !!sd&&sd.status==='stock_adjustment'&&sd.directAdj===true&&!sd.auditor&&
+    typeof sd.effectiveQty==='number'&&Number.isFinite(sd.effectiveQty)&&
+    typeof sd.systemQty==='number'&&Number.isFinite(sd.systemQty);
+}
+// คู่ (ยอดระบบ, ยอดนับ) ของ Stock Adj ตรง — ไม่ใช่ direct คืน null ให้ผู้เรียกใช้กติกาเดิม
+function _directAdjPair(sd){return _isDirectAdjItem(sd)?{sys:sd.systemQty,cnt:sd.effectiveQty}:null;}
+// "ไม่ตรงตั้งแต่นับรอบแรก" — เดิม initialStatus==='audit' · ตอนนี้รวมรายการที่ออก Stock Adj ตรงด้วย
+function _wasFirstCountMismatch(sd){return !!sd&&(sd.initialStatus==='audit'||sd.directAdj===true);}
+
 function _buildPendingScanEvaluation(sku,sd){
   if(!sd||sd.status!=='scanning')return null;
   const si=state.skuMap.get(sku);if(!si)return null;
@@ -5448,7 +5473,7 @@ function _buildPendingScanEvaluation(sku,sd){
   const inboundQty=getInboundQtyBefore(sku,sd.timestamp);
   const r16103Qty=getR16103QtyBefore(sku,sd.timestamp);
   const effectiveCnt=cnt+soldQty+r16103Qty-inboundQty;
-  let status='audit';let auditStatus='pending';
+  let status='audit';let auditStatus='pending';let direct=false;
   // [dead branch ตั้งแต่ ส.ค. 2026 รอบ 2] negSys เป็น false เสมอแล้วเพราะเลิก clamp ค่าติดลบ (ดู rebuildMaps)
   // เดิมบังคับ audit ทุกตัวที่ยอดระบบติดลบ บนสมมติฐาน "ติดลบ = ข้อมูลผิดแน่นอน" ซึ่งไม่จริง —
   // ติดลบจากการค้างของลูกค้าเป็นสถานะปกติ และสูตรด้านล่างตัดสินได้ถูกเองเมื่อ sys เป็นค่าดิบ:
@@ -5457,16 +5482,21 @@ function _buildPendingScanEvaluation(sku,sd){
   if(si.negSys){/* คง audit */}
   else if(effectiveCnt===sys){status='pass';auditStatus='approved';}
   else if(sd.noStock&&effectiveCnt===0&&sys>0){status='stock_adjustment';auditStatus='stock_adjustment';}
-  return {sku,source:sd,cnt,soldQty,inboundQty,r16103Qty,status,auditStatus};
+  // ไม่ตรง: สาขายาไม่ผ่าน Audit แล้ว → Stock Adj ทันที (ดู PHARMACY_DIRECT_STOCK_ADJ) · WH/สวิตช์ปิด = audit เหมือนเดิม
+  else if(_directStockAdjEnabled()){status='stock_adjustment';auditStatus='stock_adjustment';direct=true;}
+  return {sku,source:sd,cnt,soldQty,inboundQty,r16103Qty,status,auditStatus,effectiveCnt,sys,direct};
 }
 function _applyPendingScanEvaluation(result){
-  const{sku,source,cnt,soldQty,inboundQty,r16103Qty,status,auditStatus}=result;
+  const{sku,source,cnt,soldQty,inboundQty,r16103Qty,status,auditStatus,effectiveCnt,sys,direct}=result;
   const sd=state.scanData.get(sku);if(!sd)return;
   if(soldQty>0){sd.soldQty=soldQty;sd.rawCountedQty=cnt;}
   if(inboundQty>0)sd.inboundQty=inboundQty;
   if(r16103Qty>0)sd.r16103Qty=r16103Qty;
   sd.status=status;sd.auditStatus=auditStatus;
   if(!sd.initialStatus)sd.initialStatus=status;
+  // Stock Adj ตรง: แช่คู่ตัวเลขที่ทำให้เกิดสถานะนี้จริง — ใบปรับสต็อกใช้ effectiveQty − systemQty ไม่พึ่งยอดสด (ดู _directAdjPair)
+  // ชื่อ field ตรงกับที่ audit marker เขียนอยู่แล้ว (effectiveQty/systemQty) · _scanItemPayload พาขึ้น Cloud เองเพราะวนทุก field
+  if(direct){sd.directAdj=true;sd.effectiveQty=effectiveCnt;sd.systemQty=sys;}
   const hideAuditPdaWh=window.innerWidth<=600&&currentBranch==='WH';
   if(hideAuditPdaWh&&status==='audit')scanListMap.delete(sku);
   else if(scanListMap.has(sku)){
@@ -5934,8 +5964,12 @@ function updateStats(){
     // ของนอกรายการนับที่พนักงานยิงเจอบนชั้นส่วนใหญ่ลงเอยเป็น audit และเภสัชยังต้องไปตรวจของจริง
     // ถ้ากรองออก การ์ดจะน้อยกว่า badge ปุ่ม Audit Verify (updateAuditVerifyCount ไม่กรอง) = ซ่อนงานที่ยังไม่เสร็จ
     if(sd.status==='audit')f++;
-    if(sd.status==='audit'||sd.status==='audit_check'||sd.status==='stock_adjustment'||(sd.auditor&&sd.status==='pass')){auditTotal++;}
-    if(sd.status==='audit_check'||sd.status==='stock_adjustment'||(sd.auditor&&sd.status==='pass')){auditGot++;}
+    // Stock Adj ตรงจากรอบแรก (directAdj) ไม่ผ่านเภสัช → ไม่นับใน sub-progress "เภสัชตรวจแล้ว X/Y"
+    // ไม่งั้นบาร์โชว์ว่าตรวจแล้วทั้งที่ไม่มีใครตรวจ · ยังนับในการ์ด Pass ด้านล่างเหมือน Stock Adj ทุกตัว (p นับ stock_adjustment อยู่แล้ว)
+    if(!sd.directAdj){
+      if(sd.status==='audit'||sd.status==='audit_check'||sd.status==='stock_adjustment'||(sd.auditor&&sd.status==='pass')){auditTotal++;}
+      if(sd.status==='audit_check'||sd.status==='stock_adjustment'||(sd.auditor&&sd.status==='pass')){auditGot++;}
+    }
     // ── Counted/Pass = "ความคืบหน้าของงานนับ" → ต้องตรงกับ Progress จึงใช้ _countableSkus ชุดเดียวกัน ──
     // ⚠️ บรรทัดนี้ต้องอยู่ "ใต้" การนับ audit เสมอ ไม่งั้น Audit จะโดนกรองไปด้วย
     if(!_countableSkus.has(sku))continue;
@@ -6427,7 +6461,7 @@ function saveAuditLogToFirestore(){
   if(_adminMode||!_db||!currentBranch)return;
   const items=[];
   for(const[sku,sd] of state.scanData.entries()){
-    if(sd.initialStatus!=='audit')continue;
+    if(!_wasFirstCountMismatch(sd))continue;   // เดิม initialStatus==='audit' · ตอนนี้รวม Stock Adj ตรงจากรอบแรก (directAdj) เพื่อให้ประวัติ/แท็บผู้ช่วยยังเห็นรายการที่ไม่ตรง
     const si=state.skuMap.get(sku);
     items.push({
       sku,
@@ -6441,7 +6475,10 @@ function saveAuditLogToFirestore(){
       status:sd.status,
       auditor:sd.auditor||'',
       recheckQty:sd.recheckQty!==undefined?sd.recheckQty:null,
-      backorder:!!sd.backorder
+      backorder:!!sd.backorder,
+      // Stock Adj ตรง: พาคู่ตัวเลขที่แช่ไว้ไปด้วย (Firestore ปฏิเสธ undefined ทั้ง document จึงใส่เฉพาะเมื่อมีค่า)
+      // ⚠️ _backfillPharmacyAuditMarkersFromLog ต้องข้ามรายการที่มี directAdj — ไม่งั้นถูกฟื้นเป็น Audit
+      ...(sd.directAdj===true?{directAdj:true,effectiveQty:Number.isFinite(sd.effectiveQty)?sd.effectiveQty:null,systemQty:Number.isFinite(sd.systemQty)?sd.systemQty:null}:{})
     });
   }
   if(!items.length)return;
@@ -7369,7 +7406,8 @@ async function reopenPharmacyAudit(sku){
   if(_blockScanForBranchConfirm())return;
   if(!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อเปิดรีเช็คใหม่','error');return;}
   const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
-  if(!sd||!si||sd.initialStatus!=='audit'||!['pass','stock_adjustment'].includes(sd.status)){beepWarn();toast('รายการนี้เปิดรีเช็คใหม่ไม่ได้','warn');return;}
+  // รับทั้งรายการที่เคยเป็น Audit และ Stock Adj ตรงจากรอบแรก (directAdj — ไม่ผ่าน Audit) — ↺ เป็นทางถอยเดียวของกลุ่มหลัง
+  if(!sd||!si||(sd.initialStatus!=='audit'&&sd.directAdj!==true)||!['pass','stock_adjustment'].includes(sd.status)){beepWarn();toast('รายการนี้เปิดรีเช็คใหม่ไม่ได้','warn');return;}
   const shown=sd.recheckQty!=null?sd.recheckQty:sd.countedQty;
   if(!confirm(`เปิดรีเช็คใหม่: ${sku}\n${si.productName||''}\n\nยอดรีเช็คเดิม ${shown} จะถูกล้าง และรายการกลับไปรอสแกนรีเช็ค\nยืนยันหรือไม่?`))return;
   const at=new Date().toISOString();
@@ -7387,6 +7425,12 @@ async function reopenPharmacyAudit(sku){
   sd.status='audit';sd.auditStatus='pending';sd.auditor='';sd.timestamp=countTs;
   delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;delete sd.recheckSystemQty;delete sd.recheckR01Version;delete sd.backorder;
   delete sd.effectiveQty;delete sd.pharmacyAuditConfirmedAt;
+  // ย้อนแล้วเป็น Audit ปกติ — ฐานที่แช่ไว้หมดหน้าที่ (ตัดสินใหม่ด้วยยอดรีเช็ค · ใบกลับไปใช้กติกาเดิม)
+  // initialStatus ตั้งเองให้ตรงกับ marker ที่เพิ่งเขียน ('audit') ไม่รอ snapshot — ไม่งั้นช่วงสั้นๆ รายการหลุดจาก Audit log/แท็บผู้ช่วย
+  delete sd.directAdj;sd.initialStatus='audit';
+  // ตั้งฟิลด์ที่ marker apply จะตั้งให้ (pharmacyAuditMarkerAt/CountConfirmedAt) ตอนนี้เลย ก่อน flush ด้านล่างจะจับ payload
+  // ไม่งั้น flush เขียน item ด้วยค่าเก่า แล้ว echo ของมันย้อน sd กลับเป็นค่าเก่าหลัง marker apply → marker ถูก apply ซ้ำ (ดู keepDraft ใน _applyPharmacyAuditMarkersToState)
+  sd.pharmacyAuditCountConfirmedAt=at;sd.pharmacyAuditMarkerAt=at;
   sd.manualEditAt=Date.now();
   if(scanListMap.has(sku)){const e=scanListMap.get(sku);e.status='audit';e.totalQty=0;}
   _markSkuDirty(sku);
@@ -7456,15 +7500,18 @@ function renderAuditVerifyTable(){
       const{sku,sd,si}=r;
       const bc=si.barcodes.map(b=>b.barcode).join(', ');
       const bcShort=bc.length>22?bc.slice(0,22)+'…':bc;
-      const recheckVal=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
+      // Stock Adj ตรงจากรอบแรก (สาขายา ไม่ผ่าน Audit): คู่ที่แช่ไว้ตอน Confirm = (นับ + R16 ชดเชย) / ยอดระบบตอนนั้น
+      const dp=isWhAdj?null:_directAdjPair(sd);
+      const recheckVal=dp?dp.cnt:(sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty);
       // แสดงยอดระบบ "ที่ใช้ตัดสินจริง" ไม่ใช่ค่าสด — ไม่งั้น Diff บนจอไม่ตรงกับเหตุผลที่ระบบตัดสิน
-      // สาขายา = freeze ตอนสแกนรีเช็ค · WH = R01 ของวันที่ยืนยันรีเช็ค (ดู _whStockAdjBaseQty)
+      // สาขายา = freeze ตอนสแกนรีเช็ค (ตรง = freeze ตอน Confirm) · WH = R01 ของวันที่ยืนยันรีเช็ค (ดู _whStockAdjBaseQty)
       // ป้ายข้างเลขบอก "ที่มาของเลขหลัก" (ไม่ใช่ยอดสด) — ยอดสดยังดูได้ใน tooltip ตอนวางเมาส์บนเลข
-      const baseSys=isWhAdj?_whStockAdjBaseQty(sku,sd):_recheckBaselineSystemQty(sku,sd);
+      const baseSys=dp?dp.sys:(isWhAdj?_whStockAdjBaseQty(sku,sd):_recheckBaselineSystemQty(sku,sd));
       const liveSys=Number(si.systemQty??0);
       const sysCell=baseSys!==liveSys
-        ?`<span title="ยอดระบบตอนนี้ ${liveSys} — ${isWhAdj?'คิดจากยอด R01 วันที่ยืนยันรีเช็ค':'ตัดสินด้วยยอด ณ เวลาสแกนรีเช็ค'}" style="border-bottom:1px dashed var(--text3);cursor:help;">${baseSys}</span> <span style="font-size:0.68rem;color:var(--text3);">(จากวันที่อัป R01)</span>`
+        ?`<span title="ยอดระบบตอนนี้ ${liveSys} — ${dp?'ยอดระบบ ณ ตอน Confirm รอบแรก':isWhAdj?'คิดจากยอด R01 วันที่ยืนยันรีเช็ค':'ตัดสินด้วยยอด ณ เวลาสแกนรีเช็ค'}" style="border-bottom:1px dashed var(--text3);cursor:help;">${baseSys}</span> <span style="font-size:0.68rem;color:var(--text3);">(จากวันที่อัป R01)</span>`
         :`${baseSys}`;
+      const recheckTitle=dp?` title="นับจริง ${Number(sd.countedQty||0)} + R16 ชดเชย ${dp.cnt-Number(sd.countedQty||0)} = ${dp.cnt}"`:'';
       const diff=recheckVal-baseSys;
       const diffCell=diff<0
         ?`<span style="color:var(--red);font-weight:700;">-${Math.abs(diff)}</span>`
@@ -7476,7 +7523,7 @@ function renderAuditVerifyTable(){
         +`<td class="ptd-bc" title="${bc}">${bcShort}</td>`
         +`<td class="ptd-name">${si.productName}</td>`
         +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;font-weight:700;color:var(--text2);">${sysCell}</td>`
-        +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;font-weight:700;">${recheckVal}</td>`
+        +`<td${recheckTitle} style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;font-weight:700;">${recheckVal}</td>`
         +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${diffCell}</td>`
         +`<td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${sd.firstScanAt||sd.timestamp||'—'}</td>`
         +(canReopen?`<td style="text-align:center;"><button onclick="reopenPharmacyAudit('${sku}')" title="เปิดกลับไปสแกนรีเช็คใหม่" style="border:1px solid rgba(0,114,198,0.4);background:rgba(0,114,198,0.08);color:var(--accent);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">↺ สแกนใหม่</button></td>`:'')
@@ -7658,7 +7705,6 @@ function updateScanInputMode(){
 
 // ─── History Stats ───────────────────────────────────────────────────────────
 let _hsFilter='assistant';
-let _hsUploadData=[];
 let _hsAssistantSel='';
 let _hsFirestoreItems=null; // null=ยังไม่โหลด, []=โหลดแล้วแต่ว่าง, [...]=มีข้อมูล
 let _hsFirestoreLoading=false;
@@ -8072,6 +8118,7 @@ async function loadAuditLogFromFirestore(){
 
 function _renderAssistantRows(tbody,cnt,items){
   const auditBadge=`<span style="color:var(--yellow);font-weight:700;">⚠️ ${_auditTerm()}</span>`;
+  const adjBadge=`<span style="color:var(--red);font-weight:700;">⚠️ Stock Adj</span>`;   // Stock Adj ตรงจากรอบแรก (directAdj) — รายการ Audit เดิมคงป้ายเดิม
   const isWh=currentBranch==='WH';
   tbody.innerHTML=items.map((it,i)=>{
     const loc=isWh?(state.locationMap.get(it.sku)||'—'):'';
@@ -8082,7 +8129,7 @@ function _renderAssistantRows(tbody,cnt,items){
       <td class="ptd-name">${it.productName}</td>
       ${isWh?`<td style="text-align:center;font-size:0.75rem;color:var(--text2);">${loc}</td>`:''}
       <td style="text-align:center;font-weight:700;">${it.countedQty}</td>
-      <td style="text-align:center;">${auditBadge}</td>
+      <td style="text-align:center;">${it.directAdj===true?adjBadge:auditBadge}</td>
       <td style="font-size:0.7rem;color:var(--text3);">${it.timestamp}</td>
       <td style="font-weight:600;color:var(--text2);">${it.scannedBy}</td>
     </tr>`;
@@ -8420,13 +8467,17 @@ function _buildAdjustDocRows(dir){
   for(const[sku,sd] of state.scanData.entries()){
     if(sd.status!=='stock_adjustment')continue;
     const si=state.skuMap.get(sku);if(!si)continue;
+    // สาขายา Stock Adj ตรงจากรอบแรก (ไม่ผ่าน Audit): ใช้คู่ที่แช่ไว้ตอน Confirm — DIFF เดียวกับที่ทำให้เกิดสถานะนี้จริง
+    // ฐานแช่ไว้แล้วไม่มีวันหมดอายุ จึงไม่ผ่านด่านความสด และไม่ขยับเมื่อ R01 วันถัดไปเข้า (ต้องตรงกับ _adjustDocAudit)
+    const direct=wh?null:_directAdjPair(sd);
     let sysQty;
-    if(wh)sysQty=_whStockAdjBaseQty(sku,sd);           // WH: ยอดวัน Recheck (แช่ไว้แล้ว ไม่มีวันหมดอายุ)
+    if(direct)sysQty=direct.sys;
+    else if(wh)sysQty=_whStockAdjBaseQty(sku,sd);      // WH: ยอดวัน Recheck (แช่ไว้แล้ว ไม่มีวันหมดอายุ)
     else{
       sysQty=Number(si.systemQty||0);
       if(!_isAdjustRowFresh(sku,sd,sysQty))continue;   // ยอดนับหมดอายุ → ห้ามส่งเลขนี้เข้าระบบ
     }
-    const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+    const cnt=direct?direct.cnt:(sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0));
     const diff=cnt-sysQty;
     if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
     if(dir==='irps'&&diff<=0)continue;   // IRPS = เกิน (count>system)
@@ -8445,6 +8496,9 @@ function _adjustDocAudit(){
     const si=state.skuMap.get(sku);
     if(!si){noSku.push({sku,name:''});continue;}      // R05.106 ยังไม่โหลด → skuMap ว่าง → ใบว่างทั้งใบ
     const name=si.productName||'';
+    // Stock Adj ตรงจากรอบแรก (สาขายา): ฐานแช่ไว้แล้ว ไม่มีวันหมดอายุ → ไม่เป็น stale · ต้องตรงกับ _buildAdjustDocRows
+    const dp=wh?null:_directAdjPair(sd);
+    if(dp){if(dp.cnt-dp.sys===0)settled.push({sku,name,live:dp.sys,cnt:dp.cnt});continue;}
     const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
     // WH ไม่มีด่านความสด (ฐานแช่ไว้แล้ว) — ต้องตรงกับ _buildAdjustDocRows ทุกเงื่อนไข
     if(wh){const base=_whStockAdjBaseQty(sku,sd);if(cnt-base===0)settled.push({sku,name,live:base,cnt});continue;}
@@ -8634,10 +8688,8 @@ function renderHistoryStatsTable(){
   const thead=document.getElementById('historyStatsThead');
   const tbody=document.getElementById('historyStatsBody');
   const cnt=document.getElementById('historyStatsRowCount');
-  const uploadToolbar=document.getElementById('hsUploadToolbar');
   const assistantToolbar=document.getElementById('hsAssistantToolbar');
   if(!tbody)return;
-  if(uploadToolbar)uploadToolbar.style.display=_hsFilter==='upload'?'flex':'none';
   if(assistantToolbar)assistantToolbar.style.display=_hsFilter==='assistant'?'flex':'none';
   const reportToolbar=document.getElementById('hsReportToolbar');
   if(reportToolbar)reportToolbar.style.display=_hsFilter==='countreport'?'flex':'none';
@@ -8651,10 +8703,10 @@ function renderHistoryStatsTable(){
     // ── รวบรวมจาก local state ก่อน ──
     let localItems=[];
     for(const[sku,sd] of state.scanData.entries()){
-      if(sd.initialStatus!=='audit')continue;
+      if(!_wasFirstCountMismatch(sd))continue;   // รวม Stock Adj ตรงจากรอบแรก (directAdj) — ดู _wasFirstCountMismatch
       const si=state.skuMap.get(sku);if(!si)continue;
       if(_hsAssistantSel&&sd.scannedBy!==_hsAssistantSel)continue;
-      localItems.push({sku,productName:si.productName,barcode:(si.barcodes[0]||{}).barcode||sd.barcode||'—',countedQty:sd.countedQty,status:sd.status,timestamp:sd.firstScanAt||sd.timestamp||'—',scannedBy:sd.scannedBy||'—'});
+      localItems.push({sku,productName:si.productName,barcode:(si.barcodes[0]||{}).barcode||sd.barcode||'—',countedQty:sd.countedQty,status:sd.status,directAdj:sd.directAdj===true,timestamp:sd.firstScanAt||sd.timestamp||'—',scannedBy:sd.scannedBy||'—'});
     }
 
     if(localItems.length){
@@ -8727,8 +8779,9 @@ function renderHistoryStatsTable(){
       const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'—';
       const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
       const unitName=unitInfo?.unitName||'—';
-      const sysQty=isWhS?_whStockAdjBaseQty(sku,sd):si.systemQty;   // WH = R01 ของวันที่ Recheck (ดู _whStockAdjBaseQty)
-      const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
+      const dp=isWhS?null:_directAdjPair(sd);                        // สาขายา Stock Adj ตรงจากรอบแรก = คู่ที่แช่ไว้ตอน Confirm
+      const sysQty=dp?dp.sys:(isWhS?_whStockAdjBaseQty(sku,sd):si.systemQty);   // WH = R01 ของวันที่ Recheck (ดู _whStockAdjBaseQty)
+      const rv=dp?dp.cnt:(sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty);
       const diff=sysQty-rv;
       const dc=diff>0?`<span style="color:var(--red);font-weight:700;">-${diff}</span>`:diff<0?`<span style="color:var(--green);font-weight:700;">+${Math.abs(diff)}</span>`:`<span style="color:var(--green);font-weight:700;">0</span>`;
       const loc=isWhS?(state.locationMap.get(sku)||'—'):'';
@@ -8745,28 +8798,6 @@ function renderHistoryStatsTable(){
       </tr>`;
     }).join('');
     if(cnt)cnt.textContent=`${items.length} รายการ Stock Adj`;
-  }
-  else if(_hsFilter==='upload'){
-    if(thead)thead.innerHTML='<tr><th>#</th><th>SKU</th><th>Product Name</th><th style="text-align:center;">Sys Qty</th><th style="text-align:center;">นับได้ (ไฟล์)</th><th style="text-align:center;">Diff</th></tr>';
-    if(!_hsUploadData.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">กดเลือกไฟล์ใบนับสินค้าด้านบน</td></tr>';if(cnt)cnt.textContent='0 รายการ';return;}
-    let matched=0;
-    const rows=_hsUploadData.map(({sku,qty},i)=>{
-      const si=state.skuMap.get(sku);
-      if(!si)return`<tr><td style="color:var(--text3);font-size:0.75rem;">${i+1}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;">${sku}</td><td colspan="3" style="color:var(--text3);font-size:0.8rem;">ไม่พบในระบบ</td><td>—</td></tr>`;
-      const diff=qty-si.systemQty;
-      if(diff===0)matched++;
-      const dc=diff<0?`<span style="color:var(--red);font-weight:700;">-${Math.abs(diff)}</span>`:diff>0?`<span style="color:var(--green);font-weight:700;">+${diff}</span>`:`<span style="color:var(--green);font-weight:700;">✓ ตรง</span>`;
-      return`<tr>
-        <td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>
-        <td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${sku}</td>
-        <td class="ptd-name">${si.productName}</td>
-        <td style="text-align:center;font-weight:700;">${si.systemQty}</td>
-        <td style="text-align:center;font-weight:700;">${qty}</td>
-        <td style="text-align:center;">${dc}</td>
-      </tr>`;
-    });
-    tbody.innerHTML=rows.join('');
-    if(cnt)cnt.textContent=`${_hsUploadData.length} รายการ · ตรง ${matched} / ไม่ตรง ${_hsUploadData.length-matched}`;
   }
   else if(_hsFilter==='countreport'){
     const rows=_countReportRowsForSelected();
@@ -8900,28 +8931,6 @@ function exportCountReportExcel(){
   toast(`Export รายงานผลลัพธ์การนับ (${_fmtDateDMY(selDate)}) ${rows.length} รายการ สำเร็จ`,'success');
 }
 
-function handleHsUploadFile(e){
-  const file=e.target.files[0];if(!file)return;e.target.value='';
-  parseFile(file,(rows)=>{
-    if(!rows||rows.length<2){toast('ไฟล์ไม่มีข้อมูล','warn');return;}
-    const header=rows[0].map(c=>(c||'').toString().trim().toUpperCase());
-    let skuCol=header.findIndex(h=>h==='SKU'||h.includes('SKU')||h.includes('รหัส'));
-    let qtyCol=header.findIndex(h=>['QTY','จำนวน','นับได้','นับ','QUANTITY'].some(k=>h.includes(k)));
-    if(skuCol===-1)skuCol=0;if(qtyCol===-1)qtyCol=1;
-    _hsUploadData=[];
-    for(let i=1;i<rows.length;i++){
-      const row=rows[i];
-      const sku=(row[skuCol]||'').toString().trim();
-      const qty=parseFloat((row[qtyCol]||'').toString().trim());
-      if(sku&&!isNaN(qty))_hsUploadData.push({sku,qty});
-    }
-    if(!_hsUploadData.length){toast('ไม่พบข้อมูล SKU/จำนวน ในไฟล์','warn');return;}
-    const info=document.getElementById('hsUploadInfo');if(info)info.textContent=`โหลดแล้ว: ${_hsUploadData.length} รายการ`;
-    toast(`โหลดไฟล์สำเร็จ ${_hsUploadData.length} รายการ`,'info');
-    renderHistoryStatsTable();
-  });
-}
-
 function exportHsCountExcel(){
   // Export "นับครั้งแรก" (assistant) or "รีเช็คสินค้า" (pharmacist) tab from History Stats popup
   const isAssistant=_hsFilter==='assistant';
@@ -8935,7 +8944,7 @@ function exportHsCountExcel(){
     // First-count items: initialStatus='audit' from local; fallback to Firestore audit log
     let foundLocal=false;
     for(const[sku,sd] of state.scanData.entries()){
-      if(sd.initialStatus!=='audit')continue;
+      if(!_wasFirstCountMismatch(sd))continue;   // รวม Stock Adj ตรงจากรอบแรก (directAdj) — ดู _wasFirstCountMismatch
       const si=state.skuMap.get(sku);if(!si)continue;
       if(_hsAssistantSel&&sd.scannedBy!==_hsAssistantSel)continue;
       const cnt=sd.rawCountedQty!==undefined?sd.rawCountedQty:sd.countedQty;
@@ -9000,8 +9009,9 @@ function exportStockAdjExcel(){
     const bc=(si.barcodes[0]||{}).barcode||sd.barcode||'';
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
     const unitName=unitInfo?.unitName||'';
-    const sysQty=currentBranch==='WH'?_whStockAdjBaseQty(sku,sd):si.systemQty;   // WH = R01 ของวันที่ Recheck (ดู _whStockAdjBaseQty)
-    const rv=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
+    const dp=currentBranch==='WH'?null:_directAdjPair(sd);                     // สาขายา Stock Adj ตรงจากรอบแรก = คู่ที่แช่ไว้ตอน Confirm
+    const sysQty=dp?dp.sys:(currentBranch==='WH'?_whStockAdjBaseQty(sku,sd):si.systemQty);   // WH = R01 ของวันที่ Recheck (ดู _whStockAdjBaseQty)
+    const rv=dp?dp.cnt:(sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty);
     const diff=rv-sysQty; // ColG - ColF
     if(diff===0){skipZero++;continue;}
     const loc=state.locationMap.get(sku)||'';

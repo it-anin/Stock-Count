@@ -110,14 +110,16 @@ else if(sd.noStock&&effectiveCnt===0&&sys>0){status='stock_adjustment';…}
 | `R01 −2` · ไม่มีรับเข้า · นับ 0 | `0 ≠ −2` | ⚠️ **audit** — ติดลบที่อธิบายไม่ได้ |
 | `R01 −2` · คลังส่ง 5 · นับได้ 1 | `1 − 5 = −4 ≠ −2` | ⚠️ **audit** — ของหาย 2 |
 
+> ⚠️ **29 ก.ย. 2026:** คอลัมน์ผล "audit" ในตารางนี้ = ทางเก่า (WH · สวิตช์ `PHARMACY_DIRECT_STOCK_ADJ` ปิด) — **สาขายาตอนนี้ไม่ตรง = `stock_adjustment` ตรง** (`directAdj` + แช่ `effectiveQty/systemQty`) ดู CLAUDE.md §Status Lifecycle · ผลลัพธ์ pass ไม่เปลี่ยน
+
 - ตัวคุมความปลอดภัยเปลี่ยนจาก "ธง `negSys`" เป็น **"สูตรต้องลงตัวพอดี"** ซึ่งเข้มกว่า เพราะต้องมีหลักฐาน R16 รับเข้ามายืนยัน
 - ⛔ **ห้ามนำ clamp กลับมา** — clamp ทำให้ `sys` เป็น 0 แล้ว "นับ 0" จะ pass เงียบๆ จนต้องมีธง `negSys` มากันอีกชั้น (วงจรเดิมที่เพิ่งถอดออก)
 - `reEvaluateAuditItems` ใช้กฎเดียวกัน (`si.negSys?'audit':…`) ต้องตรงกันเสมอ ไม่งั้นอัพ R16 ใหม่แล้วสถานะแกว่ง
-- ปลายทาง `stock_adjustment` ยังมาถึงได้ผ่าน Audit Verify เมื่อเภสัชยืนยันว่ายอดไม่ตรง
+- ปลายทาง `stock_adjustment` ยังมาถึงได้ผ่าน Audit Verify เมื่อเภสัชยืนยันว่ายอดไม่ตรง (Audit เดิม/↺) · สาขายาไม่ตรงตั้งแต่รอบแรก = `stock_adjustment` ตรงตั้งแต่ 29 ก.ย. 2026
 - ยอดจะลงตัวก็ต่อเมื่อ R16 บันทึกรับเข้า **ก่อนเวลาที่สแกน** (`getInboundQtyBefore`) — ข้อกำหนดเดิมของทุกรายการ ไม่ใช่ของใหม่
 - `_countableSkus` และ `_rawSystemQty()` ยังอ่านจาก `state.r01Data` เหมือนเดิม — ผูกกับแหล่งเดียว ถูกต้องแม้ `skuMap` ยังไม่ถูกสร้าง
-- ทดสอบล็อกไว้: `tests/specs/logic/negsys-pass.spec.js` (ตรึงทั้ง "อธิบายได้ → pass" และ **"อธิบายไม่ได้ → ต้อง audit"**),
-  `scan-behavior.spec.js` (ค่าติดลบไม่ถูก clamp · ทุกสแกนบวกปกติ), `confirm-count.spec.js` (S-NEG ไม่มีรับเข้า → audit)
+- ทดสอบล็อกไว้: `tests/specs/logic/negsys-pass.spec.js` (ตรึงทั้ง "อธิบายได้ → pass" และ **"อธิบายไม่ได้ → ต้องไม่ pass"** — รันใน context ไม่มีสาขา = ทางเก่า `audit`),
+  `scan-behavior.spec.js` (ค่าติดลบไม่ถูก clamp · ทุกสแกนบวกปกติ), `confirm-count.spec.js` (S-NEG ไม่มีรับเข้า → `stock_adjustment` ตรงบนสาขายา) · `pharmacy-direct-adj.spec.js` (ผลของสาขายา)
 
 ## noStock — ไม่มีของจริง ระบบมีสต็อค (สาขายาเท่านั้น, July 2026)
 
@@ -145,11 +147,10 @@ else if(sd.noStock&&effectiveCnt===0&&sys>0){status='stock_adjustment';…}
 - `reEvaluateAuditItems`: rule เดียวกัน — negSys ไม่ตรง → `stock_adjustment` ไม่หลุดกลับเข้า `audit`
 - Diff ในตาราง Stock Adj + เอกสารปรับสต็อก = `countedQty − 0` = ยอดนับจริง (IRPS ของเกิน) เพราะไม่มี `recheckQty`
 - อัพ R01 ใหม่ item เหล่านี้คงสถานะ (flow July 2026: อัพ R01 ไม่รีเซ็ตอะไรใน scanData เลย — ดู "Audit ข้าม R01 Baseline")
-- ศูนย์จริง (systemQty = 0 ใน R01) **ไม่เข้า rule นี้** — ยังผ่าน audit → เภสัช verify ตามปกติ
-  (ยืนยันกับผู้ใช้ ก.ค. 2026: ระบบ 0 แต่สแกนเจอของ = ให้เภสัชรีเช็คก่อนเสมอ ห้ามลัดไป `stock_adjustment` เอง —
-  ปลายทาง stock_adjustment ยังมาถึงได้ผ่าน Audit Verify เมื่อเภสัชยืนยันว่ายอดไม่ตรง)
-  **ส.ค. 2026 ยังจริงอยู่** และตอนนี้เป็นเส้นทางเดียวของ G=0 แล้ว — กฎ "สแกนครั้งแรกนับ 0" ถูกถอดออกจาก G=0
-  จึงยิงครั้งเดียวก็ได้ `countedQty=1` → `audit` ทันที (ปุ่ม 🚫 ยังไม่ขึ้นกับ G=0 เพราะ gate ต้อง `systemQty>0`)
+- ศูนย์จริง (systemQty = 0 ใน R01) **ไม่เข้า rule นี้** — ~~ยังผ่าน audit → เภสัช verify ตามปกติ~~
+  (เดิมยืนยันกับผู้ใช้ ก.ค./ส.ค. 2026: ระบบ 0 แต่สแกนเจอของ = ให้เภสัชรีเช็คก่อนเสมอ ห้ามลัดไป `stock_adjustment` เอง)
+  **⚠️ ถูกแทนที่ 29 ก.ย. 2026 (ผู้ใช้สั่งตัดขั้น Audit ทุกกลุ่มของสาขายา):** G=0 ยิงครั้งเดียว (`countedQty=1`) → `stock_adjustment` ตรง (`directAdj`) → IRPS เพิ่มสต็อกใน ERP ทันที ·
+  ปุ่ม `📦 ค้างส่ง` ใช้ได้เฉพาะรายการ Audit เดิม/ที่ ↺ ย้อนกลับมา (ปุ่ม 🚫 ยังไม่ขึ้นกับ G=0 เพราะ gate ต้อง `systemQty>0`)
 
 ---
 
@@ -272,6 +273,8 @@ if (scanListMap.size > prevSize) {
 (warehouse ไม่มีสิทธิ์ verify — ใช้ช่อง scan หลักแทน)
 
 **Pharmacy Audit Verify — PDA สแกน / Desktop ยืนยัน (July 2026):**
+> ⚠️ 29 ก.ย. 2026: Confirm รอบแรกของสาขายาไม่ผ่าน Audit แล้ว — หัวข้อนี้ใช้กับ **Audit ที่ค้างอยู่ก่อนสลับ + รายการที่ ↺ ย้อนกลับมา** · ห้ามลบโค้ดฝั่งนี้ · รายการที่ไม่ตรงตั้งแต่รอบแรกเป็น `stock_adjustment` + `directAdj` (ไม่มีคิวเภสัช)
+
 - ที่เก็บยอดรีเช็คคือ `sd.recheckQty`/`recheckBy`/`recheckAt` (sync ผ่าน session doc) — `_avMap` เดิมถูก**ลบแล้ว** เพราะอยู่ใน memory ล้วน ยอดจาก PDA จึงไปไม่ถึง Desktop
 - เขียนผ่าน `_addRecheckScanQty(sku,sd,addQty)` ทั้งสองทาง: `processPharmacistAuditScan()` (ช่อง scan หลัก) และ `handleAuditVerifyScan()` (popup) — ตั้ง `manualEditAt` ทุกครั้ง
 - `getPharmacistAuditPendingMap()` อ่านจาก `state.scanData` (`status==='audit' && recheckQty != null && !auditor && qty>0`) **ห้ามกลับไปอ่าน `scanListMap.totalQty`** — ค่านั้นเป็น `countedQty` รอบแรกในสาขายา
@@ -332,7 +335,8 @@ if (scanListMap.size > prevSize) {
 **ปุ่ม ↺ เปิดรีเช็คใหม่ (`reopenPharmacyAudit`)** — เภสัช + Desktop (`!_isPdaApp()`) + ออนไลน์ เท่านั้น: ย้อน `pass`/`stock_adjustment` กลับเป็น `audit` ล้างยอดรีเช็คให้สแกนใหม่
 - ต้องเขียน marker **ก่อน** แก้ local (authoritative)
 - marker พก `reopenedAt` → `_writePharmacyAuditMarkers` มี override ให้ชนะ guard "final ชนะ audit เสมอ" (ไม่งั้นปุ่มไม่ทำงาน snapshot ดึงผลเดิมกลับ) + กัน final ที่มาช้ากว่า reopen ทับ
-- `keepDraft` ใน `_applyPharmacyAuditMarkersToState` ต้องข้ามเมื่อ `marker.reopenedAt` ไม่งั้นยอดรีเช็คเดิมเด้งกลับ
+- `keepDraft` ใน `_applyPharmacyAuditMarkersToState` ต้องข้ามเมื่อ `marker.reopenedAt` ไม่งั้นยอดรีเช็คเดิมเด้งกลับ — **ยกเว้นยอดที่ `recheckAt` ใหม่กว่า `reopenedAt`** (กรอกหลัง ↺ = ยอดใหม่ ต้องคงไว้ · 29 ก.ย. 2026)
+- ⚠️ **ยอดที่กรอกหลัง ↺ เคยหายเงียบๆ (แก้ 29 ก.ย. 2026 — 2 ชั้น ห้ามถอด):** flush ตอนกด ↺ จับ payload ก่อน marker snapshot apply → cloud มี `pharmacyAuditMarkerAt` เก่า → echo ย้อน `sd` → session snapshot apply marker ซ้ำ → reopen marker ลบยอดที่เพิ่งกรอก · (ก) `reopenPharmacyAudit` ตั้ง `pharmacyAuditMarkerAt`/`pharmacyAuditCountConfirmedAt`=`at` เองก่อน `_markSkuDirty` · (ข) `keepDraft` เทียบ `recheckAt` กับ `reopenedAt` ผ่าน `_auditTimeMs` (ms — ห้ามเทียบสตริง) · เทส `reopen-marker-draft.spec.js` (logic) + `pharmacy-reopen-recheck.spec.js` (e2e)
 
 **อัพ R01 (สาขายา) ทำอะไร:** `_clearR16ForNewBaseline()` (ล้าง R16 maps + `r16Loaded=false` + ล็อค Confirm) + `syncR16MetaToFirestore()` · เครื่องอื่นล้าง R16 ตามผ่าน `_applyR01BaselineUpdate` (จุด adopt R16 จาก session doc gate `s.r16Loaded===true` — ล้างเองไม่ได้ ต้องพ่วง baseline adoption) · `syncToFirestore` serialize `r16Obj/r16InbObj/r16_103Obj` **หลัง** merge/baseline adoption (ห้ามย้ายกลับขึ้นก่อน fetch — laggard จะพา maps เก่าขึ้น cloud)
 

@@ -180,15 +180,15 @@
             <p>ระบบเทียบให้อัตโนมัติทีละตัว: จำนวนที่นับได้ (+ ที่ขายไป) กับตัวเลขในระบบ</p>
             <ul>
               <li>ตรงกัน → <span class="b b-green">✅ ผ่าน</span> จบเลย</li>
-              <li>ไม่ตรง → <span class="b b-yellow">⚠️ Audit</span> เข้าคิวให้เภสัชตรวจซ้ำ</li>
+              <li>ไม่ตรง → <span class="b b-red">🔴 ปรับสต็อก</span> ทันที ระบบออกเอกสารปรับยอดให้ (ขาด/เกิน) — <strong>ไม่ผ่านขั้น Audit แล้ว</strong> จึงต้องสแกนให้ครบทุกชั้นก่อนกด Confirm</li>
             </ul>
           </div>
         </li>
         <li class="step">
           <div class="step-n">4</div>
           <div class="step-c">
-            <strong>เภสัชตรวจซ้ำ (Audit Verify)</strong>
-            <p>เภสัชเดินไปนับตัวที่ไม่ตรง<strong>ด้วยตัวเอง</strong>อีกรอบด้วย PDA แล้วกลับมากดยืนยันที่<strong>คอมพิวเตอร์</strong></p>
+            <strong>เภสัชตรวจซ้ำ (Audit Verify) — เฉพาะรายการ Audit ที่ค้างอยู่เดิม</strong>
+            <p>รายการที่ไม่ตรงหลัง Confirm ใหม่ <strong>ไม่ขึ้น Audit อีกแล้ว</strong> · ที่ค้างจากก่อนหน้า เภสัชเดินไปนับตัวที่ไม่ตรง<strong>ด้วยตัวเอง</strong>อีกรอบด้วย PDA แล้วกลับมากดยืนยันที่<strong>คอมพิวเตอร์</strong></p>
             <ul>
               <li>รอบนี้ตรง → <span class="b b-green">✅ ผ่าน</span> (รอบแรกอาจนับพลาด)</li>
               <li>ยังไม่ตรง → <span class="b b-red">🔴 ปรับสต็อก</span> ระบบออกเอกสารปรับยอดให้ (ขาด/เกิน)</li>
@@ -404,7 +404,7 @@
             (ช่องนี้รับเฉพาะเลข 0 แม้เป็นของราคาสูงที่ปกติต้องสแกนทีละชิ้น)<br>
             — <strong>มีของบนชั้น:</strong> สแกนตามจำนวนที่มีจริง — <strong>สแกนกี่ครั้งนับเท่านั้น</strong> (มีของ 3 ชิ้น = สแกน 3 ครั้ง)<br>
             — ⛔ <strong>อย่าสแกนป้ายชั้นวางเพื่อบันทึก 0</strong> — ระบบบวก 1 ทุกครั้งที่สแกน ไม่มีครั้งไหนที่ไม่นับ<br>
-            — รายการที่นับได้ไม่ตรงกับระบบจะขึ้น <span class="b b-yellow">⚠️ Audit</span> ให้เภสัชตรวจซ้ำตามปกติ
+            — รายการที่นับได้ไม่ตรงกับระบบจะขึ้น <span class="b b-red">🔴 ปรับสต็อก</span> ทันทีหลัง Confirm (ไม่มีเภสัชตรวจซ้ำ) — ถ้ามีของอยู่จริงให้สแกนให้ครบก่อน Confirm
           </div>
         </div>
 
@@ -465,13 +465,13 @@
                   <span class="flow-arr">&nbsp;|&nbsp;</span>
                   <div class="flow-box">จำนวนไม่ตรง</div>
                   <span class="flow-arr">→</span>
-                  <div class="flow-box yellow">⚠️ Audit</div>
+                  <div class="flow-box red">🔴 ปรับสต็อก</div>
                 </div>
               </div>
 
               <div class="tip" style="margin-top:12px">
                 <span class="ci">✅</span>
-                <span>ถ้าไม่มีสินค้าขึ้น Audit เลย — นับถูกทุกตัว จบขั้นตอน ไม่ต้องทำอะไรเพิ่ม</span>
+                <span>ถ้าไม่มีสินค้าขึ้น ปรับสต็อก เลย — นับถูกทุกตัว จบขั้นตอน ไม่ต้องทำอะไรเพิ่ม · <strong>Confirm แล้วสแกนซ้ำไม่ได้</strong> (ถ้านับไม่ครบ ให้เภสัชกด ↺ สแกนใหม่ ในหน้า Audit Verify แท็บ Stock Adj)</span>
               </div>
             </div>
           </li>
@@ -486,7 +486,7 @@
       <div class="phase-num yellow">4</div>
       <div class="phase-info">
         <h2>ตรวจสอบสินค้าที่ไม่ตรง (Audit)</h2>
-        <p>เภสัชทำขั้นตอนนี้ — ตรวจสอบเฉพาะรายการที่ขึ้น Audit เท่านั้น</p>
+        <p>เภสัชทำขั้นตอนนี้ — ตรวจสอบเฉพาะรายการที่ขึ้น Audit ค้างอยู่จากก่อนหน้า และรายการที่กด ↺ สแกนใหม่ (Confirm ใหม่ไม่ขึ้น Audit แล้ว)</p>
       </div>
     </div>
     <div class="phase-body">
@@ -671,8 +671,8 @@
         <tbody>
           <tr><td><span class="b b-blue">⏳ รอยืนยัน</span></td><td>สแกนแล้ว รอเภสัชกด Confirm</td><td>รอ — ไม่ต้องทำอะไร</td></tr>
           <tr><td><span class="b b-green">✅ ผ่าน</span></td><td>จำนวนตรง เสร็จสิ้น</td><td>ไม่ต้องทำอะไร</td></tr>
-          <tr><td><span class="b b-yellow">⚠️ Audit</span></td><td>จำนวนไม่ตรง รอเภสัชตรวจ</td><td>เภสัชต้องเปิด Audit Verify แล้วสแกน</td></tr>
-          <tr><td><span class="b b-red">🔴 ปรับสต็อก</span></td><td>ตรวจแล้ว ยืนยันว่าไม่ตรง</td><td>แจ้งฝ่ายที่เกี่ยวข้องปรับยอดในระบบ</td></tr>
+          <tr><td><span class="b b-yellow">⚠️ Audit</span></td><td>รายการเดิมที่ค้างอยู่ — จำนวนไม่ตรง รอเภสัชตรวจ</td><td>เภสัชต้องเปิด Audit Verify แล้วสแกน</td></tr>
+          <tr><td><span class="b b-red">🔴 ปรับสต็อก</span></td><td>จำนวนไม่ตรงหลัง Confirm (หรือเภสัชตรวจแล้วยืนยันว่าไม่ตรง)</td><td>แจ้งฝ่ายที่เกี่ยวข้องปรับยอดในระบบ · ถ้านับไม่ครบ ให้เภสัชกด ↺ สแกนใหม่</td></tr>
           <tr><td><span class="b" style="background:#fff3e0;color:#d4620a;border:1px solid rgba(212,98,10,.3);">🟠 ไม่พบในระบบ</span></td><td>Barcode ไม่มีในระบบ</td><td>แจ้งเภสัชตรวจสอบ</td></tr>
         </tbody>
       </table>
@@ -681,7 +681,7 @@
       <table class="t" style="margin-bottom:22px">
         <thead><tr><th>ปุ่ม</th><th>ใครกด</th><th>ทำอะไร</th></tr></thead>
         <tbody>
-          <tr><td><strong>✔ Confirm</strong></td><td>เภสัช (Desktop)</td><td>ตรวจเทียบจำนวน แบ่งสถานะ ผ่าน / Audit</td></tr>
+          <tr><td><strong>✔ Confirm</strong></td><td>เภสัช (Desktop)</td><td>ตรวจเทียบจำนวน แบ่งสถานะ ผ่าน / ปรับสต็อก</td></tr>
           <tr><td><strong>🔍 Audit Verify</strong></td><td>เภสัช</td><td>เปิดหน้าตรวจสอบสินค้า Audit</td></tr>
           <tr><td><strong>✓ ยืนยัน Audit</strong></td><td>เภสัช (Desktop)</td><td>ยืนยันผลการตรวจสอบสินค้าที่สแกนรีเช็คแล้ว — กดจาก PDA ไม่ได้</td></tr>
           <tr><td><strong>☁️ Cloud</strong></td><td>ทุกคน</td><td>ดึงข้อมูลล่าสุดจากระบบกลาง</td></tr>
