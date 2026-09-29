@@ -127,6 +127,8 @@ effectiveQty = countedQty + soldQty + r16103Qty - inboundQty
 
 - `soldQty` มาจาก R16.104 ที่เกิดก่อน/ตรงเวลาสแกน
 - `inboundQty` มาจากรายการรับเข้าที่เกิดก่อน/ตรงเวลาสแกน
+  - **SRC: OTFI/OTFB ที่ Col A (`SYSWAREHOUSEID`) = 0 คือคลังชากค้อโอนออก → ข้าม ไม่ใช่รับเข้าหน้าร้าน** (`isSrcOtfiSkip` · 29 ก.ย. 2026)
+    เดิม OTFI ถูกหักเป็นรับเข้า ⇒ ของที่นับตรงติด audit/Stock Adj (28 ก.ย. โดน 14/16 รายการ เช่น 900202) · ⛔ ห้ามขยายไป KKL/SSS โดยไม่มีไฟล์ยืนยัน (Col A=0 ของสองสาขานั้นคือตัวร้านเอง) · เทส `r16-src-otfi.spec.js` · รายละเอียด SKILL-data-files §R16.104
 - `r16103Qty` ใช้กับ WH สำหรับของรับเข้าแต่ยังไม่ขึ้นชั้น
 - `effectiveQty === systemQty` → `pass`
 - สาขายา `noStock` ที่เข้าเงื่อนไข → `stock_adjustment`

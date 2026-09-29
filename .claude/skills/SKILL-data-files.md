@@ -146,18 +146,29 @@ Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SS
 | Col C prefix | ประเภท | ผลต่อ effectiveCnt | WH |
 |---|---|---|---|
 | ORCM, OCTM | ยอดขาย | **บวกกลับ** → `r16SalesMap` | **ข้าม** |
-| OTFB, ORTS | รับเข้าคลัง | **หักออก** → `r16InboundMap`. **SRC เท่านั้น:** OTFB ใช้ Col A เหมือน OTFI — Col A=`0`/ว่าง (คลังส่ง) → **ข้าม**; Col A=`1` (สาขาส่ง) → **บวกกลับ**. KKL/SSS: OTFB ทุกแถวเป็น inbound ตามปกติ | ใช้ |
+| OTFB, ORTS | รับเข้าคลัง | **หักออก** → `r16InboundMap`. **SRC เท่านั้น:** OTFB ใช้ Col A — Col A=`0`/ว่าง (คลังส่ง) → **ข้าม**; Col A=`1` (สาขาส่ง) → **บวกกลับ**. KKL/SSS: OTFB ทุกแถวเป็น inbound ตามปกติ | ใช้ |
 | OTFI | ดูด้านล่าง | branch-aware | ดูด้านล่าง |
 
-⚠️ **SRC ("อนิน สาขาแยกชากค้อ")** สาขา+คลังรวมกันใน POS แยกไม่ได้ → ต้องใช้ Col A บอกทิศของ OTFB เหมือน OTFI (`isSrcOtfb` ใน `loadR16`, ตัวแปร `R16_INBOUND_PREFIXES`/`R16_OUTBOUND_PREFIXES`) สาขาอื่น (KKL/SSS) ไม่มี carve-out นี้
+⚠️ **SRC ("อนิน สาขาแยกชากค้อ")** สาขา+คลังอยู่ `SYSBRANCHID` เดียวกัน (`0`) แต่**แยกได้ด้วย Col A = `SYSWAREHOUSEID`**: `0` = Warehouse (คลังชากค้อ) · `1` = Front Store (= SRC · ตรงกับ Allstock Col B) → OTFB **และ OTFI** ใช้ Col A (`isSrcOtfb` / `isSrcOtfiSkip` ใน `loadR16`) สาขาอื่น (KKL/SSS) ไม่มี carve-out นี้
 
-**OTFI — ทิศสองทาง (สาขายา SRC/KKL/SSS):**
+**OTFI — ทิศสองทาง (สาขายา KKL/SSS):**
 - Col A (index 0) = `'1'` → สาขา→คลัง (โอนออก) → **บวกกลับ** (`r16SalesMap`)
 - Col A = `'0'` หรือว่าง → คลัง→สาขา (รับเข้า) → **หักออก** (`r16InboundMap`)
 
+**OTFI (SRC · แก้ 29 ก.ย. 2026):**
+- Col A = `'1'` (หน้าร้านโอนออก) → **บวกกลับ** เหมือน KKL/SSS
+- Col A = `'0'`/ว่าง (**คลังชากค้อโอนออก**) → **ข้าม** — ของไม่ได้เข้าหน้าร้าน
+- หลักฐาน (R16 28 ก.ย. 2026 · 1,836 แถว): OTFI ทุกแถวมี `FSTOCKMAIN = -1` = ขาตัดของออกจากคลังตาม Col A (Col A=0 470 แถว/36 ใบ · Col A=1 3 ใบ) · ยอด R01 เช้า (แช่บน item) + การเคลื่อนไหวหน้าร้าน เทียบ Allstock ปลายวัน: **11/12 SKU หน้าร้านไม่ขยับตาม OTFI จากคลัง · 0/12 ขยับ**
+- เดิมหักเป็น "รับเข้า" ⇒ ของที่นับตรงติด audit/Stock Adj · วันที่ 28 ก.ย. โดน **14/16 รายการ** (เช่น 900202: รีเช็ค 2 · ระบบ 2 · OTFI คลัง 1 → `2−1=1≠2`)
+- ⛔ **ห้ามขยายไป KKL/SSS โดยไม่มีไฟล์ของสาขานั้นยืนยัน** — Col A=`0` ของ KKL/SSS คือตัวร้านเอง (Main KKL/Main SSS = `SYSWAREHOUSEID 0`) ความหมายอาจกลับด้าน
+- ยังไม่ยืนยัน: ORCM/OCTM ที่ Col A=0 (ขายจากคลังชากค้อ · 43 แถว/วัน) ยังถูกบวกกลับให้หน้าร้าน — ทดสอบได้แค่ 1 SKU (ผลบอกว่าไม่กระทบหน้าร้าน) ต้องเก็บตัวอย่างเพิ่มก่อนแก้
+- เทส `tests/specs/logic/r16-src-otfi.spec.js` (ตรึงทั้ง "SRC ข้าม" และ **"KKL ต้องเหมือนเดิมเป๊ะ"**)
+
 **OTFI (WH):** ไม่อ่าน Col A → **หักออกเสมอ** (คลังเป็นฝั่งรับโอน)
 
-logic: `isOutbound = !isWhBranch && match(OTFI) && colA==='1'`
+logic: `isOutbound = !isWhBranch && match(OTFI) && colA==='1'` · `isInbound = match(inbound) && !isOutbound && !isSrcOtfbSkip && !isSrcOtfiSkip`
+
+💡 **วินิจฉัยทิศของแถว R16 ให้ดู `FSTOCKMAIN` (col 27: `+1` เข้า · `-1` ออก · `0` ไม่กระทบ) คู่กับ `SYSWAREHOUSEID`** แทนการเดาจากชื่อเอกสาร · ⚠️ ไฟล์ที่ผ่าน Excel มาแล้ว SCANCODE จะกลายเป็น `8.85274E+12` — จับคู่ SKU ยังได้เพราะถอยไปใช้ Col X แต่ควรใช้ไฟล์ export ตรงจาก ProMaxx
 
 **Columns อื่น R16.104:**
 - **Col J (9) = FCANCEL** — `1` = บิลถูกยกเลิก **ข้ามทั้งแถว** · ดูด้านล่าง
