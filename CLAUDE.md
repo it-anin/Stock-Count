@@ -1,6 +1,9 @@
 # CLAUDE.md — Anin Stock Count
 
-อ่าน `AGENTS.md` เป็นไฟล์แรกก่อนเริ่มงานทุกครั้ง แล้วจึงอ่านไฟล์นี้และ skill ที่เกี่ยวข้อง
+**ไฟล์นี้เป็นเอกสารหลักไฟล์เดียวของ repo** — อ่านก่อนเริ่มงานทุกครั้ง แล้วอ่าน skill ที่เกี่ยวข้อง (§Skills)
+`AGENTS.md` ถูกรวมเข้าไฟล์นี้แล้วและลบทิ้ง (29 ก.ย. 2026 · ผู้ใช้สั่ง) — **ห้ามสร้าง `AGENTS.md` กลับ** ของที่เคยอยู่ที่นั่นให้เขียนที่นี่หรือใน skill
+
+ก่อนแก้/สรุปสาเหตุ: ตรวจ `git status --short` + branch + commit ล่าสุด (**ห้ามถือว่า working tree สะอาด** — มักมีงานค้างของ session อื่น) และอ่านโค้ดจริง + ประวัติ commit ที่เกี่ยวข้อง ห้ามอาศัยชื่อฟังก์ชันหรือเอกสารอย่างเดียว
 
 Single-file PWA (`index.html`, ~8,950 บรรทัดรวม HTML/CSS/JS) + Android WebView wrapper (`android-app/`).
 No build system. No framework.
@@ -16,7 +19,7 @@ No build system. No framework.
 | Firebase | **แผน Blaze** (ไม่มี hard-stop แล้ว) | Console → Billing |
 | `firestore.rules` | Publish รุ่น `confirm_ops` แล้ว | snippet ในหัวไฟล์ `firestore.rules` |
 | composite index `countResetAt`+`status` | มีแล้ว | snippet ใน §Automated Tests |
-| auto-r01 | **รันจริงทุกเช้าครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` (ยืนยัน 9 ก.ย. 2026: `r01UploadedAt` = `08:10 น. 09/09/2026` ทั้ง 4 สาขา ตรงกับเวลาที่ตั้ง Task ไว้ · เคยเห็นรัน ~09:36 มาก่อน = รอบรันชดเชยจาก `-StartWhenAvailable`) · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
+| auto-r01 | **รันจริงทุกเช้าครบ 4 สาขา** บนเครื่อง `BIGYAMAINPC` (ยืนยัน 9 ก.ย. 2026: `r01UploadedAt` = `08:10 น. 09/09/2026` ทั้ง 4 สาขา ตรงกับเวลาที่ตั้ง Task ไว้ · เคยเห็นรัน ~09:36 มาก่อน = รอบรันชดเชยจาก `-StartWhenAvailable`) · ⏳ **ขั้นส่งออก (28 ก.ย. 2026) มีใน repo แต่ยังไม่ได้วางบนเครื่องจริง**: รุ่นใหม่สั่ง `AutoR01Export.exe` (`auto-r01/bot-export/` = สำเนาบอท `it-anin/bot-export` ที่ตัด Supabase ออก) ส่งออก `Allstock.CSV` ใหม่ก่อน แล้วอัป Firestore อย่างเดียว · Task ต้องย้ายไป**ก่อน 08:00** ไม่ทับตัววน `SeniorsoftExport.exe` (08:00–20:50) และ `BOT05106` — ต้องวาง exe (build เอง ไม่อยู่ใน git) + `.env` (รหัส ProMaxx · repo PUBLIC ห้ามเข้า git) + สคริปต์ แล้วลงทะเบียน Task ใหม่ตาม `auto-r01/README.md` §ขั้น export / §ตั้งเวลา (ตรวจ: `Select-String -Path auto_r01_import.py -Pattern "def run_export_step" -Quiet`) · 29 ก.ย. 07:28 อัปจริงครั้งแรกด้วยขั้นส่งออก**จากเครื่องพัฒนา BIG-IT** (ผู้ใช้สั่ง — ไม่ใช่บอทบน BIGYAMAINPC) · ⚠️ ก่อนหน้านั้น WH/SSS ค้างที่ 26 ก.ย. = บอทบน BIGYAMAINPC น่าจะไม่ได้เขียนตั้งแต่ 27 ก.ย. (ยังไม่ได้ดู log บนเครื่องนั้น — ดู `auto-r01/TODO-safe-enable.md`) · ⚠️ **เครื่องนั้นไม่ใช่ git clone — ก๊อปไฟล์ไปวางเฉยๆ** ⇒ แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง (`git pull` ที่นั่นไม่มีผล) และ**ต้องตรวจเวอร์ชันก่อนรันเสมอ** เพราะสคริปต์รุ่นก่อน 28 ก.ย. ไม่ตรวจ flag แปลกปลอม ตัวเก่าจะเมิน flag ใหม่แล้วเดินเข้าโหมดปกติซึ่งเขียนจริงทันที — วิธีอัปเดต/ตรวจอยู่ใน `auto-r01/README.md` §ติดตั้งบนเครื่องอื่น | `{branch}_r01.r01UploadedAt` ต้องเป็นเช้าวันนี้ |
 | auto-r05 | **ใช้งานจริงแล้ว 9 ก.ย. 2026** — Task `AutoR05Import` 09:00 บน `BIGYAMAINPC` (โฟลเดอร์ `C:\Users\AninMainPC\Desktop\auto-r05` · Python 3.13) เขียนครั้งแรกสำเร็จ 11:33 น. `global_r05` 10,857 → **10,864 บาร์โค้ด** · ⚠️ **เครื่องนั้นไม่ใช่ git clone เหมือน auto-r01** ต้องก๊อปไฟล์ไปวางเองทุกครั้ง · ตัวป้อนไฟล์คือ Task ชื่อ **`BOT05106`** (ไม่ใช่ `ProMaxxReportBot` ตามที่เอกสารของโปรเจกต์นั้นยกตัวอย่างไว้) เขียนไฟล์เสร็จ ~07:55 · ⏳ **สคริปต์บนเครื่องนั้นยังเป็นรุ่นก่อนมี `checked_at` (14 ก.ย. 2026)** ต้องเอารุ่นใหม่ไปวาง ไม่งั้นการ์ดขึ้นเตือนทั้งที่บอทรันปกติ (ตรวจ: `Select-String -Path auto_r05_import.py -Pattern "STATUS_DOC_ID" -Quiet`) | **`global_r05_status.checked_at` ต้องเป็นวันนี้** (ตัวชี้ขาดตัวใหม่) · `global_r05.updated_at` ค้างหลายวันได้ตามปกติ · แยก "ไม่เปลี่ยนจริง" ออกจาก "บอทพัง" ใน 1 บรรทัด: `Get-ScheduledTask -TaskName "AutoR05Import" \| Get-ScheduledTaskInfo` → `LastTaskResult` **0** = ปกติ · **4** = ตกด่าน |
 | ธง `nc` บน `{branch}_r01` | **หมวด DELETE ถูกถอดธงแล้วครบ 4 สาขา (8 ก.ย. 16:57 ผ่าน `--resync-nc`)** ⇒ ของที่ยังมียอด 745 รายการเข้า Progress แล้ว · ⏳ **ธงชนิด `nc:2` ยังไม่ขึ้น cloud — ยืนยัน 9 ก.ย. ว่ายังเป็น 0 ทั้ง 4 สาขา** (SRC `nc:1`=68 · KKL 35 · SSS 54 · WH 143 · `nc:2`=0 ทุกสาขา) บอทรันเช้านี้แล้วแต่ยังใช้ `auto_r01_import.py` **รุ่นเก่า** ⇒ **ยังต้องเอาไฟล์ไปวางที่ `BIGYAMAINPC` ด้วยมือ** (ตรวจด้วย `Select-String -Path auto_r01_import.py -Pattern "STOCK_ONLY" -Quiet` ต้องได้ `True`) · ระหว่างนี้หมวด DELETE ถูกมองเป็นหมวดปกติ ซึ่งให้ผลเท่ากันเพราะไม่มีตัวไหนอยู่ใน PBM | `state.r01Data.filter(r=>r.nc===1).length` (หมวด `11.`) · `r.nc===2` (หมวด DELETE) |
 | auto-adj (LOT/ราคา ใบปรับปรุง → Supabase) | **✅ ใช้งานจริงบน `BIGYAMAINPC` แล้ว 14 ก.ย. 2026** — Task `AutoAdjImport` (โฟลเดอร์ `C:\Users\AninMainPC\Desktop\auto-adj` · Python 3.13) · เขียนสำเร็จ 13:50 น.: `adj_r14_lots` = **35,322 คู่ SKU+LOT · 5,139 SKU** (จาก `ADJ_R14.102.CSV` 131,004 แถว) · `adj_r05_prices` = **6,674 SKU มีราคาครบ** · เว็บ deploy แล้ว · ⚠️ **Task ยังตั้งไว้ 08:15 แต่ไฟล์ export เสร็จ ~18:15 ⇒ รอบเช้าเจอไฟล์เมื่อวานแล้วปฏิเสธทุกวัน (exit 4)** ต้องเลื่อนเป็นเย็น (`Set-ScheduledTask ... -Trigger (New-ScheduledTaskTrigger -Daily -At "19:00")`) · ⚠️ เครื่องนั้นไม่ใช่ git clone เหมือน auto-r01/r05 ต้องก๊อปไฟล์ไปวางเอง · service key อ่านจาก env → `.env` ข้างสคริปต์ → `.env` ในโฟลเดอร์ CSV (ลำดับ 2 ชนะ 3 เสมอ — ไฟล์ผิดที่วางไว้ข้างสคริปต์จะบังของที่ถูก) · หัวคอลัมน์ R14.102 ยืนยันกับไฟล์จริงแล้ว (คอลัมน์ที่ 1 ชื่อ `EXPIREDATE` ไม่ใช่ `CF_EXPIREDATE_TEXT` ที่อยู่คอลัมน์ที่ 2 — `index.html` อ่านคอลัมน์ที่ 1 มาตลอด **ห้ามย้ายข้างเดียว**) · ⛔ **ไฟล์ราคาต้องชื่อ `ADJ_R05105.CSV` (มีคำนำหน้า) ห้ามใช้ `R05.105.CSV` ล้วน** — `auto-r05` (**ห้ามแก้ ทำงานดีอยู่แล้ว**) ค้นด้วย `R05*.CSV` ซึ่งกินชื่อล้วนไปด้วย · ห้ามต่อวันที่ท้ายชื่อ (วันที่บางวันมีเลข 105/106 ปน) | `adj_meta.checked_at` ต้องเป็นวันนี้ · การ์ดในป็อปอัพไม่มี `⚠️ บอทยังไม่ได้ตรวจวันนี้` |
@@ -49,7 +52,7 @@ No build system. No framework.
 
 ## ⚠️ กฎ 1 — ห้ามแก้ scan-related โดยไม่แจ้ง
 
-ฟังก์ชัน / logic ต่อไปนี้ถือเป็น **scan-related** — ต้องอธิบาย change + impact ให้ user approve ก่อนทุกครั้ง:
+ฟังก์ชัน / logic ต่อไปนี้ถือเป็น **scan-related** — ต้องอธิบาย change + impact + test plan ให้ user approve ก่อนทุกครั้ง:
 
 `receiveBarcode`, `handleScanInput`, `handleScanKey`, `processScan`, `processPharmacistAuditScan`, `submitScanManual`,
 `handleBarcode`, `parseScanLine`, `drainQueue`, `scanQueue`,
@@ -62,7 +65,12 @@ No build system. No framework.
 `_confirmWhCountItems`, `confirmCountByStaff`, `confirmRecheckByStaff`, WH Count/Recheck inbox + confirmation listeners,
 branch confirm lock (`_acquireBranchConfirmLock`, `_restampBranchConfirmLock`, `_releaseBranchConfirmLock`, lock listener และ scan guards),
 `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`,
-time gates ใน scan, role check ใน `rebuildScanListMap`
+time gates ใน scan, role check ใน `rebuildScanListMap`,
+`_confirmPharmacyAuditBatched`, `_sameBranchRecheck`, `_addRecheckScanQty`, `getPharmacistAuditPendingMap`, session/inbox/marker listeners + restore/backfill,
+**WH workflow v2 ทุกจุด:** `confirm_ops`/`results` reader-listener · prepare/commit/materialize/recovery · legacy dual-read · migration/cleanup,
+**schema v2:** `getScanItemsRef`, `_markSkuDirty`, `_flushDirtySkus`, `_writeScanningItem`, `_scanItemPayload`, `_scanItemToLocal`, `_scanItemFingerprint`, `_scanItemLastQty`,
+`_reconcileScanItems`, `startScanItemsListener`, `_applyScanItemChange`, `_applyScanItemRemoved`, `_applyCloudSessionMeta`, `_loadScanItemsFromCloud`,
+`_deleteScanItemsForEpoch`, `_deleteScanItemsNotInEpoch`, `_applyConfirmItemsToState`, `_writeConfirmedItems`, `_syncSessionMetaToFirestore`, `_schemaVersion`, constant `SCAN_ITEM_*`
 
 **เหตุผล:** scan เป็น critical path มี state + debounce + Firestore sync + listener ซ้อนกันหลายชั้น
 debug บน PDA ยาก (ไม่มี native console) — cascade bug เคยเกิดแล้ว (June 2026, commit 58d9d2f→90f4bb8→6fefac9)
@@ -102,14 +110,30 @@ APK เป็นแค่ WebView wrapper — แก้ `index.html` → Vercel 
 - generic `audit` ที่ไม่มี `auditor` ห้ามทับ `pass`/`stock_adjustment` ที่ Supervisor ยืนยันแล้ว
 - ห้าม simplify `_applyCloudScanData()`/`syncToFirestore()` หรือเปลี่ยน merge order โดยไม่ทดสอบ stale snapshot, delayed PDA write, offline และสอง Desktop พร้อมกัน
 - Pharmacy Confirm ต้องทำบน Desktop ผ่าน branch lock + batch processing PDA ห้ามเรียก Confirm โดยตรง
+- ห้าม Firestore delete แบบ fire-and-forget ใน confirmation flow ที่ต้อง atomic · R01/R16 version ไม่ตรงหรือเครื่องที่ Confirm ออฟไลน์ = abort ทั้งชุด ห้ามเปลี่ยนสถานะบางส่วน
+
+---
+
+## ⚠️ กฎ 4 — ไฟล์ห้ามแตะ + Git safety
+
+**ห้ามแตะถ้างานไม่ได้ระบุตรงๆ:**
+- `android-app/app/stockcount.keystore` — ห้ามแก้/แทนที่/แสดงเนื้อหา/เผยแพร่ข้อมูล signing
+- `libs/**` (vendored/minified) · `vercel.json` (deploy headers — ห้ามรวม dirty change ที่ไม่เกี่ยว) · `api/ip.js` (ห้ามเปลี่ยน contract โดยไม่ตรวจ caller)
+- `firestore.rules` — ห้ามเปลี่ยนสิทธิ์เงียบๆ แก้แล้วต้องแจ้งขั้นตอน Publish · ถ้า runtime เพิ่ม subcollection ใหม่ต้อง Publish **ก่อน** deploy เว็บ ไม่งั้นทุกเครื่องได้ `permission-denied`
+- sample CSV, backup, `.windsurf/`, `.claude/settings.local.json` และไฟล์ local อื่น — ห้ามลบหรือ commit เว้นแต่ผู้ใช้สั่ง · คู่มือ/HTML ตัวอย่างไม่ใช่ runtime
+- PIN, credential, API secret, keystore material, Supabase service_role key — ห้ามใส่ในเอกสาร/log/คำตอบ (**repo นี้ PUBLIC**)
+
+**Git:**
+- ห้าม `git reset --hard`, `git checkout --` หรือคำสั่งทำลายงานผู้ใช้โดยไม่มีคำสั่งชัดเจน · ห้าม amend/rebase/force-push โดยไม่ได้รับอนุมัติ
+- ห้าม `git add .` ใน dirty worktree — stage เฉพาะไฟล์ของงานนั้น · แสดงรายการไฟล์ก่อน commit
+- ⚠️ stage บางส่วนของไฟล์ที่มีงานอื่นปน: **ห้ามใช้ patch `-U0` + `--unidiff-zero`** (อิงเลขบรรทัดของ working copy → วางผิดที่ · เกิดจริง 29 ก.ย. 2026) · ให้สร้างเนื้อหาจาก `HEAD` แทรกตามข้อความ แล้ว `git hash-object -w` + `git update-index --cacheinfo` และเปิด `git diff --cached` ของไฟล์นั้นดูก่อน commit เสมอ
 
 ---
 
 ## Architecture
 
 ```
-AGENTS.md           ← entrypoint + ข้อห้าม/invariant/bug ledger สำหรับผู้ดูแลและ AI agent
-CLAUDE.md           ← architecture + กฎ critical path (ไฟล์นี้)
+CLAUDE.md           ← เอกสารหลักไฟล์เดียว: กฎ critical path + architecture + ข้อห้าม/invariant/bug ledger (ไฟล์นี้)
 index.html          ← runtime เว็บทั้งหมด (HTML + CSS + JS รวมไฟล์เดียว ~6,600+ บรรทัด)
 sw.js               ← Service Worker (cache-first static, network-first HTML)
 libs/
@@ -118,7 +142,8 @@ libs/
 android-app/        ← WebView wrapper (Kotlin)
 version.json        ← APK self-update manifest
 firestore.rules     ← สำเนา rules; deploy จริงต้อง Publish ผ่าน Firebase Console
-auto-r01/           ← R01 auto import ทุกเช้า 08:10 ครบ 4 branch แยกตาม Col D (Windows Task Scheduler)
+auto-r01/           ← R01 auto import ทุกเช้า (ก่อน 08:00 ตั้งแต่ 28 ก.ย. 2026) ครบ 4 branch แยกตาม Col D (Windows Task Scheduler)
+  bot-export/       ← ซอร์ส AutoR01Export.exe: สำเนาบอท it-anin/bot-export ที่ตัด Supabase ออก — ส่งออก Allstock.CSV รอบเดียวก่อน auto-r01 อัป Firestore
 auto-r05/           ← R05.106 auto import ทุกเช้า ลง `global_r05` (doc กลาง ใช้ร่วมทุกสาขา)
 auto-adj/           ← R14.102 (LOT/EXP) + R05.105 (ราคา Level 4) → Supabase ทุกเช้า ให้ป็อปอัพ 📦 ปรับปรุงสินค้า
 api/ip.js           ← Vercel function สำหรับ login log IP
@@ -168,6 +193,7 @@ state = {
   ⚠️ **ห้ามเก็บ `cat` ให้ทุกแถว** — `{branch}_pm` มีเพดาน 1 MiB เหมือน `global_r05` ที่เคยชนแล้วเงียบ · `syncProductMasterToFirestore()` เตือนที่ ≥ 800 KB และ **ต้อง toast error เมื่อเขียนไม่ผ่าน** (ห้าม catch เงียบ)
 - SKU ที่ถูกกรองออกแต่ยังมีสต็อกใน R01 → จัดเป็น **DEL** ตามกลไกเดิม · ยังสแกน/Confirm/เข้าใบปรับสต็อก และ **ยังนับใน Progress** ผ่านเงื่อนไข `G ≠ 0`
 - อัป PBM ลง **สาขาที่เลือกอยู่ตอนนั้น** เท่านั้น — อัปผิดสาขา = catalog **และตัวหาร Progress** ของสาขานั้นผิดทันทีผ่าน listener · toast แสดงชื่อสาขา + จำนวน A/B/C/REVIEW ไว้กัน (แก้ข้อความต้องแก้ regex ใน `_toastMessageForDevice` คู่กัน)
+  - ขั้นตอนอัปจริง: **อัปทีละสาขา 4 รอบ** (สลับสาขาก่อนทุกครั้ง ตรวจชื่อบนหัวจอ) · คำนวณ Total SKU ที่คาดหวังใน Excel ไว้ก่อน · ตรวจ toast ว่า `A/B/C/REVIEW` ไม่เป็น 0 · **แจ้งหน้างานล่วงหน้า** เพราะตัวหาร Progress ทุกเครื่องเปลี่ยนทันที ไม่งั้นจะถูกรายงานว่า "ระบบพัง"
 
 **`_countableSkus` = "SKU ที่ต้องนับ"** — สร้างใน `_rebuildCountableSkus()` ซึ่ง `rebuildMaps()` เรียกก่อน early-return ของ R05
 
@@ -327,6 +353,13 @@ effectiveQty = countedQty + soldQty + r16103Qty - inboundQty
 - ⚠️ **หลัง deploy ต้องอัปโหลด R16.104 ใหม่ 1 ครั้ง** ถึงจะมีผล — ยอดที่อัปไปแล้วถูกบวกรวมเก็บบน cloud และไม่มีตัวไหนทำให้ chunk เก่าหมดอายุตามรุ่นของ parser
 - ใช้กับ R16.104 อย่างเดียว **ไม่แตะ `loadR16_103`** (ยังไม่ยืนยันว่าไฟล์จริงมีคอลัมน์นี้)
 
+⚠️ **`inboundQty` ของ SRC ไม่รวม OTFI/OTFB ที่ Col A (`SYSWAREHOUSEID`) = 0 (29 ก.ย. 2026 · commit `1feb7a5`)** — SRC อยู่ `SYSBRANCHID` เดียวกับคลังชากค้อ แต่แยกได้ด้วย Col A (0=คลัง · 1=หน้าร้าน) · Col A=0 = คลังโอนออก ของไม่เข้าหน้าร้าน → `isSrcOtfiSkip` ข้าม
+- เดิมหักเป็นรับเข้า ⇒ ของที่นับตรงติด audit/Stock Adj (28 ก.ย. โดน 14/16 รายการ เช่น 900202: `2 − 1 = 1 ≠ 2`)
+- ⛔ **ห้ามขยายไป KKL/SSS โดยไม่มีไฟล์ยืนยัน** — Col A=0 ของสองสาขานั้นคือตัวร้านเอง · ยังไม่ยืนยัน: ORCM/OCTM ที่ Col A=0 (ขายจากคลัง) ยังบวกกลับให้หน้าร้าน · หลักฐาน/เทสอยู่ [[SKILL-data-files]] §R16.104 + `r16-src-otfi.spec.js`
+- ⚠️ **R16 ไม่มีขอบล่างของเวลาในโค้ด** (`get*QtyBefore` กรองแค่ `td <= scanTimestamp`) ⇒ ตัวไฟล์ต้องครอบ **[เวลา export R01 ที่ใช้อยู่ → เวลานับล่าสุด]** เท่านั้น · และ `reEvaluateAuditItems()` ท้าย `loadR16()` รันโดยไม่ดู `r16DateMismatch` (ธงนั้นกั้นแค่ Confirm รอบแรก) — อัป R16 ผิดช่วง = สถานะถูกตัดสินใหม่ทันที
+
+ห้ามแก้เครื่องหมายบวก/ลบ, TRANDATE cutoff, การจัดการค่าติดลบ, เงื่อนไข `noStock` หรือความหมายของ Pass/Audit/Stock Adjustment โดยไม่ได้รับอนุมัติ**พร้อมชุดทดสอบข้อมูลจริง**
+
 WH Recheck รอบสองเปรียบเทียบ `recheckQty` กับ `systemQty` จาก `WH_r01` ล่าสุดโดยตรง ไม่ใช้ local `skuMap` ที่อาจค้าง
 
 ### Roles & Branches
@@ -450,7 +483,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 ### Pharmacy Desktop Confirm
 
 - `_confirmPharmacyBatched()` ต้องออนไลน์และ acquire `{branch}_confirm_lock` ก่อนเริ่ม
-- lock เก็บ token/owner/`countResetAt`/เวลาเริ่ม/หมดอายุ 5 นาที และปลดด้วย token เจ้าของเท่านั้น
+- lock เก็บ token/owner/`countResetAt`/เวลาเริ่ม/หมดอายุ 5 นาที (`BRANCH_CONFIRM_LOCK_MS`) และปลดด้วย token เจ้าของเท่านั้น · แบตช์ละ `BRANCH_CONFIRM_BATCH_SIZE` (25)
 - PDA ออนไลน์ฟัง lock แล้วบล็อก Intent barcode, queue, input และการแก้จำนวนชั่วคราว
 - Desktop รอ PDA sync แล้ว snapshot เฉพาะ `scanning`; คำนวณ batch ละ 25 ผ่าน event loop พร้อม progress
 - ก่อน apply อ่าน server ซ้ำและตรวจ `countResetAt`, R01/R16 version, `countedQty`, `timestamp`, `scannedBy`; เปลี่ยนกลางงาน = abort ทั้งชุด
@@ -462,6 +495,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 
 - เภสัชสแกนรีเช็คบน PDA ได้ แต่กด "✓ ยืนยัน Audit" ได้เฉพาะ Desktop — guard ด้วย `_isPdaApp()` (User-Agent) ไม่อิง viewport
 - ยอดที่สแกนเก็บใน `sd.recheckQty`/`recheckBy`/`recheckAt` (sync ผ่าน session doc) ห้ามกลับไปใช้ map ใน memory ที่ไม่ persist
+- **`recheckQty` ต้องตัดสินเทียบกับ `recheckSystemQty` (ยอดระบบที่ freeze ตอนสแกน) เสมอ ห้ามใช้ `si.systemQty` สด** — ทุกจุดที่ตั้ง `recheckQty` ต้องเรียก `_freezeRecheckBaseline()` และทุกจุดที่ตัดสินต้องใช้ `_recheckBaselineSystemQty()` (ข้อยกเว้นเดียวคือใบปรับปรุง ดูด้านล่าง)
 - เภสัชแก้จำนวนรีเช็คในแถว RESULT ได้ทั้ง PDA + Desktop ผ่าน `updatePharmacyRecheckQty()` (ก.ค. 2026) — เขียนทับแบบ SET + ตั้ง `manualEditAt` + `_markSkuDirty` เหมือนเส้นทางสแกน ห้ามเรียก inbox `WH_rechecks`; **รับยอด 0 ได้ (ส.ค. 2026) = "ตรวจแล้วไม่มีของ"** ปฏิเสธเฉพาะค่าติดลบ · ล้างค่ากลับเป็น "ยังไม่รีเช็ค" ใช้ ✕ รีเซ็ตรีเช็ค · ไม่ใช้กฎราคากับช่องนี้ (กฎราคาครอบเฉพาะ Count รอบแรก)
 - `getPharmacistAuditPendingMap()` ต้องอ่านจาก `state.scanData` เท่านั้น — `scanListMap.totalQty` เป็น countedQty รอบแรกในสาขายา ใช้ตัดสินไม่ได้
 - `_confirmPharmacyAuditBatched()` ใช้ branch lock / แบตช์ 25 / ตรวจ R01+R16 version ชุดเดียวกับ Confirm รอบแรก และ abort ทั้งชุดถ้า `recheckQty`/`recheckBy`/`recheckAt` เปลี่ยนกลางงาน
@@ -569,6 +603,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 
 - PDA ที่ออฟไลน์รับ branch lock ไม่ได้ทันที รายการใหม่จะ sync ภายหลังและรอ Confirm รอบถัดไป
 - Pharmacy Desktop ต้องออนไลน์ระหว่าง Confirm และระหว่างยืนยัน Audit Verify
+- WH สแกนได้ 24 ชั่วโมง ส่วนสาขายายังมี time gate ตามเวลาทำการ
 - เภสัชที่สแกนรีเช็คบน PDA ออฟไลน์ ยอดจะขึ้น Cloud ตอนกลับมาออนไลน์ Desktop จึงจะยืนยันได้
 - Audit Verify รองรับ pending quantity 0 แล้ว (ส.ค. 2026) = "ตรวจแล้วไม่มีของ" — ห้ามกลับไปกรอง `> 0` ไม่งั้น negSys ค้าง audit ถาวร
 - Firestore rules ปัจจุบันเปิด read/write ให้ collections ที่แอปใช้ การ tighten rules เป็น security/migration แยกและต้องทดสอบทุก client
@@ -634,12 +669,37 @@ npm test             # ทั้งหมด (logic + e2e ผ่าน emulator)
 - **Data Files:** `.claude/skills/SKILL-data-files.md`
   → R01/R05/R16.104/R16.103 columns, OTFI direction, DEL/P items, exports, persistence layers
 
+**เอกสารบอท (อ่านก่อนแตะบอทนั้น — รายละเอียด/ข้อห้ามอยู่ที่นั่น ไม่ซ้ำในไฟล์นี้):**
+- `auto-r01/README.md` · `auto-r01/TODO-safe-enable.md` · `auto-r01/bot-export/CLAUDE.md` — บอทสองตัวห้ามขับ ProMaxx พร้อมกัน (`FNWNS3125`), ตัดสินจากไฟล์ไม่ใช่ exit code, ห้ามพิมพ์ `Allstock.CSV` ลงหน้าต่าง Save, SQL Server ห้ามดูพอร์ต 1433, ห้ามใส่ `qty <= 0 → ข้าม`, ปิดฉุกเฉิน
+  - 2 ข้อที่ยังไม่มีในเอกสารนั้น: `_run_exporter()` ต้องส่ง `stdin=DEVNULL` และส่ง stdout ลงไฟล์ ไม่ใช่ pipe (ไม่งั้นรอจนหมดเวลา 20 นาที) · ตรวจ flag ที่ไม่รู้จัก (exit 2) ใน `main()` เท่านั้น **ห้ามย้ายไปตอน import** — `tools/check-r01-parity.js` import ไฟล์นี้ด้วย `python -c`
+- `auto-r05/README.md` — ด่านหัวคอลัมน์ห้ามข้าม, `global_r05` เขียนแค่ 4 field (แทนที่ทั้งชุด ไม่ merge), กับดักเวลา `06:30`, ปิดฉุกเฉิน
+- `auto-adj/README.md` — generation (`active_gen`), `supabase-adj.sql` ต้องรันใน SQL Editor เอง (แก้ไฟล์ใน Git ไม่มีผลกับของจริง), service key ห้าม commit
+
+## Bug ที่แก้แล้ว — ห้ามทำให้ย้อนกลับ (ยุคก่อน ส.ค. 2026 · ย้ายจาก AGENTS.md)
+
+รายการใหม่กว่านี้บันทึกไว้ในหัวข้อของเรื่องนั้นๆ ด้านบนแล้ว
+
+| Commit | สิ่งที่ห้ามทำให้ย้อนกลับ |
+|---|---|
+| `9c7e507` | แก้จำนวนด้วยมือแล้ว local edit protection ต้องชนะ cloud snapshot เก่าชั่วคราว |
+| `bb06a0a` | ลบแถวโดยตั้งใจแล้ว session เก่าห้าม resurrect กลับมา |
+| `1914cd4`, `546cccd` | ลำดับ Recheck ต้องคงบนลงล่างหลัง listener snapshot และหลัง rebuild/reload |
+| `04ec420`, `48f5174`, `0ee325d`, `12a4900` | ยอด Recheck 0 ต้อง valid · `null` ≠ รีเช็คแล้ว · ใช้ `recheckQty/recheckBy/recheckAt` |
+| `c1e2255`, `1556267` | `WH_rechecks`/`WH_counts` inbox + backfill + ปุ่มรายพนักงาน realtime ต้องยังทำงาน (ระหว่าง compatibility) |
+| `d11f21a` | Recheck confirmation ต้องชนะ audit เก่า (ปุ่มไม่เด้งวน) |
+| `63946a3` | Count Confirm ต้องอ่าน server ล่าสุด และเขียน marker + ลบ inbox แบบ atomic |
+| `177271b` | Cloud master/versioned chunks เป็น source of truth ของ WH · localStorage เป็น cache |
+| (ส.ค. 2026) | **แสดงผล/export เวลานับต้องใช้ `firstScanAt \|\| timestamp`** — `sd.timestamp` ถูกทับตอน verify · จุดคำนวณห้ามเปลี่ยน |
+
 ## เมื่องานเสร็จ
-หลังทำ feature หรือ fix bug เสร็จ ให้ propose การอัพเดท CLAUDE.md
-หรือ SKILL file ที่เกี่ยวข้อง โดยเพิ่มเฉพาะ context ที่ถ้าไม่มีแล้วจะทำผิดพลาด
-ถ้าเป็น invariant, ข้อห้าม, deployment rule หรือ bug regression สำคัญ ให้ update `AGENTS.md` ด้วย
+หลังทำ feature หรือ fix bug เสร็จ ให้ propose การอัพเดท CLAUDE.md (ไฟล์นี้)
+หรือ SKILL file ที่เกี่ยวข้อง โดยเพิ่มเฉพาะ context ที่ถ้าไม่มีแล้วจะทำผิดพลาด — invariant, ข้อห้าม, deployment rule และ bug regression สำคัญให้อยู่ในไฟล์นี้
 
 ก่อนส่งงานอย่างน้อยต้องตรวจ inline JavaScript syntax (ถ้าแก้ `index.html`), `git diff --check`, regression ของ branch/role ที่แชร์ฟังก์ชัน และ `git status --short` ว่าไม่มีไฟล์ unrelated ถูกแก้หรือ stage
+- **งานที่แตะ scan/sync ต้องรัน `cd tests && npm test` ให้ผ่านครบก่อนส่ง** และยังต้องมี manual scenario ตาม flow จริง
+- งาน sync/confirm ต้องทดสอบ stale snapshot, offline/transaction failure, สองเครื่องพร้อมกัน และ `countResetAt` เปลี่ยนกลางงาน
+- งาน ordering ต้องทดสอบหลัง listener snapshot และหลัง rebuild/reload ไม่ใช่เฉพาะทันทีหลังสแกน
+- งาน native Android ต้อง build APK และทดสอบ Intent barcode, foreground/background, screen timeout และเสียง
 
 ---
 
