@@ -160,8 +160,11 @@ else if(sd.noStock&&effectiveCnt===0&&sys>0){status='stock_adjustment';…}
 
 ```js
 // หลัง drain:
-if (scanListMap.size > prevSize) {
-  renderScanList(); // SKU ใหม่ = full render
+if (SCAN_INCREMENTAL_ROW && scanListMap.size === prevSize + 1 && _pendingPatches.size === 1) {
+  // สแกน 1 ครั้ง ได้ SKU/Unknown ใหม่ 1 แถว (กรณีปกติของ PDA) = ใส่แถวเดียวบนสุด
+  if (!insertScanRowTop(key)) renderScanList(); // DOM ไม่สอดคล้องกับ scanListMap → render เต็ม
+} else if (scanListMap.size > prevSize) {
+  renderScanList(); // หลายสแกนใน drain เดียว = เส้นทางเดิม (Set จำลำดับ "แตะครั้งแรก" ไม่ใช่ "ล่าสุด")
 } else if (_pendingPatches.size) {
   // patch ทีละ key, ถ้า patchScanRow คืน false → fallback renderScanList()
 }
@@ -177,12 +180,13 @@ if (scanListMap.size > prevSize) {
 
 วัดจริง (`tests/specs/e2e/scan-cost.spec.js` · catalog 5,400 SKU · CPU 6× · สแกนห่าง 1.5 วิ · รัน `SCAN_COST_MEASURE=1 SCAN_COST_CPU=6 SCAN_COST_GAP_MS=1500 npm run test:e2e -- scan-cost`):
 
-| ต่อสแกน 1 ครั้ง (PDA ผู้ช่วย) | ก่อน | หลัง Phase A |
+| ต่อสแกน 1 ครั้ง (PDA ผู้ช่วย) | ก่อน | หลัง (Phase A + B) |
 |---|---|---|
-| `saveSession` (serialize ทั้ง catalog → localStorage) | ~40 ms · ทุกสแกน | ~5 ms · 3 ครั้ง/24 สแกน |
-| `updateStats` (5–8 ลูปทั้ง catalog) | ~5.6 ms · ทุกสแกน | ~1.3 ms · 3 ครั้ง/24 สแกน |
-| `renderScanList` (30 แถว) | ~2.5 ms | (Phase B) |
-| Desktop supervisor ที่ดูเพื่อนสแกน | ~23 ms/สแกนของเพื่อน | ~12 ms |
+| `saveSession` (serialize ทั้ง catalog → localStorage) | ~40 ms · ทุกสแกน | ~5–7 ms · 3 ครั้ง/24 สแกน |
+| `updateStats` (5–8 ลูปทั้ง catalog) | ~5.6 ms · ทุกสแกน | ~1.5 ms · 3 ครั้ง/24 สแกน |
+| `renderScanList` (30 แถว) | ~2.5 ms · ทุก SKU ใหม่ | ~0.2 ms · 1 ครั้ง/24 สแกน (แถวแรก) |
+| **รวม** | **~49 ms** | **~10 ms** |
+| Desktop supervisor ที่ดูเพื่อนสแกน | ~23 ms/สแกนของเพื่อน | ~12–14 ms (ยังเหลือ rebuild+render ทั้งลิสต์ทุกครั้งที่เพื่อนสแกน — งานต่อ: patch รายแถวจาก docChanges) |
 
 **กติกา (ห้ามย้อนกลับโดยไม่วัดซ้ำ):**
 - **`updateStats()` ข้าม `pending`/`scanning` ทั้งหมด** ⇒ สแกนล้วนเปลี่ยนผลของมันไม่ได้ · `drainQueue` จึงเรียก `_afterScanRefresh(_pendingPatches)` แทน `scheduleStatsAfterScan()`
@@ -196,8 +200,13 @@ if (scanListMap.size > prevSize) {
 - **`scheduleSave()` = backup ในเครื่อง:** trailing 4 วิ + maxWait 12 วิ (ออนไลน์) / 1.5 + 3 วิ (ออฟไลน์) แทน 400 ms · flush ทันทีตอน `visibilitychange→hidden`, `pagehide`, `offline` · **ข้อมูลรายการนับ (items) ยัง flush ขึ้น Firestore ทุก 800 ms เหมือนเดิม** — หน้าต่างนี้กระทบแค่สำเนาใน localStorage (ผู้ใช้ยอมรับ ก.ย. 2026)
   - ⛔ ห้ามเขียน `clearTimeout(_saveTimer)` ตรงๆ ให้ใช้ `_cancelPendingSave()` (เคลียร์ทั้ง trailing + maxWait + `_saveDirty`) ไม่งั้น maxWait ค้างแล้ว save กลางงาน reset/Confirm · `saveSession()` เรียก `_cancelPendingSave()` เองต้นฟังก์ชัน
   - รูปแบบข้อมูลใน localStorage ไม่เปลี่ยน · ⛔ **ห้ามข้ามการเก็บ `pending` ลง localStorage** เพื่อลดขนาด: `restoreFromFirestore` ตัดสินเส้นทางด้วย `state.scanData.size>0` และ `loadSession` ทำ `scanData.clear()` แล้วคืนเฉพาะที่บันทึกไว้ — `handleBarcode` ทำ `if(!sd)return` เงียบๆ ถ้า SKU ไม่มี entry (บั๊ก "สแกนไม่ติด" แบบ cascade มิ.ย. 2026)
-- **สวิตช์:** `let SCAN_LIGHT_REFRESH` (ข้อความข้างบน + listener + echo) · rollback = ตั้ง `false` แล้ว deploy · เทสสลับได้ · ค่าคงที่ backup `SAVE_*_MS` เป็น `let` ให้เทสปรับ
-- **เทสตรึง:** `tests/specs/logic/scan-light-refresh.spec.js` (ระดับฟังก์ชัน) · `tests/specs/e2e/scan-cost.spec.js` (นับจำนวนครั้ง + backup + supervisor เห็นปุ่มรายพนักงาน/การ์ด Pass ทันที)
+- **แถว RESULT ใส่ทีละแถว (Phase B · `SCAN_INCREMENTAL_ROW`):** `insertScanRowTop(key)` ใส่แถวเดียวบนสุด + ตัดแถวเกิน `SCAN_LIST_MAX` + อัป/สร้าง banner "แสดง 30 / N" · ใช้เมื่อ drain นี้ **แตะ key เดียวและเป็น key ใหม่** เท่านั้น
+  - **template แหล่งเดียว:** `_scanRowCtx()` + `_scanRowHtml(entry,ctx)` — `renderScanList` และ `insertScanRowTop` เรียกตัวเดียวกัน ⛔ ห้ามก๊อป template ไปวางที่อื่น (สองเส้นทางจะค่อยๆ เพี้ยนจากกัน) · เพิ่มคอลัมน์/ปุ่มในแถวต้องแก้ที่ `_scanRowHtml` ที่เดียว
+  - **fallback เป็น render เต็มเสมอเมื่อ DOM ไม่สอดคล้อง:** ไม่มีแถวใน DOM (placeholder "รอการสแกน...") · จำนวนแถวไม่เท่า `min(scanListMap.size-1, 30)` · แถวนี้อยู่ใน DOM แล้ว — เทส `scan-row-parity.spec.js` ตรึง (รวมกรณี DOM ถูกแก้กลางทาง)
+  - ⚠️ ห้ามขยายไปกรณีหลายสแกนใน drain เดียวโดยไม่แก้ลำดับ: `_pendingPatches` เป็น `Set` (ลำดับ = แตะครั้งแรก ไม่ใช่ล่าสุด) แถวที่สแกนซ้ำจะเรียงผิด
+  - เทสเทียบ **snapshot จาก DOM** ไม่ใช่ `innerHTML` (`patchScanRow` ตั้ง `input.value` เป็น property ไม่สะท้อนใน attribute) และเทียบทีละสแกนทั้ง 4 บทบาท (ผู้ช่วย PDA · คลัง PDA · หัวหน้าคลัง Desktop · เภสัช Desktop) · เคยทำ mutation check (ใส่ผิดตำแหน่ง) แล้วเทสล้มตามที่ควร
+- **สวิตช์:** `let SCAN_LIGHT_REFRESH` (ข้อความข้างบน + listener + echo) · `let SCAN_INCREMENTAL_ROW` (Phase B) · rollback = ตั้ง `false` แล้ว deploy · เทสสลับได้ · ค่าคงที่ backup `SAVE_*_MS` เป็น `let` ให้เทสปรับ
+- **เทสตรึง:** `tests/specs/logic/scan-light-refresh.spec.js` (ระดับฟังก์ชัน) · `tests/specs/logic/scan-row-parity.spec.js` (แถว RESULT ใส่ทีละแถว = render เต็ม) · `tests/specs/e2e/scan-cost.spec.js` (นับจำนวนครั้ง + backup + supervisor เห็นปุ่มรายพนักงาน/การ์ด Pass ทันที)
 
 ---
 

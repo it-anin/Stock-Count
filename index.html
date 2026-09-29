@@ -5320,7 +5320,10 @@ function drainQueue(){
     const i=scanQueue.shift();
     handleBarcode(typeof i==='string'?parseScanLine(i):i,false);
   }
-  if(scanListMap.size>prevSize){
+  if(SCAN_INCREMENTAL_ROW&&scanListMap.size===prevSize+1&&_pendingPatches.size===1){
+    // ได้แถวใหม่ 1 แถวจากสแกน 1 ครั้ง (กรณีปกติของ PDA) → ใส่แถวเดียว · ไม่สอดคล้อง → render เต็มเหมือนเดิม
+    if(!insertScanRowTop(_pendingPatches.values().next().value))renderScanList();
+  }else if(scanListMap.size>prevSize){
     renderScanList();
   }else if(_pendingPatches.size){
     let needsRender=false;
@@ -5727,12 +5730,11 @@ function initColResize(){
 }
 
 const SCAN_LIST_MAX=30;
-function renderScanList(){
-  const body=document.getElementById('scanListBody');
-  if(!scanListMap.size){body.innerHTML='<div class="scan-list-empty">รอการสแกน...</div>';return;}
-  const entries=[...scanListMap.values()].reverse();
-  const total=entries.length;
-  const visible=entries.slice(0,SCAN_LIST_MAX);
+// ── template แถว RESULT แหล่งเดียว (ก.ย. 2026) ──────────────────────────────────────────────────────
+// renderScanList (ทั้งก้อน) กับ insertScanRowTop (ใส่แถวเดียว) ต้องเรียกตัวเดียวกันนี้
+// ⛔ ห้ามก๊อป template ไปวางที่อื่น — สองเส้นทางที่ค่อยๆ เพี้ยนจากกันคือความเสี่ยงหลักของ DOM แบบ incremental
+//    (tests/specs/logic/scan-row-parity.spec.js เทียบผลสองเส้นทางทีละสแกน)
+function _scanRowCtx(){
   const showSysQty=currentRole==='supervisor'&&currentBranch==='WH'&&window.innerWidth>600;
   const showLoc=showSysQty;
   // Count รอบแรก: ช่อง QTY ขึ้นตามราคา ProductMaster; WH Recheck คงสิทธิ์แก้จำนวนตาม flow เดิม
@@ -5743,13 +5745,19 @@ function renderScanList(){
   let tpl;
   if(showSysQty){tpl=`82px 90px minmax(0,1fr) 60px 58px 65px 95px`;}
   else{tpl=_colWidths.map(w=>w+'px').join(' ');}
-  const limitBanner=total>SCAN_LIST_MAX?`<div class="scan-list-limit" style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
-  body.innerHTML=limitBanner+visible.map(entry=>{
+  return{showSysQty,showLoc,whStaffEdit,noEditPda,pharmRecheckEdit,tpl};
+}
+function _scanListBanner(total){
+  return total>SCAN_LIST_MAX?`<div class="scan-list-limit" style="text-align:center;padding:6px;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);">แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด</div>`:'';
+}
+function _scanRowKey(entry){return entry.status==='unknown'?'unknown:'+(entry.barcodes[0]?.barcode||''):entry.sku;}
+function _scanRowHtml(entry,ctx){
+    const{showSysQty,showLoc,whStaffEdit,noEditPda,pharmRecheckEdit,tpl}=ctx;
     const{cls,label}=getScanRowStyle(entry.status);
     const bcText=entry.barcodes.map(b=>b.barcode).join(', ');
     const si=state.skuMap.get(entry.sku);
     const pn=si?si.productName:'';
-    const rowKey=entry.status==='unknown'?'unknown:'+(entry.barcodes[0]?.barcode||''):entry.sku;
+    const rowKey=_scanRowKey(entry);
     return`<div class="scan-row" data-sku="${rowKey.replace(/"/g,'&quot;')}" style="grid-template-columns:${tpl}">
       <div class="scan-row-sku" title="${entry.sku}"><span class="sku-text">${entry.sku}</span>${entry.status==='scanning'?`<button class="btn-remove-row btn-remove-sku" onclick="removeScanItem('${entry.sku}')" title="ลบ / สแกนใหม่">✕</button>`:(entry.status==='audit'&&(whStaffEdit||pharmRecheckEdit))?`<button class="btn-remove-row btn-remove-sku" onclick="resetRecheckItem('${entry.sku}')" title="รีเซ็ตรีเช็ค / สแกนนับใหม่">✕</button>`:''}</div>
       <div class="scan-row-bc" title="${bcText}">${bcText}</div>
@@ -5759,9 +5767,44 @@ function renderScanList(){
       ${showLoc?`<div class="scan-row-loc" style="text-align:center;font-size:0.78rem;color:var(--text2);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.locationMap.get(entry.sku)||'—'}</div>`:''}
       <div class="scan-row-status"><span class="pill ${getPillClass(entry.status)}">${label}</span></div>
     </div>`;
-  }).join('');
+}
+function renderScanList(){
+  const body=document.getElementById('scanListBody');
+  if(!scanListMap.size){body.innerHTML='<div class="scan-list-empty">รอการสแกน...</div>';return;}
+  const entries=[...scanListMap.values()].reverse();
+  const total=entries.length;
+  const visible=entries.slice(0,SCAN_LIST_MAX);
+  const ctx=_scanRowCtx();
+  body.innerHTML=_scanListBanner(total)+visible.map(entry=>_scanRowHtml(entry,ctx)).join('');
   const hdr=document.querySelector('.scan-list-header');
-  if(hdr)hdr.style.gridTemplateColumns=tpl;
+  if(hdr)hdr.style.gridTemplateColumns=ctx.tpl;
+}
+// ได้ SKU/Unknown ใหม่ 1 ตัว = ใส่แถวเดียวบนสุด แทน rebuild ทั้ง 30 แถว (SCAN_INCREMENTAL_ROW — ดูเหตุผลที่ SCAN_LIGHT_REFRESH)
+// ผลบนจอต้องเท่า renderScanList() เป๊ะ: template แหล่งเดียว (_scanRowHtml) + banner "แสดง 30 / N" + ตัดแถวเกิน SCAN_LIST_MAX
+// คืน true = ใส่สำเร็จ · false = DOM ไม่สอดคล้องกับ scanListMap (placeholder ว่าง / รอ scheduleScanListRender / แถวนี้อยู่แล้ว)
+//   → ผู้เรียกต้อง fallback renderScanList() (รูปแบบเดียวกับ patchScanRow)
+// ⚠️ เรียกเมื่อ drain แตะ key เดียวเท่านั้น (ดู drainQueue) — _pendingPatches เป็น Set ลำดับ = แตะครั้งแรก ไม่ใช่ล่าสุด
+function insertScanRowTop(key){
+  const body=document.getElementById('scanListBody');
+  const entry=scanListMap.get(key);
+  if(!body||!entry)return false;
+  const total=scanListMap.size;
+  const rows=body.querySelectorAll('.scan-row');
+  // DOM ต้องเท่ารุ่นก่อนใส่ (scanListMap ที่ยังไม่มี key นี้) — แถวไม่ตรง = มีอะไรแก้ DOM/Map ไปแล้ว ให้ render เต็มแทน
+  if(!rows.length||rows.length!==Math.min(total-1,SCAN_LIST_MAX))return false;
+  if(body.querySelector(`[data-sku="${CSS.escape(_scanRowKey(entry))}"]`))return false;
+  const ctx=_scanRowCtx();
+  if(total>SCAN_LIST_MAX){
+    const banner=body.querySelector('.scan-list-limit');
+    if(banner)banner.textContent=`แสดง ${SCAN_LIST_MAX} / ${total} รายการล่าสุด`;
+    else body.insertAdjacentHTML('afterbegin',_scanListBanner(total));
+  }
+  const top=body.querySelector('.scan-list-limit');
+  if(top)top.insertAdjacentHTML('afterend',_scanRowHtml(entry,ctx));
+  else body.insertAdjacentHTML('afterbegin',_scanRowHtml(entry,ctx));
+  const all=body.querySelectorAll('.scan-row');
+  for(let i=all.length-1;i>=SCAN_LIST_MAX;i--)all[i].remove();
+  return true;
 }
 
 function patchScanRow(key){

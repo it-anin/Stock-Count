@@ -631,7 +631,8 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - **ห้ามนำ `updateStats()` ต่อสแกนกลับมา** — สแกนล้วน (`pending`/`scanning`) เปลี่ยนผลของมันไม่ได้ (ลูปข้ามสถานะเหล่านี้ทั้งหมด) · `drainQueue` ใช้ `_afterScanRefresh` · ตัวเลขที่สแกนล้วนเปลี่ยนได้ (Unknown, tab WH PDA, ปุ่มนับรายพนักงาน) อัปเดตแยกใน `_refreshScanCounters()`
 - PDA สแกนห่าง ~1-3 วิ > ทุก debounce ⇒ debounce ไม่ลดงาน ต้อง "ข้ามงานที่เปลี่ยนไม่ได้" หรือทำแบบ O(1) · วัดด้วย `SCAN_COST_MEASURE=1 npm run test:e2e -- scan-cost` **ก่อนและหลัง** แก้เส้นทางหลังสแกนทุกครั้ง
 - `scheduleSave()` (backup localStorage) = trailing 4 วิ + maxWait 12 วิ ออนไลน์ / 1.5 + 3 วิ ออฟไลน์ + flush ตอน background/pagehide/offline · ใช้ `_cancelPendingSave()` แทน `clearTimeout(_saveTimer)` · items ขึ้น Firestore ทุก 800 ms เหมือนเดิม
-- สวิตช์ rollback: `SCAN_LIGHT_REFRESH` (`let` — ตั้ง `false` แล้ว deploy)
+- แถว RESULT ที่ได้ SKU/Unknown ใหม่ = ใส่แถวเดียว (`insertScanRowTop`) ไม่ rebuild 30 แถว · **template แถวมีที่เดียว `_scanRowHtml`** — ห้ามก๊อปไปวางที่อื่น · DOM ไม่สอดคล้อง = fallback `renderScanList()` เสมอ
+- สวิตช์ rollback: `SCAN_LIGHT_REFRESH` · `SCAN_INCREMENTAL_ROW` (`let` — ตั้ง `false` แล้ว deploy) · ผลวัด: ~49 → ~10 ms ต่อสแกน (catalog 5,400 · CPU 6× · สแกนห่าง 1.5 วิ)
 
 ### Known limitations / rollout assumptions
 

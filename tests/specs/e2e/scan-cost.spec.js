@@ -177,10 +177,10 @@ test.describe('หลักการ: สแกนล้วนไม่ต้อ
   test.beforeEach(() => requireEmulator());
   test.setTimeout(120_000);
 
-  async function assistantRun(browser, { light }) {
+  async function assistantRun(browser, { light, incremental = true }) {
     const a = await bootFreshCount(browser, { role: 'assistant', user: 'PDA-A', mode: 'pda' });
     await injectBigCatalog(a.page, SMALL_CATALOG);
-    await a.page.evaluate((light) => { SCAN_LIGHT_REFRESH = light; }, light);
+    await a.page.evaluate(({ light, incremental }) => { SCAN_LIGHT_REFRESH = light; SCAN_INCREMENTAL_ROW = incremental; }, { light, incremental });
     await instrument(a.page, FN);
     await resetCost(a.page);
     await runScans(a.page, makeSequence(20), 150);   // 20 สแกน: ใหม่ 14 · ซ้ำ 5 · Unknown 1 — ห่างกว่า debounce 80 ms ทุกครั้ง
@@ -196,6 +196,8 @@ test.describe('หลักการ: สแกนล้วนไม่ต้อ
     // ข้อความ assertion พิมพ์ "ใครเรียก" ไว้ด้วย — ถ้าเกินขึ้นมาจะไล่ต้นตอได้ทันที ไม่ต้องเดา
     expect(cost.updateStats.calls, `สแกนล้วนเปลี่ยนผล updateStats ไม่ได้ — ห้ามเรียกทั้ง catalog ต่อสแกน (baseline ≈ 20) · ผู้เรียก: ${JSON.stringify(cost.updateStats.callers)}`).toBeLessThanOrEqual(3);
     expect(cost.saveSession.calls, `backup ต้องรวมงาน — baseline ≈ 20 ครั้ง · ผู้เรียก: ${JSON.stringify(cost.saveSession.callers)}`).toBeLessThanOrEqual(2);
+    // แถวใหม่ใส่ทีละแถว ไม่ rebuild 30 แถว: เหลือแค่ครั้งแรก (placeholder "รอการสแกน...") · baseline ≈ 15 (ทุก SKU/Unknown ใหม่)
+    expect(cost.renderScanList.calls, `renderScanList เต็มควรเหลือแค่ครั้งแรก · ผู้เรียก: ${JSON.stringify(cost.renderScanList.callers)}`).toBeLessThanOrEqual(2);
     expect(await a.page.evaluate(() => document.getElementById('statUnknown').textContent)).toBe('1');
 
     // ผลที่ผู้ใช้เห็นต้องเท่าเดิม: 14 SKU + 1 Unknown · ใหม่สุดบนสุด · แถวที่สแกนซ้ำถูกย้ายขึ้นและยอดรวม 2
@@ -218,6 +220,15 @@ test.describe('หลักการ: สแกนล้วนไม่ต้อ
   test('kill switch: SCAN_LIGHT_REFRESH=false → กลับพฤติกรรมเดิม (ทุกสแกนคำนวณ stats) — พิสูจน์ว่าย้อนกลับได้จริง', async ({ browser }) => {
     const { a, cost } = await assistantRun(browser, { light: false });
     expect(cost.updateStats.calls).toBeGreaterThanOrEqual(15);
+    await closeApp(a);
+  });
+
+  test('kill switch: SCAN_INCREMENTAL_ROW=false → กลับ render เต็มทุกแถวใหม่ · ผลบนจอเท่าเดิม', async ({ browser }) => {
+    const { a, cost } = await assistantRun(browser, { light: true, incremental: false });
+    expect(cost.renderScanList.calls).toBeGreaterThanOrEqual(12);   // SKU ใหม่ 14 + Unknown 1
+    const rows = await skuRows(a.page);
+    expect(rows).toHaveLength(15);
+    expect(rows[0]).toEqual({ key: 'BIG-00013', qty: '2' });
     await closeApp(a);
   });
 
