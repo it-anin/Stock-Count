@@ -7459,10 +7459,11 @@ function renderAuditVerifyTable(){
       const recheckVal=sd.recheckQty!==undefined?sd.recheckQty:sd.countedQty;
       // แสดงยอดระบบ "ที่ใช้ตัดสินจริง" ไม่ใช่ค่าสด — ไม่งั้น Diff บนจอไม่ตรงกับเหตุผลที่ระบบตัดสิน
       // สาขายา = freeze ตอนสแกนรีเช็ค · WH = R01 ของวันที่ยืนยันรีเช็ค (ดู _whStockAdjBaseQty)
+      // ป้ายข้างเลขบอก "ที่มาของเลขหลัก" (ไม่ใช่ยอดสด) — ยอดสดยังดูได้ใน tooltip ตอนวางเมาส์บนเลข
       const baseSys=isWhAdj?_whStockAdjBaseQty(sku,sd):_recheckBaselineSystemQty(sku,sd);
       const liveSys=Number(si.systemQty??0);
       const sysCell=baseSys!==liveSys
-        ?`<span title="ยอดระบบตอนนี้ ${liveSys} — ${isWhAdj?'คิดจากยอด R01 วันที่ยืนยันรีเช็ค':'ตัดสินด้วยยอด ณ เวลาสแกนรีเช็ค'}" style="border-bottom:1px dashed var(--text3);cursor:help;">${baseSys}</span> <span style="font-size:0.68rem;color:var(--text3);">(ตอนนี้ ${liveSys})</span>`
+        ?`<span title="ยอดระบบตอนนี้ ${liveSys} — ${isWhAdj?'คิดจากยอด R01 วันที่ยืนยันรีเช็ค':'ตัดสินด้วยยอด ณ เวลาสแกนรีเช็ค'}" style="border-bottom:1px dashed var(--text3);cursor:help;">${baseSys}</span> <span style="font-size:0.68rem;color:var(--text3);">(จากวันที่อัป R01)</span>`
         :`${baseSys}`;
       const diff=recheckVal-baseSys;
       const diffCell=diff<0

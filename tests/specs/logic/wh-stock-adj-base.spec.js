@@ -38,6 +38,8 @@ const read = (page) => page.evaluate(() => {
   const a = _adjustDocAudit();
   _avFilter = 'stock_adj'; renderAuditVerifyTable();
   const av = cells('#auditVerifyTableBody tr');
+  // ป้ายข้างเลข Sys Qty บอกที่มาของเลข (จากวันที่อัป R01) ไม่ใช่ยอดสด — ยอดสดต้องยังเข้าถึงได้จาก tooltip
+  const avTip = [...document.querySelectorAll('#auditVerifyTableBody tr td:nth-child(5) span[title]')].map((s) => s.title);
   _hsFilter = 'stockadj'; renderHistoryStatsTable();
   const hs = cells('#historyStatsBody tr');
   let xl = null;
@@ -48,7 +50,7 @@ const read = (page) => page.evaluate(() => {
     ords: _buildAdjustDocRows('ords').map((x) => ({ sku: x.sku, qty: x.qty })),
     irps: _buildAdjustDocRows('irps').map((x) => ({ sku: x.sku, qty: x.qty })),
     stale: a.stale.map((x) => x.sku), settled: a.settled.map((x) => x.sku),
-    av, hs, xl,
+    av, avTip, hs, xl,
   };
 });
 
@@ -63,7 +65,8 @@ test('WH: R01 ขยับหลังวัน Recheck → ทุกจุด�
   expect(r.stale).toEqual([]);                        // WH ไม่มีด่านความสด
   expect(r.settled).toEqual([]);
   // Audit Verify: Sys Qty · Recheck Qty · Diff
-  expect(r.av[0][4]).toBe('36 (ตอนนี้ 33)');
+  expect(r.av[0][4]).toBe('36 (จากวันที่อัป R01)');
+  expect(r.avTip[0]).toContain('ยอดระบบตอนนี้ 33');   // ยอดสดย้ายไปอยู่ใน tooltip
   expect(r.av[0][6]).toBe('-3');
   // ประวัติการนับ (WH มีคอลัมน์ Location): จำนวนคงเหลือ · จำนวนปรับปรุง · Diff
   expect(r.hs[0].slice(6, 9)).toEqual(['36', '33', '-3']);
@@ -113,6 +116,9 @@ test('★ สาขายาไม่เปลี่ยน: ยังใช้�
   // ประวัติการนับ (สาขายาไม่มีคอลัมน์ Location): จำนวนคงเหลือยังเป็นค่าสด
   expect(r.hs.map((row) => row[5])).toEqual(['33', '33']);
   // Audit Verify สาขายายังโชว์ยอดที่ freeze ตอนสแกนรีเช็ค
-  expect(r.av.map((row) => row[4])).toEqual(['33', '36 (ตอนนี้ 33)']);
+  expect(r.av.map((row) => row[4])).toEqual(['33', '36 (จากวันที่อัป R01)']);
+  // ป้าย+tooltip ขึ้นเฉพาะแถวที่ยอดที่ใช้ตัดสินไม่ตรงค่าสด (S2) — S1 ตรงกันจึงไม่มี
+  expect(r.avTip).toHaveLength(1);
+  expect(r.avTip[0]).toContain('ยอดระบบตอนนี้ 33');
   await closeApp(app);
 });
