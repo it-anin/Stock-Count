@@ -357,12 +357,28 @@
       /* Flex chain: panel-card → scan-list-card → scan-list-body */
       .center-panel .panel-card{flex:1;min-height:0;display:flex;flex-direction:column;}
       .center-panel .panel-card>div{flex-shrink:0;}
-      .scan-list-card{flex:1;min-height:0;display:flex;flex-direction:column;margin:4px 8px;}
-      .scan-list-body{flex:1;overflow-y:auto;max-height:none!important;}
+      /* ตาราง RESULT ชิดขอบการ์ด (ก.ย. 2026): ไม่มี margin/กรอบ/มุมโค้งของตัวตาราง → SKU ชิดซ้าย · STATUS ชิดขวา
+         ต้อง !important เพราะ HTML ตั้ง margin:10px 14px ไว้ inline (เดิม margin:4px 8px ตรงนี้จึงไม่เคยมีผลบน PDA) */
+      .scan-list-card{flex:1;min-height:0;display:flex;flex-direction:column;margin:0!important;border:0!important;border-radius:0!important;}
+      /* ซ่อนแถบเลื่อน: 7px ของมันกินความกว้างคอลัมน์ STATUS (ยังเลื่อนด้วยนิ้วได้เหมือนเดิม) */
+      .scan-list-body{flex:1;overflow-y:auto;max-height:none!important;scrollbar-width:none;}
+      .scan-list-body::-webkit-scrollbar{display:none;}
 
-      /* Scan columns: 4 cols — hide Barcode (col2) and Action (col6) */
-      .scan-list-header,.scan-row{grid-template-columns:85px 1fr 52px 60px!important;}
-      .scan-row-sku{font-size:0.58rem!important;display:flex!important;align-items:center;gap:2px;overflow:visible!important;}
+      /* Scan columns: 4 cols — hide Barcode (col2) and Action (col6)
+         SKU 72 · QTY 46 · STATUS 80 (พอดี "⚠️ Stock Adj" ที่ font เล็ก) · ชื่อ (1fr) รับที่เหลือ
+         font ไม่ต่ำกว่า 0.5rem (8px) — Android WebView กันขั้นต่ำไว้ที่ 8px เป็นค่าเริ่มต้น (MainActivity ไม่ได้ override) เล็กกว่านี้ไม่ได้ผลบนเครื่องจริง */
+      .scan-list-header,.scan-row{grid-template-columns:72px 1fr 46px 80px!important;}
+      .scan-list-header{font-size:0.5rem;letter-spacing:0.3px;}
+      .scan-list-header>span,.scan-row>div{padding:5px 3px;}
+      .scan-list-header>span:first-child,.scan-row>div:first-child{padding-left:4px;}
+      .scan-list-header>span:last-child,.scan-row>div:last-child{padding-right:4px;}
+      .scan-list-header>span:last-child{justify-content:flex-end!important;} /* HTML ตั้ง center ไว้ inline */
+      .scan-row-status{text-align:right;font-size:0.52rem;} /* font เล็กที่เซลล์ด้วย ไม่งั้นบรรทัดอ้างอิง 16px ดันแถวสูง ~30px ทั้งที่ข้อความเล็ก */
+      .scan-row-pn{font-size:0.56rem;}
+      .scan-row-qty{font-size:0.56rem;}
+      .scan-row .pill{font-size:0.52rem;padding:2px 4px;gap:3px;}
+      .scan-row .inline-qty-input{width:38px;padding:2px 3px;}
+      .scan-row-sku{font-size:0.52rem!important;display:flex!important;align-items:center;gap:2px;overflow:visible!important;}
       .scan-row-sku .sku-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .btn-remove-sku{flex-shrink:0;padding:1px 4px!important;font-size:0.6rem!important;line-height:1.3;border-radius:3px!important;}
       .scan-list-header>span:nth-child(2),
