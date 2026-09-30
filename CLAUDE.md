@@ -390,7 +390,7 @@ WH Recheck รอบสองเปรียบเทียบ `recheckQty` ก�
 | Role | Branch | สิทธิ์หลัก |
 |---|---|---|
 | assistant | SRC/KKL/SSS | สแกนนับ |
-| pharmacist | SRC/KKL/SSS | Audit Verify (scan + ยืนยัน) |
+| pharmacist | SRC/KKL/SSS | **ออกใบ Stock Adj (📦 ปรับปรุงสินค้า) + ↺ ย้อนรายการ** — ตั้งแต่ 30 ก.ย. 2026 ไม่ทำ Audit เมื่อไม่มี audit ค้าง (Audit Verify scan + ยืนยัน เปิดเฉพาะตอนมี `audit` ค้าง) ดู §เภสัชทำ Stock Adj อย่างเดียว |
 | supervisor | WH | ยืนยันนับ + ยืนยันรีเช็ค (Desktop only) |
 | warehouse | WH | สแกนนับ + สแกนรีเช็ค (PDA) |
 
@@ -517,6 +517,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 ### Pharmacy Audit Verify (ก.ค. 2026)
 
 > ⚠️ **29 ก.ย. 2026: Confirm รอบแรกของสาขายาไม่ผ่าน Audit แล้ว** (ดู §Status Lifecycle) — หัวข้อนี้ใช้กับ **Audit ที่ค้างอยู่ก่อนสลับ + รายการที่ ↺ ย้อนกลับมา** เท่านั้น · ห้ามลบโค้ดฝั่งนี้
+> ⚠️ **30 ก.ย. 2026: เภสัชไม่ทำ Audit เมื่อไม่มี audit ค้าง** — UI ฝั่งนี้ถูกซ่อนอัตโนมัติ (`PHARMACIST_STOCKADJ_ONLY` · ดู §เภสัชทำ Stock Adj อย่างเดียว) โค้ดยังอยู่ครบและกลับมาเองเมื่อมีรายการ `audit` (เช่นหลังกด ↺)
 
 - เภสัชสแกนรีเช็คบน PDA ได้ แต่กด "✓ ยืนยัน Audit" ได้เฉพาะ Desktop — guard ด้วย `_isPdaApp()` (User-Agent) ไม่อิง viewport
 - ยอดที่สแกนเก็บใน `sd.recheckQty`/`recheckBy`/`recheckAt` (sync ผ่าน session doc) ห้ามกลับไปใช้ map ใน memory ที่ไม่ persist
@@ -674,6 +675,30 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - หลังย้อน/deploy ต้อง **ปิดแอปแล้วเปิดใหม่** ที่ PDA ทุกเครื่องที่ใช้งานอยู่ (heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว — ดู Known limitations) · **ตรวจรุ่น (Console):** `typeof PROGRESS_BY_SCAN` = `'boolean'` → รุ่นใหม่ · `'undefined'` → ก่อนแก้
 - **อาการที่ควรสงสัยงานนี้:** Counted/Progress ไม่ขยับหลังสแกน (ทั้ง Desktop และ PDA) หรือไม่ลดหลังกด ✕ · Progress เกิน 100% (ห้ามเกิด) · Counted ≠ ตัวเศษ Progress · Pass ไม่ขยับหลัง Desktop Confirm · ตัวเลข PDA ≠ Desktop · 📋 "ยังไม่ได้นับ" ไม่เท่า ตัวหาร − ตัวเศษ · (เป็นเจตนา ไม่ใช่บั๊ก) Progress 100% ทั้งที่ยังไม่ Confirm · Pass ลดลงหลัง deploy เพราะตัด Stock Adj
 - **ตรวจแล้ว 30 ก.ย. 2026:** ทำตามระดับ 2 (`git revert` คอมมิตของงานนี้) ใน worktree แยก (ไม่แตะโฟลเดอร์งาน) → `git diff 48c8194 HEAD` **ว่างทั้งต้นไม้** · สวิตช์มีเทสคุมทั้งเปิดและปิด (`progress-by-scan` logic 23 + e2e 3) · ใส่บั๊กจงใจ 7 แบบลงสำเนาชั่วคราว (ไม่กรองชุดนับ / เส้นทางเบาไม่เขียนการ์ด / Pass รวม Stock Adj / `updateStats` ไม่เขียนทับ / ตัวกรอง "ยังไม่ได้นับ" ยังรวม scanning / สวิตช์ปิดเป็นค่าเริ่มต้น / ตัด PDA ออก) แล้วเทสจับได้ทุกแบบ (ล้ม 3–20 ข้อต่อแบบ) · `npm test` ทั้งชุดผ่าน (logic 146 · e2e 70 + เทสวัด 2 ข้อที่ opt-in) · ต้นทุนเพิ่มต่อสแกน ≈0.8 ms (`_writeScanProgress` · catalog 5,400 · CPU 4× · ไม่มี long task · `updateStats` ไม่ถูกเรียกต่อสแกน) · ⏳ **ยังไม่ได้ทดสอบบน PDA/Desktop จริง** (สแกนต่อเนื่อง/หลายเครื่อง/Desktop Confirm — ตาม §เมื่องานเสร็จ)
+
+#### 🧑‍⚕️ เภสัชทำ Stock Adj อย่างเดียว ไม่ทำ Audit (สาขายา · ผู้ใช้สั่ง 30 ก.ย. 2026)
+
+ต่อจาก 29 ก.ย. ที่ตัด Audit ออกจาก Confirm รอบแรก (`ab95bf0`) — งานนี้ถอด **บทบาท Audit ของรหัสเภสัช** (UI ล้วน · ไม่แตะฟังก์ชัน scan-related ตัวใดเลย · ไม่เปลี่ยน schema/rules/APK/sw.js)
+
+- **สวิตช์ `PHARMACIST_STOCKADJ_ONLY`** (`let` · `index.html` ใกล้ `PHARMACY_DIRECT_STOCK_ADJ`) · **โหมด idle** = สวิตช์เปิด && สาขายา && `currentRole==='pharmacist'` && **จำนวน `audit` ใน `scanData` = 0** (`_pharmAuditIdle(n)` · นับด้วย `_legacyAuditCount()`)
+- **idle:** ซ่อนช่องสแกน/RESULT/ปุ่ม "✓ ยืนยัน Audit" (CSS `body.pharm-audit-idle` + `#pharmIdleNote`) · แผงเปลี่ยนชื่อเป็น **Stock Adj** · ป็อปอัพเปิดแท็บ Stock Adj (ซ่อนแท็บ Audit/แถวสแกน/ปุ่มยืนยันทั้งหมด) · **ปุ่ม ↺ สแกนใหม่ อยู่ครบ** = ทางแก้รายตัวเดียว
+- **มี `audit` ค้าง (ของเดิมก่อน 29 ก.ย. หรือรายการที่กด ↺ กลับมา):** UI Audit เดิมกลับมาเอง **ครบทุกอย่าง** จนปิดหมด แล้วกลับ idle เอง · จุดสลับเดียวคือ `_applyPharmacistAuditMode(n)` เรียกจากท้าย `updateAuditVerifyCount()` (ซึ่ง `updateStats`/snapshot/marker/↺ เรียกอยู่แล้ว) + `applyAuditTerminology()` + `openAuditVerifyPopup()` — **ห้ามเพิ่ม hook ในเส้นทางสแกน**
+- ⛔ **ห้ามแปลง `audit` ค้างเป็น Stock Adj อัตโนมัติ** (ยอดรีเช็คหาย) · ⛔ **ห้ามลบโค้ด Audit Verify/marker/`reopenPharmacyAudit`** — ↺ ต้องพารายการกลับเป็น `audit` ซึ่งใช้โค้ดฝั่งนั้น · role/สาขาอื่น (ผู้ช่วย · หัวหน้า/พนักงาน WH · เภสัชบน WH) **ไม่ถูกแตะ** (เทสตรึงไว้)
+- **ด่านกันสแกนในโหมด idle มีอยู่เดิม:** `processPharmacistAuditScan` ปฏิเสธ SKU ที่ไม่ใช่ `audit` ([index.html](index.html) ข้อความ `— ไม่ใช่ Audit`) จึงไม่ต้องแก้ฟังก์ชันสแกน — เครื่องสแกน PDA ของเภสัชยิงเข้ามาก็ไม่เขียนอะไร
+- **ข้อเสียที่ผู้ใช้รับทราบแล้ว:** ไม่มีผู้ตรวจคนที่สอง (`auditor` ว่าง — นับผิด/R16 คลาดเวลาไหลเข้าใบตรงๆ) · ทางแก้รายตัวมีทางเดียวคือ ↺ (Desktop เท่านั้น) · ยอดติดลบที่เป็นหนี้ลูกค้าถูกดันเป็น 0 ในใบ (📦 ค้างส่งใช้ได้เฉพาะรายการที่ ↺ กลับเป็น Audit) · PDA ต้องปิด-เปิดแอปหลัง deploy
+- ⚠️ **ข้อสังเกตเอกสาร (ยังไม่ได้ยืนยันหน้างาน):** `updateScanInputMode` ซ่อนแถว Confirm ของรหัสเภสัช (`confirmClearRow` · `isPharm`) แต่ `คู่มือ-สาขา.html` ตาราง "ปุ่ม" ระบุ Confirm = "เภสัช (Desktop)" — ในโค้ด Confirm รอบแรกที่ Desktop ทำได้ด้วยรหัสอื่น (ผู้ช่วย) ไม่ใช่รหัสเภสัช · ไม่ได้แก้เพราะอยู่นอกขอบเขตงานนี้ · ⚠️ ตรวจไม่ได้จากเครื่องพัฒนาว่า Firestore จริงมี `audit` ค้างกี่รายการ (ออกแบบให้ถูกต้องทั้งสองกรณี)
+
+**ทางถอย (แนวเดียวกับงานก่อนหน้า):** จุดก่อนแก้ = `966778b` · คอมมิตของงานนี้ควรขึ้นต้น **`feat(pharm-stockadj):`** (หาด้วย `git log --oneline --grep='^feat(pharm-stockadj)' 966778b..HEAD`) · ไม่มีการเปลี่ยนรูปแบบข้อมูลจึงย้อนโดยไม่ต้อง migrate
+
+| ระดับ | ทำอะไร | ใช้เมื่อ |
+|---|---|---|
+| **1 สวิตช์** (เร็วสุด) | แก้เป็น `let PHARMACIST_STOCKADJ_ONLY=false;` → commit → push | UI เภสัชสร้างความสับสน/อยากให้เภสัชกลับไปเห็น Audit เหมือนเดิม — ย้อนได้ทันที ป้ายแผง/แถวสแกน/ปุ่มยืนยันกลับเป็นเดิมเมื่อ `updateAuditVerifyCount` ถัดไปทำงาน (เทสตรึงกรณีสวิตช์ปิดกลางทาง) |
+| **2 revert** | `git revert --no-edit $(git log --format=%h --grep='^feat(pharm-stockadj)' 966778b..HEAD)` → push | ระดับ 1 ไม่พอ · **ดูรายการก่อนรัน** · ⛔ ห้าม `reset --hard` / force-push |
+| **3 Vercel** | promote deployment ก่อนหน้า | เว็บพังหนัก · ⚠️ ต้อง revert ใน git ตามด้วย |
+
+- หลัง deploy/ย้อน ต้อง **ปิดแอปแล้วเปิดใหม่** ที่ PDA ทุกเครื่อง (heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว — ดู Known limitations) · **ตรวจรุ่น (Console):** `typeof PHARMACIST_STOCKADJ_ONLY` = `'boolean'` → รุ่นใหม่
+- **อาการที่ควรสงสัยงานนี้:** เภสัชไม่เห็นปุ่มยืนยัน Audit ทั้งที่มี audit ค้าง · แผงยังชื่อ Audit Verify ทั้งที่ไม่มี audit · ป็อปอัพเปิดแท็บ Audit ว่างเปล่า · หน้าจอผู้ช่วย/หัวหน้า WH เปลี่ยนไป (**ห้ามเกิด**) · ↺ แล้วโหมด Audit ไม่โผล่
+- **ตรวจแล้ว 30 ก.ย. 2026:** เทส `tests/specs/logic/pharmacist-stockadj-only.spec.js` 7 ข้อ (idle · มี audit ค้าง · สลับโหมดสองทิศทางระหว่างใช้งาน · สวิตช์ปิด · สวิตช์ปิดกลางทาง · role/สาขาอื่นไม่ถูกแตะ · ด่านกันสแกน) · ใส่บั๊กจงใจ 10 แบบลงสำเนาชั่วคราว (ไม่เช็ค audit=0 / ไม่ย้อนของที่ idle แตะ / ตัดเช็คสาขายา / ตัดเช็ค role / ไม่เลื่อนแท็บ / ไม่เรียกโหมดจาก `updateAuditVerifyCount` / ไม่ซ่อนแถวสแกน / CSS ไม่ซ่อนปุ่มยืนยัน / ป้ายแผงไม่เปลี่ยน) เทสจับได้ **9 แบบ** · อีก 1 แบบ (เปิดป็อปอัพไม่เลือกแท็บ Stock Adj ตอน idle) **หลุดเพราะเป็น equivalent mutant** — ทาง "เลื่อนแท็บอัตโนมัติ" ใน `_applyPharmacistAuditMode` ทับให้ผลเท่ากัน · พิสูจน์ด้วยการถอดสองชั้นพร้อมกันแล้วเทสล้ม 2 ข้อ · `npm test` ทั้งชุดผ่าน (logic 153 · e2e 70 + เทสวัด 2 ข้อที่ opt-in) · ⏳ **ยังไม่ได้ทดสอบบน PDA/Desktop จริง** (เภสัชล็อกอินรอบที่ไม่มี audit → กด ↺ หนึ่งรายการ → ยืนยัน → กลับ idle — ตาม §เมื่องานเสร็จ)
 
 ### Known limitations / rollout assumptions
 

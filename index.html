@@ -162,6 +162,9 @@
     body.wh-sup #pharmacistAuditBtn{flex:0 0 auto;width:auto!important;min-width:150px;height:auto!important;min-height:56px;padding:12px 20px!important;font-size:0.85rem;line-height:1.3;white-space:nowrap;background:var(--green)!important;}
     body.wh-sup #pharmacistAuditBtn:hover{background:#0a7c46!important;}
     body.wh-sup #supervisorStaffBtns{order:1;align-self:center;}
+    /* เภสัชสาขายา ไม่มี audit ค้าง (PHARMACIST_STOCKADJ_ONLY) — ซ่อนช่องสแกน/RESULT/ปุ่มยืนยัน Audit แล้วโชว์โน้ตแทน */
+    body.pharm-audit-idle #scanInputBlock,body.pharm-audit-idle .result-bar,body.pharm-audit-idle .scan-list-card,body.pharm-audit-idle #pharmacistAuditBar{display:none!important;}
+    body.pharm-audit-idle #pharmIdleNote{display:block!important;}
     .btn-export { background:var(--surface2); color:var(--green); border:1px solid rgba(0,230,118,0.3); width:100%; }
     .btn-export:hover { background:rgba(0,230,118,0.1); transform:translateY(-1px); }
     .scan-list-card { border-radius:10px; border:1px solid var(--border); background:var(--surface2); overflow:hidden; }
@@ -605,7 +608,12 @@
           <button id="scanGuideBtn" class="upload-help-btn" onclick="openScanGuide()">Guide</button>
         </div>
 
-        <div style="padding:12px 16px 12px;">
+        <div id="pharmIdleNote" style="display:none;padding:22px 20px;text-align:center;color:var(--text2);font-size:0.9rem;line-height:1.6;">
+          <div style="font-size:1.6rem;margin-bottom:6px;">📦</div>
+          <div style="font-weight:700;color:var(--text);margin-bottom:4px;">เภสัชไม่ต้องสแกน / ทำ Audit</div>
+          <div>รายการที่ไม่ตรงหลัง Confirm ถูกส่งเป็น Stock Adj ทันที — ออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (ด้านซ้าย)<br>ถ้ารายการไหนผิด กด <strong>↺ สแกนใหม่</strong> ที่ปุ่ม <strong>Stock Adj</strong></div>
+        </div>
+        <div id="scanInputBlock" style="padding:12px 16px 12px;">
           <div style="display:flex;gap:8px;align-items:stretch;">
             <div class="scan-input-wrap" style="flex:1;">
               <input class="scan-input" id="scanInput" placeholder="Scan Barcode" autocomplete="off" autofocus onkeydown="handleScanKey(event)" oninput="handleScanInput(event)" />
@@ -2855,7 +2863,7 @@ async function initAfterLogin(){
   // ไม่แตะ logic การ render/sync — แค่ overlay บนการแสดงผลชั่วคราว
   if(_showLoader&&_slLoading){
     const _txt=_slLoading.querySelector('.sl-loading-text');
-    if(_txt)_txt.textContent=currentRole==='pharmacist'?'กำลังโหลดสินค้า Audit...':'เตรียมข้อมูล...';
+    if(_txt)_txt.textContent=(currentRole==='pharmacist'&&!_pharmAuditIdle(0))?'กำลังโหลดสินค้า Audit...':'เตรียมข้อมูล...';
     _slLoading.classList.add('show');
   }
   try{
@@ -3235,7 +3243,7 @@ function loadR16(event) {
     const totalInbound=[...state.r16InboundMap.values()].reduce((a,b)=>a+b,0);
     if(matched>0){
       if(currentRole==='pharmacist'){
-        toast('R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (Audit ค้างจากวันก่อนเทียบตรงกับยอดระบบ)','success');
+        toast(_pharmAuditIdle(_legacyAuditCount())?'R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้':'R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (Audit ค้างจากวันก่อนเทียบตรงกับยอดระบบ)','success');
       }else{
         toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
       }
@@ -5598,6 +5606,40 @@ function _directAdjPair(sd){return _isDirectAdjItem(sd)?{sys:sd.systemQty,cnt:sd
 // "ไม่ตรงตั้งแต่นับรอบแรก" — เดิม initialStatus==='audit' · ตอนนี้รวมรายการที่ออก Stock Adj ตรงด้วย
 function _wasFirstCountMismatch(sd){return !!sd&&(sd.initialStatus==='audit'||sd.directAdj===true);}
 
+// ── เภสัชสาขายา: ตัดบทบาท Audit → ทำ Stock Adj อย่างเดียว (30 ก.ย. 2026 · ผู้ใช้สั่ง) ──
+// UI-gating ล้วน: ไม่แตะ processScan/processPharmacistAuditScan/rebuildScanListMap/confirm* · ข้อมูล/schema/rules ไม่เปลี่ยน
+// idle = เภสัช + ไม่มี audit ค้างเลย → ซ่อนแถบยืนยัน/ช่องสแกน/RESULT · แผง Audit Verify เหลือหน้า Stock Adj (ยังมี ↺)
+// มี audit ค้าง (ของเดิมก่อน 29 ก.ย. หรือรายการที่กด ↺ กลับมา) → UI เดิมครบทุกอย่าง · ห้ามลบโค้ด Audit Verify
+// rollback = ตั้ง false แล้ว deploy (ดู CLAUDE.md §ย้อนกลับเภสัชทำ Stock Adj อย่างเดียว)
+let PHARMACIST_STOCKADJ_ONLY=true;
+function _legacyAuditCount(){let n=0;for(const[,sd] of state.scanData.entries())if(sd&&sd.status==='audit')n++;return n;}
+function _pharmAuditIdle(nAudit){return PHARMACIST_STOCKADJ_ONLY&&_isPharmacyBranch()&&currentRole==='pharmacist'&&nAudit===0;}
+let _pharmIdleApplied=false;
+// จุดเดียวที่สลับ UI ตามโหมด — idempotent · role อื่น/สวิตช์ปิด = ไม่แตะ DOM เลย (ยกเว้นย้อนของที่ idle เคยแตะ)
+function _applyPharmacistAuditMode(nAudit){
+  const idle=_pharmAuditIdle(nAudit);
+  document.body.classList.toggle('pharm-audit-idle',idle);
+  if(idle||_pharmIdleApplied){
+    const $=id=>document.getElementById(id);
+    const lbl=idle?'Stock Adj':(currentBranch==='WH'?'Recheck':'Audit Verify');
+    const pt=$('auditVerifyPanelTitle');if(pt)pt.textContent=lbl;
+    const pb=$('auditVerifyBtnLabel');if(pb)pb.textContent=lbl;
+    const ab=$('avBtnAudit');if(ab)ab.style.display=idle?'none':'';
+    const sr=$('avScanRow');if(sr)sr.style.display=(idle||_isWhSupervisorAuditReadonly())?'none':'flex';
+    const cf=$('avConfirmAllBtn');if(cf&&idle)cf.style.display='none';
+    const ti=$('auditVerifyTitle');
+    if(ti)ti.textContent=idle?'🔴 Stock Adj — ตรวจ/ย้อนรายการ (เภสัช)':(currentBranch==='WH'?'🔍 Recheck — รีเช็คสินค้า':'🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)');
+    // Audit รายการสุดท้ายเพิ่งปิดขณะป็อปอัพเปิดอยู่บนแท็บ Audit (ที่ถูกซ่อนแล้ว) → เลื่อนไปแท็บ Stock Adj
+    if(idle&&_avFilter==='audit'){
+      _avFilter='stock_adj';
+      document.querySelectorAll('#auditVerifyPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));
+      const sb=$('avBtnStockAdj');if(sb)sb.classList.add('active');
+      renderAuditVerifyTable();
+    }
+  }
+  _pharmIdleApplied=idle;
+}
+
 function _buildPendingScanEvaluation(sku,sd){
   if(!sd||sd.status!=='scanning')return null;
   const si=state.skuMap.get(sku);if(!si)return null;
@@ -6102,6 +6144,7 @@ function applyAuditTerminology(){
   set('popupFilterAuditLabel',w);
   set('popupThAudit',w);
   set('avTabAuditLabel',w);
+  _applyPharmacistAuditMode(_legacyAuditCount()); // เภสัช idle: ทับป้ายแผงด้านบนเป็น "Stock Adj" (role อื่น = ไม่แตะ)
   // Scan Guide popover — สลับข้อความ flow ตาม branch (WH=Recheck/warehouse, สาขา=Audit/เภสัช)
   const isWh=currentBranch==='WH';
   const setHtml=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html;};
@@ -7365,8 +7408,11 @@ function setAvFilter(f,btn){
 
 function openAuditVerifyPopup(){
   if(currentRole!=='pharmacist'&&currentRole!=='supervisor'){toast('เฉพาะเภสัช / หัวหน้างาน เท่านั้น','warn');return;}
-  _avFilter='audit';
-  const btn=document.getElementById('avBtnAudit');
+  // เภสัชสาขายา ไม่มี audit ค้าง → เปิดหน้า Stock Adj (แท็บ Audit ถูกซ่อน · ดู _applyPharmacistAuditMode)
+  const _nAudit=_legacyAuditCount();
+  const _idle=_pharmAuditIdle(_nAudit);
+  _avFilter=_idle?'stock_adj':'audit';
+  const btn=document.getElementById(_idle?'avBtnStockAdj':'avBtnAudit');
   if(btn){document.querySelectorAll('#auditVerifyPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
   // WH branch: change title to warehouse context
   const title=document.getElementById('auditVerifyTitle');
@@ -7381,9 +7427,10 @@ function openAuditVerifyPopup(){
   const svReadonly=_isWhSupervisorAuditReadonly();
   const scanRow=document.getElementById('avScanRow');
   if(scanRow)scanRow.style.display=svReadonly?'none':'flex';
+  _applyPharmacistAuditMode(_nAudit); // ทับหัวป็อปอัพ/แถวสแกน/แท็บ Audit เมื่อ idle (role อื่น = ไม่แตะ)
   _openModal('auditVerifyPopupOverlay','auditVerifyPopupCard');
   renderAuditVerifyTable();
-  if(!svReadonly)setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
+  if(!svReadonly&&!_idle)setTimeout(()=>document.getElementById('auditVerifyScanInput').focus(),100);
 }
 function closeAuditVerifyPopup(){
   _closeModal('auditVerifyPopupOverlay','auditVerifyPopupCard',()=>{
@@ -7770,6 +7817,7 @@ function updateAuditVerifyCount(){
   let n=0;for(const[,sd] of state.scanData.entries()){if(sd.status==='audit')n++;}
   const el=document.getElementById('auditVerifyCount');if(el)el.textContent=n;
   const el2=document.getElementById('btnPdaAuditCount');if(el2)el2.textContent=n;
+  _applyPharmacistAuditMode(n);
 }
 function updateAuditVerifyPanel(){
   const p=document.getElementById('auditVerifyPanel');if(!p)return;
