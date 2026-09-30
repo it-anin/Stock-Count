@@ -23,6 +23,7 @@ const FN = [
   'updateStats', 'renderScanList', 'rebuildScanListMap', 'patchScanRow',
   'saveSession', '_reconcileScanItems', '_flushDirtySkus', '_syncSessionMetaToFirestore',
   'updateConfirmBtn', 'updatePharmacistAuditConfirmBtn', 'updateWhResultTabs',
+  '_refreshScanCounters', '_writeScanProgress',   // ก.ย. 2026: Counted/Pass/Progress ตามสแกนของสาขายา (PROGRESS_BY_SCAN) — ต้นทุนเพิ่มต่อสแกน
 ];
 
 const pad = (n) => String(n).padStart(5, '0');

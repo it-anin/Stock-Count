@@ -220,7 +220,7 @@ state = {
 - ⚠️ **ธง `nc` ถูกตัดสินตอน parse แล้วตรึงลง `{branch}_r01.data_json`** — แก้กติกาอย่างเดียวไม่มีผลกับข้อมูลที่ค้างบน cloud จนกว่าบอทจะรันรอบถัดไป · ถ้าต้องให้มีผลกับรอบนับที่ทำอยู่ ใช้ `python auto_r01_import.py --resync-nc --yes` ซึ่งเขียนเฉพาะ `data_json` (ไม่แตะ `r01Version`/`r01BaselineAt`/`r16*` จึงไม่ล้าง R16 ไม่ freeze audit ไม่ทำให้ Confirm abort) แล้วทุกเครื่องจะเห็นเมื่อ reload — **ต้อง resync ก่อน deploy** ไม่งั้นเสีย auto-reload ไปหนึ่งรอบ
 - ⚠️ **เก็บแค่ธง `nc` ห้ามเก็บข้อความหมวดลง `r01Data`** — `{branch}_r01` มีเพดาน 1 MiB · ข้อความไทย ~45 ตัวอักษร × 5,400 แถว ≈ 750 KB ชนเพดานทันที
 - SKU ที่หลุดจากชุดนี้ยังอยู่ครบ: สแกนได้ · Confirm ได้ผลถูกต้อง · เห็นในรายการสินค้า — ตัดออกเฉพาะจาก Total SKU/Progress
-- `_cachedTotalSku = _countableSkus.size` เป็นทั้ง **การ์ด Total SKU และตัวหาร Progress** · ตัวเศษคือ SKU ในชุดเดียวกันที่ Confirm แล้ว
+- `_cachedTotalSku = _countableSkus.size` เป็นทั้ง **การ์ด Total SKU และตัวหาร Progress** · ตัวเศษคือ SKU ในชุดเดียวกันที่ **สแกนแล้ว** (สาขายา · `PROGRESS_BY_SCAN` — 30 ก.ย. 2026) หรือ **Confirm แล้ว** (WH · ปิดสวิตช์)
 - **การ์ดบนแถบสถิติแบ่งเป็น 2 แกน อย่าพยายามทำให้บวกลงตัว** (ส.ค. 2026 · `updateStats()`)
 
 | การ์ด | กรองด้วย `_countableSkus` | เหตุผล |
@@ -233,8 +233,15 @@ state = {
   - ⚠️ ในลูปของ `updateStats()` บรรทัด `if(!_countableSkus.has(sku))continue;` **ต้องอยู่ใต้การนับ `f`/`auditTotal`/`auditGot` เสมอ** ไม่งั้น Audit โดนกรองไปด้วยเงียบๆ
   - ผลที่ตั้งใจ: `Pass + Audit ≠ Counted` (Audit นับกว้างกว่า) · SKU นอกชุดที่ Confirm เป็น `pass` จะไม่โผล่บนแถบสถิติเลย (ยังดูได้ใน 📋 รายการสินค้า / Export / ใบปรับสต็อก)
   - **Dashboard ข้ามสาขา (`buildDashboardData`) ไม่กรองโดยเจตนา** — ไม่มี `_countableSkus` ของสาขาอื่น ถ้าจะกรองต้องโหลด PBM+R01 ทุกสาขา = กิน read เปล่า · Dashboard ตอบคำถาม "Confirm ไปแล้วกี่รายการ" คนละคำถามกับ Progress ของสาขา
+  - ⚠️ **นิยามปัจจุบันของสาขายา (SRC/KKL/SSS · ทุกอุปกรณ์ Desktop+PDA) — สวิตช์ `PROGRESS_BY_SCAN` (30 ก.ย. 2026 · ผู้ใช้สั่ง)** — Counted / Pass / Progress นับ **"ตามที่สแกน"** ไม่ใช่ตามที่ Confirm (`_progressByScanOn()` = สวิตช์เปิด && สาขายา):
+    - **เหตุผล:** ตัดขั้น Audit แล้ว (29 ก.ย.) ⇒ "เสร็จ" ของหน้างานคือ **สแกนครบ** ไม่ต้องรอ Desktop Confirm · ผู้ใช้ยอมรับแล้วว่า Progress 100% ≠ Confirm ครบ, Progress ลดได้ (กด ✕), Desktop ไม่มีตัวบอกจำนวนที่รอ Confirm
+    - **Counted = ตัวเศษ Progress = SKU ในชุดที่ต้องนับ (`_countableSkus`) ที่สถานะไม่ใช่ `pending`** (สแกนครั้งแรกก็นับ · รวม `scanning` ที่ยังไม่ Confirm · ทุกเครื่องในสาขา) · **Pass = สถานะ `pass` จริง ในชุดเดียวกัน** (ไม่รวม `stock_adjustment`/`audit_check`) · **Progress = Counted / Total SKU ไม่เกิน 100%**
+    - ⇒ **invariant ในตารางด้านบนยังจริงทุกจอสาขายา** (`Counted === progNum` · `Counted ≤ Total SKU` · `Pass ≤ Counted`) · **ของนอกชุดที่ต้องนับสแกนแล้วเลขไม่ขยับ** (ยังเห็นใน RESULT/📋 — ถ้ากรองข้างเดียว Progress จะทะลุ 100% ซ้ำรอยบั๊กเดิม) · Audit card ไม่กรองเหมือนเดิม
+    - **กลไก:** `_scanProgressCounts()` (วนรอบเดียวบน `scanData` ≈0.8 ms/สแกน วัดที่ catalog 5,400 · CPU 4×) → `_writeScanProgress()` เขียน `statCounted`/`statPass`/`statPct`/`progressFill`/`progressCount` · เรียกจาก `_refreshScanCounters()` (ครอบทั้งสแกนเอง `_afterScanRefresh` และเพื่อนสแกนผ่าน listener โดยไม่แก้ `handleBarcode`/`drainQueue`/listener) และท้าย `updateStats()` เป็นตัวสุดท้ายเสมอ (ทับค่าที่ลูปแบบ Confirm คำนวณไว้ด้านบน) · ✕ ลบใช้ `scheduleStats()` เดิม · ⛔ ห้ามให้ `updateStats()` ต่อสแกนกลับมา
+    - **ไม่เปลี่ยน:** WH (Counted = Recheck ทั้งหมด · Progress ยังนับที่ Confirm แล้ว) · การ์ด Audit · Dashboard ข้ามสาขา · สูตร Confirm · ข้อมูลใน Firestore · `Pass` ยังขยับตอน Desktop กด Confirm เท่านั้น (PDA/Desktop ตัดสิน pass/stock_adjustment ก่อน Confirm ไม่ได้ — ต้องใช้ R16 ทั้งช่วง) · PASS ลดลงทันทีหลัง deploy เพราะตัด Stock Adj ออก
+    - เทส `tests/specs/{logic,e2e}/progress-by-scan.spec.js` (ทำซ้ำเคสหลักบนทั้ง PDA และ Desktop · สวิตช์ปิด = เท่าเดิม · WH เท่าเดิม · เส้นทางเบา = updateStats ในสถานะสุ่ม · สแกนล้วนไม่เรียก `updateStats` · e2e เพื่อนสแกน/Confirm จริง/เปิดเครื่องทีหลัง) · ทางถอย §"ย้อนกลับ Counted/Pass/Progress ตามสแกน"
 - **ปุ่มกรองใน 📋 รายการสต็อคสินค้าต้องอิง `_countableSkus` ด้วย** (ส.ค. 2026) — `getFilteredPopupRows()`
-  - ⏳ **"ยังไม่ได้นับ"** (key `pending`) = `_countableSkus` ที่ status ยัง `pending`/`scanning` → **จำนวนแถว = ตัวหาร − ตัวเศษ** เสมอ · ห้ามตัด `scanning` ออก (จะเกิด "รายการหมดแต่ Progress ไม่ 100%") และห้ามถอด `_countableSkus` (รายการจะยาวกว่าที่เหลือจริง)
+  - ⏳ **"ยังไม่ได้นับ"** (key `pending`) = `_countableSkus` ที่ยังไม่เข้าตัวเศษ → **จำนวนแถว = ตัวหาร − ตัวเศษ** เสมอ · **สาขายา (`PROGRESS_BY_SCAN` เปิด): เฉพาะ `pending`** (`scanning` เข้าตัวเศษแล้ว ไม่ค้างในลิสต์) · **WH / ปิดสวิตช์: `pending` + `scanning`** (ตัวเศษ = Confirm แล้ว — ห้ามตัด `scanning` ออก จะเกิด "รายการหมดแต่ Progress ไม่ 100%") · ห้ามถอด `_countableSkus` (รายการจะยาวกว่าที่เหลือจริง)
   - 🗑️ **DEL** = `isDel && _countableSkus.has(sku)` → เป็น "งานที่ต้องเดินไปหา" ไม่ใช่รายงานของนอกแคตตาล็อกทั้งหมด · **แท็ก DEL แดงในตารางยังขึ้นครบทุกตัว** (คนละเรื่องกัน)
   - แก้ตรงนี้ **มีผลกับ Export Excel ของ filter นั้นด้วย** (filter chain ร่วมกันโดยเจตนา)
 - **invariant: ตัวเศษกับตัวหารต้องมาจากชุดเดียวกันเสมอ** — เดิมตัวเศษวนจาก `scanData` แต่ตัวหารนับจาก `r01Data` คนละแหล่ง ทำให้ % ทะลุ 100 ได้เมื่อกรองข้างเดียว
@@ -628,7 +635,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 
 ### ต้นทุนงานหลังสแกน (ก.ย. 2026) — รายละเอียดและตัวเลขที่วัดจริงอยู่ใน [[SKILL-scan-engine]] §ต้นทุนงานหลังสแกน
 
-- **ห้ามนำ `updateStats()` ต่อสแกนกลับมา** — สแกนล้วน (`pending`/`scanning`) เปลี่ยนผลของมันไม่ได้ (ลูปข้ามสถานะเหล่านี้ทั้งหมด) · `drainQueue` ใช้ `_afterScanRefresh` · ตัวเลขที่สแกนล้วนเปลี่ยนได้ (Unknown, tab WH PDA, ปุ่มนับรายพนักงาน) อัปเดตแยกใน `_refreshScanCounters()`
+- **ห้ามนำ `updateStats()` ต่อสแกนกลับมา** — สแกนล้วน (`pending`/`scanning`) เปลี่ยนผลของมันไม่ได้ (ลูปข้ามสถานะเหล่านี้ทั้งหมด) · `drainQueue` ใช้ `_afterScanRefresh` · ตัวเลขที่สแกนล้วนเปลี่ยนได้ (Unknown, tab WH PDA, ปุ่มนับรายพนักงาน, **Counted/Pass/Progress ของสาขายา** — `PROGRESS_BY_SCAN`) อัปเดตแยกใน `_refreshScanCounters()`
 - PDA สแกนห่าง ~1-3 วิ > ทุก debounce ⇒ debounce ไม่ลดงาน ต้อง "ข้ามงานที่เปลี่ยนไม่ได้" หรือทำแบบ O(1) · วัดด้วย `SCAN_COST_MEASURE=1 npm run test:e2e -- scan-cost` **ก่อนและหลัง** แก้เส้นทางหลังสแกนทุกครั้ง
 - `scheduleSave()` (backup localStorage) = trailing 4 วิ + maxWait 12 วิ ออนไลน์ / 1.5 + 3 วิ ออฟไลน์ + flush ตอน background/pagehide/offline · ใช้ `_cancelPendingSave()` แทน `clearTimeout(_saveTimer)` · items ขึ้น Firestore ทุก 800 ms เหมือนเดิม
 - แถว RESULT ที่ได้ SKU/Unknown ใหม่ = ใส่แถวเดียว (`insertScanRowTop`) ไม่ rebuild 30 แถว · **template แถวมีที่เดียว `_scanRowHtml`** — ห้ามก๊อปไปวางที่อื่น · DOM ไม่สอดคล้อง = fallback `renderScanList()` เสมอ
@@ -651,6 +658,22 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - **อาการที่ควรสงสัยงานนี้:** แถว RESULT ไม่ขึ้น/ลำดับผิด/ซ้ำ · ยอดในแถวไม่ตรงที่สแกน · การ์ด Pass/Audit/Progress ไม่ขยับหลัง Confirm หรือหลังเพื่อนสแกน · ปุ่มยืนยันนับรายพนักงาน (supervisor) ค้าง · ปิดแอปตอนออฟไลน์แล้วสแกนล่าสุดหาย (backup ในเครื่องช้ากว่าเดิม ≤12 วิ/≤3 วิ) — ลองระดับ 1 ทีละตัวเพื่อแยกสาเหตุก่อนย้อนทั้งหมด
 - **ตรวจแล้ว 29 ก.ย. 2026:** ทดลอง `git revert` ครบทุกคอมมิตของงานนี้ใน worktree แยก (ไม่แตะโฟลเดอร์งาน) → `git diff ab95bf0 HEAD` **ว่างทั้งต้นไม้** (ไม่ใช่แค่ `index.html`) · สวิตช์มีเทสคุมทั้งเปิดและปิด (`scan-light-refresh` · `scan-row-parity` · `scan-cost`) · `npm test` ทั้งชุดผ่าน (logic 123 · e2e 67 + เทสวัด 2 ข้อที่ opt-in) · ⏳ **ยังไม่ได้ทดสอบบน PDA จริง** (สแกนต่อเนื่อง/ออฟไลน์/สองเครื่อง — ตาม §เมื่องานเสร็จ)
 - หลังย้อนระดับ 2 รัน `cd tests && npm test` ให้ผ่านครบ (เทสของงานนี้ `scan-cost`/`scan-light-refresh`/`scan-row-parity` ถูก revert ไปพร้อมกัน — ถูกต้อง)
+
+#### ⏪ ย้อนกลับ Counted/Pass/Progress ตามสแกน (สาขายา · ผู้ใช้สั่ง 30 ก.ย. 2026 — แนวเดียวกับงานหลังสแกนด้านบน)
+
+- **จุดก่อนแก้ = `48c8194`** (ผ่าน `npm test` เต็มชุดก่อนแก้: logic 123 · e2e 67) · คอมมิตของงานนี้ขึ้นต้น **`feat(scan-progress):`** — หาด้วย `git log --oneline --grep='^feat(scan-progress)' 48c8194..HEAD`
+- **ไม่มีการเปลี่ยน schema / รูปแบบข้อมูล / `firestore.rules` / APK / `sw.js`** — เปลี่ยนเฉพาะ "ตัวเลขและตัวกรองที่ UI แสดง" ของสาขายา (Desktop+PDA) ⇒ ย้อนได้ทั้งสองทางโดยไม่ต้อง migrate
+- **สวิตช์ตัวเดียว = `PROGRESS_BY_SCAN`** (`let` ใกล้ `SCAN_LIGHT_REFRESH` ใน `index.html`) — ปิดแล้ว `updateStats()` · `_refreshScanCounters()` · ตัวกรอง 📋 "ยังไม่ได้นับ" กลับเท่าเดิมครบ (Counted/Progress = Confirm แล้ว · Pass = pass+stock_adj+audit_check) · มีเทสคุมทั้งเปิดและปิด
+
+| ระดับ | ทำอะไร | ใช้เมื่อ |
+|---|---|---|
+| **1 สวิตช์** (เร็วสุด) | แก้เป็น `let PROGRESS_BY_SCAN=false;` → commit → `git push origin main` | ตัวเลขสร้างความสับสน/หน้างานอยากกลับไปนับตาม Confirm โดยไม่แตะโค้ดอื่น |
+| **2 revert** | `git revert --no-edit $(git log --format=%h --grep='^feat(scan-progress)' 48c8194..HEAD)` → `git push origin main` | ระดับ 1 ไม่พอ · **ดูรายการก่อนรัน** (`git log --oneline --grep=...` ต้องเป็นของงานนี้ล้วน) · ⛔ ห้าม `reset --hard` / force-push |
+| **3 Vercel** | promote deployment ก่อนหน้า (ถ้าแผนมี Instant Rollback) | เว็บพังหนัก · ⚠️ ต้อง revert ใน git ตามด้วย |
+
+- หลังย้อน/deploy ต้อง **ปิดแอปแล้วเปิดใหม่** ที่ PDA ทุกเครื่องที่ใช้งานอยู่ (heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว — ดู Known limitations) · **ตรวจรุ่น (Console):** `typeof PROGRESS_BY_SCAN` = `'boolean'` → รุ่นใหม่ · `'undefined'` → ก่อนแก้
+- **อาการที่ควรสงสัยงานนี้:** Counted/Progress ไม่ขยับหลังสแกน (ทั้ง Desktop และ PDA) หรือไม่ลดหลังกด ✕ · Progress เกิน 100% (ห้ามเกิด) · Counted ≠ ตัวเศษ Progress · Pass ไม่ขยับหลัง Desktop Confirm · ตัวเลข PDA ≠ Desktop · 📋 "ยังไม่ได้นับ" ไม่เท่า ตัวหาร − ตัวเศษ · (เป็นเจตนา ไม่ใช่บั๊ก) Progress 100% ทั้งที่ยังไม่ Confirm · Pass ลดลงหลัง deploy เพราะตัด Stock Adj
+- **ตรวจแล้ว 30 ก.ย. 2026:** ทำตามระดับ 2 (`git revert` คอมมิตของงานนี้) ใน worktree แยก (ไม่แตะโฟลเดอร์งาน) → `git diff 48c8194 HEAD` **ว่างทั้งต้นไม้** · สวิตช์มีเทสคุมทั้งเปิดและปิด (`progress-by-scan` logic 23 + e2e 3) · ใส่บั๊กจงใจ 7 แบบลงสำเนาชั่วคราว (ไม่กรองชุดนับ / เส้นทางเบาไม่เขียนการ์ด / Pass รวม Stock Adj / `updateStats` ไม่เขียนทับ / ตัวกรอง "ยังไม่ได้นับ" ยังรวม scanning / สวิตช์ปิดเป็นค่าเริ่มต้น / ตัด PDA ออก) แล้วเทสจับได้ทุกแบบ (ล้ม 3–20 ข้อต่อแบบ) · `npm test` ทั้งชุดผ่าน (logic 146 · e2e 70 + เทสวัด 2 ข้อที่ opt-in) · ต้นทุนเพิ่มต่อสแกน ≈0.8 ms (`_writeScanProgress` · catalog 5,400 · CPU 4× · ไม่มี long task · `updateStats` ไม่ถูกเรียกต่อสแกน) · ⏳ **ยังไม่ได้ทดสอบบน PDA/Desktop จริง** (สแกนต่อเนื่อง/หลายเครื่อง/Desktop Confirm — ตาม §เมื่องานเสร็จ)
 
 ### Known limitations / rollout assumptions
 

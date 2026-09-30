@@ -4197,17 +4197,52 @@ function scheduleStatsAfterScan(){
 //   เหตุผล: updateStats() ข้าม pending/scanning ทั้งหมด (Counted/Pass/Audit/Stock Adj นับเฉพาะสถานะที่ Confirm แล้ว)
 //   → สแกนล้วนเปลี่ยนผลของมันไม่ได้ · สิ่งเดียวที่สแกนล้วนเปลี่ยนคือ (ก) จำนวน Unknown (ข) tab จำนวนของ WH PDA (ค) ปุ่มยืนยันนับรายพนักงานของ supervisor
 //   สามอย่างนี้อัปเดตแยกใน _refreshScanCounters() · สถานะอื่น (WH recheck, สแกนซ้ำของที่ Confirm แล้ว) ยังเดินเส้นทางเดิมเต็ม
+//   (ง) ข้อยกเว้น: Counted/Pass/Progress ของสาขายา ตามสแกนได้ (PROGRESS_BY_SCAN ด้านล่าง) — อัปเดตใน _refreshScanCounters() เช่นกัน
 // SCAN_INCREMENTAL_ROW = ได้ SKU ใหม่ = ใส่แถวเดียวบนสุด ไม่ rebuild ทั้ง 30 แถว (ดู _applyScanRows)
 // rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบเส้นทางเก่า/ใหม่ได้
 // ⛔ ห้ามนำ updateStats() ต่อสแกนกลับมาโดยไม่วัดซ้ำ · updateStats() เนื้อในไม่ได้ถูกแก้ — แก้ที่ผู้เรียกเท่านั้น
 let SCAN_LIGHT_REFRESH=true;
 let SCAN_INCREMENTAL_ROW=true;
+// PROGRESS_BY_SCAN = Counted / Pass / Progress ของ "สาขายา" (SRC/KKL/SSS · ทุกอุปกรณ์ Desktop+PDA) นับตามที่สแกน (ก.ย. 2026 · ผู้ใช้สั่ง)
+//   เหตุผล: ตัดขั้น Audit แล้ว (29 ก.ย.) ⇒ "เสร็จ" ของหน้างานคือสแกนครบ ไม่ต้องรอ Desktop Confirm
+//   Counted = ตัวเศษ Progress = SKU ในชุดที่ต้องนับ (_countableSkus) ที่สถานะไม่ใช่ pending (สแกนครั้งแรกก็นับ · รวม scanning ที่ยังไม่ Confirm)
+//   Pass    = สถานะ pass จริง ในชุดเดียวกัน (ไม่รวม stock_adjustment / audit_check)
+//   Progress = Counted / Total SKU → ไม่เกิน 100% เสมอ (ตัวเศษ ⊆ ตัวหาร) · ลดได้เมื่อกด ✕ · 100% = สแกนครบ ไม่ได้แปลว่า Confirm ครบ
+//   Audit card · Dashboard · WH ไม่เปลี่ยน (WH: Counted = Recheck ทั้งหมด · Progress ยังนับที่ Confirm แล้ว)
+//   ⚠️ เป็นข้อยกเว้นของหลักการ SCAN_LIGHT_REFRESH: สแกนล้วนเปลี่ยนตัวเลขเหล่านี้ได้ จึงอัปเดตแยกใน _refreshScanCounters()
+//      (วนรอบเดียวบน scanData · ไม่กวาด catalog) · updateStats() เขียนทับชุดเดียวกันท้ายฟังก์ชัน — เรียก _scanProgressCounts() ตัวเดียวกัน ตัวเลขจึงไม่เพี้ยนระหว่างสองเส้นทาง
+//   ⚠️ 📋 "ยังไม่ได้นับ" ต้องตรงกัน: ชุดนับที่ยัง pending เท่านั้น (getFilteredPopupRows) → จำนวนแถว = ตัวหาร − ตัวเศษ
+// rollback = ตั้ง false แล้ว deploy (การ์ด/Progress/ตัวกรองกลับเท่าเดิมทุกจุด) · let เพื่อให้เทสสลับเทียบได้
+let PROGRESS_BY_SCAN=true;
+function _progressByScanOn(){return PROGRESS_BY_SCAN&&_isPharmacyBranch();}
+function _scanProgressCounts(){
+  // แหล่งเดียวกับ updateStats(): แคตตาล็อกของเครื่อง · ยังไม่มีแคตตาล็อก (R05 ยังไม่มา) ใช้ key ของ scanData
+  const active=_cachedActiveSkus.length?_cachedActiveSkus:getActiveSkus();
+  const src=active.length?active:[...state.scanData.keys()];
+  let scanned=0,pass=0;
+  for(const sku of src){
+    const sd=state.scanData.get(sku);
+    if(!sd||sd.status==='pending'||!_countableSkus.has(sku))continue;
+    scanned++;
+    if(sd.status==='pass')pass++;
+  }
+  return{scanned,pass};
+}
+function _writeScanProgress(){
+  const{scanned,pass}=_scanProgressCounts();
+  const denom=_cachedTotalSku;
+  const pct=denom?Math.round(scanned/denom*100):0;
+  const put=(id,v)=>{const el=document.getElementById(id);if(el&&el.textContent!==String(v))el.textContent=v;};
+  put('statCounted',scanned);put('statPass',pass);put('statPct',pct+'%');put('progressCount',scanned+' / '+denom);
+  const fill=document.getElementById('progressFill');if(fill&&fill.style.width!==pct+'%')fill.style.width=pct+'%';
+}
 const SCAN_STATS_SAFETY_MS=20000;   // updateStats() เต็มแบบ trailing ยาว — กันการพึ่งพาที่ตกหล่น ไม่ใช่ทางหลัก
 let _scanStatsSafetyTimer=null;
 const _isScanCountStatus=s=>s==='pending'||s==='scanning';
 function _refreshScanCounters(){
   updateWhResultTabs();                                            // WH PDA warehouse: จำนวนใน tab เริ่มนับ/รีเช็ค (มี guard บทบาทในตัว)
   if(currentRole==='supervisor')renderSupervisorCountButtons();    // ปุ่มยืนยันนับรายพนักงาน = นับ scanning ต่อคน
+  if(_progressByScanOn())_writeScanProgress();                     // สาขายา: Counted/Pass/Progress ขยับตามสแกน (PROGRESS_BY_SCAN)
 }
 // เรียกท้าย drainQueue — keys = SKU/unknown:* ที่ handleBarcode แตะใน drain นี้ (_pendingPatches)
 function _afterScanRefresh(keys){
@@ -6155,6 +6190,9 @@ function updateStats(){
     if(_cl)_cl.textContent='Counted';
     if(_c3)_c3.style.display='';
   }
+  // สาขายา (ก.ย. 2026): Counted = ตัวเศษ Progress = สแกนแล้ว ∩ ชุดนับ · Pass = pass จริง — เขียนทับชุดที่คำนวณแบบ Confirm ด้านบนเป็นตัวสุดท้ายเสมอ
+  // (ปิดสวิตช์/WH ผ่านตรงนี้ไปโดยไม่ทำอะไร → ค่าจากลูปด้านบนอยู่ครบ · ดู PROGRESS_BY_SCAN)
+  if(_progressByScanOn())_writeScanProgress();
 }
 function getActiveSkus(){return[...state.skuMap.keys()];}
 
@@ -6207,12 +6245,15 @@ function getFilteredPopupRows(){
   // ไม่ใช่งานของหน้างาน เอาออกให้เหลือเฉพาะรายการที่ต้องเดินไปหา · แท็ก DEL แดงในตารางยังขึ้นครบเหมือนเดิม
   //
   // ปุ่ม "ยังไม่ได้นับ" (key ยังเป็น 'pending') = **ส่วนที่ยังไม่เข้าตัวเศษ Progress** ต้องนิยามให้ตรงกับ
-  // updateStats() เป๊ะ: _countableSkus ที่ status ยังเป็น pending หรือ scanning
+  // updateStats() เป๊ะ: _countableSkus ที่ยังไม่เข้าตัวเศษ
   //   → จำนวนแถวในตาราง = ตัวหาร − ตัวเศษ พอดี · สแกนจนรายการหมด = Progress 100% พอดี
-  // ⚠️ แก้ตรงนี้ต้องแก้ให้ตรงกับเงื่อนไข skip ใน updateStats() คู่กันเสมอ ไม่งั้นสองตัวเลขจะเพี้ยนกันอีก
-  //   - ต้องคง 'scanning' ไว้: สแกนแล้วแต่ยังไม่ Confirm ก็ยังไม่นับเป็นตัวเศษ ถ้าตัดออกจะเกิดอาการ
+  // ⚠️ แก้ตรงนี้ต้องแก้ให้ตรงกับเงื่อนไขตัวเศษใน updateStats()/_scanProgressCounts() คู่กันเสมอ ไม่งั้นสองตัวเลขจะเพี้ยนกันอีก
+  //   - สาขายา (PROGRESS_BY_SCAN เปิด · 30 ก.ย. 2026): ตัวเศษ = สแกนแล้ว → เหลือเฉพาะ 'pending' — ต้องตัด 'scanning' ออก
+  //     ไม่งั้นของที่สแกนแล้วค้างในลิสต์ "ยังไม่ได้นับ" ทั้งที่ Progress นับไปแล้ว
+  //   - อย่างอื่น (WH / ปิดสวิตช์): ตัวเศษ = Confirm แล้ว → ต้องคง 'scanning' ไว้ ถ้าตัดออกจะเกิดอาการ
   //     "รายการว่างแล้วแต่ Progress ไม่ถึง 100%" ที่หน้างานสับสน
-  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel&&_countableSkus.has(r.sku);if(popupFilterState==='pending')return _countableSkus.has(r.sku)&&(r.sd.status==='pending'||r.sd.status==='scanning');if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  const _byScan=_progressByScanOn();
+  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel&&_countableSkus.has(r.sku);if(popupFilterState==='pending')return _countableSkus.has(r.sku)&&(r.sd.status==='pending'||(r.sd.status==='scanning'&&!_byScan));if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
   if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   return rows;

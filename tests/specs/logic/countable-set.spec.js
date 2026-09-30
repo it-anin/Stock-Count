@@ -301,6 +301,8 @@ test('filter DEL — โชว์เฉพาะ DEL ที่อยู่ใน
 
 // ปุ่ม ⏳ ยังไม่ได้นับ ต้องเป็น "ส่วนที่ยังไม่เข้าตัวเศษ Progress" เป๊ะ — จำนวนแถว = ตัวหาร − ตัวเศษ
 // ถ้าสองอันนี้หลุดจากกัน จะเกิดอาการ "สแกนจนรายการหมดแล้วแต่ Progress ไม่ถึง 100%"
+// ก.ย. 2026: สาขายา (PROGRESS_BY_SCAN) ตัวเศษ = สแกนแล้ว → scanning เข้าตัวเศษแล้ว จึงไม่ค้างในลิสต์นี้อีก
+//   (กติกาเดิมที่ "ตัวเศษ = Confirm แล้ว ⇒ ลิสต์ต้องรวม scanning" ยังใช้กับ WH และตอนปิดสวิตช์ — ตรึงไว้ที่ progress-by-scan.spec.js)
 test('filter ยังไม่ได้นับ — จำนวนแถว = ตัวหาร − ตัวเศษ ของ Progress เสมอ', async ({ browser }) => {
   const app = await bootBare(browser);
   await app.page.evaluate(() => { currentBranch = 'SRC'; });
@@ -332,8 +334,8 @@ test('filter ยังไม่ได้นับ — จำนวนแถว =
 
   // countable = A/B/C/D (E ไม่มีของ+ไม่จัดชั้น · F หมวดไม่ใช่สินค้าคงคลัง)
   expect(out.denom).toBe(4);
-  expect(out.num).toBe(2);                                   // C-DONE + D-AUDIT
-  expect(out.rows).toEqual(['A-TODO', 'B-SCANNING']);         // ยังไม่สแกน + สแกนแล้วรอ Confirm
+  expect(out.num).toBe(3);                                   // B-SCANNING + C-DONE + D-AUDIT (สาขายา: สแกนแล้วก็นับ)
+  expect(out.rows).toEqual(['A-TODO']);                       // เหลือเฉพาะที่ยังไม่สแกน — สแกนแล้วรอ Confirm ไม่ค้างในลิสต์
   expect(out.rows.length).toBe(out.denom - out.num);          // invariant ที่เทสนี้มีไว้ล็อก
 
   await closeApp(app);
