@@ -363,6 +363,12 @@
       /* ซ่อนแถบเลื่อน: 7px ของมันกินความกว้างคอลัมน์ STATUS (ยังเลื่อนด้วยนิ้วได้เหมือนเดิม) */
       .scan-list-body{flex:1;overflow-y:auto;max-height:none!important;scrollbar-width:none;}
       .scan-list-body::-webkit-scrollbar{display:none;}
+      /* ประหยัดพื้นที่จอ PDA (ก.ย. 2026): ซ่อนแถบ "RESULT" และข้อความ "แสดง 30 / N รายการล่าสุด"
+         แถบซ่อนเฉพาะที่ไม่ใช่ WH — บน WH PDA แถบเดียวกันคือ tab "เริ่มนับ/รีเช็ค" (ปุ่มใช้งานจริง ตัดไม่ได้)
+         (≤600px ที่เป็น WH มีแต่ role warehouse — supervisor ใช้ Desktop เท่านั้น) · !important เพราะ HTML ตั้ง display:flex ไว้ inline
+         ข้อความ 30/N ซ่อนด้วย CSS อย่างเดียว ไม่แตะ _scanListBanner/insertScanRowTop — element ยังอยู่ใน DOM (JS/เทสอ่านได้เหมือนเดิม) */
+      body:not(.branch-wh) .result-bar{display:none!important;}
+      .scan-list-limit{display:none;}
 
       /* Scan columns: 4 cols — hide Barcode (col2) and Action (col6)
          SKU 72 · QTY 46 · STATUS 80 (พอดี "⚠️ Stock Adj" ที่ font เล็ก) · ชื่อ (1fr) รับที่เหลือ
@@ -609,7 +615,7 @@
           </div>
         </div>
 
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+        <div class="result-bar" style="display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
           <span id="resultLabel" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);">RESULT</span>
           <div id="whResultTabs" style="display:none;gap:6px;flex:1;">
             <button id="whTabResult" onclick="setWhResultTab('result')" class="wh-result-tab active">เริ่มนับ <span id="whTabResultCount"></span></button>
