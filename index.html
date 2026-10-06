@@ -103,6 +103,10 @@
     .pg-btn:hover:not(:disabled) { border-color:rgba(0,114,198,0.55); color:var(--accent); }
     .pg-btn:disabled { opacity:0.4; cursor:default; }
     .pg-info { font-size:0.78rem; font-weight:600; color:var(--text2); white-space:nowrap; padding:0 4px; }
+    /* ชิปตัวกรอง "ตรวจกับ ERP" ในป็อปอัพ 📦 (ต.ค. 2026) — ไม่ใช้ .popup-filter ด้วยเหตุผลเดียวกับ .pg-bar (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
+    .adj-erp-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
+    .adj-erp-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
+    .adj-erp-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
     .btn-export-popup { padding:7px 16px; border-radius:7px; border:1px solid rgba(26,158,92,0.3); background:rgba(26,158,92,0.08); color:var(--green); cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600; transition:background 0.15s; }
     .btn-export-popup:hover { background:rgba(26,158,92,0.16); }
     .upload-guide-popover { display:none; position:absolute; top:0; left:calc(100% + 20px); width:460px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,0.12); z-index:100; padding:24px; animation:popIn 0.2s ease-out; }
@@ -1019,7 +1023,20 @@
         </div>
         <div class="upload-file-badge upload-file-badge-optional" id="adjPriceBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
       </div>
+      <!-- ตรวจกับ ERP (ต.ค. 2026 · สาขายา) — เภสัชแนบเองได้ (ไม่ล็อก Admin) · ซ่อนจนกว่า _refreshAdjErpCard จะเปิด -->
+      <input type="file" id="adjErpFileInput" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="handleAdjErpFiles(event)">
+      <div class="upload-file-item" id="adjErpCard" style="flex:1 1 320px;margin-bottom:0;display:none;" onclick="openAdjErpFilePicker()">
+        <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
+          <div class="upload-file-icon upload-file-icon-optional" id="adjErpIcon" style="font-size:1rem;">🧾</div>
+          <div style="min-width:0;">
+            <div class="upload-file-name">ตรวจกับ ERP · R16.104 / R16.103</div>
+            <div class="upload-file-sub" id="adjErpInfo">แนบ R16.104 (ORDS) / R16.103 (IRPS) จาก ProMaxx เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว</div>
+          </div>
+        </div>
+        <div class="upload-file-badge upload-file-badge-optional" id="adjErpBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่ได้ตรวจ</span></div>
+      </div>
     </div>
+    <div id="adjErpBar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:8px;flex-wrap:wrap;"></div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="adjustDocThead"></thead>
@@ -8723,6 +8740,7 @@ function _adjCardState(which){
 }
 function _refreshAdjCards(){ // สะท้อนสถานะการ์ดตามที่มา + ขนาด map ปัจจุบัน
   ['Lot','Price'].forEach(w=>{const[ok,text,badge]=_adjCardState(w);_setAdjCard(w,ok,text,badge);});
+  _refreshAdjErpCard();   // การ์ดตรวจกับ ERP (สาขายา) — ไม่ผ่าน _setAdjCard เพราะไม่ล็อก Admin
 }
 function handleAdjLotFile(event){
   const file=event.target.files[0];if(!file)return;
@@ -8844,6 +8862,381 @@ function _adjExportBusy(){
   toast('กำลังโหลด LOT/ราคา — รอสักครู่แล้วกด Export ใหม่','warn');
   return true;
 }
+// ── 🧾 ตรวจกับ ERP (6 ต.ค. 2026 · ผู้ใช้สั่ง) ─────────────────────────────────────────────
+// ปัญหา: ใบ 📦 ไม่รู้ว่าแถวไหนคีย์เข้า ProMaxx แล้ว (ระบบไม่มี issuedAt · Stock Adj ตรง/รอรีเช็คแช่ตัวเลข อยู่ในใบตลอดรอบ ⇒ เสี่ยงส่งซ้ำ/ตกหล่น)
+// เภสัชแนบ R16 ที่ Export จาก ProMaxx: R16.104 = เอกสารขาออก (ORCM/OTFB/…/ORDS) → ตรวจ ORDS · R16.103 = ขาเข้า (IRNC/ITFB/…) → ตรวจ IRPS
+//   ⏳ IRPS ใน R16.103 ยังไม่ได้ยืนยันกับไฟล์จริง · R16 ไม่มีคอลัมน์ LOT → เทียบ "SKU + จำนวนรวม (BASEQUANTITY) + วันที่" · ORDS 1 ใบแยกบรรทัดตาม LOT → รวมต่อ SKU
+// ผล ERP เป็น "ตัวอ่าน" — ไม่เปลี่ยนสถานะ/ตัวเลขในใบ · ไม่แตะ loadR16 (สูตร Confirm) · บรรทัด Export Text รูปแบบเดิมทุกไบต์
+// Export ตามตัวกรอง ERP ที่เลือก (ผู้ใช้เลือก) · ค่าเริ่มต้น "ทั้งหมด" = ไฟล์เดิมทุกไบต์ · ตาราง/แบ่งหน้า/Export ใช้ประตูเดียว _adjustDocViewRows
+// เก็บที่ stock_sessions/{branch}_adjerp ผูก countResetAt (รอบใหม่ = ว่างเอง ไม่ต้องแก้ startNewCount) · สาขายาเท่านั้น (ผู้ใช้เลือก — WH ไม่เห็นอะไรเปลี่ยน)
+// ADJUST_DOC_ERP_CHECK=false = ไม่มีการ์ด/คอลัมน์/ตัวกรอง/คำเตือน · ตาราง/Export เท่าเดิมทุกจุด (ทางถอย — เทสสลับได้)
+let ADJUST_DOC_ERP_CHECK=true;
+const ADJ_ERP_TYPES=['ORDS','IRPS'];                    // ORDS = ใบปรับปรุงลด (ขาด) · IRPS = ใบปรับปรุงเพิ่ม (เกิน)
+const ADJ_ERP_DIR_TYPE={ords:'ORDS',irps:'IRPS'};
+const ADJ_ERP_REPORT={ORDS:'R16.104',IRPS:'R16.103'};
+// หัวคอลัมน์ที่ต้องมี — หาตำแหน่งจากชื่อ (R16.103 อาจเรียงต่างจาก R16.104) · ขาดตัวไหน = ปฏิเสธทั้งไฟล์ (fail-closed)
+//   FCANCEL ต้องมี: ไม่รู้ว่าใบไหนยกเลิก = ขึ้น ✅ ทั้งที่ใบถูกยกเลิกได้ ⇒ เภสัชไม่ส่งของที่ยังต้องปรับ (ทิศที่อันตราย)
+const ADJ_ERP_REQUIRED_COLS=['SYSWAREHOUSEID','TRANDATE','TRANNO','FCANCEL','SYSBRANCHID','BASEQUANTITY','ITEMID'];
+// SRC อยู่ SYSBRANCHID 0 เดียวกับคลังชากค้อ — แยกด้วย SYSWAREHOUSEID: 1 = หน้าร้าน (SRC · ตรง R01 Front Store) · 0 = คลัง (ใบของคลังห้ามนับเป็นของ SRC)
+const ADJ_ERP_SRC_BRANCH_ID='0';
+const ADJ_ERP_SRC_WAREHOUSE='1';
+const ADJ_ERP_MAX_KB=800;
+let _adjErp=null;          // {branch, epoch, docs:{เลขที่ใบ:{no,type,day,at,items:{sku:qty}}}, cover:{ORDS?,IRPS?}, branchName, note, updatedBy, updatedAt, localOnly}
+let _adjErpFilter='all';   // 'all' | 'none' (ยังไม่เข้า) | 'done' (เข้าแล้ว) | 'issue' (ไม่ตรง: บางส่วน/เกิน/ทิศตรงข้าม)
+let _adjErpBusy=false;     // กำลังอ่าน/บันทึกไฟล์ ERP — กันแนบซ้อน
+let _adjErpReadToken=0;    // ผลอ่าน cloud ที่ถูกแซง (แนบไฟล์ใหม่/เปิดซ้ำ) ถูกทิ้ง
+const ADJ_ERP_STATE_UI={
+  none:{text:'⬜ ยังไม่เข้า',plain:'ยังไม่เข้า',color:'var(--text3)'},
+  done:{text:'✅ เข้าแล้ว',plain:'เข้าแล้ว',color:'var(--green)'},
+  partial:{text:'⚠️ บางส่วน',plain:'บางส่วน',color:'var(--yellow)'},
+  over:{text:'⚠️ เกิน',plain:'เกิน',color:'var(--red)'},
+  opposite:{text:'⚠️ ทิศตรงข้าม',plain:'ทิศตรงข้าม',color:'var(--red)'},
+  skip:{text:'— ไม่ส่ง',plain:'ไม่ส่ง (แก้เป็น 0)',color:'var(--text3)'},
+};
+const ADJ_ERP_FILTER_LABEL={none:'⬜ ยังไม่เข้า ERP',done:'✅ เข้า ERP แล้ว',issue:'⚠️ ไม่ตรงกับ ERP'};
+function _adjErpEnabled(){return ADJUST_DOC_ERP_CHECK&&_isPharmacyBranch()&&(currentRole==='pharmacist'||currentRole==='supervisor');}
+// ผลที่แนบใช้ได้เฉพาะสาขา/รอบนับเดียวกับตอนแนบ — ค้างข้ามสาขา/รอบ = ไม่มี
+function _adjErpCurrent(){return _adjErpEnabled()&&_adjErp&&_adjErp.branch===currentBranch&&_adjErp.epoch===(_countResetAt||'')?_adjErp:null;}
+function _adjErpCovered(type){const s=_adjErpCurrent();return !!(s&&s.cover&&s.cover[type]);}
+function _adjErpEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// วัน/เวลาตามเวลาเครื่อง ('YYYY-MM-DD' / 'YYYY-MM-DD HH:MM' เทียบแบบสตริงได้) — ⛔ ห้ามใช้ toISOString (UTC ถอย 7 ชม. วันเลื่อน)
+function _adjErpDayKey(d){return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:'';}
+function _adjErpAtKey(d){return d?`${_adjErpDayKey(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`:'';}
+function _adjErpDayOf(v){const t=_auditTimeMs(v);return Number.isFinite(t)?_adjErpDayKey(new Date(t)):'';}   // ISO หรือ 'YYYY-MM-DD HH:mm:ss'
+function _adjErpFmtAt(at,withYear){const m=/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(at||'');return m?`${m[3]}/${m[2]}${withYear?'/'+m[1]:''}${m[4]?` ${m[4]}:${m[5]}`:''}`:String(at||'');}
+function _adjErpRound(n){return Math.round(Number(n||0)*1000)/1000;}
+// ── อ่านไฟล์ R16 → ใบ ORDS/IRPS ของสาขานี้ (ฟังก์ชันบริสุทธิ์ ไม่แตะ state) ──
+// คืน {error, docs, cancelled, cover:{ORDS:{fromDay,toAt}?, IRPS:…}, branchId, branchName, stats}
+//   coverage: ไฟล์มีเอกสารขึ้นต้น O = รายงานขาออก (R16.104) ⇒ ตรวจ ORDS ได้แม้ยังไม่มีใบ ORDS สักใบ (= "ยังไม่เข้า" ไม่ใช่ "ไม่มีข้อมูล")
+//             ขึ้นต้น I = รายงานขาเข้า (R16.103) ⇒ ตรวจ IRPS · ช่วงของไฟล์ = เอกสารแรก–สุดท้ายของขานั้น (ทุกคลังในไฟล์)
+//   ด่านสาขา: หลาย SYSBRANCHID = ปฏิเสธ · SRC ต้องเป็น 0 + เก็บเฉพาะ SYSWAREHOUSEID 1 · KKL/SSS ต้องไม่ใช่ 0 (ของชากค้อ)
+//   ใบที่ลงวันก่อนวันเริ่มรอบนับ = ทิ้ง · ใบยกเลิก (FCANCEL=1) = จดเลขไว้ลบตอนรวม · บรรทัดที่ทิ้งทุกแบบนับใน stats (โชว์บนการ์ด ไม่หายเงียบ)
+function _parseAdjErpRows(rows,branch,epochIso){
+  const stats={adjLines:0,otherWh:0,beforeRound:0,bad:0,badDate:0,cancelledDocs:0};
+  const res={error:'',docs:[],cancelled:[],cover:{},branchId:'',branchName:'',stats};
+  if(!Array.isArray(rows)||!rows.length){res.error='ไฟล์ว่าง';return res;}
+  const hdr=(rows[0]||[]).map(v=>(v??'').toString().replace(/^\uFEFF/,'').trim().toUpperCase());
+  const col={};ADJ_ERP_REQUIRED_COLS.forEach(n=>{col[n]=hdr.indexOf(n);});
+  const missing=ADJ_ERP_REQUIRED_COLS.filter(n=>col[n]<0);
+  if(missing.length){res.error=`ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ ${missing.join(', ')})`;return res;}
+  const nameIdx=hdr.indexOf('NAME');
+  const cell=(r,i)=>(r[i]??'').toString().trim();
+  const epochDay=_adjErpDayOf(epochIso);
+  const branchIds=new Set();const win={};const docs=new Map();const cancelled=new Set();
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i];if(!r||!r.length)continue;
+    const no=cell(r,col.TRANNO).toUpperCase();if(!no)continue;
+    const bid=cell(r,col.SYSBRANCHID);if(bid!=='')branchIds.add(bid);
+    if(!res.branchName&&nameIdx>=0)res.branchName=cell(r,nameIdx);
+    const d=parseTranDate(cell(r,col.TRANDATE));
+    const side=no[0]==='O'?'ORDS':no[0]==='I'?'IRPS':'';
+    if(side&&d){const w=win[side];if(!w)win[side]={from:d,to:d};else{if(d<w.from)w.from=d;if(d>w.to)w.to=d;}}
+    else if(side)stats.badDate++;
+    const type=ADJ_ERP_TYPES.find(t=>no.startsWith(t));if(!type)continue;
+    stats.adjLines++;
+    if(cell(r,col.FCANCEL)==='1'){cancelled.add(no);continue;}
+    if(branch==='SRC'&&cell(r,col.SYSWAREHOUSEID)!==ADJ_ERP_SRC_WAREHOUSE){stats.otherWh++;continue;}
+    const sku=cell(r,col.ITEMID);
+    const qRaw=cell(r,col.BASEQUANTITY).replace(/,|\s/g,'');
+    const q=qRaw===''?NaN:Number(qRaw);
+    if(!sku||!d||!Number.isFinite(q)||q<=0){stats.bad++;continue;}
+    const day=_adjErpDayKey(d);
+    if(epochDay&&day<epochDay){stats.beforeRound++;continue;}
+    let doc=docs.get(no);
+    if(!doc){doc={no,type,day,at:_adjErpAtKey(d),items:{}};docs.set(no,doc);}
+    doc.items[sku]=_adjErpRound((doc.items[sku]||0)+q);
+  }
+  if(branchIds.size>1){res.error=`ไฟล์มีหลายสาขา (SYSBRANCHID ${[...branchIds].join(', ')}) — Export R16 เฉพาะสาขา ${branch}`;return res;}
+  const bid=[...branchIds][0]||'';res.branchId=bid;
+  const who=res.branchName?` · ${res.branchName}`:'';
+  if(!bid){res.error='ไม่พบรหัสสาขา (SYSBRANCHID) ในไฟล์';return res;}
+  if(branch==='SRC'&&bid!==ADJ_ERP_SRC_BRANCH_ID){res.error=`ไฟล์ไม่ใช่ของสาขา SRC (SYSBRANCHID ${bid}${who})`;return res;}
+  if(branch!=='SRC'&&bid===ADJ_ERP_SRC_BRANCH_ID){res.error=`ไฟล์เป็นของสาขาชากค้อ (SYSBRANCHID 0${who}) ไม่ใช่ ${branch}`;return res;}
+  if(!win.ORDS&&!win.IRPS){res.error=stats.badDate?'อ่านวันที่ (TRANDATE) ในไฟล์ไม่ได้':'ไม่พบเอกสารในไฟล์ (TRANNO ต้องเป็นเลขที่เอกสาร เช่น ORDS…/IRPS…)';return res;}
+  for(const no of cancelled)docs.delete(no);
+  for(const t of ADJ_ERP_TYPES)if(win[t])res.cover[t]={fromDay:_adjErpDayKey(win[t].from),toAt:_adjErpAtKey(win[t].to)};
+  res.docs=[...docs.values()];res.cancelled=[...cancelled];stats.cancelledDocs=cancelled.size;
+  return res;
+}
+// รวมผลไฟล์ใหม่เข้ากับของเดิม (ฟังก์ชันบริสุทธิ์) — ไฟล์ใหม่เป็นความจริง "เฉพาะช่วงที่มันครอบ" ต่อชนิดเอกสาร
+//   ใบเดิมชนิดเดียวกันที่วัน ≥ วันแรกของไฟล์ใหม่ และเวลา ≤ เวลาท้ายสุดของไฟล์ใหม่ แต่ไม่มีในไฟล์ใหม่ = ถูกลบใน ERP แล้ว → ลบ
+//   ใบนอกช่วงคงเดิม (แนบทีละวัน/ทีละช่วงได้ ของเก่าไม่หาย) · ใบยกเลิกลบเสมอ · ใบในไฟล์ใหม่แทนของเดิมทั้งใบ
+function _mergeAdjErp(prev,parsed,meta={}){
+  const docs={...(prev&&prev.docs||{})};
+  const cover={...(prev&&prev.cover||{})};
+  for(const t of ADJ_ERP_TYPES){
+    const c=parsed.cover&&parsed.cover[t];if(!c)continue;
+    for(const no of Object.keys(docs)){const d=docs[no];if(d.type===t&&d.day>=c.fromDay&&d.at<=c.toAt)delete docs[no];}
+    const o=cover[t];
+    cover[t]={fromDay:o&&o.fromDay<c.fromDay?o.fromDay:c.fromDay,toAt:o&&o.toAt>c.toAt?o.toAt:c.toAt,
+      at:meta.at||'',by:meta.by||'',file:parsed.file||''};
+  }
+  for(const no of parsed.cancelled||[])delete docs[no];
+  for(const d of parsed.docs||[])docs[d.no]=d;
+  return {docs,cover,branchName:parsed.branchName||(prev&&prev.branchName)||''};
+}
+// สิ่งที่ถูกกรองออกจากไฟล์ — โชว์บนการ์ด (ไม่หายเงียบ)
+function _adjErpNote(p){
+  const s=p&&p.stats||{};const parts=[];
+  if(s.otherWh)parts.push(`ข้ามใบของคลังชากค้อ ${s.otherWh} บรรทัด`);
+  if(s.cancelledDocs)parts.push(`ใบยกเลิก ${s.cancelledDocs} ใบ`);
+  if(s.beforeRound)parts.push(`ก่อนเริ่มรอบนับ ${s.beforeRound} บรรทัด`);
+  if(s.bad)parts.push(`ข้อมูลไม่ครบ ${s.bad} บรรทัด`);
+  return parts.join(' · ');
+}
+// SKU → [{no,type,day,at,qty}] เรียงตามเวลา · cache ไว้บน object ของผลชุดนั้น (ผลชุดใหม่ = object ใหม่ = สร้างใหม่เอง)
+function _adjErpIndex(st){
+  if(st._idx)return st._idx;
+  const m=new Map();
+  for(const d of Object.values(st.docs||{}))for(const[sku,q] of Object.entries(d.items||{})){
+    let a=m.get(sku);if(!a){a=[];m.set(sku,a);}
+    a.push({no:d.no,type:d.type,day:d.day,at:d.at,qty:_adjErpRound(q)});
+  }
+  for(const a of m.values())a.sort((x,y)=>x.at<y.at?-1:x.at>y.at?1:0);
+  Object.defineProperty(st,'_idx',{value:m,enumerable:false,configurable:true});
+  return m;
+}
+// ขอบล่างรายแถว: นับเฉพาะใบที่ลงวันตั้งแต่วันที่นับรายการนี้ (และไม่ก่อนวันเริ่มรอบ) — ใบเก่ากว่านั้นไม่ใช่ของการนับครั้งนี้ · เทียบระดับวัน
+function _adjErpLowDay(sku){
+  const sd=state.scanData.get(sku);
+  const a=_adjErpDayOf(_countResetAt),b=_adjErpDayOf(sd&&(sd.firstScanAt||sd.timestamp));
+  return a>b?a:b;   // '' น้อยกว่าวันที่ทุกค่า
+}
+// สถานะ ERP ของแต่ละแถวในแท็บ (คำนวณตอนวาด ไม่เก็บผล) → Map sku → {state, got, opp, need, oppType, docs}
+//   ว่างเมื่อแท็บนี้ยังไม่มีไฟล์ / ปิดสวิตช์ / ไม่ใช่สาขายา · need = จำนวนในใบ (รวมค่าที่เภสัชแก้)
+//   opp > 0 = มีใบทิศตรงข้าม (เช่นแถว ORDS แต่ ERP มี IRPS) · got = 0 → ยังไม่เข้า (แถวแก้เป็น 0 → ไม่ส่ง) · เท่ากัน → เข้าแล้ว · น้อย/มากกว่า → บางส่วน/เกิน
+function _adjErpEval(rows,dir){
+  const out=new Map();
+  const st=_adjErpCurrent();const t=ADJ_ERP_DIR_TYPE[dir];
+  if(!st||!t||!st.cover[t])return out;
+  const o=t==='ORDS'?'IRPS':'ORDS';const oppOn=!!st.cover[o];
+  const idx=_adjErpIndex(st);
+  for(const r of rows){
+    const low=_adjErpLowDay(r.sku);
+    let got=0,opp=0;const docs=[];
+    for(const x of idx.get(r.sku)||[]){
+      if(x.day<low)continue;
+      if(x.type===t){got+=x.qty;docs.push(x);}
+      else if(oppOn&&x.type===o){opp+=x.qty;docs.push(x);}
+    }
+    got=_adjErpRound(got);opp=_adjErpRound(opp);
+    const need=_adjErpRound(r.qty);
+    let s;
+    if(opp>0)s='opposite';
+    else if(got===0)s=need>0?'none':'skip';
+    else if(got===need)s='done';
+    else s=got<need?'partial':'over';
+    out.set(r.sku,{state:s,got,opp,need,oppType:o,docs});
+  }
+  return out;
+}
+function _adjErpGroup(s){return s==='none'?'none':s==='done'?'done':(s==='partial'||s==='over'||s==='opposite')?'issue':'';}
+function _adjErpInFilter(e,f){return f==='all'||(!!e&&_adjErpGroup(e.state)===f);}
+// SKU ที่ ERP มีใบชนิดของแท็บนี้ (หลังขอบล่างรายตัว) แต่ไม่อยู่ในแท็บ — คีย์ผิดรหัส / ↺ ไปแล้ว / ปรับแล้วระบบตรงจึงหลุดจากใบ
+function _adjErpExtraSkus(all,dir){
+  const st=_adjErpCurrent();const t=ADJ_ERP_DIR_TYPE[dir];
+  if(!st||!t||!st.cover[t])return [];
+  const inTab=new Set(all.map(r=>r.sku));const out=[];
+  for(const[sku,list] of _adjErpIndex(st)){
+    if(inTab.has(sku))continue;
+    const low=_adjErpLowDay(sku);
+    const hit=list.filter(x=>x.type===t&&x.day>=low);
+    if(hit.length)out.push({sku,qty:_adjErpRound(hit.reduce((a,x)=>a+x.qty,0)),docs:hit});
+  }
+  return out;
+}
+// ⛔ ประตูเดียวของ "แถวที่ผู้ใช้เลือกดู/ส่งออก" — ตาราง · แบ่งหน้า · Export Text · Export Excel ต้องใช้ตัวนี้ทั้งหมด (ห้ามกรองซ้ำที่อื่น)
+//   ตัวกรอง ERP มีผลเฉพาะเมื่อแท็บนั้นมีไฟล์ (ไม่มี = "ทั้งหมด" เหมือนเดิม) · all = ทุกแถวของแท็บ (ชิป/ยอดรวมนับจากชุดนี้)
+function _adjustDocViewRows(dir){
+  const all=_buildAdjustDocRows(dir);
+  const ev=_adjErpEval(all,dir);
+  const covered=_adjErpCovered(ADJ_ERP_DIR_TYPE[dir]);
+  const filter=covered?_adjErpFilter:'all';
+  const rows=filter==='all'?all:all.filter(r=>_adjErpInFilter(ev.get(r.sku),filter));
+  return {all,rows,ev,covered,filter};
+}
+function _adjErpStateText(e){
+  if(!e)return '';
+  const ui=ADJ_ERP_STATE_UI[e.state]||ADJ_ERP_STATE_UI.none;
+  if(e.state==='partial'||e.state==='over')return `${ui.plain} ${e.got}/${e.need}`;
+  if(e.state==='opposite')return `${ui.plain} (${e.oppType} ${e.opp})`;
+  return ui.plain;
+}
+function _adjErpCellHtml(e){
+  if(!e)return '<td style="text-align:center;color:var(--text3);">—</td>';
+  const ui=ADJ_ERP_STATE_UI[e.state]||ADJ_ERP_STATE_UI.none;
+  const amt=e.state==='partial'||e.state==='over'?` ${e.got}/${e.need}`:e.state==='opposite'?` (${e.oppType} ${e.opp})`:'';
+  const first=e.docs[0];
+  const sub=first?`<div style="font-size:0.64rem;font-weight:400;color:var(--text3);margin-top:2px;white-space:nowrap;">${_adjErpEsc(first.no)} · ${_adjErpFmtAt(first.day)}${e.docs.length>1?` +${e.docs.length-1}`:''}</div>`:'';
+  const title=e.docs.length?e.docs.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):'ไม่พบใบใน ERP ตั้งแต่วันที่นับรายการนี้';
+  return `<td style="text-align:center;white-space:nowrap;" title="${_adjErpEsc(title)}"><span style="font-weight:700;font-size:0.76rem;color:${ui.color};">${ui.text}${amt}</span>${sub}</td>`;
+}
+// แถบชิปตัวกรอง + สรุป "มีใน ERP แต่ไม่อยู่ในแท็บนี้" — วาดก่อนตาราง (ต้องอยู่แม้ตัวกรองไม่เหลือแถว ไม่งั้นกดกลับไม่ได้)
+function _renderAdjErpBar(vr){
+  const bar=document.getElementById('adjErpBar');if(!bar)return;
+  if(!vr.covered){bar.style.display='none';bar.innerHTML='';return;}
+  const n={none:0,done:0,issue:0};
+  for(const r of vr.all){const g=_adjErpGroup(vr.ev.get(r.sku)?.state);if(g)n[g]++;}
+  const chip=(k,label,cnt)=>`<button type="button" class="adj-erp-chip${vr.filter===k?' active':''}" data-erp-filter="${k}" onclick="setAdjErpFilter('${k}')">${label} <b>${cnt}</b></button>`;
+  const extra=_adjErpExtraSkus(vr.all,_adjDocFilter);
+  const extraTip=extra.slice(0,40).map(x=>`${x.sku} · ${x.qty} · ${x.docs.map(d=>d.no).join(', ')}`).join('\n')+(extra.length>40?`\n… อีก ${extra.length-40} SKU`:'');
+  bar.innerHTML=`<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ตรวจกับ ERP:</span>`
+    +chip('all','ทั้งหมด',vr.all.length)+chip('none','⬜ ยังไม่เข้า',n.none)+chip('done','✅ เข้าแล้ว',n.done)+chip('issue','⚠️ ไม่ตรง',n.issue)
+    +(extra.length?`<span id="adjErpExtra" title="${_adjErpEsc(extraTip)}" style="font-size:0.72rem;color:var(--text3);cursor:help;">· มีใบ ${ADJ_ERP_DIR_TYPE[_adjDocFilter]} ใน ERP แต่ไม่อยู่ในแท็บนี้ ${extra.length} SKU</span>`:'');
+  bar.style.display='flex';
+}
+function setAdjErpFilter(f){
+  _adjErpFilter=ADJ_ERP_FILTER_LABEL[f]?f:'all';_adjDocPage=1;
+  renderAdjustDocTable(true);
+  const body=document.querySelector('#adjustDocPopupCard .stock-popup-body');
+  if(body)body.scrollTop=0;
+}
+function _refreshAdjErpCard(){
+  const card=document.getElementById('adjErpCard');if(!card)return;
+  const on=_adjErpEnabled();
+  card.style.display=on?'':'none';
+  if(!on)return;
+  const st=_adjErpCurrent();
+  const ok=!!st&&!_adjErpBusy;
+  let text,badgeText;
+  if(_adjErpBusy){text='กำลังอ่านไฟล์และบันทึกผล…';badgeText='กำลังตรวจ';}
+  else if(!st){text='แนบ R16.104 (ORDS) / R16.103 (IRPS) จาก ProMaxx ช่วงวันเริ่มรอบนับ–วันนี้ เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว';badgeText='ยังไม่ได้ตรวจ';}
+  else{
+    const cov=ADJ_ERP_TYPES.map(t=>st.cover[t]?`${t} ถึง ${_adjErpFmtAt(st.cover[t].toAt)}`:`${t}: ยังไม่มีไฟล์ ${ADJ_ERP_REPORT[t]}`).join(' · ');
+    const t=_auditTimeMs(st.updatedAt);   // การ์ดแคบ — ใช้รูปสั้น "06/10 16:05" (ไม่ใช่ _adjFmtUpdated ของการ์ด LOT/ราคา)
+    const when=Number.isFinite(t)?_adjErpFmtAt(_adjErpAtKey(new Date(t))):'';
+    text=cov+(when?` · แนบล่าสุด ${when}${st.updatedBy?' โดย '+st.updatedBy:''}`:'')
+      +(st.localOnly?' · ⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)':'')+(st.note?` · ${st.note}`:'');
+    badgeText=st.localOnly?'เฉพาะเครื่องนี้':'ตรวจแล้ว';
+  }
+  const sub=document.getElementById('adjErpInfo');if(sub)sub.textContent=text;
+  card.title=(st&&st.branchName?`ไฟล์ของ: ${st.branchName}\n`:'')+'กดเพื่อแนบ R16.104 / R16.103 (เลือกได้หลายไฟล์ · ไฟล์ใหม่ทับเฉพาะช่วงวันที่ของมัน)';
+  const icon=document.getElementById('adjErpIcon');if(icon)icon.classList.toggle('upload-file-icon-optional',!ok);
+  const badge=document.getElementById('adjErpBadge');
+  if(badge){
+    badge.classList.toggle('upload-file-badge-optional',!ok);
+    badge.classList.toggle('upload-file-badge-warn',ok&&!!st.localOnly);
+    const s=badge.querySelector('span');if(s)s.textContent=badgeText;
+  }
+  card.classList.toggle('adj-card-done',ok&&!st.localOnly);
+}
+// เภสัชแนบเองได้ — ไม่ผ่าน openAdjFilePicker (การ์ด LOT/ราคาล็อกไว้ให้ Admin)
+function openAdjErpFilePicker(){
+  if(!_adjErpEnabled())return;
+  if(_adjErpBusy){toast('กำลังตรวจไฟล์ ERP ก่อนหน้า — รอสักครู่','warn');return;}
+  const el=document.getElementById('adjErpFileInput');if(el)el.click();
+}
+// parseFile แบบ Promise — parseFile ไม่เรียก callback เมื่อนามสกุลไม่รองรับ/อ่านไฟล์ล้ม จึงต้องมีด่านนามสกุล + หมดเวลา (ไม่งั้นการ์ดค้าง "กำลังตรวจ")
+function _parseFileAsync(file,ms=60000){
+  const ext=(String(file&&file.name||'').split('.').pop()||'').toLowerCase();
+  if(!['csv','xlsx','xls'].includes(ext))return Promise.reject(new Error('รองรับเฉพาะไฟล์ .csv / .xlsx'));
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('อ่านไฟล์ไม่สำเร็จ (หมดเวลา)')),ms);
+    try{parseFile(file,rows=>{clearTimeout(timer);resolve(rows);});}catch(e){clearTimeout(timer);reject(e);}
+  });
+}
+async function handleAdjErpFiles(event){
+  const input=event&&event.target;
+  const files=[...((input&&input.files)||[])];
+  if(input)try{input.value='';}catch(e){}   // เลือกไฟล์เดิมซ้ำได้ (onchange ยิงใหม่)
+  if(!files.length||!_adjErpEnabled())return;
+  if(_adjErpBusy){toast('กำลังตรวจไฟล์ ERP ก่อนหน้า — รอสักครู่','warn');return;}
+  const branch=currentBranch,epoch=_countResetAt||'';
+  _adjErpBusy=true;_refreshAdjErpCard();
+  try{
+    const parsed=[];
+    for(const f of files){
+      let rows;
+      try{rows=await _parseFileAsync(f);}catch(e){toast(`${f.name}: ${e&&e.message||e}`,'error',9000);continue;}
+      const p=_parseAdjErpRows(rows,branch,epoch);
+      if(p.error){toast(`${f.name}: ${p.error}`,'error',9000);continue;}
+      p.file=f.name;parsed.push(p);
+    }
+    if(!parsed.length||!_adjErpEnabled()||currentBranch!==branch||(_countResetAt||'')!==epoch)return;
+    const res=await _applyAdjErpUpload(parsed,branch,epoch);
+    if(!res)return;
+    const sum=ADJ_ERP_TYPES.filter(t=>parsed.some(p=>p.cover[t]))
+      .map(t=>`${t} ${parsed.reduce((a,p)=>a+p.docs.filter(d=>d.type===t).length,0)} ใบ`).join(' · ');
+    if(res.saved)toast(`ตรวจกับ ERP แล้ว · ${sum} — บันทึกแล้ว เครื่องอื่นเปิดหน้านี้จะเห็นผลเดียวกัน`,'success',5000);
+    else toast(`ตรวจกับ ERP แล้ว · ${sum} — แต่บันทึกขึ้น Cloud ไม่สำเร็จ (${res.fail}) ผลนี้เห็นเฉพาะเครื่องนี้`,'warn',9000);
+  }finally{
+    _adjErpBusy=false;
+    _refreshAdjErpCard();renderAdjustDocTable();
+  }
+}
+function _adjErpRef(branch=currentBranch){return _db.collection('stock_sessions').doc(branch+'_adjerp');}
+function _adjErpToDoc(st,epoch,by){
+  return {countResetAt:epoch||'',docs_json:JSON.stringify(Object.values(st.docs||{})),cover_json:JSON.stringify(st.cover||{}),
+    branchName:st.branchName||'',note:st.note||'',updatedBy:by||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+}
+function _adjErpFromDoc(d,epoch){
+  if(!d||(d.countResetAt||'')!==(epoch||''))return null;   // รอบนับอื่น = ไม่ใช่ของรอบนี้
+  try{
+    const arr=JSON.parse(d.docs_json||'[]');const docs={};
+    for(const x of Array.isArray(arr)?arr:[])if(x&&x.no&&ADJ_ERP_TYPES.includes(x.type)&&x.items&&typeof x.items==='object')docs[x.no]=x;
+    const c=JSON.parse(d.cover_json||'{}')||{};const cover={};
+    for(const t of ADJ_ERP_TYPES)if(c[t]&&c[t].fromDay&&c[t].toAt)cover[t]=c[t];
+    let updatedAt='';try{if(d.updatedAt&&typeof d.updatedAt.toDate==='function')updatedAt=d.updatedAt.toDate().toISOString();}catch(e){}
+    return {docs,cover,branchName:d.branchName||'',note:d.note||'',updatedBy:d.updatedBy||'',updatedAt};
+  }catch(e){console.warn('[adjerp parse]',e.message);return null;}
+}
+function _adjErpWithTimeout(p,ms){let t;return Promise.race([p,new Promise((_,rej)=>{t=setTimeout(()=>rej(new Error('หมดเวลา')),ms);})]).finally(()=>clearTimeout(t));}
+// รวม + บันทึกใน transaction (อ่าน-รวม-เขียน — สองเครื่องแนบพร้อมกันไม่ทับกัน) · บันทึกไม่ได้ = ใช้ในเครื่องนี้ + บอกผู้ใช้ (ห้ามเงียบ)
+async function _applyAdjErpUpload(parsedList,branch,epoch){
+  const meta={at:new Date().toISOString(),by:currentUser||''};
+  const note=parsedList.map(_adjErpNote).filter(Boolean).join(' · ');
+  const mergeAll=prev=>{let m=prev;for(const p of parsedList)m=_mergeAdjErp(m,p,meta);return {...m,note};};
+  let txMerged=null,saved=false,fail='';
+  if(_db){
+    try{
+      await _adjErpWithTimeout(_db.runTransaction(async tx=>{
+        const ref=_adjErpRef(branch);
+        const snap=await tx.get(ref);
+        const m=mergeAll(snap.exists?_adjErpFromDoc(snap.data(),epoch):null);
+        const payload=_adjErpToDoc(m,epoch,meta.by);
+        const kb=Math.ceil(_sessionBlobBytes(payload.docs_json)/1024);
+        if(kb>=ADJ_ERP_MAX_KB)throw new Error(`ข้อมูล ${kb} KB ใกล้เพดาน Firestore — Export R16 ช่วงสั้นลง`);
+        tx.set(ref,payload);
+        txMerged=m;
+      }),20000);
+      saved=!!txMerged;
+    }catch(e){fail=String(e&&e.message||e);console.warn('[adjerp save]',fail);}
+  }else fail='ไม่ได้เชื่อมต่อ Cloud';
+  const local=_adjErp&&_adjErp.branch===branch&&_adjErp.epoch===epoch?_adjErp:null;
+  const merged=saved?txMerged:mergeAll(local);
+  if(!_adjErpEnabled()||currentBranch!==branch||(_countResetAt||'')!==epoch)return null;   // ออกจากระบบ/เปลี่ยนสาขา/เริ่มรอบใหม่ระหว่างบันทึก → ทิ้ง
+  _adjErpReadToken++;   // ผลอ่าน cloud ที่ค้างอยู่ (เก่ากว่าผลนี้) ห้ามทับ
+  _adjErp={docs:merged.docs,cover:merged.cover,branchName:merged.branchName,note:merged.note,
+    branch,epoch,updatedBy:meta.by,updatedAt:meta.at,localOnly:!saved};
+  return {saved,fail};
+}
+// อ่านผลที่แนบไว้ (ทุกครั้งที่เปิดป็อปอัพ · ไม่ขวาง Supabase) — ผลในเครื่องที่ยังไม่ขึ้น cloud ไม่ถูกทับ (แนบใหม่ตอนออนไลน์เพื่อบันทึก)
+async function _loadAdjErpFromCloud(){
+  if(!_adjErpEnabled()||!_db)return;
+  const branch=currentBranch,epoch=_countResetAt||'',token=++_adjErpReadToken;
+  let st;
+  try{const snap=await _adjErpRef(branch).get();st=snap.exists?_adjErpFromDoc(snap.data(),epoch):null;}
+  catch(e){console.warn('[adjerp load]',e&&e.message);return;}
+  if(token!==_adjErpReadToken||!_adjErpEnabled()||currentBranch!==branch||(_countResetAt||'')!==epoch)return;
+  const cur=_adjErpCurrent();
+  if(cur&&cur.localOnly)return;
+  if(!st&&!cur)return;   // ไม่มีทั้งสองฝั่ง — ไม่ต้องวาดใหม่
+  _adjErp=st?{...st,branch,epoch,localOnly:false}:null;
+  _refreshAdjErpCard();renderAdjustDocTable();
+}
+// ท้าย toast ตอน Export เมื่อใช้ตัวกรอง ERP
+function _adjErpFilterNote(vr){return vr&&vr.filter!=='all'?` · เฉพาะ ${ADJ_ERP_FILTER_LABEL[vr.filter]}`:'';}
+// ไฟล์ที่กำลังส่งออกมีแถวที่ ERP มีใบแล้ว → เตือนก่อนนำเข้า (ระบบไม่มีตัวกันส่งซ้ำ)
+function _warnAdjErpDuplicate(rows,vr){
+  if(!vr||!vr.covered)return;
+  const n={done:0,partial:0,over:0,opposite:0};
+  for(const r of rows){const e=vr.ev.get(r.sku);if(e&&e.state in n)n[e.state]++;}
+  const tot=n.done+n.partial+n.over+n.opposite;if(!tot)return;
+  const why=[];
+  if(n.done)why.push(`เข้าแล้ว ${n.done}`);if(n.partial)why.push(`บางส่วน ${n.partial}`);
+  if(n.over)why.push(`เกิน ${n.over}`);if(n.opposite)why.push(`ทิศตรงข้าม ${n.opposite}`);
+  toast(`⚠️ ${tot} รายการในไฟล์นี้มีใบใน ERP แล้ว (${why.join(' · ')}) — ตรวจก่อนนำเข้า ระวังส่งซ้ำ`,'warn',9000);
+}
 // ── กติกาใบปรับปรุง (ก.ย. 2026) ───────────────────────────────────────────────
 // เป้าหมายของใบคือ "ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้" (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
 // ⇒ ต้องหักลบกับ si.systemQty **ค่าสด** เท่านั้น เพราะเลขที่ส่งไปจะถูกบวก/ลบกับยอดที่ระบบมีอยู่ ณ ตอนนั้น
@@ -8951,17 +9344,21 @@ function renderAdjustDocTable(force){
   const ae=document.activeElement;
   if(!force&&ae&&ae.classList&&ae.classList.contains('adj-qty-input')&&tbody.contains(ae)){_adjRenderDeferred=true;return;}
   _adjRenderDeferred=false;
-  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th></tr>';
-  const rows=_buildAdjustDocRows(_adjDocFilter);
+  // แถวของแท็บหลังตัวกรอง ERP (ประตูเดียวกับ Export — ดู _adjustDocViewRows) · ไม่มีไฟล์ ERP = ทุกแถวของแท็บเหมือนเดิม
+  const vr=_adjustDocViewRows(_adjDocFilter);
+  const erpOn=vr.covered;
+  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th>'+(erpOn?'<th style="text-align:center;">ERP</th>':'')+'</tr>';
+  _renderAdjErpBar(vr);   // วาดก่อน early-return — ตัวกรองที่ไม่เหลือแถวต้องยังมีชิปให้กดกลับ
+  const rows=vr.rows;
   const nEdit=rows.filter(r=>r.edited).length;
-  if(rc)rc.textContent=`${rows.length} รายการ`+(nEdit?` · แก้จำนวน ${nEdit}`:'');   // ยอดรวมของแท็บ (ไม่ใช่เฉพาะหน้านี้)
+  if(rc)rc.textContent=`${rows.length} รายการ`+(vr.filter!=='all'?` (จากทั้งหมด ${vr.all.length})`:'')+(nEdit?` · แก้จำนวน ${nEdit}`:'');   // ยอดรวมของแท็บ/ตัวกรอง (ไม่ใช่เฉพาะหน้านี้)
   // แบ่งหน้า (ดู _paginate) — ตัดเฉพาะแถวที่ "วาด" · rows ทั้งชุดยังใช้นับยอด (บรรทัดบน) · Export อ่าน _buildAdjustDocRows เองครบทุกแถว
   const pgn=_paginate(rows.length,ADJUST_DOC_PAGE_SIZE,_adjDocPage);
   _adjDocPage=pgn.page;
   const start=pgn.start;
   const view=rows.slice(start,start+pgn.size);
   _renderPagerUi('adjustDocPager',pgn,view.length);
-  if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
+  if(!rows.length){tbody.innerHTML=`<tr><td colspan="${erpOn?10:9}" style="text-align:center;padding:40px;color:var(--text3)">${vr.filter!=='all'?'ไม่มีรายการในตัวกรองนี้':'ไม่มีรายการ'}</td></tr>`;return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   const canEdit=_canEditAdjDocQty();
   tbody.innerHTML=view.map((r,i)=>{
@@ -9003,6 +9400,7 @@ function renderAdjustDocTable(force){
       +`<td style="text-align:center;">${lotCell}</td>`
       +`<td style="text-align:center;font-size:0.78rem;color:${expVal?'var(--text2)':'var(--text3)'};">${expVal||'—'}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:700;color:${moneyColor};">${totalCell}</td>`
+      +(erpOn?_adjErpCellHtml(vr.ev.get(r.sku)):'')
       +`</tr>`;
   }).join('');
 }
@@ -9054,12 +9452,13 @@ function setAdjDocPage(p){
 }
 async function openAdjustDocPopup(){
   if(!currentRole){toast('กรุณาเลือกผู้ใช้งานก่อน','warn');return;}
-  _adjDocFilter='ords';_adjDocPage=1;
+  _adjDocFilter='ords';_adjDocPage=1;_adjErpFilter='all';   // ตัวกรอง ERP เริ่มที่ "ทั้งหมด" ทุกครั้งที่เปิด (Export = ทุกแถวเหมือนเดิมจนกว่าจะเลือกเอง)
   const btn=document.getElementById('adjBtnOrds');
   if(btn){document.querySelectorAll('#adjustDocPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
   _openModal('adjustDocPopupOverlay','adjustDocPopupCard');
   renderAdjustDocTable();
   _refreshAdjCards(); // สะท้อนสถานะการ์ดแนบไฟล์ตาม local ปัจจุบัน (กันการ์ดค้างจากรอบก่อน/หลัง logout)
+  _loadAdjErpFromCloud();   // ผลตรวจกับ ERP ที่แนบไว้ ({branch}_adjerp) — ไม่รอ · มาแล้ววาดใหม่เอง
   // ดึง LOT/ราคา ของ SKU ในใบจาก Supabase ทุกครั้งที่เปิด + LOT ที่เลือกไว้จาก {branch}_adjlot (ดู _refreshAdjMaster)
   await _refreshAdjMaster();
 }
@@ -9070,9 +9469,11 @@ function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('a
 // EXP = ของ LOT ที่เลือก แปลงเป็น DD/MM/YYYY ปี พ.ศ. (_toBeDMY) — ว่างถ้ายังไม่เลือก LOT หรือแปลงวันที่ไม่ได้
 function exportAdjustDocText(){
   if(_adjExportBusy())return;
-  const all=_buildAdjustDocRows(_adjDocFilter);
+  // ตามตัวกรอง ERP ที่เลือก (ผู้ใช้เลือก ต.ค. 2026) — "ทั้งหมด"/ไม่มีไฟล์ ERP = ทุกแถวของแท็บเหมือนเดิม · ทุกหน้า ไม่ใช่เฉพาะหน้าที่เห็น
+  const vr=_adjustDocViewRows(_adjDocFilter);
+  const all=vr.rows;
   const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ยังเห็นบนจอ — ดู _adjEditNote)
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjEditNote(all),'warn');return;}
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
   const lines=rows.map(r=>{
     const pr=_priceMap.get(r.sku);
     const price=pr&&pr.price!=null?pr.price:'';
@@ -9087,8 +9488,9 @@ function exportAdjustDocText(){
   const a=document.createElement('a');
   a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${_adjEditNote(all)}`,'success');
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
+  _warnAdjErpDuplicate(rows,vr);
 }
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
 // (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
@@ -9106,10 +9508,12 @@ function _warnAdjustDocDropped(){
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
   if(_adjExportBusy())return;
-  const all=_buildAdjustDocRows(_adjDocFilter);
+  const vr=_adjustDocViewRows(_adjDocFilter);   // ประตูเดียวกับตารางและ Export Text (ตามตัวกรอง ERP)
+  const all=vr.rows;
   const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ประตูเดียวกับ Export Text)
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjEditNote(all),'warn');return;}
-  const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'];
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
+  // แท็บที่มีไฟล์ ERP แล้ว: เพิ่ม 3 คอลัมน์ท้าย (เหมือนคอลัมน์ ERP บนจอ) · ไม่มีไฟล์ = 9 คอลัมน์เดิม
+  const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'].concat(vr.covered?['ERP เข้าแล้ว','สถานะ ERP','เลขที่เอกสาร ERP']:[]);
   const aoa=[header];
   rows.forEach((r,i)=>{
     const selEntry=_adjSelectedEntry(r.sku);             // ประตูเดียวกับ Export Text
@@ -9119,15 +9523,18 @@ function exportAdjustDocExcel(){
     const unit=(pr&&pr.unit)||r.unit||'';
     const price=pr&&pr.price!=null?pr.price:'';           // ราคา raw (number) เพื่อให้ Excel รวมยอดได้
     const total=pr&&pr.price!=null?pr.price*r.qty:'';      // รวมเงิน = ราคา × จำนวน
-    aoa.push([i+1,r.sku,r.name,unit,r.qty,price,sel,exp,total]);
+    const line=[i+1,r.sku,r.name,unit,r.qty,price,sel,exp,total];
+    if(vr.covered){const e=vr.ev.get(r.sku);line.push(e?e.got:'',_adjErpStateText(e),e?e.docs.map(x=>x.no).join(', '):'');}
+    aoa.push(line);
   });
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;aoa.slice(1).forEach(row=>{const v=row[c]==null?'':String(row[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,_adjDocFilter==='ords'?'ORDS':'IRPS');
   XLSX.writeFile(wb,`stockadj_${_adjDocFilter}_${_fileDateDMY()}.xlsx`);
-  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ${_adjEditNote(all)}`,'success');
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
+  _warnAdjErpDuplicate(rows,vr);
 }
 // ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────
 // เก็บใน doc แยก ${id}_adjlot เขียน "ตอนกดบันทึกเท่านั้น" (ไม่ใช่ทุก 3 วิ เหมือน session doc)
@@ -9172,6 +9579,7 @@ function updateAdjustDocPanel(){
   if(!canSee){ // logout/เปลี่ยน role ที่ไม่มีสิทธิ์ → ล้าง LOT/ราคา (local) + ทิ้งผลที่กำลังโหลดค้าง
     _lotMap.clear();_lotSelected.clear();_priceMap.clear();
     _adjSource={Lot:'',Price:''};_adjMeta={Lot:null,Price:null};_adjCloud=null;_adjSbError='';_adjSbMissing={Lot:false,Price:false};_adjLoading=false;_adjLoadToken++;
+    _adjErp=null;_adjErpFilter='all';_adjErpReadToken++;   // ผลตรวจกับ ERP (local) — ของที่บันทึกไว้บน cloud ยังอยู่ เปิดป็อปอัพครั้งหน้าอ่านใหม่
   }
   updateAdjustDocCount();
 }

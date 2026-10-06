@@ -150,6 +150,9 @@ Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SS
 | ORCM, OCTM | ยอดขาย | **บวกกลับ** → `r16SalesMap` | **ข้าม** |
 | OTFB, ORTS | รับเข้าคลัง | **หักออก** → `r16InboundMap`. **SRC เท่านั้น:** OTFB ใช้ Col A — Col A=`0`/ว่าง (คลังส่ง) → **ข้าม**; Col A=`1` (สาขาส่ง) → **บวกกลับ**. KKL/SSS: OTFB ทุกแถวเป็น inbound ตามปกติ | ใช้ |
 | OTFI | ดูด้านล่าง | branch-aware | ดูด้านล่าง |
+| ORDS | ใบปรับปรุง**ลด** (ไม่ใช่ขาย/รับเข้า) | **ข้าม** (ไม่อยู่ใน prefix — ⛔ ห้ามเพิ่ม: ใบปรับปรุงไม่ใช่สิ่งที่ต้องชดเชยตอน Confirm) | ข้าม |
+
+💡 **R16.104 = รายงานเอกสารขาออก (`O…` + `BYUSE`) — มี ORDS อยู่แล้ว** (ไฟล์จริง SRC 28/9/2026: 8 ใบ · 193 บรรทัด · `SYSVOUCHERID 31` · `FSTOCKMAIN −1` · 1 ใบหลายบรรทัดต่อ SKU) ⇒ การ์ด **🧾 ตรวจกับ ERP** ในป็อปอัพ 📦 ใช้ไฟล์นี้ตรวจว่า ORDS ไหนเข้าระบบแล้ว (parser แยก `_parseAdjErpRows` — ไม่แตะ `loadR16`) · **IRPS ไม่อยู่ใน R16.104** · ไม่มีคอลัมน์ LOT · ดูกติกาที่ CLAUDE.md §🧾 ตรวจกับ ERP
 
 ⚠️ **SRC ("อนิน สาขาแยกชากค้อ")** สาขา+คลังอยู่ `SYSBRANCHID` เดียวกัน (`0`) แต่**แยกได้ด้วย Col A = `SYSWAREHOUSEID`**: `0` = Warehouse (คลังชากค้อ) · `1` = Front Store (= SRC · ตรงกับ Allstock Col B) → OTFB **และ OTFI** ใช้ Col A (`isSrcOtfb` / `isSrcOtfiSkip` ใน `loadR16`) สาขาอื่น (KKL/SSS) ไม่มี carve-out นี้
 
@@ -205,6 +208,8 @@ logic: `isOutbound = !isWhBranch && match(OTFI) && colA==='1'` · `isInbound = m
 
 อยู่ใน systemQty แต่พนักงานไม่ได้นับ → ต้องบวกกลับ
 ปุ่มแสดงเฉพาะ Desktop WH (`window.innerWidth > 600 && currentBranch === 'WH'`)
+
+💡 R16.103 = รายงานเอกสารขาเข้า (`I…`) — **คาดว่ามี IRPS (ใบปรับปรุงเพิ่ม)** จึงเป็นไฟล์ที่การ์ด 🧾 ตรวจกับ ERP ใช้ตรวจ IRPS ของสาขายา ⏳ **ยังไม่ยืนยันกับไฟล์จริงที่มี IRPS** (ตรวจ prefix `IRPS` + หัวคอลัมน์ชุดเดียวกับ R16.104) · `loadR16_103` ไม่นับ IRPS (ไม่อยู่ใน `R16_103_PREFIXES` — ⛔ ห้ามเพิ่ม)
 
 ---
 
@@ -391,7 +396,9 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 - ⚠️ sync ได้เพราะ **กรองเหลือเฉพาะ SKU ที่ปรับ = เล็ก** — **ไฟล์ raw 200k ห้ามขึ้น Firestore** (ดู Known Pitfalls)
 - ล้าง local + สถานะแหล่งข้อมูลตอน logout (`updateAdjustDocPanel`) · ล้าง local + ลบ cloud doc ตอน `startNewCount` (**ไม่แตะ Supabase** — ไม่ผูกรอบนับ แนวเดียวกับ `global_r05`)
 
-**ปุ่ม ⬇️ Export Text (`exportAdjustDocText`):** ตามแท็บที่เลือก · format `SKU⇥จำนวน⇥ราคา⇥⇥⇥⇥⇥⇥LOT⇥EXP` (1,1,6,1 TAB) · CRLF · ไฟล์ `stockadj_<ords|irps>_<date>.txt`
+**การ์ด 🧾 ตรวจกับ ERP (ต.ค. 2026 · สาขายาเท่านั้น):** เภสัชแนบ R16.104 (ORDS) / R16.103 (IRPS) เอง (ไม่ล็อก Admin · หลายไฟล์ได้) → คอลัมน์ **ERP** ✅/⬜/⚠️ ต่อแถว + ชิปตัวกรอง · ผลเก็บ `${branch}_adjerp` · **Export ตามตัวกรองที่เลือก** ผ่านประตูเดียว `_adjustDocViewRows(dir)` (ค่าเริ่มต้น "ทั้งหมด" = ไฟล์เดิมทุกไบต์) · กติกา/ข้อห้าม/ทางถอยอยู่ CLAUDE.md §🧾 ตรวจกับ ERP · เทส `adjust-doc-erp.spec.js` + `e2e/adjust-doc-erp-sync.spec.js`
+
+**ปุ่ม ⬇️ Export Text (`exportAdjustDocText`):** ตามแท็บที่เลือก (และตัวกรอง ERP ถ้าแท็บนั้นมีไฟล์) · format `SKU⇥จำนวน⇥ราคา⇥⇥⇥⇥⇥⇥LOT⇥EXP` (1,1,6,1 TAB) · CRLF · ไฟล์ `stockadj_<ords|irps>_<date>.txt`
 - EXP = ของ LOT ที่เลือก แปลงเป็น `DD/MM/YYYY` ปี **พ.ศ.** (`_toBeDMY`, +543 จากปี ค.ศ. ที่ `parseTranDate` parse ได้) — ว่างถ้ายังไม่เลือก LOT หรือ parse วันที่ไม่ได้
 - ⚠️ **LOT อ่านผ่าน `_adjSelectedEntry(sku)` เท่านั้น** (ทั้ง Text และ Excel) — LOT ที่เลือกไว้แต่ไม่มีในข้อมูลชุดปัจจุบัน = ว่าง
   เดิมอ่าน `_lotSelected` ตรง ๆ ⇒ พอข้อมูลบน Supabase เปลี่ยน ไฟล์จะมี LOT ที่จอแสดง "— เลือก —" (ไม่ถูกลบจาก `_lotSelected` — เลือกใหม่ได้ ไม่ทำลายงานที่บันทึกไว้)
@@ -407,6 +414,7 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 | Firestore `stock_sessions/${branch}` | scan data | 3s หลัง localStorage |
 | Firestore `stock_sessions/${branch}_r01` | R01 master + R16 upload metadata | หลัง upload R01; R16: `r16UploadedAt`/`r16Loaded` merge เข้า `_r01` doc ทุกครั้ง `loadR16()` |
 | Firestore `stock_sessions/${branch}_adjlot` | LOT ที่เลือก + LOT/ราคา สำรอง ใบปรับปรุง (เฉพาะ SKU ที่ปรับ) | **กดปุ่ม 💾 บันทึก LOT เท่านั้น**; อ่านทุกครั้งที่เปิด popup (`_readAdjlotDoc`) |
+| Firestore `stock_sessions/${branch}_adjerp` | ผล 🧾 ตรวจกับ ERP — ใบ ORDS/IRPS จาก R16 ที่เภสัชแนบ (สาขายา · ผูก `countResetAt`) | ตอนแนบไฟล์ (`runTransaction` อ่าน-รวม-เขียน); อ่านทุกครั้งที่เปิด popup (`_loadAdjErpFromCloud`) · **`startNewCount()` ไม่ลบ** — รอบอื่น = ถือว่าว่าง |
 | **Supabase** `adj_r14_lots` / `adj_r05_prices` / `adj_meta` (project `eogqnedbdpjuptwlqudn`) | R14.102 + R05.105 **ทั้งไฟล์** (ใช้ร่วมทุกสาขา · ไม่ผูกรอบนับ) | บอท `auto-adj` ทุกเช้าเท่านั้น (service key) · เว็บอ่านอย่างเดียว เฉพาะ SKU ในใบ + `gen=active_gen` |
 | Firestore `stock_sessions/${branch}_pm` | **Product Branch Master** — catalog ต่อสาขา รวม WH (ส.ค. 2026 — เดิม `global_pm` ใช้ร่วมกัน) | หลัง PM upload; real-time listener · **ไม่ persist localStorage** ทุก reload ดึงจาก cloud |
 | Firestore `stock_sessions/global_r05` | R05 Barcode mapping (ใช้ร่วมทุกสาขา ก.ค. 2026 —เดิม `${branch}_r05`) | หลัง R05 upload (`loadR05`); real-time listener (`startR05Listener`, mirror PM) |
