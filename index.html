@@ -5371,9 +5371,11 @@ function processPharmacistAuditScan(){
     beepError();
     const sl=sd?sd.status:'ไม่พบ';
     // ข้อความอย่างเดียว (ต.ค. 2026) — เงื่อนไขปฏิเสธไม่เปลี่ยน · Stock Adj ต้องกด ↺ ก่อนถึงจะสแกนรีเช็คได้ (ผู้ใช้เลือกไม่ให้สแกนเปิดเอง)
+    // pending = ยังไม่มีใครนับ → เภสัชไม่ได้นับ ให้ไปใช้รหัสผู้ช่วย (6 ต.ค. 2026 · ผู้ใช้สั่ง · สถานะอื่นคงเดิม)
     toast(_pharmNoAuditTerms()
       ?(sl==='stock_adjustment'?`${sku}: Stock Adj — ยังไม่ได้เปิดรีเช็ค (กด ↺ สแกนใหม่ ที่ Stock Adj บน Desktop ก่อน)`
-        :`${sku}: ${({pending:'ยังไม่ได้นับ',scanning:'รอ Confirm',pass:'Pass',audit_check:'ตรวจแล้ว'})[sl]||sl} — ไม่ใช่รายการรอรีเช็ค`)
+        :sl==='pending'?'ใช้รหัสผู้ช่วยนับสินค้า'
+        :`${sku}: ${({scanning:'รอ Confirm',pass:'Pass',audit_check:'ตรวจแล้ว'})[sl]||sl} — ไม่ใช่รายการรอรีเช็ค`)
       :`${sku}: สถานะ "${sl}" — ไม่ใช่ Audit`,'warn');
     document.getElementById('scanInput').focus();return;
   }

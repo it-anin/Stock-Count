@@ -112,17 +112,22 @@ test('★ โหมด idle · ผู้ช่วย · คู่มือ 2 ต
   expect(dash).not.toContain('Rate');
 
   // เภสัชยิงสินค้า Stock Adj ที่ช่องสแกนหลัก (ยังไม่กด ↺) — ยังปฏิเสธเหมือนเดิม แต่บอกทางที่ถูก
+  // + ยิงสินค้าที่ยังไม่ได้นับ (pending) → บอกให้ไปใช้รหัสผู้ช่วยนับ (6 ต.ค. 2026 · ผู้ใช้สั่ง) · สถานะอื่นคงข้อความเดิม
   await setup(app.page, { audit: 1, adj: 1 });
   const toasts = await app.page.evaluate(() => {
     const got = []; const real = window.toast; window.toast = (m) => got.push(String(m));
     try {
-      state.barcodeMap.set('BSA0', 'SA0'); state.barcodeMap.set('BPS0', 'PS0');
-      for (const bc of ['BSA0', 'BPS0']) { document.getElementById('scanInput').value = bc; processPharmacistAuditScan(); }
+      state.skuMap.set('PE0', { sku: 'PE0', productName: 'p-PE0', unitPrice: 20, systemQty: 5, negSys: false, barcodes: [{ barcode: 'BPE0', unitName: 'ชิ้น', unitMultiplier: 1 }], isDel: false });
+      state.scanData.set('PE0', { status: 'pending', countedQty: 0 });
+      state.barcodeMap.set('BSA0', 'SA0'); state.barcodeMap.set('BPS0', 'PS0'); state.barcodeMap.set('BPE0', 'PE0');
+      for (const bc of ['BSA0', 'BPE0', 'BPS0']) { document.getElementById('scanInput').value = bc; processPharmacistAuditScan(); }
     } finally { window.toast = real; }
-    return { got, sa: state.scanData.get('SA0').status, rq: state.scanData.get('SA0').recheckQty };
+    const pe = state.scanData.get('PE0');
+    return { got, sa: state.scanData.get('SA0').status, rq: state.scanData.get('SA0').recheckQty, pe: [pe.status, pe.countedQty, pe.recheckQty] };
   });
-  expect(toasts.got).toEqual(['SA0: Stock Adj — ยังไม่ได้เปิดรีเช็ค (กด ↺ สแกนใหม่ ที่ Stock Adj บน Desktop ก่อน)', 'PS0: Pass — ไม่ใช่รายการรอรีเช็ค']);
+  expect(toasts.got).toEqual(['SA0: Stock Adj — ยังไม่ได้เปิดรีเช็ค (กด ↺ สแกนใหม่ ที่ Stock Adj บน Desktop ก่อน)', 'ใช้รหัสผู้ช่วยนับสินค้า', 'PS0: Pass — ไม่ใช่รายการรอรีเช็ค']);
   expect([toasts.sa, toasts.rq]).toEqual(['stock_adjustment', undefined]); // เงื่อนไขปฏิเสธไม่เปลี่ยน
+  expect(toasts.pe).toEqual(['pending', 0, undefined]); // pending ก็ไม่ถูกเขียนอะไร (ไม่นับ ไม่รีเช็ค)
   await closeApp(app);
 });
 
@@ -169,7 +174,11 @@ test('★ สวิตช์ปิด (PHARMACY_RECHECK_TERMS=false) → ข้�
   const t = await app.page.evaluate(() => {
     const txt = (id) => document.getElementById(id).textContent;
     const got = []; const real = window.toast; window.toast = (m) => got.push(String(m));
-    try { state.barcodeMap.set('BSA0', 'SA0'); document.getElementById('scanInput').value = 'BSA0'; processPharmacistAuditScan(); } finally { window.toast = real; }
+    try {
+      state.scanData.set('PE0', { status: 'pending', countedQty: 0 });
+      state.barcodeMap.set('BSA0', 'SA0'); state.barcodeMap.set('BPE0', 'PE0');
+      for (const bc of ['BSA0', 'BPE0']) { document.getElementById('scanInput').value = bc; processPharmacistAuditScan(); }
+    } finally { window.toast = real; }
     openAuditVerifyPopup();
     const title = txt('auditVerifyTitle'); closeAuditVerifyPopup();
     return {
@@ -177,7 +186,7 @@ test('★ สวิตช์ปิด (PHARMACY_RECHECK_TERMS=false) → ข้�
       card: txt('statAuditLabel'), sub: txt('auditProgressLabel'), panel: txt('auditVerifyPanelTitle'), btn: txt('pharmacistAuditBtnLabel'),
       th: txt('popupThAudit'), filter: txt('popupFilterAuditLabel'), tab: txt('avTabAuditLabel'), title, idle: txt('pharmIdleNoteTitle'),
       step6: document.getElementById('guideStep6').innerHTML, rule: txt('guideRulePill'), gpill: txt('guideAuditPill'), gdesc: txt('guideAuditDesc'),
-      toast: got[0], check: getScanRowStyle('audit_check').label,
+      toast: got[0], toastPending: got[1], check: getScanRowStyle('audit_check').label,
     };
   });
   expect(t).toEqual({
@@ -186,7 +195,7 @@ test('★ สวิตช์ปิด (PHARMACY_RECHECK_TERMS=false) → ข้�
     th: 'Audit', filter: 'Audit', tab: 'Audit', title: '🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)', idle: 'เภสัชไม่ต้องสแกน / ทำ Audit',
     step6: 'รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong>',
     rule: 'Pass / Audit / Stock Adj', gpill: '⚠️ Audit', gdesc: 'จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify',
-    toast: 'SA0: สถานะ "stock_adjustment" — ไม่ใช่ Audit', check: '✅ Audit Check',
+    toast: 'SA0: สถานะ "stock_adjustment" — ไม่ใช่ Audit', toastPending: 'PE0: สถานะ "pending" — ไม่ใช่ Audit', check: '✅ Audit Check',
   });
   // ตัวตรวจ "มองเห็นคำว่า Audit" ต้องเจอจริงเมื่อคำเดิมกลับมา — ไม่งั้นเทสด้านบนผ่านเพราะมองไม่เห็นอะไรเลย
   const seen = await auditLines(app.page, MAIN);
