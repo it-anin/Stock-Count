@@ -7,12 +7,16 @@
 // เทสนี้ตรึง 4 ด้าน — ด้านที่ 3-4 สำคัญที่สุดเพราะกติกาใหม่ต้องไม่ลามไปที่อื่น:
 //   1. idle: ซ่อน/แสดงถูกจุด  2. มี audit ค้าง = เท่าเดิม และสลับโหมดได้ทั้งสองทิศทางระหว่างใช้งาน
 //   3. สวิตช์ปิด = เท่าเดิม  4. ★ role/สาขาอื่น (ผู้ช่วย · หัวหน้า WH · เภสัช WH) ไม่ถูกแตะ
+//
+// ต.ค. 2026: ป้ายสาขายาไม่มีคำว่า Audit แล้ว (PHARMACY_RECHECK_TERMS) — แผง/ปุ่มเป็น "Stock Adj" ทุกโหมด
+//   โครงสร้าง (ซ่อน/แสดง) ยังตัดสินด้วย PHARMACIST_STOCKADJ_ONLY เหมือนเดิม · ปิดทั้งสองสวิตช์ = ข้อความเดิมทุกตัวอักษร
+//   ข้อความทั้งจอตรึงไว้ที่ pharmacy-no-audit-terms.spec.js
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 // ตั้ง role/สาขา/รายการ แล้วสั่งให้ UI คำนวณโหมดใหม่ผ่านเส้นทางจริง (updateAuditVerifyCount)
-async function setup(page, { branch = 'SRC', role = 'pharmacist', audit = 0, adj = 1, on = true } = {}) {
-  await page.evaluate(({ branch, role, audit, adj, on }) => {
-    PHARMACIST_STOCKADJ_ONLY = on;
+async function setup(page, { branch = 'SRC', role = 'pharmacist', audit = 0, adj = 1, on = true, terms = true } = {}) {
+  await page.evaluate(({ branch, role, audit, adj, on, terms }) => {
+    PHARMACIST_STOCKADJ_ONLY = on; PHARMACY_RECHECK_TERMS = terms;
     currentBranch = branch; currentRole = role; currentUser = 'T';
     state.scanData.clear(); state.skuMap.clear();
     const mk = (sku, status) => {
@@ -25,7 +29,7 @@ async function setup(page, { branch = 'SRC', role = 'pharmacist', audit = 0, adj
     // ลำดับเดียวกับ initAfterLogin: updateScanInputMode (เปิดแถบยืนยัน Audit ของเภสัช) → applyAuditTerminology (ตั้งป้ายแผงแล้วให้โหมดทับ)
     updateScanInputMode(); applyAuditTerminology();
     updateAuditVerifyCount();
-  }, { branch, role, audit, adj, on });
+  }, { branch, role, audit, adj, on, terms });
 }
 
 // สถานะที่ผู้ใช้เห็นจริง (computed style — ไม่ใช่แค่ class)
@@ -54,7 +58,11 @@ async function popup(page) {
 }
 
 const IDLE_UI = { idleClass: true, scanBlock: false, resultBar: false, listCard: false, auditBar: false, note: true, panelTitle: 'Stock Adj', panelBtn: 'Stock Adj' };
-const NORMAL_UI = { idleClass: false, scanBlock: true, resultBar: true, listCard: true, auditBar: true, note: false, panelTitle: 'Audit Verify', panelBtn: 'Audit Verify' };
+const NORMAL_UI = { idleClass: false, scanBlock: true, resultBar: true, listCard: true, auditBar: true, note: false, panelTitle: 'Stock Adj', panelBtn: 'Stock Adj' };
+// ปิด PHARMACY_RECHECK_TERMS ด้วย = หน้าจอก่อนเปลี่ยนคำ (ababb7a) ทุกตัวอักษร
+const NORMAL_UI_OLD = { ...NORMAL_UI, panelTitle: 'Audit Verify', panelBtn: 'Audit Verify' };
+const RECHECK_TITLE = '🔴 Stock Adj — ตรวจ/รีเช็คสินค้า (เภสัช)';
+const OLD_TITLE = '🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)';
 
 test('เภสัช + ไม่มี audit ค้าง → ซ่อนช่องสแกน/RESULT/ปุ่มยืนยัน Audit · แผงเป็น Stock Adj · ป็อปอัพเปิดแท็บ Stock Adj มี ↺', async ({ browser }) => {
   const app = await bootBare(browser);
@@ -69,16 +77,21 @@ test('เภสัช + ไม่มี audit ค้าง → ซ่อนช�
   await closeApp(app);
 });
 
-test('มี audit ค้าง → UI เดิมครบ (ช่องสแกน · ปุ่มยืนยัน Audit · แผง Audit Verify · ป็อปอัพแท็บ Audit + แถวสแกน)', async ({ browser }) => {
+test('มี audit ค้าง (รอรีเช็ค) → โครงเดิมครบ (ช่องสแกน · ปุ่มยืนยัน · ป็อปอัพแท็บรอรีเช็ค + แถวสแกน) · ป้ายเป็น Stock Adj', async ({ browser }) => {
   const app = await bootBare(browser);
   await setup(app.page, { audit: 1, adj: 1 });
   expect(await ui(app.page)).toEqual(NORMAL_UI);
 
   await app.page.evaluate(() => openAuditVerifyPopup());
   expect(await popup(app.page)).toEqual({
-    filter: 'audit', title: '🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)', tabAudit: true, scanRow: true, confirmAll: false,
-    activeTab: 'avBtnAudit', reopenBtns: 0, // ตารางแท็บ Audit ไม่มีปุ่ม ↺
+    filter: 'audit', title: RECHECK_TITLE, tabAudit: true, scanRow: true, confirmAll: false,
+    activeTab: 'avBtnAudit', reopenBtns: 0, // ตารางแท็บรอรีเช็คไม่มีปุ่ม ↺
   });
+  // ปิดสวิตช์คำ → ข้อความเดิมเป๊ะ
+  await setup(app.page, { audit: 1, adj: 1, terms: false });
+  expect(await ui(app.page)).toEqual(NORMAL_UI_OLD);
+  await app.page.evaluate(() => openAuditVerifyPopup());
+  expect((await popup(app.page)).title).toBe(OLD_TITLE);
   await closeApp(app);
 });
 
@@ -92,7 +105,7 @@ test('สลับโหมดระหว่างใช้งาน: กด �
   await app.page.evaluate(() => { const s = state.scanData.get('SA0'); s.status = 'audit'; s.auditStatus = 'pending'; s.initialStatus = 'audit'; updateAuditVerifyCount(); });
   expect(await ui(app.page)).toEqual(NORMAL_UI);
   const mid = await popup(app.page);
-  expect(mid).toMatchObject({ tabAudit: true, scanRow: true, title: '🔍 Audit Verify — ตรวจสอบสินค้า (เภสัช)' });
+  expect(mid).toMatchObject({ tabAudit: true, scanRow: true, title: RECHECK_TITLE });
 
   // เภสัชอยู่บนแท็บ Audit ตอนที่ audit รายการสุดท้ายถูกปิด → แท็บ Audit ถูกซ่อน ต้องเลื่อนไป Stock Adj ไม่ค้างที่แท็บว่างที่กดกลับไม่ได้
   await app.page.evaluate(() => { document.getElementById('avBtnAudit').click(); });
@@ -103,12 +116,16 @@ test('สลับโหมดระหว่างใช้งาน: กด �
   await closeApp(app);
 });
 
-test('สวิตช์ปิด (PHARMACIST_STOCKADJ_ONLY=false) → เท่าเดิมทุกจุด แม้ไม่มี audit ค้าง', async ({ browser }) => {
+test('สวิตช์ปิด (PHARMACIST_STOCKADJ_ONLY=false) → โครงเท่าเดิมทุกจุด แม้ไม่มี audit ค้าง · ปิดสวิตช์คำด้วย = ข้อความเดิม', async ({ browser }) => {
   const app = await bootBare(browser);
   await setup(app.page, { audit: 0, adj: 1, on: false });
   expect(await ui(app.page)).toEqual(NORMAL_UI);
   await app.page.evaluate(() => openAuditVerifyPopup());
-  expect(await popup(app.page)).toMatchObject({ filter: 'audit', tabAudit: true, scanRow: true, activeTab: 'avBtnAudit' });
+  expect(await popup(app.page)).toMatchObject({ filter: 'audit', tabAudit: true, scanRow: true, activeTab: 'avBtnAudit', title: RECHECK_TITLE });
+  await setup(app.page, { audit: 0, adj: 1, on: false, terms: false });
+  expect(await ui(app.page)).toEqual(NORMAL_UI_OLD);
+  await app.page.evaluate(() => openAuditVerifyPopup());
+  expect(await popup(app.page)).toMatchObject({ filter: 'audit', tabAudit: true, scanRow: true, activeTab: 'avBtnAudit', title: OLD_TITLE });
   await closeApp(app);
 });
 
@@ -118,20 +135,24 @@ test('★ สวิตช์ปิดกลางทาง (อยู่ idle �
   expect(await ui(app.page)).toEqual(IDLE_UI);
   await app.page.evaluate(() => { PHARMACIST_STOCKADJ_ONLY = false; updateAuditVerifyCount(); });
   expect(await ui(app.page)).toEqual(NORMAL_UI);
+  // ปิดทั้งสองสวิตช์กลางทาง → ป้ายกลับเป็นคำเดิม (ไม่ค้าง Stock Adj)
+  await app.page.evaluate(() => { PHARMACIST_STOCKADJ_ONLY = true; updateAuditVerifyCount(); PHARMACY_RECHECK_TERMS = false; PHARMACIST_STOCKADJ_ONLY = false; applyAuditTerminology(); updateAuditVerifyCount(); });
+  expect(await ui(app.page)).toEqual(NORMAL_UI_OLD);
   await closeApp(app);
 });
 
 test('★ role/สาขาอื่นไม่ถูกแตะ: ผู้ช่วยสาขายา · เภสัช WH · หัวหน้า WH — ไม่มี idle แม้ audit = 0 และป้ายเป็นคำตามสาขาเดิม', async ({ browser }) => {
   const app = await bootBare(browser);
   const cases = [
-    { branch: 'SRC', role: 'assistant', title: 'Audit Verify' },
-    { branch: 'KKL', role: 'supervisor', title: 'Audit Verify' },
+    { branch: 'SRC', role: 'assistant', title: 'Stock Adj' },               // สาขายา: ป้ายเปลี่ยนตามคำใหม่ทุก role (PHARMACY_RECHECK_TERMS) แต่ไม่มี idle
+    { branch: 'KKL', role: 'supervisor', title: 'Stock Adj' },
+    { branch: 'SSS', role: 'assistant', title: 'Audit Verify', terms: false }, // ปิดสวิตช์คำ = คำเดิม
     { branch: 'WH', role: 'pharmacist', title: 'Recheck' },   // WH ไม่ใช่สาขายา — เภสัชบน WH (ถ้ามี) ต้องไม่เข้าโหมดนี้
     { branch: 'WH', role: 'supervisor', title: 'Recheck' },
     { branch: 'WH', role: 'warehouse', title: 'Recheck' },
   ];
   for (const c of cases) {
-    await setup(app.page, { branch: c.branch, role: c.role, audit: 0, adj: 1 });
+    await setup(app.page, { branch: c.branch, role: c.role, audit: 0, adj: 1, terms: c.terms !== false });
     const u = await ui(app.page);
     expect(u.idleClass, `${c.branch}/${c.role}`).toBe(false);
     expect(u.note, `${c.branch}/${c.role}`).toBe(false);

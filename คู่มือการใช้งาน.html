@@ -433,7 +433,7 @@
 
       <p style="margin-bottom:20px; color:var(--gray);">
         เภสัชทำ <strong>2 ขั้นตอนหลัก</strong> คือ <strong>(1) กด Confirm</strong> หลังผู้ช่วยสแกนเสร็จ
-        และ <strong>(2) ตรวจสอบสินค้าที่ไม่ตรง</strong>
+        และ <strong>(2) ตรวจรายการปรับสต็อก</strong> (รีเช็คเฉพาะตัวที่สงสัย)
       </p>
 
       <p style="font-weight:700; font-size:1.05rem; margin-bottom:14px;">ขั้นตอนที่ 1 — กด Confirm</p>
@@ -449,14 +449,14 @@
           <div class="step-num">2</div>
           <div class="step-content">
             <strong>กดปุ่ม "✔ Confirm" สีน้ำเงิน</strong>
-            <p>ระบบจะเปรียบเทียบจำนวนที่สแกนกับข้อมูลในคอมพิวเตอร์ และแบ่งสินค้าออกเป็น 2 กลุ่ม</p>
+            <p>ระบบจะเปรียบเทียบจำนวนที่สแกน (+ ที่ขายไป) กับข้อมูลในคอมพิวเตอร์ และแบ่งสินค้าออกเป็น 2 กลุ่ม</p>
             <ul>
               <li><span class="badge badge-green">✅ ผ่าน</span> — จำนวนตรง ไม่ต้องทำอะไรเพิ่ม</li>
-              <li><span class="badge badge-yellow">⚠️ Audit</span> — จำนวนไม่ตรง ต้องตรวจสอบอีกครั้ง</li>
+              <li><span class="badge badge-red">🔴 ปรับสต็อก</span> — จำนวนไม่ตรง เข้าใบ 📦 ปรับปรุงสินค้าทันที (ไม่มีขั้นตรวจซ้ำอัตโนมัติ — สแกนให้ครบก่อนกด Confirm)</li>
             </ul>
             <div class="tip" style="margin-top:10px">
               <span class="tip-icon">✅</span>
-              <span>ถ้าไม่มีสินค้าขึ้น Audit เลย แสดงว่านับถูกทุกตัว — ไม่ต้องทำขั้นตอนที่ 2</span>
+              <span>ถ้าไม่มีสินค้าขึ้นปรับสต็อกเลย แสดงว่านับถูกทุกตัว — ไม่ต้องทำขั้นตอนที่ 2</span>
             </div>
           </div>
         </li>
@@ -464,28 +464,28 @@
 
       <hr class="divider">
 
-      <p style="font-weight:700; font-size:1.05rem; margin-bottom:14px;">ขั้นตอนที่ 2 — ตรวจสินค้าที่ไม่ตรง (Audit)</p>
+      <p style="font-weight:700; font-size:1.05rem; margin-bottom:14px;">ขั้นตอนที่ 2 — รีเช็คสินค้าปรับสต็อกที่สงสัย</p>
       <ol class="steps">
         <li class="step">
           <div class="step-num">3</div>
           <div class="step-content">
-            <strong>เปิดหน้าต่าง "Audit Verify"</strong>
-            <p>กดปุ่ม <strong>🔍 Audit Verify</strong> ที่แผงด้านซ้าย (Desktop) หรือกดไอคอน 🔍 ที่แถบบนสุด (PDA)</p>
-            <p style="margin-top:6px">ระบบจะแสดงรายชื่อสินค้าที่ต้องตรวจสอบทั้งหมด</p>
+            <strong>เปิดหน้าต่าง "Stock Adj" แล้วกด ↺ สแกนใหม่ ที่ตัวที่สงสัย</strong>
+            <p>กดปุ่ม <strong>Stock Adj</strong> ที่แผงด้านซ้าย → แท็บ Stock Adj → กด <strong>↺ สแกนใหม่</strong> ท้ายแถว (คอมพิวเตอร์เท่านั้น)</p>
+            <p style="margin-top:6px">รายการที่กดจะขึ้น <span class="badge badge-yellow">⚠️ รอรีเช็ค</span> (ออกจากใบปรับปรุงจนกว่าจะยืนยัน) · ไม่มีตัวไหนสงสัย = ไม่ต้องทำขั้นตอนนี้</p>
           </div>
         </li>
         <li class="step">
           <div class="step-num">4</div>
           <div class="step-content">
-            <strong>สแกน Barcode ของสินค้าแต่ละชิ้นที่ต้องตรวจ (สแกนบน PDA ได้)</strong>
-            <p>สแกนสินค้าตามรายชื่อในหน้าต่าง — สแกนซ้ำได้ถ้านับหลายชิ้น ตัวเลขจะสะสมอัตโนมัติ</p>
+            <strong>สแกน Barcode ของสินค้าที่รอรีเช็ค (สแกนบน PDA ได้)</strong>
+            <p>สแกนที่ช่องสแกนหน้าหลักหรือในหน้าต่าง Stock Adj — สแกนซ้ำได้ถ้านับหลายชิ้น ตัวเลขจะสะสมอัตโนมัติ · สินค้าปรับสต็อกที่ยังไม่กด ↺ สแกนไม่เข้า</p>
             <p style="margin-top:6px">ยอดที่สแกนถูกบันทึกขึ้นระบบทันที ไม่หายแม้ปิดหน้าจอหรือเปลี่ยนเครื่อง</p>
           </div>
         </li>
         <li class="step">
           <div class="step-num">5</div>
           <div class="step-content">
-            <strong>ไปที่คอมพิวเตอร์ แล้วกดปุ่ม "✓ ยืนยัน Audit"</strong>
+            <strong>ไปที่คอมพิวเตอร์ แล้วกดปุ่ม "✓ ยืนยันรีเช็ค"</strong>
             <p>ยอดที่สแกนจาก PDA จะขึ้นบนคอมให้เองภายในไม่กี่วินาที ตรวจดูให้ครบแล้วค่อยกดยืนยัน</p>
             <p>ระบบจะตัดสินผลแต่ละรายการ</p>
             <ul>
@@ -510,9 +510,9 @@
         <span class="note-icon">ℹ️</span>
         <div>
           <strong>สแกนที่ PDA — ยืนยันที่คอมเท่านั้น</strong><br>
-          เมื่อ login เป็นเภสัช → ช่องสแกนหลักบน PDA จะรับ Barcode เข้ารายการ Audit ให้อัตโนมัติ สะสมจำนวนในแต่ละรายการ
+          เมื่อ login เป็นเภสัช → ช่องสแกนหลักบน PDA จะรับ Barcode เข้ารายการรอรีเช็คให้อัตโนมัติ สะสมจำนวนในแต่ละรายการ
           ยอดถูกบันทึกขึ้นระบบทันที<br>
-          แต่ปุ่ม "✓ ยืนยัน Audit" บน PDA จะกดไม่ได้ (จางลง) ต้องไปกดที่คอม — ถ้ากดจาก PDA ผลอาจผิดพลาด<br>
+          แต่ปุ่ม "✓ ยืนยันรีเช็ค" บน PDA จะกดไม่ได้ (จางลง) ต้องไปกดที่คอม — ถ้ากดจาก PDA ผลอาจผิดพลาด<br>
           สแกนผิด? กดปุ่ม <strong>✕</strong> ท้ายรหัสสินค้าในรายการ เพื่อล้างยอดรีเช็คแล้วสแกนใหม่
         </div>
       </div>
@@ -677,13 +677,13 @@
             <td>ไม่ต้องทำอะไร</td>
           </tr>
           <tr>
-            <td><span class="badge badge-yellow">⚠️ Audit</span></td>
-            <td>จำนวนไม่ตรง รอเภสัช / หัวหน้าตรวจสอบ</td>
-            <td>เภสัช/หัวหน้าต้องตรวจเพิ่ม</td>
+            <td><span class="badge badge-yellow">⚠️ รอรีเช็ค / Recheck</span></td>
+            <td>สาขายา: ปรับสต็อกที่เภสัชกด ↺ สแกนใหม่ · คลัง: จำนวนไม่ตรง รอพนักงานรีเช็ค</td>
+            <td>สาขายา: เภสัชสแกนนับใหม่แล้วยืนยันรีเช็ค · คลัง: หัวหน้ายืนยันรีเช็ค</td>
           </tr>
           <tr>
             <td><span class="badge badge-red">🔴 ปรับสต็อก</span></td>
-            <td>ตรวจแล้ว ยืนยันว่าจำนวนไม่ตรง — ต้องปรับยอดในระบบ</td>
+            <td>จำนวนไม่ตรง (สาขายา: ทันทีหลัง Confirm · คลัง: หลังรีเช็ค) — ต้องปรับยอดในระบบ</td>
             <td>แจ้งฝ่ายที่เกี่ยวข้องปรับสต็อก</td>
           </tr>
           <tr>
@@ -732,7 +732,7 @@
         <span class="warn-icon">❓</span>
         <div>
           <strong>สแกนสินค้าที่ Confirm ไปแล้ว แต่ไม่ขึ้น</strong><br>
-          สินค้าที่ผ่านการยืนยันแล้ว (<span class="badge badge-green">✅ ผ่าน</span> / <span class="badge badge-yellow">⚠️ Audit</span> / <span class="badge badge-red">🔴 ปรับสต็อก</span>) จะล็อกไม่ให้สแกนซ้ำ<br>
+          สินค้าที่ผ่านการยืนยันแล้ว (<span class="badge badge-green">✅ ผ่าน</span> / <span class="badge badge-yellow">⚠️ รอรีเช็ค</span> / <span class="badge badge-red">🔴 ปรับสต็อก</span>) จะล็อกไม่ให้สแกนซ้ำ<br>
           ระบบจะแจ้งเตือนว่า "สแกนและ Confirm ไปแล้ว" — ให้สแกนสินค้าตัวถัดไป
         </div>
       </div>
@@ -793,17 +793,17 @@
           <tr>
             <td><strong>✔ Confirm</strong></td>
             <td>เภสัช / หัวหน้า (Desktop)</td>
-            <td>ตรวจเทียบจำนวนกับระบบ แบ่งสถานะ ผ่าน/Audit</td>
+            <td>ตรวจเทียบจำนวนกับระบบ แบ่งสถานะ ผ่าน/ปรับสต็อก (คลัง: ผ่าน/Recheck)</td>
           </tr>
           <tr>
-            <td><strong>🔍 Audit Verify</strong></td>
+            <td><strong>Stock Adj / 🔍 Recheck</strong></td>
             <td>เภสัช / หัวหน้า</td>
-            <td>เปิดหน้าตรวจสอบสินค้าที่ขึ้น Audit (สแกนบน PDA ได้)</td>
+            <td>เภสัช: รายการปรับสต็อก (มี ↺ สแกนใหม่) + แท็บรอรีเช็ค · หัวหน้า WH: ดูรายการรีเช็ค</td>
           </tr>
           <tr>
-            <td><strong>✓ ยืนยัน Audit</strong></td>
+            <td><strong>✓ ยืนยันรีเช็ค</strong></td>
             <td>เภสัช (Desktop)</td>
-            <td>ยืนยันผล Audit ที่สแกนรีเช็คแล้ว — กดจาก PDA ไม่ได้</td>
+            <td>ยืนยันผลสินค้าที่สแกนรีเช็คแล้ว — กดจาก PDA ไม่ได้</td>
           </tr>
           <tr>
             <td><strong>✓ ยืนยันรีเช็ค</strong></td>

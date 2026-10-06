@@ -66,7 +66,7 @@ No build system. No framework.
 branch confirm lock (`_acquireBranchConfirmLock`, `_restampBranchConfirmLock`, `_releaseBranchConfirmLock`, lock listener และ scan guards),
 `PDA_KEYSTROKE_THRESHOLD_MS`, `SCAN_DEBOUNCE_MS`, `_pdaMode`, `_lastKeystrokeTime`,
 time gates ใน scan, role check ใน `rebuildScanListMap`,
-`_confirmPharmacyAuditBatched`, `_sameBranchRecheck`, `_addRecheckScanQty`, `getPharmacistAuditPendingMap`, session/inbox/marker listeners + restore/backfill,
+`_confirmPharmacyAuditBatched`, `_sameBranchRecheck`, `_addRecheckScanQty`, `getPharmacistAuditPendingMap`, session/inbox/marker listeners + restore/backfill (รวม `_writePharmacyAuditMarkers` · `_applyPharmacyAuditMarkersToState` · `reopenPharmacyAudit` — marker พาธง `directAdj` ต.ค. 2026),
 **WH workflow v2 ทุกจุด:** `confirm_ops`/`results` reader-listener · prepare/commit/materialize/recovery · legacy dual-read · migration/cleanup,
 **schema v2:** `getScanItemsRef`, `_markSkuDirty`, `_flushDirtySkus`, `_writeScanningItem`, `_scanItemPayload`, `_scanItemToLocal`, `_scanItemFingerprint`, `_scanItemLastQty`,
 `_reconcileScanItems`, `startScanItemsListener`, `_applyScanItemChange`, `_applyScanItemRemoved`, `_applyCloudSessionMeta`, `_loadScanItemsFromCloud`,
@@ -322,7 +322,7 @@ pending → scanning → pass
 Confirm รอบแรกไม่ตรง → `stock_adjustment` ทันที · ตัดสินที่ `_buildPendingScanEvaluation` ผ่าน `_directStockAdjEnabled()` = สวิตช์ `PHARMACY_DIRECT_STOCK_ADJ` (`let` — เทสสลับกลับได้ · rollback = ตั้ง `false` แล้ว deploy) **&& `_isPharmacyBranch()`** ⇒ **WH คง `audit` เสมอ** (`evaluatePendingScans` ยังถูกเรียกจากทางที่ไม่ใช่สาขายา)
 - **ทุกกลุ่มไม่ผ่าน Audit รวม G≤0/ติดลบ** — ย้อนกติกา ก.ค. 2026 ("ระบบ 0 แต่สแกนเจอของ = เภสัชรีเช็คก่อน ห้ามลัดไป stock_adjustment") ตามคำสั่งผู้ใช้ที่รับทราบผลแล้ว: G=0 ยิงครั้งเดียว → IRPS เพิ่มสต็อก ERP ทันที · ติดลบที่ R16 อธิบายไม่ได้ → ปรับทุกวัน · ปุ่ม `📦 ค้างส่ง` ใช้ได้เฉพาะรายการ Audit เดิม
 - รายการที่ออกทางนี้ติด **`directAdj:true` + แช่ `effectiveQty`/`systemQty` ณ ตอน Confirm** (ชื่อ field เดียวกับที่ audit marker ใช้ · `_scanItemPayload` พาขึ้น Cloud เอง) · `initialStatus` ยังเป็น `'stock_adjustment'` (ไม่ใช่ `'audit'`) · **`noStock` ไม่ตั้ง `directAdj`**
-- **Audit ที่ค้างอยู่ตอนสลับคงอยู่ใน flow Audit เดิมต่อ ห้ามแปลงอัตโนมัติ** (ยอดรีเช็คที่เภสัชกรอกไว้จะหาย + ส่วนหนึ่งจะ Pass เอง) · **ห้ามลบโค้ด Audit Verify / markers / `confirmAuditVerifyItem` / `backorder`** — ยังใช้กับของเดิมและรายการที่ ↺ ย้อนกลับมา
+- **Audit ที่ค้างอยู่ตอนสลับคงอยู่ใน flow Audit เดิมต่อ ห้ามแปลงอัตโนมัติ** (ยอดรีเช็คที่เภสัชกรอกไว้จะหาย + ส่วนหนึ่งจะ Pass เอง) — ต.ค. 2026 ผู้ใช้สั่งแปลงตัวที่ยังไม่มีใครรีเช็คด้วยเครื่องมือครั้งเดียว `tools/convert-legacy-pharmacy-audits.js` (คนสั่งเอง ไม่ใช่ runtime · ดู §สาขายาไม่มีคำว่า Audit) · **ห้ามลบโค้ด Audit Verify / markers / `confirmAuditVerifyItem` / `backorder`** — ยังใช้กับของเดิมและรายการที่ ↺ ย้อนกลับมา
 - **ฐานตัวเลข Stock Adj ตรง = `effectiveQty − systemQty` ที่แช่ไว้** ผ่าน `_directAdjPair(sd)` ครบ 5 จุด (`_buildAdjustDocRows` · `_adjustDocAudit` · Audit Verify แท็บ Stock Adj · ประวัติการนับแท็บ Stock Adj · `exportStockAdjExcel`) — ⛔ ห้ามใช้ `countedQty − ยอดสด`: `countedQty` เป็นยอดดิบ (ไม่รวม R16 ชดเชย) และเทียบข้ามเวลากับ R01 วันถัดไป · ไม่มีด่านความสด (ฐานแช่ไว้ ไม่หมดอายุ) · ดู §Pharmacy Audit Verify → ใบปรับปรุง
 - **ทางถอยทางเดียว = ↺ `reopenPharmacyAudit`** (รับ `directAdj` แล้ว · ล้างธง + `initialStatus='audit'` → Audit ปกติ) · `reEvaluateAuditItems` **ไม่แตะ** Stock Adj ตรง (R16 อัปทีหลังไม่ flip · ระบบยังไม่มี `issuedAt`)
 - `saveAuditLogToFirestore` ใช้ `_wasFirstCountMismatch(sd)` (= `initialStatus==='audit' || directAdj`) + log `directAdj/effectiveQty/systemQty` · **`_backfillPharmacyAuditMarkersFromLog` ข้ามรายการ `directAdj`** (ไม่งั้นถูกฟื้นเป็น Audit) · บาร์ "เภสัชตรวจแล้ว" ไม่นับ `directAdj` (`updateStats`)
@@ -390,7 +390,7 @@ WH Recheck รอบสองเปรียบเทียบ `recheckQty` ก�
 | Role | Branch | สิทธิ์หลัก |
 |---|---|---|
 | assistant | SRC/KKL/SSS | สแกนนับ |
-| pharmacist | SRC/KKL/SSS | **ออกใบ Stock Adj (📦 ปรับปรุงสินค้า) + ↺ ย้อนรายการ** — ตั้งแต่ 30 ก.ย. 2026 ไม่ทำ Audit เมื่อไม่มี audit ค้าง (Audit Verify scan + ยืนยัน เปิดเฉพาะตอนมี `audit` ค้าง) ดู §เภสัชทำ Stock Adj อย่างเดียว |
+| pharmacist | SRC/KKL/SSS | **ออกใบ Stock Adj (📦 ปรับปรุงสินค้า) + ↺ ย้อนรายการ** — ตั้งแต่ 30 ก.ย. 2026 ไม่ทำ Audit เมื่อไม่มี audit ค้าง (Audit Verify scan + ยืนยัน เปิดเฉพาะตอนมี `audit` ค้าง) ดู §เภสัชทำ Stock Adj อย่างเดียว · ต.ค. 2026 จอไม่มีคำว่า Audit — `audit` เรียก "รอรีเช็ค" · ปุ่ม "✓ ยืนยันรีเช็ค" (§สาขายาไม่มีคำว่า Audit) |
 | supervisor | WH | ยืนยันนับ + ยืนยันรีเช็ค (Desktop only) |
 | warehouse | WH | สแกนนับ + สแกนรีเช็ค (PDA) |
 
@@ -518,6 +518,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 
 > ⚠️ **29 ก.ย. 2026: Confirm รอบแรกของสาขายาไม่ผ่าน Audit แล้ว** (ดู §Status Lifecycle) — หัวข้อนี้ใช้กับ **Audit ที่ค้างอยู่ก่อนสลับ + รายการที่ ↺ ย้อนกลับมา** เท่านั้น · ห้ามลบโค้ดฝั่งนี้
 > ⚠️ **30 ก.ย. 2026: เภสัชไม่ทำ Audit เมื่อไม่มี audit ค้าง** — UI ฝั่งนี้ถูกซ่อนอัตโนมัติ (`PHARMACIST_STOCKADJ_ONLY` · ดู §เภสัชทำ Stock Adj อย่างเดียว) โค้ดยังอยู่ครบและกลับมาเองเมื่อมีรายการ `audit` (เช่นหลังกด ↺)
+> ⚠️ **ต.ค. 2026: จอสาขายาไม่มีคำว่า Audit แล้ว** — `audit` แสดงเป็น "รอรีเช็ค" · แผง/ป็อปอัพชื่อ Stock Adj · ปุ่ม "✓ ยืนยันรีเช็ค" (`PHARMACY_RECHECK_TERMS` · แสดงผลล้วน — status code และกลไกในหัวข้อนี้ไม่เปลี่ยน)
 
 - เภสัชสแกนรีเช็คบน PDA ได้ แต่กด "✓ ยืนยัน Audit" ได้เฉพาะ Desktop — guard ด้วย `_isPdaApp()` (User-Agent) ไม่อิง viewport
 - ยอดที่สแกนเก็บใน `sd.recheckQty`/`recheckBy`/`recheckAt` (sync ผ่าน session doc) ห้ามกลับไปใช้ map ใน memory ที่ไม่ persist
@@ -683,7 +684,7 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - **สวิตช์ `PHARMACIST_STOCKADJ_ONLY`** (`let` · `index.html` ใกล้ `PHARMACY_DIRECT_STOCK_ADJ`) · **โหมด idle** = สวิตช์เปิด && สาขายา && `currentRole==='pharmacist'` && **จำนวน `audit` ใน `scanData` = 0** (`_pharmAuditIdle(n)` · นับด้วย `_legacyAuditCount()`)
 - **idle:** ซ่อนช่องสแกน/RESULT/ปุ่ม "✓ ยืนยัน Audit" (CSS `body.pharm-audit-idle` + `#pharmIdleNote`) · แผงเปลี่ยนชื่อเป็น **Stock Adj** · ป็อปอัพเปิดแท็บ Stock Adj (ซ่อนแท็บ Audit/แถวสแกน/ปุ่มยืนยันทั้งหมด) · **ปุ่ม ↺ สแกนใหม่ อยู่ครบ** = ทางแก้รายตัวเดียว
 - **มี `audit` ค้าง (ของเดิมก่อน 29 ก.ย. หรือรายการที่กด ↺ กลับมา):** UI Audit เดิมกลับมาเอง **ครบทุกอย่าง** จนปิดหมด แล้วกลับ idle เอง · จุดสลับเดียวคือ `_applyPharmacistAuditMode(n)` เรียกจากท้าย `updateAuditVerifyCount()` (ซึ่ง `updateStats`/snapshot/marker/↺ เรียกอยู่แล้ว) + `applyAuditTerminology()` + `openAuditVerifyPopup()` — **ห้ามเพิ่ม hook ในเส้นทางสแกน**
-- ⛔ **ห้ามแปลง `audit` ค้างเป็น Stock Adj อัตโนมัติ** (ยอดรีเช็คหาย) · ⛔ **ห้ามลบโค้ด Audit Verify/marker/`reopenPharmacyAudit`** — ↺ ต้องพารายการกลับเป็น `audit` ซึ่งใช้โค้ดฝั่งนั้น · role/สาขาอื่น (ผู้ช่วย · หัวหน้า/พนักงาน WH · เภสัชบน WH) **ไม่ถูกแตะ** (เทสตรึงไว้)
+- ⛔ **ห้ามแปลง `audit` ค้างเป็น Stock Adj อัตโนมัติ** (ยอดรีเช็คหาย) — ยกเว้นเครื่องมือแปลงครั้งเดียวที่คนสั่งเอง (ต.ค. 2026 · ดู §สาขายาไม่มีคำว่า Audit) · ⛔ **ห้ามลบโค้ด Audit Verify/marker/`reopenPharmacyAudit`** — ↺ ต้องพารายการกลับเป็น `audit` ซึ่งใช้โค้ดฝั่งนั้น · role/สาขาอื่น (ผู้ช่วย · หัวหน้า/พนักงาน WH · เภสัชบน WH) **ไม่ถูกแตะ** (เทสตรึงไว้)
 - **ด่านกันสแกนในโหมด idle มีอยู่เดิม:** `processPharmacistAuditScan` ปฏิเสธ SKU ที่ไม่ใช่ `audit` ([index.html](index.html) ข้อความ `— ไม่ใช่ Audit`) จึงไม่ต้องแก้ฟังก์ชันสแกน — เครื่องสแกน PDA ของเภสัชยิงเข้ามาก็ไม่เขียนอะไร
 - **ข้อเสียที่ผู้ใช้รับทราบแล้ว:** ไม่มีผู้ตรวจคนที่สอง (`auditor` ว่าง — นับผิด/R16 คลาดเวลาไหลเข้าใบตรงๆ) · ทางแก้รายตัวมีทางเดียวคือ ↺ (Desktop เท่านั้น) · ยอดติดลบที่เป็นหนี้ลูกค้าถูกดันเป็น 0 ในใบ (📦 ค้างส่งใช้ได้เฉพาะรายการที่ ↺ กลับเป็น Audit) · PDA ต้องปิด-เปิดแอปหลัง deploy
 - ⚠️ **ข้อสังเกตเอกสาร (ยังไม่ได้ยืนยันหน้างาน):** `updateScanInputMode` ซ่อนแถว Confirm ของรหัสเภสัช (`confirmClearRow` · `isPharm`) แต่ `คู่มือ-สาขา.html` ตาราง "ปุ่ม" ระบุ Confirm = "เภสัช (Desktop)" — ในโค้ด Confirm รอบแรกที่ Desktop ทำได้ด้วยรหัสอื่น (ผู้ช่วย) ไม่ใช่รหัสเภสัช · ไม่ได้แก้เพราะอยู่นอกขอบเขตงานนี้ · ⚠️ ตรวจไม่ได้จากเครื่องพัฒนาว่า Firestore จริงมี `audit` ค้างกี่รายการ (ออกแบบให้ถูกต้องทั้งสองกรณี)
@@ -700,9 +701,50 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - **อาการที่ควรสงสัยงานนี้:** เภสัชไม่เห็นปุ่มยืนยัน Audit ทั้งที่มี audit ค้าง · แผงยังชื่อ Audit Verify ทั้งที่ไม่มี audit · ป็อปอัพเปิดแท็บ Audit ว่างเปล่า · หน้าจอผู้ช่วย/หัวหน้า WH เปลี่ยนไป (**ห้ามเกิด**) · ↺ แล้วโหมด Audit ไม่โผล่
 - **ตรวจแล้ว 30 ก.ย. 2026:** เทส `tests/specs/logic/pharmacist-stockadj-only.spec.js` 7 ข้อ (idle · มี audit ค้าง · สลับโหมดสองทิศทางระหว่างใช้งาน · สวิตช์ปิด · สวิตช์ปิดกลางทาง · role/สาขาอื่นไม่ถูกแตะ · ด่านกันสแกน) · ใส่บั๊กจงใจ 10 แบบลงสำเนาชั่วคราว (ไม่เช็ค audit=0 / ไม่ย้อนของที่ idle แตะ / ตัดเช็คสาขายา / ตัดเช็ค role / ไม่เลื่อนแท็บ / ไม่เรียกโหมดจาก `updateAuditVerifyCount` / ไม่ซ่อนแถวสแกน / CSS ไม่ซ่อนปุ่มยืนยัน / ป้ายแผงไม่เปลี่ยน) เทสจับได้ **9 แบบ** · อีก 1 แบบ (เปิดป็อปอัพไม่เลือกแท็บ Stock Adj ตอน idle) **หลุดเพราะเป็น equivalent mutant** — ทาง "เลื่อนแท็บอัตโนมัติ" ใน `_applyPharmacistAuditMode` ทับให้ผลเท่ากัน · พิสูจน์ด้วยการถอดสองชั้นพร้อมกันแล้วเทสล้ม 2 ข้อ · `npm test` ทั้งชุดผ่าน (logic 153 · e2e 70 + เทสวัด 2 ข้อที่ opt-in) · ⏳ **ยังไม่ได้ทดสอบบน PDA/Desktop จริง** (เภสัชล็อกอินรอบที่ไม่มี audit → กด ↺ หนึ่งรายการ → ยืนยัน → กลับ idle — ตาม §เมื่องานเสร็จ)
 
+#### 🔁 สาขายาไม่มีคำว่า Audit + แปลง Audit ค้างเป็น Stock Adj (ผู้ใช้สั่ง 6 ต.ค. 2026)
+
+ต่อจาก 29–30 ก.ย. — จอเภสัช SRC ยังเป็น "Audit" 135 รายการ (Audit ค้างก่อนสลับ · ยังไม่มีใครรีเช็ค → `_pharmAuditIdle` false → UI Audit เดิมกลับมาตามดีไซน์) ผู้ใช้สั่ง:
+(1) **แปลง Audit ค้างที่ยังไม่มีใครรีเช็คเป็น Stock Adj ด้วยตัวเลขตอน Confirm เดิม** — รับความเสี่ยงแล้วว่า Audit ที่เกิดจาก R16/R01 คลาดเวลาหรือบั๊ก OTFI ของ SRC (แก้ 29 ก.ย.) จะเป็นใบปรับสต็อกผิดเข้า ERP
+(2) จอสาขายาไม่มีคำว่า Audit (3) สแกน Stock Adj ที่หน้าหลัก **ต้องกด ↺ ก่อน** — ไม่แก้เส้นทางสแกน (4) ↺ ใช้กับ 🚫 noStock ได้
+⛔ **เปลี่ยนแค่ป้าย Audit → "Stock Adjustment" ผิด** (ผู้ใช้เคยเสนอ) — ข้อมูลยังเป็น `audit` จึงไม่เข้า 📦 (กรอง `status==='stock_adjustment'`) เภสัชจะเข้าใจว่าจบแล้วแต่ยอดไม่ถูกปรับ
+
+- **ป้าย (`PHARMACY_RECHECK_TERMS` · แสดงผลล้วน · status code `audit` ไม่เปลี่ยน · WH ไม่แตะ):** `audit` ของสาขายา = **"รอรีเช็ค"** (Stock Adj ที่เภสัชกด ↺ / ค้างจากรอบก่อน / R16 อัปซ้ำพลิก) · ป้ายแถว Desktop `⚠️ Stock Adj · รอรีเช็ค` · PDA `⚠️ รอรีเช็ค` · แผง/ปุ่ม `Stock Adj` ทุกโหมด · `✓ ยืนยันรีเช็ค` · Dashboard `นับไม่ตรง`
+  - helper: `_auditTerm()` · `_auditPillLabel()` · `_mismatchTerm()` · `_avPanelLabel()` · `_avPopupTitle()` · `_pharmTxt(old,new)` — **ข้อความใหม่บนจอสาขายาที่เคยมีคำว่า Audit ต้องผ่าน helper เหล่านี้** · HTML คงข้อความเดิม (JS ทับหลัง login) ⇒ ปิดสวิตช์ = เดิมทุกตัวอักษร
+  - toast ที่เปลี่ยนต้องแก้ `_PDA_TOAST_SHORT`/regex ใน `_toastMessageForDevice` คู่กัน **และเก็บรายการเดิมไว้** (สวิตช์ปิดยังส่งข้อความเดิม)
+- **marker พาธง `directAdj` (กฎ 1 · ไม่มีสวิตช์โดยเจตนา):** marker เป็น authoritative และถูก apply ซ้ำทุก snapshot ⇒ ผลแปลงต้องอยู่ใน marker ทั้งชุด · `_isDirectAdjMarker(m)` = `directAdj===true && status==='stock_adjustment' && !auditor`
+  - **R1** `_writePharmacyAuditMarkers`: existing เป็น direct marker → ทิ้ง incoming ที่ไม่ใช่ final / ↺ (`reopenedAt`) / ย้อนแปลง (`convertUndoneAt`) — กัน `reEvaluateAuditItems` (อัป R16 ซ้ำ) และ `_backfillPharmacyAuditMarkersFromLocal` ของเครื่องที่ยังถือ audit (เช่นเครื่องในโหมด Admin ที่ listener หยุด) ดันกลับ
+  - **R2** `_applyPharmacyAuditMarkersToState`: ตั้ง `sd.directAdj` ตาม direct marker · `marker.directAdj===false` → ลบ · `same` ต้องเห็นธง (ไม่งั้น echo ของ item ที่ไม่มีธงทำให้ใบคิดผิดสูตรค้าง)
+  - **R3** ↺ (`reopenPharmacyAudit`) และ `_pharmacyAuditMarkerFromFinal` ส่ง `directAdj:false` — marker merge `{...existing,...marker}` ถ้าไม่ส่ง ธงของผลแปลงค้าง
+  - **marker เก่าไม่มี field นี้ ⇒ ผลเท่าเดิมทุกกรณี** (เทสตรึง) · ไม่มีสวิตช์เพราะปิดหลังแปลงข้อมูลแล้ว = รายการที่แปลงเพี้ยน
+- **เครื่องมือ `tools/convert-legacy-pharmacy-audits.js`** (Console · Desktop · รหัสเภสัช · สาขาที่ login · นอกเวลานับ ไม่มีใครรีเช็ค/อัป R16): `await convertLegacyAudits()` = dry-run → `{dryRun:false}` = พิมพ์ `แปลง <สาขา> <จำนวน>` · ดาวน์โหลด JSON สำรอง (marker doc + items) · branch lock · รอ 3.8 วิ · อ่าน server ซ้ำ (rev/marker/ตัวเลขทุกรายการต้องเหมือนตอนสำรวจ ไม่งั้นยกเลิกทั้งชุด) → marker ก่อน → apply → ตรวจว่าเป็น Stock Adj ตรงจริง → `_writeConfirmedItems` → ปลด lock (finally)
+  - แปลงเฉพาะ: marker รอบนี้ `audit` ไม่มีผู้ยืนยัน · ไม่ใช่ ↺ · ไม่มียอดรีเช็ค/ค้างส่ง · มี `effectiveQty`/`systemQty` และ**ไม่เท่ากัน** · SKU อยู่ใน skuMap — ที่เหลือ**ข้ามและรายงานแยกกลุ่ม** (คงเป็นรอรีเช็ค)
+  - ผลแปลง = `initialStatus:'stock_adjustment'` + `directAdj:true` + คู่ตัวเลขเดิม + `convertedFromAuditAt`/`convertedBy`/`origCountConfirmedAt` · ⚠️ `countConfirmedAt` ต้องเป็นเวลาแปลง (ลำดับ marker non-final ตัดสินด้วยค่านี้ — ใช้ค่าเดิม = backfill จากเครื่องค้างชนะ)
+  - dry-run รายงาน `afterSwitch` = Confirm หลัง 29 ก.ย. 19:40 ที่ไม่ใช่ ↺ → เครื่องที่ยังรันโค้ดเก่า (ดู Known limitations เรื่อง reload) หรือ R16 อัปซ้ำ — ถ้าเป็นเครื่องโค้ดเก่า **รีโหลดเครื่องนั้นก่อนแปลง** ไม่งั้น Audit ใหม่เกิดต่อ
+  - `await undoConvertLegacyAudits()` ย้อนเป็นรอรีเช็ค (ไม่รวมตัวที่ ↺ ไปแล้ว) · ⛔ **ก่อน Export ใบ 📦 ส่ง ERP เท่านั้น** (ระบบไม่มีตัวกันส่งซ้ำ)
+  - ⚠️ สถานะที่ยัง "ไม่นิ่ง" (marker เพิ่งเปลี่ยน → ทุกเครื่อง `saveSession` → sync ตามเวลา → reconcile เขียน item) ทำให้รอบทำจริงยกเลิกเพราะ rev เปลี่ยน = **ถูกต้อง** · รัน dry-run ใหม่แล้วทำซ้ำ
+  - ⏳ **สถานะ production (6 ต.ค. 2026): ยังไม่ได้รัน** — ต้อง deploy + ทุกเครื่องรีโหลด/ปิด-เปิดแอปก่อน แล้วรัน SRC ก่อน · KKL/SSS ดู dry-run
+- **↺ กับ noStock (`PHARMACY_NOSTOCK_REOPEN`):** `reopenPharmacyAudit` รับ `noStock && status==='stock_adjustment'` เพิ่ม (เดิมปุ่มขึ้นแต่กดแล้ว "เปิดรีเช็คใหม่ไม่ได้") · หลัง ↺ เดิน flow รอรีเช็คเดิม · `noStock` ไม่ถูกลบ (ไม่มีโค้ดอ่านหลัง Confirm)
+- **ยังเหลือ (ตั้งใจไม่แก้):** `reEvaluateAuditItems` ยังพลิก pass → รอรีเช็ค เมื่ออัป R16 ซ้ำ (คงไว้: R16 ถัดไปตัดสินใหม่ได้ · ถ้าพลิกเป็น Stock Adj จะแช่แล้วพลิกกลับไม่ได้) · สแกน Stock Adj ที่หน้าหลักโดยไม่กด ↺ ยังถูกปฏิเสธ (ผู้ใช้เลือก) — ข้อความบอกให้กด ↺ ที่ Desktop ก่อน
+- เทส: `tests/specs/logic/pharmacy-no-audit-terms.spec.js` (จอสาขายาไม่มี /Audit/ ทุกจุด + ตัวตรวจต้องมองเห็นคำเดิมจริงเมื่อปิดสวิตช์ · PDA ป้ายสั้น · WH เท่าเดิม · สวิตช์ปิด = เดิมทุกตัวอักษร) · `tests/specs/logic/pharmacy-convert-marker.spec.js` (R1–R3 · marker เก่าเท่าเดิม · ↺ noStock) · `tests/specs/e2e/convert-legacy-audit.spec.js` (dry-run ไม่เขียน · แปลงเฉพาะที่เข้าเกณฑ์ · สองเครื่อง · กันดันกลับ · รันซ้ำ = 0 · ↺ · undo)
+
+**ทางถอย:** จุดก่อนแก้ = `ababb7a` · คอมมิตของงานนี้ขึ้นต้น **`feat(no-audit):`** (หาด้วย `git log --oneline --grep='^feat(no-audit)' ababb7a..HEAD`)
+
+| ระดับ | ทำอะไร | ใช้เมื่อ |
+|---|---|---|
+| **1 สวิตช์** | `let PHARMACY_RECHECK_TERMS=false;` (ป้าย) · `let PHARMACY_NOSTOCK_REOPEN=false;` (↺ noStock) → commit → push | คำใหม่สับสน / ไม่ต้องการ ↺ กับ noStock — ไม่กระทบข้อมูล |
+| **ข้อมูลที่แปลง** | `undoConvertLegacyAudits({dryRun:false})` หรือคืนจาก JSON สำรอง | แปลงผิด — **ก่อน Export ใบ 📦 ส่ง ERP เท่านั้น** |
+| **2 revert** | **ย้อนข้อมูลที่แปลงก่อน** แล้ว `git revert --no-edit $(git log --format=%h --grep='^feat(no-audit)' ababb7a..HEAD)` → push · **ดูรายการก่อนรัน** · ⛔ ห้าม `reset --hard`/force-push | ระดับ 1 ไม่พอ · revert ทั้งที่ยังมีผลแปลง = ไม่มีด่าน R1/R2 (เครื่องค้างดันกลับได้ · ช่วงที่ marker มาก่อน item ใบคิดผิดสูตร) |
+| **3 Vercel** | promote deployment ก่อนหน้า | เว็บพังหนัก · ⚠️ ต้อง revert ใน git ตามด้วย |
+
+- ตรวจรุ่น (Console): `typeof PHARMACY_RECHECK_TERMS` = `'boolean'` · `typeof _isDirectAdjMarker` = `'function'` · หลัง deploy ต้อง **ปิด-เปิดแอป PDA ทุกเครื่อง + รีโหลด Desktop** (ดู Known limitations)
+- **อาการที่ควรสงสัยงานนี้:** คำว่า Audit โผล่บนจอสาขายา · ป้าย/หัวป็อปอัพของ WH เปลี่ยน (**ห้ามเกิด**) · รายการที่แปลงแล้วกลับเป็นรอรีเช็คเอง · ใบ 📦 ของรายการที่แปลงไม่ตรง `effectiveQty − systemQty` ใน marker · ↺ noStock ไม่ทำงาน
+- ป้ายในตาราง RESULT บน Desktop แบ่ง 2 บรรทัด (`⚠️ Stock Adj` / `รอรีเช็ค` · `_auditPillLabel(true)`) — บรรทัดเดียวล้นช่อง STATUS 128px จนถูกตัด (เห็นจากภาพจริง) · 📋 ใช้บรรทัดเดียว · เทสตรึงว่าป้ายไม่ล้นช่อง
+- ตัวเลขบนปุ่มแผง "Stock Adj" = **จำนวนรอรีเช็ค** (ไม่ใช่จำนวน Stock Adj) — ตั้งใจคงไว้เพราะ invariant เดิม "การ์ดรอรีเช็ค (เดิม Audit) = badge ปุ่มแผง" (`countable-set.spec.js`) · จำนวน Stock Adj ดูที่ 📦 ปรับปรุงสินค้า / แท็บ Stock Adj
+- **ตรวจแล้ว 6 ต.ค. 2026:** `npm test` ทั้งชุดผ่าน (logic 164 · e2e 71 + เทสวัด 2 ข้อที่ opt-in) · e2e เครื่องมือแปลงรันซ้ำ 4 รอบผ่านทุกรอบ · ใส่บั๊กจงใจ 14 แบบลงสำเนาชั่วคราว (ถอด R1 / ถอดตั้งธง R2 / ถอดลบธง R2 / ถอด same R2 / ถอด `directAdj:false` ของ ↺ / ของผลยืนยัน / ถอด guard noStock / ป้ายแถวเดิม / ปุ่มยืนยันเดิม / `_auditTerm` เดิม / ป้ายแผงรั่วไป WH / สวิตช์ถูกเมิน / ป้าย Dashboard Rate เดิม / ข้อความเตือนสแกนเดิม) **เทสจับได้ครบ 14** (รอบแรกหลุด 1 = Dashboard "รอรีเช็ค Rate" ไม่มีคำว่า Audit จึงผ่านตัวตรวจคำ → เพิ่มการตรวจป้ายตามความหมาย) · ภาพจอ Desktop 1465px + PDA 393px ป้ายไม่ล้น · ⏳ **ยังไม่ได้ทดสอบบน PDA/Desktop จริง และยังไม่ได้รันเครื่องมือแปลงบน production** · ⏳ การพิสูจน์ `git revert` ใน worktree แยก ทำตอน commit
+
 ### Known limitations / rollout assumptions
 
-- **Auto-refresh (heartbeat ETag) ไม่รีโหลดเครื่องที่สแกนแล้วหลัง login/reset** — ด่าน `_reloadGateOk` เช็ค `_pendingPatches.size` แต่ Set นี้ถูกล้างแค่ตอนเริ่ม drain ถัดไป/`resetScanRuntimeState` (ตรวจแล้ว 29 ก.ย. 2026: `ab95bf0` เป็นแบบนี้อยู่แล้ว) ⇒ deploy ใหม่ไม่ถึง PDA ที่กำลังใช้งานจนกว่าจะปิด-เปิดแอป · อย่าสรุปว่า "deploy แล้ว PDA ได้รุ่นใหม่เอง" — ยืนยันด้วยตา/สั่งรีสตาร์ท · แก้ได้ (ล้าง Set หลังจบ drain) แต่เป็น scan-related ต้องขออนุมัติ
+- **Auto-refresh (heartbeat ETag) ไม่รีโหลดเครื่องที่สแกนแล้วหลัง login/reset** — ด่าน `_reloadGateOk` เช็ค `_pendingPatches.size` แต่ Set นี้ถูกล้างแค่ตอนเริ่ม drain ถัดไป/`resetScanRuntimeState` (ตรวจแล้ว 29 ก.ย. 2026: `ab95bf0` เป็นแบบนี้อยู่แล้ว) ⇒ deploy ใหม่ไม่ถึง PDA ที่กำลังใช้งานจนกว่าจะปิด-เปิดแอป · **reload บังคับข้ามวัน (หลัง 04:00) ก็ผ่านด่านเดียวกัน** ⇒ Desktop ที่เคยสแกน (เช่นเครื่องที่ผู้ช่วยยิงแล้วกด Confirm) ค้างรุ่นเก่าข้ามวันได้จนกว่าจะปิดเบราว์เซอร์ — เครื่องแบบนี้ยัง Confirm เป็น `audit` แบบก่อน 29 ก.ย. (ตรวจด้วย `typeof PHARMACY_DIRECT_STOCK_ADJ`) · อย่าสรุปว่า "deploy แล้ว PDA ได้รุ่นใหม่เอง" — ยืนยันด้วยตา/สั่งรีสตาร์ท · แก้ได้ (ล้าง Set หลังจบ drain) แต่เป็น scan-related ต้องขออนุมัติ
 - PDA ที่ออฟไลน์รับ branch lock ไม่ได้ทันที รายการใหม่จะ sync ภายหลังและรอ Confirm รอบถัดไป
 - Pharmacy Desktop ต้องออนไลน์ระหว่าง Confirm และระหว่างยืนยัน Audit Verify
 - WH สแกนได้ 24 ชั่วโมง ส่วนสาขายายังมี time gate ตามเวลาทำการ
