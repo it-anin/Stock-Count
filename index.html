@@ -96,12 +96,13 @@
     .ptd-name { color:var(--text); max-width:200px; white-space:normal; word-break:break-word; font-size:0.8rem; }
     .stock-popup-footer { padding:12px 22px; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
     .popup-row-count { font-size:0.78rem; color:var(--text2); }
-    /* แบ่งหน้าใน 📦 ปรับปรุงสินค้า (ต.ค. 2026) — ไม่ใช้ .popup-filter: setAdjDocFilter วนล้าง .popup-filter.active ทั้งป็อปอัพ */
-    .adj-pager { align-items:center; gap:6px; }
-    .adj-pg-btn { padding:4px 10px; border-radius:7px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); cursor:pointer; font-family:inherit; font-size:0.78rem; font-weight:600; line-height:1.2; white-space:nowrap; }
-    .adj-pg-btn:hover:not(:disabled) { border-color:rgba(0,114,198,0.55); color:var(--accent); }
-    .adj-pg-btn:disabled { opacity:0.4; cursor:default; }
-    .adj-pg-info { font-size:0.78rem; font-weight:600; color:var(--text2); white-space:nowrap; padding:0 4px; }
+    /* แถบเปลี่ยนหน้าที่ฟุตเตอร์ป็อปอัพ (ต.ค. 2026) — ใช้ร่วมกันทั้ง 📦 ปรับปรุงสินค้า และ 📋 รายการสต็อคสินค้า (ดู _paginate/_renderPagerUi)
+       ไม่ใช้ .popup-filter: ทั้งสองป็อปอัพวนล้าง .popup-filter.active ทุกครั้งที่สลับแท็บ/ตัวกรอง */
+    .pg-bar { align-items:center; gap:6px; }
+    .pg-btn { padding:4px 10px; border-radius:7px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); cursor:pointer; font-family:inherit; font-size:0.78rem; font-weight:600; line-height:1.2; white-space:nowrap; }
+    .pg-btn:hover:not(:disabled) { border-color:rgba(0,114,198,0.55); color:var(--accent); }
+    .pg-btn:disabled { opacity:0.4; cursor:default; }
+    .pg-info { font-size:0.78rem; font-weight:600; color:var(--text2); white-space:nowrap; padding:0 4px; }
     .btn-export-popup { padding:7px 16px; border-radius:7px; border:1px solid rgba(26,158,92,0.3); background:rgba(26,158,92,0.08); color:var(--green); cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600; transition:background 0.15s; }
     .btn-export-popup:hover { background:rgba(26,158,92,0.16); }
     .upload-guide-popover { display:none; position:absolute; top:0; left:calc(100% + 20px); width:460px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,0.12); z-index:100; padding:24px; animation:popIn 0.2s ease-out; }
@@ -777,7 +778,7 @@
       <button class="stock-popup-close" onclick="closeStockPopup()">✕</button>
     </div>
     <div class="stock-popup-toolbar" id="popupStatusFilterRow">
-      <input class="popup-search" id="popupSearch" placeholder="🔍 ค้นหา SKU / Barcode / ชื่อ..." oninput="schedulePopupRender()">
+      <input class="popup-search" id="popupSearch" placeholder="🔍 ค้นหา SKU / Barcode / ชื่อ..." oninput="onPopupSearch()">
       <button class="popup-filter active" onclick="setPopupFilter('all',this)"><span>📋</span><span>ทั้งหมด</span></button>
       <button class="popup-filter" onclick="setPopupFilter('pass',this)"><span>✅</span><span>Pass</span></button>
 
@@ -796,8 +797,17 @@
       </table>
     </div>
     <div class="stock-popup-footer">
-      <span class="popup-row-count" id="popupRowCount">0 รายการ</span>
-      <button class="btn-export-popup" onclick="exportExcel()">⬇️ Export Excel</button>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;">
+        <span class="popup-row-count" id="popupRowCount">0 รายการ</span>
+        <div class="pg-bar" id="popupPager" style="display:none;">
+          <button class="pg-btn" data-pg="first" onclick="setPopupPage(1)" title="หน้าแรก">«</button>
+          <button class="pg-btn" data-pg="prev" onclick="setPopupPage(_popupPage-1)">‹ ก่อนหน้า</button>
+          <span class="pg-info" data-pg="info"></span>
+          <button class="pg-btn" data-pg="next" onclick="setPopupPage(_popupPage+1)">ถัดไป ›</button>
+          <button class="pg-btn" data-pg="last" onclick="setPopupPage(Infinity)" title="หน้าสุดท้าย">»</button>
+        </div>
+      </div>
+      <button class="btn-export-popup" onclick="exportExcel()" title="Export ทุกรายการตามตัวกรองที่เลือก (ไม่ใช่เฉพาะหน้าที่เห็น)">⬇️ Export Excel</button>
     </div>
   </div>
 </div>
@@ -1021,12 +1031,12 @@
     <div class="stock-popup-footer">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;">
         <span class="popup-row-count" id="adjustDocRowCount">0 รายการ</span>
-        <div class="adj-pager" id="adjustDocPager" style="display:none;">
-          <button class="adj-pg-btn" id="adjPgFirst" onclick="setAdjDocPage(1)" title="หน้าแรก">«</button>
-          <button class="adj-pg-btn" id="adjPgPrev" onclick="setAdjDocPage(_adjDocPage-1)">‹ ก่อนหน้า</button>
-          <span class="adj-pg-info" id="adjPgInfo"></span>
-          <button class="adj-pg-btn" id="adjPgNext" onclick="setAdjDocPage(_adjDocPage+1)">ถัดไป ›</button>
-          <button class="adj-pg-btn" id="adjPgLast" onclick="setAdjDocPage(Infinity)" title="หน้าสุดท้าย">»</button>
+        <div class="pg-bar" id="adjustDocPager" style="display:none;">
+          <button class="pg-btn" id="adjPgFirst" data-pg="first" onclick="setAdjDocPage(1)" title="หน้าแรก">«</button>
+          <button class="pg-btn" id="adjPgPrev" data-pg="prev" onclick="setAdjDocPage(_adjDocPage-1)">‹ ก่อนหน้า</button>
+          <span class="pg-info" id="adjPgInfo" data-pg="info"></span>
+          <button class="pg-btn" id="adjPgNext" data-pg="next" onclick="setAdjDocPage(_adjDocPage+1)">ถัดไป ›</button>
+          <button class="pg-btn" id="adjPgLast" data-pg="last" onclick="setAdjDocPage(Infinity)" title="หน้าสุดท้าย">»</button>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
@@ -1562,6 +1572,33 @@ function _closeModal(overlayId, cardId, cb){
     card.classList.remove('modal-card-exit');
     if(cb)cb();
   },220);
+}
+// ── แบ่งหน้าตารางในป็อปอัพรายการ (ต.ค. 2026) — ใช้ร่วมกัน: 📦 ปรับปรุงสินค้า (ADJUST_DOC_PAGE_SIZE) · 📋 รายการสต็อคสินค้า (POPUP_PAGE_SIZE) ──
+// แบ่งเฉพาะ "การวาดตาราง" — ตัวนับยอด/Export/ตัวกรองต้องอ่านทุกแถวเอง ห้ามอ่านจากหน้าที่ตัดแล้ว
+// _paginate → {on,size,pages,page,start} · pageSize ไม่ใช่เลขบวก = ไม่แบ่งหน้า (on:false · หน้าเดียวทุกแถว = ทางถอยของแต่ละป็อปอัพ)
+//   page ถูก clamp 1..pages: Infinity = หน้าสุดท้าย · NaN/0/ติดลบ = หน้าแรก · เศษปัดลง · แถวหดจนหน้าเดิมหาย = ถอยมาหน้าสุดท้ายที่ยังมี
+//   ⛔ ห้ามใช้ |0 ตัดเศษ — Infinity|0 === 0 (ปุ่ม » จะพาไปหน้าแรก)
+function _paginate(total,pageSize,page){
+  const ps=Math.floor(Number(pageSize));
+  const on=Number.isFinite(ps)&&ps>0;
+  const size=on?ps:Math.max(total,1);
+  const pages=Math.max(1,Math.ceil(total/size));
+  let pg=Math.floor(Number(page));
+  if(!(pg>=1))pg=1;
+  pg=Math.min(pg,pages);
+  return {on,size,pages,page:pg,start:(pg-1)*size};
+}
+// อัปเดตแถบ « ‹ หน้า X / Y (a–b) › » ตามผล _paginate — ซ่อนเมื่อมีหน้าเดียว (≤ pageSize แถว) ⇒ รายการสั้นหน้าตาเหมือนเดิม
+// หาองค์ประกอบด้วย data-pg ในกล่อง (info/first/prev/next/last) · shown = จำนวนแถวที่วาดในหน้านี้
+function _renderPagerUi(boxId,pgn,shown){
+  const box=document.getElementById(boxId);
+  if(!box)return;
+  box.style.display=pgn.pages>1?'flex':'none';
+  if(pgn.pages<=1)return;
+  const info=box.querySelector('[data-pg="info"]');
+  if(info)info.textContent=`หน้า ${pgn.page} / ${pgn.pages} (${pgn.start+1}–${pgn.start+shown})`;
+  const atFirst=pgn.page<=1,atLast=pgn.page>=pgn.pages;
+  [['first',atFirst],['prev',atFirst],['next',atLast],['last',atLast]].forEach(([k,off])=>{const b=box.querySelector(`[data-pg="${k}"]`);if(b)b.disabled=off;});
 }
 function stopProductMasterListener(){
   if(_pmUnsubscribe){_pmUnsubscribe();_pmUnsubscribe=null;}
@@ -6350,8 +6387,18 @@ function getActiveSkus(){return[...state.skuMap.keys()];}
 
 let popupFilterState='all',popupStaffFilter='all',popupRenderTimer=null,popupBaseRowsCache=null;
 const POPUP_RENDER_DEBOUNCE_MS=160,POPUP_MAX_RENDER_ROWS=500;
+// แบ่งหน้า 📋 (ต.ค. 2026 · ผู้ใช้สั่ง — แนวเดียวกับ 📦 ปรับปรุงสินค้า · ดู _paginate) · แทนเพดาน 500 แถวเดิม: ทุกแถวเปิดดูได้ทีละ POPUP_PAGE_SIZE
+// ⚠️ แบ่งเฉพาะ "การวาดตาราง" ใน renderPopupTable — getFilteredPopupRows (ตัวกรอง) · Export Excel · ยอด "N รายการ" ยังครอบทุกแถวที่ผ่านตัวกรอง
+//    ⛔ ห้ามย้ายการตัดหน้าไปไว้ใน getFilteredPopupRows — Export จะออกไม่ครบ · ลำดับแถวต่อเนื่องข้ามหน้า
+// POPUP_PAGE_SIZE = แถวต่อหน้า · 0 (ไม่ใช่เลขบวก) = ไม่แบ่งหน้า → กลับไปวาดสูงสุด POPUP_MAX_RENDER_ROWS แถวแบบเดิมเป๊ะ (ทางถอย — เทสสลับได้)
+// _popupPage รีเซ็ตเป็น 1 เมื่อเปิดป็อปอัพ/เปลี่ยนตัวกรอง/พิมพ์ค้นหา (+ เลื่อนขึ้นบนสุด) · re-render จากสแกน/snapshot/แก้จำนวน คงหน้า+ตำแหน่งเลื่อน
+let POPUP_PAGE_SIZE=20;
+let _popupPage=1,_popupScrollTop=false;
 function invalidatePopupRowsCache(){popupBaseRowsCache=null;}
 function schedulePopupRender(){clearTimeout(popupRenderTimer);popupRenderTimer=setTimeout(renderPopupTable,POPUP_RENDER_DEBOUNCE_MS);}
+function onPopupSearch(){_popupPage=1;_popupScrollTop=true;schedulePopupRender();}   // ผลค้นหาชุดใหม่ = เริ่มหน้าแรก (oninput ของช่องค้นหา)
+// ผู้ใช้กดเปลี่ยนหน้า (« ‹ › ») — วาดทันที (ไม่รอ debounce) แล้วเลื่อนขึ้นบนสุด · p อาจเป็น Infinity (หน้าสุดท้าย) — renderPopupTable เป็นตัว clamp ให้
+function setPopupPage(p){_popupPage=p;_popupScrollTop=true;clearTimeout(popupRenderTimer);renderPopupTable();}
 
 function buildPopupBaseRows(){
   const base=[];
@@ -6363,6 +6410,7 @@ function buildPopupBaseRows(){
 function openStockPopup(){
   _openModal('stockPopupOverlay','stockPopupCard');
   document.getElementById('popupSearch').value='';
+  _popupPage=1;_popupScrollTop=true;
   popupStaffFilter='all';renderPopupStaffButtons();
   if(currentRole==='pharmacist'){
     popupFilterState='audit';
@@ -6376,8 +6424,8 @@ function openStockPopup(){
 function closeStockPopup(){_closeModal('stockPopupOverlay','stockPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleOverlayClick(e){if(e.target===document.getElementById('stockPopupOverlay'))closeStockPopup();}
 
-function setPopupFilter(f,btn){popupFilterState=f;document.querySelectorAll('#popupStatusFilterRow .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
-function setPopupStaffFilter(name,btn){popupStaffFilter=name;document.querySelectorAll('#popupStaffFilterRow .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
+function setPopupFilter(f,btn){popupFilterState=f;_popupPage=1;_popupScrollTop=true;document.querySelectorAll('#popupStatusFilterRow .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
+function setPopupStaffFilter(name,btn){popupStaffFilter=name;_popupPage=1;_popupScrollTop=true;document.querySelectorAll('#popupStaffFilterRow .popup-filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');schedulePopupRender();}
 function renderPopupStaffButtons(){
   const row=document.getElementById('popupStaffFilterRow');if(!row)return;
   const profiles=EMPLOYEE_PROFILES[currentBranch];
@@ -6423,9 +6471,19 @@ function renderPopupTable(){
   // สาขายา + ผู้ช่วย: ปุ่ม 🚫 "ไม่มีของจริง (นับ 0)" บนแถว pending ที่ระบบมีสต็อค
   const canNoStock=_isPharmacyBranch()&&currentRole==='assistant';
   const rows=getFilteredPopupRows();
-  const total=rows.length;document.getElementById('popupRowCount').textContent=total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${Math.min(total,POPUP_MAX_RENDER_ROWS)}/${total} รายการ`;
+  const total=rows.length;
+  // แบ่งหน้า (ดู POPUP_PAGE_SIZE/_paginate) — ตัดเฉพาะแถวที่ "วาด" · rows ทั้งชุดยังใช้นับยอด · Export อ่าน getFilteredPopupRows เองครบทุกแถว
+  // ปิดสวิตช์ (pgn.on=false) = เพดาน POPUP_MAX_RENDER_ROWS แถวแบบเดิมเป๊ะ ทั้งแถวที่วาดและข้อความ "N/total รายการ"
+  const pgn=_paginate(total,POPUP_PAGE_SIZE,_popupPage);
+  _popupPage=pgn.page;
+  const start=pgn.on?pgn.start:0;
+  const view=pgn.on?rows.slice(start,start+pgn.size):rows.slice(0,POPUP_MAX_RENDER_ROWS);
+  document.getElementById('popupRowCount').textContent=pgn.on||total<=POPUP_MAX_RENDER_ROWS?`${total} รายการ`:`${POPUP_MAX_RENDER_ROWS}/${total} รายการ`;
+  _renderPagerUi('popupPager',pgn,view.length);
+  // เปลี่ยนหน้า/ตัวกรอง/ค้นหา/เปิดป็อปอัพ = ผลชุดใหม่ ให้เห็นจากบนสุด · re-render อื่น (สแกน/snapshot/แก้จำนวน) ไม่แตะตำแหน่งเลื่อน
+  if(_popupScrollTop){_popupScrollTop=false;const pb=document.querySelector('#stockPopupCard .stock-popup-body');if(pb)pb.scrollTop=0;}
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบข้อมูล</td></tr>`;return;}
-  tbody.innerHTML=rows.slice(0,POPUP_MAX_RENDER_ROWS).map((r,i)=>{
+  tbody.innerHTML=view.map((r,i)=>{
     const{sku,info,sd,barcodes}=r;const sp=getStatusPill(sd.status);
     let ap;
     if(sd.status==='stock_adjustment'){ap='<span class="pill pill-audit" style="font-size:0.65rem;">⚠️ Stock Adj</span>';}
@@ -6445,7 +6503,7 @@ function renderPopupTable(){
     const actionCell=canNoStock&&!r.isUnknown&&sd.status==='pending'&&(info.systemQty||0)>0
       ?`<td style="text-align:center;"><button onclick="showNoStockModal('${sku}')" title="ไม่มีของจริง — บันทึกนับ 0" style="border:1px solid rgba(230,70,70,0.4);background:rgba(230,70,70,0.08);color:var(--red);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">🚫 นับ 0</button></td>`
       :'<td style="text-align:center;color:var(--text3);">—</td>';
-    return`<tr><td style="color:var(--text3);font-size:0.75rem">${i+1}</td><td class="ptd-sku">${sku}${ut}${dt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td>${sysQtyCell}<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.firstScanAt||sd.timestamp||'—'}</td>${locCell}${actionCell}</tr>`;
+    return`<tr><td style="color:var(--text3);font-size:0.75rem">${start+i+1}</td><td class="ptd-sku">${sku}${ut}${dt}</td><td class="ptd-bc" title="${barcodes}">${bcs}</td><td class="ptd-name">${info.productName}</td>${sysQtyCell}<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center">${qtyCell}</td><td style="text-align:center;">${scannedByCell}</td><td>${sp}</td><td>${ap}</td><td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3)">${sd.firstScanAt||sd.timestamp||'—'}</td>${locCell}${actionCell}</tr>`;
   }).join('');
 }
 
@@ -8883,17 +8941,6 @@ function _adjustDocAudit(){
   return {stale,noSku,settled,noBasis,reopened};
 }
 function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(_isAdjustDocItem(sd))n++;return n;}
-// วาดแถบเปลี่ยนหน้าที่ฟุตเตอร์ — ซ่อนเมื่อมีหน้าเดียว (≤ ADJUST_DOC_PAGE_SIZE แถว) ใบเล็กจึงหน้าตาเหมือนเดิม · เรียกจาก renderAdjustDocTable เท่านั้น (_adjDocPage ถูก clamp แล้ว)
-function _renderAdjDocPager(pages,start,shown){
-  const box=document.getElementById('adjustDocPager');
-  if(!box)return;
-  box.style.display=pages>1?'flex':'none';
-  if(pages<=1)return;
-  const info=document.getElementById('adjPgInfo');
-  if(info)info.textContent=`หน้า ${_adjDocPage} / ${pages} (${start+1}–${start+shown})`;
-  const atFirst=_adjDocPage<=1,atLast=_adjDocPage>=pages;
-  [['adjPgFirst',atFirst],['adjPgPrev',atFirst],['adjPgNext',atLast],['adjPgLast',atLast]].forEach(([id,off])=>{const b=document.getElementById(id);if(b)b.disabled=off;});
-}
 function renderAdjustDocTable(force){
   const thead=document.getElementById('adjustDocThead');
   const tbody=document.getElementById('adjustDocBody');
@@ -8908,16 +8955,12 @@ function renderAdjustDocTable(force){
   const rows=_buildAdjustDocRows(_adjDocFilter);
   const nEdit=rows.filter(r=>r.edited).length;
   if(rc)rc.textContent=`${rows.length} รายการ`+(nEdit?` · แก้จำนวน ${nEdit}`:'');   // ยอดรวมของแท็บ (ไม่ใช่เฉพาะหน้านี้)
-  // แบ่งหน้า — ตัดเฉพาะแถวที่ "วาด" · rows ทั้งชุดยังใช้นับยอด (บรรทัดบน) · Export อ่าน _buildAdjustDocRows เองครบทุกแถว
-  const ps=Math.floor(Number(ADJUST_DOC_PAGE_SIZE));
-  const size=ps>0?ps:Math.max(rows.length,1);                       // 0/ค่าผิด = ไม่แบ่งหน้า (ทางถอย)
-  const pages=Math.max(1,Math.ceil(rows.length/size));
-  let pg=Math.floor(Number(_adjDocPage));
-  if(!(pg>=1))pg=1;                                                  // NaN/0/ติดลบ → หน้าแรก · ⛔ ห้ามใช้ |0 (Infinity|0 === 0)
-  _adjDocPage=Math.min(pg,pages);                                    // Infinity = หน้าสุดท้าย · แถวหดจนหน้าเดิมหาย → ถอยมาหน้าสุดท้ายที่ยังมี
-  const start=(_adjDocPage-1)*size;
-  const view=rows.slice(start,start+size);
-  _renderAdjDocPager(pages,start,view.length);
+  // แบ่งหน้า (ดู _paginate) — ตัดเฉพาะแถวที่ "วาด" · rows ทั้งชุดยังใช้นับยอด (บรรทัดบน) · Export อ่าน _buildAdjustDocRows เองครบทุกแถว
+  const pgn=_paginate(rows.length,ADJUST_DOC_PAGE_SIZE,_adjDocPage);
+  _adjDocPage=pgn.page;
+  const start=pgn.start;
+  const view=rows.slice(start,start+pgn.size);
+  _renderPagerUi('adjustDocPager',pgn,view.length);
   if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   const canEdit=_canEditAdjDocQty();
