@@ -133,7 +133,9 @@ test.describe('tools/convert-legacy-pharmacy-audits.js', () => {
       const v = await view(p);
       expect(v.st).toEqual([['S-NORM', 'stock_adjustment', true], ['S-MULTI', 'stock_adjustment', true], ['S-1000', 'stock_adjustment', true]]);
       expect(v.ords).toEqual([['S-1000', 2], ['S-NORM', 2], ['S-PRICEY', 2]]);
-      expect(v.irps).toEqual([['S-MULTI', 2]]);
+      // ต.ค. 2026 รอบ 3 (PHARMACY_AUDIT_IN_ADJUST_DOC): รอรีเช็คที่ข้ามไม่ถูกแปลง แต่ขึ้นใบ 📦 ด้วยเลขตอน Confirm ใน marker ด้วย
+      //   S-ZERO (↺ · 1 − 0 = เกิน 1) · S-NEG (0 − (−3) = เกิน 3 · ยอดรีเช็คที่ยังไม่ยืนยันไม่นับ) · S-CATA ไม่มีเลข / S-999 ตรงพอดี = ไม่มีแถว
+      expect(v.irps).toEqual([['S-MULTI', 2], ['S-NEG', 3], ['S-ZERO', 1]]);
       expect(v.waiting).toBe(4); // S-ZERO · S-NEG · S-CATA · S-999
     }
 
@@ -169,7 +171,10 @@ test.describe('tools/convert-legacy-pharmacy-audits.js', () => {
     }
     await desk2.page.waitForFunction(() => ['S-NORM', 'S-1000'].every((s) => state.scanData.get(s)?.status === 'audit' && state.scanData.get(s)?.directAdj === undefined),
       null, { timeout: 20000, polling: 100 });
-    expect((await view(desk.page)).ords).toEqual([['S-PRICEY', 2]]); // ออกจากใบแล้ว
+    // ต.ค. 2026 รอบ 3: ย้อนเป็นรอรีเช็คแล้ว "ยังอยู่ในใบ 📦" ด้วยเลขตอน Confirm เดิม (เดิมออกจากใบ) — แต่มีป้ายรอรีเช็ค (pending) ต่างจาก Stock Adj ตรง
+    expect((await view(desk.page)).ords).toEqual([['S-1000', 2], ['S-NORM', 2], ['S-PRICEY', 2]]);
+    expect(await desk.page.evaluate(() => _buildAdjustDocRows('ords').map((r) => [r.sku, r.pending]).sort()))
+      .toEqual([['S-1000', true], ['S-NORM', true], ['S-PRICEY', false]]);
 
     await closeApp(desk2);
     await closeApp(desk);

@@ -5624,12 +5624,48 @@ function _directAdjPair(sd){return _isDirectAdjItem(sd)?{sys:sd.systemQty,cnt:sd
 // "ไม่ตรงตั้งแต่นับรอบแรก" — เดิม initialStatus==='audit' · ตอนนี้รวมรายการที่ออก Stock Adj ตรงด้วย
 function _wasFirstCountMismatch(sd){return !!sd&&(sd.initialStatus==='audit'||sd.directAdj===true);}
 
+// ── ใบ 📦: "รอรีเช็ค" (audit) ขึ้นใบทันที + แก้จำนวนในใบ (6 ต.ค. 2026 · ผู้ใช้สั่ง) ──
+// สาขายาเท่านั้น (WH ไม่แตะ) · ปิดสวิตช์ = ใบเท่าเดิมทุกไบต์ (audit ไม่ขึ้นใบ · ไม่มีช่องพิมพ์ · ค่าที่แก้ไม่ถูกใช้) · rollback = ตั้ง false แล้ว deploy
+// ใบแสดง "ผลที่ตัดสินแล้ว" เท่านั้น: audit ใช้ตัวเลขตอน Confirm ที่ marker แช่ไว้ (คู่เดียวกับ Stock Adj ตรง) — ไม่ดูยอดรีเช็คที่ยังไม่ยืนยัน
+//   กด ✓ ยืนยันรีเช็คเมื่อไร ผลใหม่ (pass/stock_adjustment) แทนเอง · ไม่แตะสูตร Pass/Audit/Confirm และ marker
+let PHARMACY_AUDIT_IN_ADJUST_DOC=true;
+let ADJUST_DOC_QTY_EDIT=true;
+// audit ที่ขึ้นใบ: สาขายา + ยังไม่มีผู้ยืนยัน + ไม่ได้มาร์คค้างส่ง (ค้างส่ง = เภสัชตัดสินแล้วว่าไม่ต้องปรับ → ตอนยืนยันจะเป็น pass)
+function _isAuditAdjItem(sd){
+  return PHARMACY_AUDIT_IN_ADJUST_DOC&&_isPharmacyBranch()&&!!sd&&sd.status==='audit'&&!sd.auditor&&!sd.backorder;
+}
+// คู่ตัวเลขของ audit = ตัวเลขตอน Confirm — อ่านจาก sd ก่อน (marker พามาลง item ตอน apply) ถ้า sd ไม่มีก็อ่านจาก marker ของ cloud ตรงๆ
+// (marker เป็นต้นทางเดียวกับที่เครื่องมือแปลง Audit ใช้ · sd ที่ marker "same" ไปแล้วแต่ไม่เคยได้เลขลง item จึงไม่หลุดจากใบ)
+// ไม่ครบทั้งสองที่/ไม่ใช่ตัวเลข = null (ไม่ขึ้นใบ · _adjustDocAudit รายงานเป็น noBasis)
+function _auditAdjPair(sd,sku){
+  const ok=v=>typeof v==='number'&&Number.isFinite(v);
+  if(sd&&ok(sd.effectiveQty)&&ok(sd.systemQty))return{sys:sd.systemQty,cnt:sd.effectiveQty};
+  const mk=_pharmacyAuditMarkerData;
+  const m=sku&&mk&&(mk.countResetAt||'')===(_countResetAt||'')?mk.items?.[sku]:null;
+  return m&&(m.countResetAt||'')===(_countResetAt||'')&&m.status==='audit'&&!m.auditor&&ok(m.effectiveQty)&&ok(m.systemQty)?{sys:m.systemQty,cnt:m.effectiveQty}:null;
+}
+// รายการที่ "นับเป็นงานของใบ 📦" = Stock Adj ทุกตัว + audit ของสาขายา (ดู _isAuditAdjItem)
+function _isAdjustDocItem(sd){return !!sd&&(sd.status==='stock_adjustment'||_isAuditAdjItem(sd));}
+// แก้จำนวนในใบ: เภสัช + สาขายา + Desktop (ป็อปอัพนี้อยู่ใน .left-panel = Desktop อยู่แล้ว · _isPdaApp กันซ้ำ)
+function _canEditAdjDocQty(){return ADJUST_DOC_QTY_EDIT&&_isPharmacyBranch()&&currentRole==='pharmacist'&&!_isPdaApp();}
+// ยอดที่เภสัชแก้ในใบ — เก็บเป็นฟิลด์แบนบน sd: adjQty (จำนวน) · adjBase (ผลต่างลงนามที่ค่านี้ทับอยู่) · adjBy · adjAt
+// ⛔ ห้ามเก็บเป็น object ซ้อน: Firestore คืน key ของ map เรียงตามตัวอักษร ทำให้ _scanItemFingerprint (เรียงเฉพาะ key ชั้นบน) เห็นว่า "เปลี่ยน" ทุก echo
+// ใช้ได้เฉพาะเมื่อผลต่างปัจจุบันยังเท่า adjBase — หลักฐานเปลี่ยน (รีเช็ค/R16/↺) → ผลต่างเปลี่ยน → ค่าที่แก้หลุดเอง กลับไปใช้ค่าคำนวณ ไม่ค้างเป็นเลขที่ไม่มีใครตรวจ
+function _adjQtyOverride(sd,diff){
+  if(!ADJUST_DOC_QTY_EDIT||!_isPharmacyBranch()||!sd)return null;   // สาขายาเท่านั้น (WH ไม่มีทางแก้ — ฟิลด์หลุดมาก็ไม่ใช้)
+  const q=sd.adjQty;
+  return typeof q==='number'&&Number.isFinite(q)&&q>=0&&sd.adjBase===diff?q:null;
+}
+function _clearAdjQty(sd){delete sd.adjQty;delete sd.adjBase;delete sd.adjBy;delete sd.adjAt;}
+
 // ── เภสัชสาขายา: ตัดบทบาท Audit → ทำ Stock Adj อย่างเดียว (30 ก.ย. 2026 · ผู้ใช้สั่ง) ──
 // UI-gating ล้วน: ไม่แตะ processScan/processPharmacistAuditScan/rebuildScanListMap/confirm* · ข้อมูล/schema/rules ไม่เปลี่ยน
 // idle = เภสัช + ไม่มี audit ค้างเลย → ซ่อนแถบยืนยัน/ช่องสแกน/RESULT · แผง Audit Verify เหลือหน้า Stock Adj (ยังมี ↺)
 // มี audit ค้าง (ของเดิมก่อน 29 ก.ย. หรือรายการที่กด ↺ กลับมา) → UI เดิมครบทุกอย่าง · ห้ามลบโค้ด Audit Verify
 // rollback = ตั้ง false แล้ว deploy (ดู CLAUDE.md §ย้อนกลับเภสัชทำ Stock Adj อย่างเดียว)
-let PHARMACIST_STOCKADJ_ONLY=true;
+// ⏸ ปิดแล้ว 6 ต.ค. 2026 (ผู้ใช้สั่ง "รหัสเภสัชรีเช็คได้ตลอด") — เภสัชเห็นช่องสแกน/RESULT/แท็บรอรีเช็ค/ปุ่มยืนยันรีเช็คตลอด แม้ไม่มีรายการรอรีเช็ค
+//   โค้ด idle ทั้งหมดยังอยู่ครบ (ทางถอย: ตั้ง true) · สแกน Stock Adj ที่ยังไม่กด ↺ ยังถูกปฏิเสธเหมือนเดิม (processPharmacistAuditScan ไม่ถูกแตะ)
+let PHARMACIST_STOCKADJ_ONLY=false;
 // ── สาขายา: จอไม่มีคำว่า Audit (ต.ค. 2026 · ผู้ใช้สั่ง "ตัดขั้น Audit ของเภสัช") ──
 // แสดงผลล้วน: status code 'audit' ไม่เปลี่ยน · รายการที่รอเภสัช (Audit ค้าง / กด ↺ / R16 อัปซ้ำพลิก) เรียก "Stock Adj · รอรีเช็ค"
 // ปิด = ข้อความเดิมทุกตัวอักษร (HTML คงค่าเดิมไว้ · JS ทับหลัง login) · WH ไม่แตะ
@@ -6160,7 +6196,7 @@ function _removeSkuFromFirestore(sku){
 // WH ใช้คำว่า "Recheck" แทน "Audit" ทุก label ที่ผู้ใช้เห็น (status code 'audit' ไม่เปลี่ยน)
 // สาขายา (ต.ค. 2026 · PHARMACY_RECHECK_TERMS): ไม่มีขั้น Audit แล้ว → รายการที่รอเภสัชเรียก "รอรีเช็ค"
 function _auditTerm(){return currentBranch==='WH'?'Recheck':_pharmTxt('Audit','รอรีเช็ค');}
-// ป้ายสถานะ audit ในตาราง (RESULT / 📋) — สาขายาบอกชัดว่ายังเป็นงานของ Stock Adj ที่รอเภสัชรีเช็ค (ยังไม่เข้า 📦)
+// ป้ายสถานะ audit ในตาราง (RESULT / 📋) — สาขายาบอกชัดว่ายังเป็นงานของ Stock Adj ที่รอเภสัชรีเช็ค (ขึ้นใบ 📦 แล้วด้วยเลขตอน Confirm · ต.ค. 2026 ดู _isAuditAdjItem)
 // PDA ช่องแคบ ใช้คำสั้น · twoLine = ช่อง STATUS ของ RESULT (128px) — บรรทัดเดียวล้นจนถูกตัด จึงแบ่ง 2 บรรทัด
 //   (<br> ใน span block ตัดบรรทัดได้แม้ .pill เป็น nowrap · ใช้เฉพาะใน HTML ห้ามส่งไป textContent/toast)
 function _auditPillLabel(twoLine){
@@ -6195,11 +6231,11 @@ function applyAuditTerminology(){
   setHtml('guideStep6',isWh
     ?'รายการ <strong style="color:var(--yellow);">⚠️ Recheck</strong> → <strong>warehouse</strong> สแกนรีเช็คที่ช่อง scan หลัก → <strong>หัวหน้างาน</strong>กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'
     :_pharmTxt('รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong>',
-      'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong style="color:var(--yellow);">รอรีเช็ค</strong> → สแกนนับใหม่ → กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'));
+      'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong>) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong style="color:var(--yellow);">รอรีเช็ค</strong> → สแกนนับใหม่ → กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'));
   set('guideRulePill',isWh?'Pass / Recheck / Stock Adj':_pharmTxt('Pass / Audit / Stock Adj','Pass / รอรีเช็ค / Stock Adj'));
   setHtml('guideQtyRule','ราคาบาร์โค้ด (R05.106 คอลัมน์ B) &lt; 1,000 บาท → แก้ Qty ได้ · ตั้งแต่ 1,000 บาทหรือไม่มีราคา → สแกนทีละชิ้น');
   set('guideAuditPill',isWh?'⚠️ Recheck':_pharmTxt('⚠️ Audit','⚠️ รอรีเช็ค'));
-  set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':_pharmTxt('จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify','Stock Adj ที่เภสัชกด ↺ (หรือค้างจากรอบก่อน) — รอสแกนนับใหม่แล้วยืนยันบน Desktop'));
+  set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':_pharmTxt('จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify','Stock Adj ที่เภสัชกด ↺ (หรือค้างจากรอบก่อน) — ขึ้นใบ 📦 แล้ว · สแกนนับใหม่แล้วยืนยันบน Desktop เพื่อปรับผล'));
 }
 function getScanRowStyle(s){
   const m={
@@ -8477,12 +8513,15 @@ function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById
 
 // ─── ปรับปรุงสินค้า (Stock Adjustment Doc — ORDS/IRPS) ────────────────────────
 // แสดงเฉพาะ role ที่ยืนยัน: เภสัช (สาขายา) + supervisor (WH). Panel อยู่ใน .left-panel → desktop-only อัตโนมัติ
-// ดึงเฉพาะ status 'stock_adjustment' (รีเช็คแล้วยังไม่ตรง) ยึด convention เดียวกับ exportStockAdjExcel:
+// ดึง status 'stock_adjustment' ทุกตัว + 'audit' (รอรีเช็ค) ของสาขายา (ต.ค. 2026 · _isAdjustDocItem) ยึด convention เดียวกับ exportStockAdjExcel:
 //   count = recheckQty ?? countedQty, diff = count - systemQty → เกิน(diff>0)=IRPS เขียว, ขาด(diff<0)=ORDS
 //   systemQty: สาขายา = ค่าสด · WH = ยอด R01 ของวันที่ Recheck (_whStockAdjBaseQty) — ต้องเหมือนกันทั้งสองที่
+//   Stock Adj ตรง + รอรีเช็ค (audit) = คู่ที่แช่ไว้ตอน Confirm (effectiveQty − systemQty) · ผ่าน _adjustDocDiff จุดเดียว
+// "จำนวน" แก้ในใบได้ (เภสัช·สาขายา·Desktop — sd.adjQty/adjBase/adjBy/adjAt · ดู setAdjDocQty) · ค่าที่แก้มีผลกับใบ/Export ของหน้านี้เท่านั้น
 // ราคา/LOT/EXP/รวมเงิน มาจาก R05.105/R14.102 (Supabase หรือแนบเอง) — ช่องที่ยังไม่มีข้อมูลแสดง '—'
 let _adjDocFilter='ords';
-// LOT/ราคา — in-memory · เก็บเฉพาะ SKU ที่ stock_adjustment (ไม่เก็บทั้ง 200k แถว)
+let _adjRenderDeferred=false; // เลื่อนการวาดตารางใหม่ไว้ เพราะกำลังพิมพ์ในช่องจำนวน (ดู renderAdjustDocTable)
+// LOT/ราคา — in-memory · เก็บเฉพาะ SKU ในใบ (stock_adjustment + audit ของสาขายา · ไม่เก็บทั้ง 200k แถว)
 // ที่มา (ก.ย. 2026): Supabase ที่บอท auto-adj อัปทุกเช้า → ไฟล์ที่แนบเองชนะ → ถ้า Supabase ล้มใช้ {branch}_adjlot แบบเดิม
 let _lotMap=new Map();      // SKU → [{lot, exp}, ...] (R14.102: ColL=LOT, ColB=EXP)
 let _lotSelected=new Map(); // SKU → LOT ที่เลือกจาก dropdown (คงไว้ข้าม re-render/สลับแท็บ · sync ผ่านปุ่ม 💾)
@@ -8494,8 +8533,8 @@ let _adjSbError='';         // ข้อความเมื่อดึงจ�
 let _adjSbMissing={Lot:false,Price:false}; // ดึงสำเร็จแต่บอทยังไม่เคยอัปไฟล์นั้น (adj_meta ไม่มีชุดที่ใช้งาน)
 let _adjLoading=false;      // กำลังดึงจาก Supabase — Export ต้องรอ (กันไฟล์ที่ไม่มีราคาหลุดออกไป)
 let _adjLoadToken=0;        // ตัวนับรอบ — ผลของรอบที่ถูกแซง (เปิดป็อปอัพซ้ำ/logout) ถูกทิ้ง
-// set ของ SKU ที่ต้องใช้จริง (เฉพาะ stock_adjustment) — ใช้กรองไฟล์ใหญ่ตอนอ่าน เก็บเฉพาะที่เกี่ยว
-function _adjustDocSkuSet(){const s=new Set();for(const[sku,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')s.add(sku);return s;}
+// set ของ SKU ที่ต้องใช้จริง (stock_adjustment + audit ของสาขายา — ดู _isAdjustDocItem) — ใช้กรองไฟล์ใหญ่ตอนอ่าน เก็บเฉพาะที่เกี่ยว
+function _adjustDocSkuSet(){const s=new Set();for(const[sku,sd] of state.scanData.entries())if(_isAdjustDocItem(sd))s.add(sku);return s;}
 function _fmtMoney(n){return Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 // ── parse ไฟล์ (คู่แฝดกับ parse_lot_rows / parse_price_rows ใน auto-adj/auto_adj_import.py) ──────────
 // ⚠️ แก้ที่ใดที่หนึ่งต้องแก้อีกที่เสมอ แล้วรัน node tools/check-adj-parity.js "<R14.102.CSV>" "<R05.105.CSV>"
@@ -8739,41 +8778,62 @@ function _isAdjustRowFresh(sku,sd,liveSys){
   // ไม่มี recheckSystemQty (เช่น noStock จากรอบนับแรก) → fallback เป็นค่าสดเอง ⇒ ถือว่าสด = พฤติกรรมเดิม
   return _recheckBaselineSystemQty(sku,sd)===Number(liveSys||0);
 }
+// ตัวเลขของ "แถวเดียว" บนใบ → {sys,cnt,diff} · null = ไม่ขึ้นใบ (ยอดนับหมดอายุ หรือ audit ที่ไม่มีเลขตอน Confirm)
+// _buildAdjustDocRows กับ setAdjDocQty ใช้ร่วมกัน — ต้องตรงกับ _adjustDocAudit ทุกเงื่อนไข
+function _adjustDocDiff(sku,sd,si,wh){
+  // รอรีเช็ค (audit · สาขายา): ตัวเลขตอน Confirm ที่แช่ไว้ — ไม่มีวันหมดอายุ จึงไม่ผ่านด่านความสด · ไม่ดูยอดรีเช็คที่ยังไม่ยืนยัน (ดู _auditAdjPair)
+  if(sd.status==='audit'){
+    const ap=_auditAdjPair(sd,sku);
+    return ap?{sys:ap.sys,cnt:ap.cnt,diff:ap.cnt-ap.sys}:null;
+  }
+  // สาขายา Stock Adj ตรงจากรอบแรก (ไม่ผ่าน Audit): ใช้คู่ที่แช่ไว้ตอน Confirm — DIFF เดียวกับที่ทำให้เกิดสถานะนี้จริง
+  // ฐานแช่ไว้แล้วไม่มีวันหมดอายุ จึงไม่ผ่านด่านความสด และไม่ขยับเมื่อ R01 วันถัดไปเข้า (ต้องตรงกับ _adjustDocAudit)
+  const direct=wh?null:_directAdjPair(sd);
+  let sysQty;
+  if(direct)sysQty=direct.sys;
+  else if(wh)sysQty=_whStockAdjBaseQty(sku,sd);      // WH: ยอดวัน Recheck (แช่ไว้แล้ว ไม่มีวันหมดอายุ)
+  else{
+    sysQty=Number(si.systemQty||0);
+    if(!_isAdjustRowFresh(sku,sd,sysQty))return null; // ยอดนับหมดอายุ → ห้ามส่งเลขนี้เข้าระบบ
+  }
+  const cnt=direct?direct.cnt:(sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0));
+  return {sys:sysQty,cnt,diff:cnt-sysQty};
+}
 function _buildAdjustDocRows(dir){
   const rows=[];
   const wh=currentBranch==='WH';
   for(const[sku,sd] of state.scanData.entries()){
-    if(sd.status!=='stock_adjustment')continue;
+    if(!_isAdjustDocItem(sd))continue;
     const si=state.skuMap.get(sku);if(!si)continue;
-    // สาขายา Stock Adj ตรงจากรอบแรก (ไม่ผ่าน Audit): ใช้คู่ที่แช่ไว้ตอน Confirm — DIFF เดียวกับที่ทำให้เกิดสถานะนี้จริง
-    // ฐานแช่ไว้แล้วไม่มีวันหมดอายุ จึงไม่ผ่านด่านความสด และไม่ขยับเมื่อ R01 วันถัดไปเข้า (ต้องตรงกับ _adjustDocAudit)
-    const direct=wh?null:_directAdjPair(sd);
-    let sysQty;
-    if(direct)sysQty=direct.sys;
-    else if(wh)sysQty=_whStockAdjBaseQty(sku,sd);      // WH: ยอดวัน Recheck (แช่ไว้แล้ว ไม่มีวันหมดอายุ)
-    else{
-      sysQty=Number(si.systemQty||0);
-      if(!_isAdjustRowFresh(sku,sd,sysQty))continue;   // ยอดนับหมดอายุ → ห้ามส่งเลขนี้เข้าระบบ
-    }
-    const cnt=direct?direct.cnt:(sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0));
-    const diff=cnt-sysQty;
+    const ev=_adjustDocDiff(sku,sd,si,wh);if(!ev)continue;
+    const diff=ev.diff;
     if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
     if(dir==='irps'&&diff<=0)continue;   // IRPS = เกิน (count>system)
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
-    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:Math.abs(diff)});
+    // ค่าที่เภสัชแก้ในใบ (ถ้ายังใช้ได้) แทนจำนวนคำนวณ — ทิศ ORDS/IRPS ยังตามผลต่างเดิม · qty 0 = ไม่ลงไฟล์ (ตัดตอน Export)
+    const ov=_adjQtyOverride(sd,diff);
+    rows.push({sku,name:si.productName||'',unit:unitInfo?unitInfo.unitName:'',qty:ov!==null?ov:Math.abs(diff),
+      baseQty:Math.abs(diff),edited:ov!==null,pending:sd.status==='audit'});
   }
   return rows;
 }
 // รายการ stock_adjustment ที่ "ไม่ได้ขึ้นใบ" แยกตามเหตุผล — ห้ามให้หายเงียบ
 // badge บนปุ่มนับทุก stock_adjustment จึงมากกว่าจำนวนแถวบนใบเสมอเมื่อมีสามกลุ่มนี้
 function _adjustDocAudit(){
-  const stale=[],noSku=[],settled=[];
+  const stale=[],noSku=[],settled=[],noBasis=[];
   const wh=currentBranch==='WH';
   for(const[sku,sd] of state.scanData.entries()){
-    if(sd.status!=='stock_adjustment')continue;
+    if(!_isAdjustDocItem(sd))continue;
     const si=state.skuMap.get(sku);
     if(!si){noSku.push({sku,name:''});continue;}      // R05.106 ยังไม่โหลด → skuMap ว่าง → ใบว่างทั้งใบ
     const name=si.productName||'';
+    // รอรีเช็ค (audit): ตัวเลขตอน Confirm ไม่มีวันหมดอายุ · ไม่มีเลข = รายงาน (noBasis) ไม่ใช่หายเงียบ · ต้องตรงกับ _adjustDocDiff
+    if(sd.status==='audit'){
+      const ap=_auditAdjPair(sd,sku);
+      if(!ap)noBasis.push({sku,name});
+      else if(ap.cnt-ap.sys===0)settled.push({sku,name,live:ap.sys,cnt:ap.cnt});
+      continue;
+    }
     // Stock Adj ตรงจากรอบแรก (สาขายา): ฐานแช่ไว้แล้ว ไม่มีวันหมดอายุ → ไม่เป็น stale · ต้องตรงกับ _buildAdjustDocRows
     const dp=wh?null:_directAdjPair(sd);
     if(dp){if(dp.cnt-dp.sys===0)settled.push({sku,name,live:dp.sys,cnt:dp.cnt});continue;}
@@ -8784,19 +8844,26 @@ function _adjustDocAudit(){
     if(!_isAdjustRowFresh(sku,sd,live)){stale.push({sku,name,live,frozen:_recheckBaselineSystemQty(sku,sd),cnt});continue;}
     if(cnt-live===0)settled.push({sku,name,live,cnt});  // สดแล้วและตรงพอดี = ไม่มีอะไรต้องปรับ (งานจบ)
   }
-  return {stale,noSku,settled};
+  return {stale,noSku,settled,noBasis};
 }
-function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(sd.status==='stock_adjustment')n++;return n;}
-function renderAdjustDocTable(){
+function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(_isAdjustDocItem(sd))n++;return n;}
+function renderAdjustDocTable(force){
   const thead=document.getElementById('adjustDocThead');
   const tbody=document.getElementById('adjustDocBody');
   const rc=document.getElementById('adjustDocRowCount');
   if(!tbody)return;
+  // กำลังพิมพ์ในช่องจำนวน → ห้ามวาดตารางทับ (LOT/ราคาโหลดเสร็จกลางคัน = ช่องรีเซ็ตเป็นค่าเดิม ตัวเลขที่พิมพ์หาย)
+  // เลื่อนไปวาดตอนออกจากช่อง (onblur) · force = ผู้เรียกเพิ่งบันทึกค่าเอง (setAdjDocQty/resetAdjDocQty) ต้องวาดทันที
+  const ae=document.activeElement;
+  if(!force&&ae&&ae.classList&&ae.classList.contains('adj-qty-input')&&tbody.contains(ae)){_adjRenderDeferred=true;return;}
+  _adjRenderDeferred=false;
   if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th></tr>';
   const rows=_buildAdjustDocRows(_adjDocFilter);
-  if(rc)rc.textContent=`${rows.length} รายการ`;
+  const nEdit=rows.filter(r=>r.edited).length;
+  if(rc)rc.textContent=`${rows.length} รายการ`+(nEdit?` · แก้จำนวน ${nEdit}`:'');
   if(!rows.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ</td></tr>';return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
+  const canEdit=_canEditAdjDocQty();
   tbody.innerHTML=rows.map((r,i)=>{
     const lotEntries=(_lotMap.get(r.sku)||[]).map(e=>typeof e==='string'?{lot:e,exp:''}:e); // รองรับ format เก่า (string) ที่อาจ sync มาจาก cloud เดิม
     const sel=_lotSelected.get(r.sku)||'';
@@ -8815,19 +8882,61 @@ function renderAdjustDocTable(){
     const priceCell=hasPrice?_fmtMoney(pr.price):'—';
     const totalCell=hasPrice?_fmtMoney(pr.price*r.qty):'—'; // รวมเงิน = ราคา × จำนวน(ปรับ)
     const moneyColor=hasPrice?'var(--text)':'var(--text3)';
-    // ทุกแถวบนตารางผ่านด่าน _isAdjustRowFresh มาแล้ว = ยอดระบบไม่ขยับหลังรีเช็ค จึงไม่ต้องมีธงเตือนรายแถว
+    // ทุกแถวบนตารางผ่านด่านความสด (_isAdjustRowFresh) หรือใช้เลขที่แช่ไว้ (Stock Adj ตรง · รอรีเช็ค) มาแล้ว จึงไม่ต้องมีธงเตือนรายแถว
+    // รอรีเช็ค (audit) มีป้ายบอกว่ายังไม่มีผลรีเช็ค — ใบใช้ตัวเลขตอน Confirm ให้เภสัชตรวจก่อนส่ง
+    const pendTag=r.pending?` <span title="รอรีเช็ค — ใบนี้ใช้ตัวเลขตอน Confirm · ยังไม่มีผลรีเช็ค" style="display:inline-block;margin-left:4px;padding:0 6px;border-radius:8px;font-size:0.62rem;font-weight:700;background:rgba(224,140,0,0.15);color:var(--yellow);white-space:nowrap;">รอรีเช็ค</span>`:'';
+    // จำนวน: เภสัช (สาขายา · Desktop) พิมพ์ทับได้ · คนอื่นเห็นค่าที่แก้พร้อมป้ายว่าไม่ใช่ค่าคำนวณ · 0 = แถวคงบนจอแต่ไม่ลงไฟล์ Export
+    const zero=r.qty===0;
+    const qtyNote=r.edited
+      ?`<div style="font-size:0.66rem;font-weight:400;color:var(--text3);margin-top:2px;white-space:nowrap;">${zero?'ไม่ส่งออก · ':''}เดิม ${r.baseQty}${canEdit?` · <a href="#" onclick="resetAdjDocQty('${r.sku}');return false;" style="color:var(--accent);text-decoration:none;">↺ คืนค่า</a>`:''}</div>`
+      :'';
+    const qtyCell=canEdit
+      ?`<input class="adj-qty-input" type="number" min="0" step="any" value="${r.qty}" title="แก้จำนวนที่ออกใบ (0 = ไม่ส่งแถวนี้)" onchange="setAdjDocQty('${r.sku}',this.value)" onblur="if(_adjRenderDeferred)renderAdjustDocTable()" style="width:72px;text-align:center;font-weight:700;font-family:'Inter',sans-serif;font-size:0.82rem;color:${qtyColor};padding:3px 4px;border-radius:6px;border:1px solid ${r.edited?'var(--accent)':'var(--border)'};background:var(--surface2);${zero?'text-decoration:line-through;':''}">${qtyNote}`
+      :`<span style="${zero?'text-decoration:line-through;':''}">${r.qty}</span>${qtyNote}`;
     return`<tr>`
       +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${r.sku}</td>`
-      +`<td class="ptd-name">${r.name}</td>`
+      +`<td class="ptd-name">${r.name}${pendTag}</td>`
       +`<td style="text-align:center;font-size:0.8rem;color:var(--text2);">${unit||'—'}</td>`
-      +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${r.qty}</td>`
+      +`<td style="text-align:center;font-weight:700;color:${qtyColor};">${qtyCell}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;color:${moneyColor};">${priceCell}</td>`
       +`<td style="text-align:center;">${lotCell}</td>`
       +`<td style="text-align:center;font-size:0.78rem;color:${expVal?'var(--text2)':'var(--text3)'};">${expVal||'—'}</td>`
       +`<td style="text-align:right;font-family:'Inter',sans-serif;font-size:0.8rem;font-weight:700;color:${moneyColor};">${totalCell}</td>`
       +`</tr>`;
   }).join('');
+}
+// เภสัชแก้ "จำนวน" ของแถวบนใบ (6 ต.ค. 2026) — ค่าแก้ทับเฉพาะใบ ไม่เปลี่ยนสถานะ/ผลตัดสิน/ตัวเลขที่หน้าอื่น (Stock Adj tab · ประวัติ · Export Stock Adj)
+// เก็บที่ sd.adjQty/adjBase/adjBy/adjAt (ฟิลด์แบน) · ซิงก์ผ่าน items เหมือนฟิลด์อื่น (_markSkuDirty → _scanItemPayload วนทุกฟิลด์) — รูปแบบเดียวกับ markBackorderItem
+// adjBase = ผลต่าง (ลงนาม) ที่ค่านี้ทับอยู่ → หลักฐานเปลี่ยนค่าที่แก้หลุดเอง (ดู _adjQtyOverride) · ทิศ ORDS/IRPS แก้ในช่องนี้ไม่ได้ (ต้อง ↺ รีเช็ค)
+function setAdjDocQty(sku,v){
+  if(!_canEditAdjDocQty()||_blockScanForBranchConfirm())return;
+  const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
+  const ev=sd&&si&&_isAdjustDocItem(sd)?_adjustDocDiff(sku,sd,si,false):null;
+  if(!ev||ev.diff===0){beepWarn();toast('รายการนี้แก้จำนวนไม่ได้','warn');renderAdjustDocTable(true);return;}
+  const q=parseFloat(v);
+  if(!Number.isFinite(q)||q<0){beepError();toast('จำนวนต้องเป็น 0 หรือมากกว่า','warn');renderAdjustDocTable(true);return;}
+  const base=Math.abs(ev.diff);
+  const prev=_adjQtyOverride(sd,ev.diff);
+  if(q===(prev!==null?prev:base)){renderAdjustDocTable(true);return;}   // blur โดยไม่เปลี่ยนค่า
+  if(q===base)_clearAdjQty(sd);                                         // พิมพ์เท่าค่าคำนวณ = ล้างค่าที่แก้
+  else{sd.adjQty=q;sd.adjBase=ev.diff;sd.adjBy=currentUser||'';sd.adjAt=new Date().toISOString();}
+  sd.manualEditAt=Date.now(); // กัน snapshot เก่าทับค่าที่เพิ่งแก้ (เหมือน markBackorderItem/updatePharmacyRecheckQty)
+  _markSkuDirty(sku);scheduleSave();
+  renderAdjustDocTable(true);
+}
+function resetAdjDocQty(sku){
+  if(!_canEditAdjDocQty()||_blockScanForBranchConfirm())return;
+  const sd=state.scanData.get(sku);if(!sd||sd.adjQty===undefined)return;
+  _clearAdjQty(sd);sd.manualEditAt=Date.now();
+  _markSkuDirty(sku);scheduleSave();
+  renderAdjustDocTable(true);
+}
+// ท้าย toast ตอน Export: บอกว่ามีกี่แถวที่เภสัชแก้จำนวน / กี่แถวถูกข้ามเพราะแก้เป็น 0 (ไม่ให้หายเงียบ)
+function _adjEditNote(all){
+  const edited=all.filter(r=>r.edited&&r.qty>0).length;
+  const zero=all.filter(r=>r.qty===0).length;
+  return (edited?` · แก้จำนวน ${edited}`:'')+(zero?` · ข้าม ${zero} (แก้เป็น 0)`:'');
 }
 function setAdjDocFilter(f,btn){
   _adjDocFilter=f;
@@ -8853,8 +8962,9 @@ function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('a
 // EXP = ของ LOT ที่เลือก แปลงเป็น DD/MM/YYYY ปี พ.ศ. (_toBeDMY) — ว่างถ้ายังไม่เลือก LOT หรือแปลงวันที่ไม่ได้
 function exportAdjustDocText(){
   if(_adjExportBusy())return;
-  const rows=_buildAdjustDocRows(_adjDocFilter);
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก','warn');return;}
+  const all=_buildAdjustDocRows(_adjDocFilter);
+  const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ยังเห็นบนจอ — ดู _adjEditNote)
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjEditNote(all),'warn');return;}
   const lines=rows.map(r=>{
     const pr=_priceMap.get(r.sku);
     const price=pr&&pr.price!=null?pr.price:'';
@@ -8869,25 +8979,27 @@ function exportAdjustDocText(){
   const a=document.createElement('a');
   a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ`,'success');
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
 }
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
 // (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
 function _warnAdjustDocDropped(){
-  const{stale,noSku}=_adjustDocAudit();
-  const n=stale.length+noSku.length;   // settled ไม่นับ — ไม่มีอะไรต้องปรับอยู่แล้ว ไม่ใช่ของตกหล่น
+  const{stale,noSku,noBasis}=_adjustDocAudit();
+  const n=stale.length+noSku.length+noBasis.length;   // settled ไม่นับ — ไม่มีอะไรต้องปรับอยู่แล้ว ไม่ใช่ของตกหล่น
   if(!n)return;
   const why=[];
   if(stale.length)why.push(`ต้องรีเช็คใหม่ ${stale.length}`);
   if(noSku.length)why.push(`ยังไม่โหลด R05.106 ${noSku.length}`);
+  if(noBasis.length)why.push(`รอรีเช็คที่ไม่มีเลขตอน Confirm ${noBasis.length}`);
   toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ (${why.join(' · ')})`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
   if(_adjExportBusy())return;
-  const rows=_buildAdjustDocRows(_adjDocFilter);
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก','warn');return;}
+  const all=_buildAdjustDocRows(_adjDocFilter);
+  const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ประตูเดียวกับ Export Text)
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjEditNote(all),'warn');return;}
   const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'];
   const aoa=[header];
   rows.forEach((r,i)=>{
@@ -8905,7 +9017,7 @@ function exportAdjustDocExcel(){
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,_adjDocFilter==='ords'?'ORDS':'IRPS');
   XLSX.writeFile(wb,`stockadj_${_adjDocFilter}_${_fileDateDMY()}.xlsx`);
-  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ`,'success');
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Excel) สำเร็จ${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
 }
 // ── Sync LOT/ราคา ข้ามเครื่อง ────────────────────────────────────────────────

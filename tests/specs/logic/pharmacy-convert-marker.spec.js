@@ -90,7 +90,12 @@ test('★ marker เก่าไม่มี field directAdj → ผลเท่
   // audit ค้างธรรมดา
   await prime(app.page, { sd: null, marker: AUDIT_MARKER });
   await app.page.evaluate(() => _applyPharmacyAuditMarkersToState());
+  // ต.ค. 2026: audit ขึ้นใบ 📦 ด้วยเลขตอน Confirm (15 − 12 = ขาด 3 · PHARMACY_AUDIT_IN_ADJUST_DOC) — ปิดสวิตช์ = ไม่ขึ้นใบเหมือนเดิม
+  // สิ่งที่เทสนี้ตรึงจริงคือ "ไม่ตั้งธง directAdj / pair เป็น null" (marker เก่า) ซึ่งไม่เปลี่ยน
+  expect(await snap(app.page)).toMatchObject({ status: 'audit', directAdj: undefined, pair: null, ords: [['S1', 3]] });
+  await app.page.evaluate(() => { PHARMACY_AUDIT_IN_ADJUST_DOC = false; });
   expect(await snap(app.page)).toMatchObject({ status: 'audit', directAdj: undefined, pair: null, ords: [] });
+  await app.page.evaluate(() => { PHARMACY_AUDIT_IN_ADJUST_DOC = true; });
   expect(await app.page.evaluate(() => _applyPharmacyAuditMarkersToState())).toEqual([]);
 
   // ผลยืนยันเก่า (final ไม่มี directAdj) ทับ sd ที่บังเอิญมีธงค้าง → ไม่แตะธง (พฤติกรรมเดิม — _isDirectAdjItem กันด้วย auditor อยู่แล้ว)

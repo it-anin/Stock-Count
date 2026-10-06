@@ -10,6 +10,8 @@
  *   ใช้ตัวเลข "ตอน Confirm เดิม" จาก marker เภสัช (effectiveQty = นับ + R16 ชดเชย · systemQty = ยอดระบบตอนนั้น)
  *   → ใบ 📦 ปรับปรุงสินค้าคิด effectiveQty − systemQty ผ่าน _directAdjPair (สูตรเดียวกับ Stock Adj ตรงทุกตัว)
  *   → ↺ สแกนใหม่ ยังใช้ได้เหมือน Stock Adj ตรงทั่วไป
+ *   ⏩ 6 ต.ค. 2026 (รอบ 3): ใบ 📦 นับรอรีเช็ค (audit) ด้วยเลขตอน Confirm เดียวกันอยู่แล้ว (PHARMACY_AUDIT_IN_ADJUST_DOC) —
+ *      การแปลงจึง "ปิดงานรอรีเช็ค" (ตัวเลขในใบไม่เปลี่ยน) ไม่ใช่ตัวที่ทำให้รายการเข้าใบ · ไม่จำเป็นต้องรันถ้าไม่ต้องการล้างคิวรอรีเช็ค
  *
  * ⚠️ ต้องรันบนหน้าเว็บรุ่นที่ marker พาธง directAdj แล้ว (มี _isDirectAdjMarker) และทุกเครื่องควรรีโหลดแล้ว
  *    เครื่องรุ่นเก่ายังเห็นผลถูกเพราะ item doc พาธงไปด้วย แต่ไม่มีด่านกันการดันกลับ (R1 ใน _writePharmacyAuditMarkers)
@@ -181,7 +183,7 @@ window.convertLegacyAudits = async function convertLegacyAudits(opts = {}) {
   }
 
   const phrase = `แปลง ${branch} ${cands.length}`;
-  const typed = prompt(`🔒 จะแปลง Audit ค้าง ${cands.length} รายการของสาขา ${branch} เป็น Stock Adj (เข้าใบ 📦 ปรับปรุงสินค้าทันที)\nORDS ${ords.length} · IRPS ${irps.length} · ข้าม ${skipped.length}\n(จะดาวน์โหลดสำเนาก่อนเขียน)\n\nพิมพ์  ${phrase}  เพื่อยืนยัน:`);
+  const typed = prompt(`🔒 จะแปลง Audit ค้าง ${cands.length} รายการของสาขา ${branch} เป็น Stock Adj (ปิดงานรอรีเช็ค · ใบ 📦 ใช้ตัวเลขตอน Confirm เดิมอยู่แล้ว ไม่เปลี่ยน)\nORDS ${ords.length} · IRPS ${irps.length} · ข้าม ${skipped.length}\n(จะดาวน์โหลดสำเนาก่อนเขียน)\n\nพิมพ์  ${phrase}  เพื่อยืนยัน:`);
   if (typed !== phrase) { console.warn('ยกเลิก — ข้อความยืนยันไม่ตรง'); return report; }
   download(`convert-legacy-audits-${branch}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
     { branch, epoch: srv.epoch, exportedAt: new Date().toISOString(), skus: cands.map(c => c.sku), markerDoc: serialize(srv.markerDoc),
@@ -249,7 +251,7 @@ window.undoConvertLegacyAudits = async function undoConvertLegacyAudits(opts = {
     return report;
   }
   const phrase = `ย้อน ${branch} ${cands.length}`;
-  const typed = prompt(`🔒 จะย้อน ${cands.length} รายการของสาขา ${branch} กลับเป็น "รอรีเช็ค" (ออกจากใบ 📦)\n⛔ ถ้า Export ใบส่งเข้า ERP ไปแล้ว ห้ามย้อน\n\nพิมพ์  ${phrase}  เพื่อยืนยัน:`);
+  const typed = prompt(`🔒 จะย้อน ${cands.length} รายการของสาขา ${branch} กลับเป็น "รอรีเช็ค" (ยังอยู่ในใบ 📦 ด้วยตัวเลขเดิม แต่มีป้ายรอรีเช็ค)\n⛔ ถ้า Export ใบส่งเข้า ERP ไปแล้ว ห้ามย้อน\n\nพิมพ์  ${phrase}  เพื่อยืนยัน:`);
   if (typed !== phrase) { console.warn('ยกเลิก — ข้อความยืนยันไม่ตรง'); return report; }
   download(`undo-convert-legacy-audits-${branch}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
     { branch, epoch: srv.epoch, exportedAt: new Date().toISOString(), skus: cands.map(c => c.sku), markerDoc: serialize(srv.markerDoc),
