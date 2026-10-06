@@ -5632,9 +5632,20 @@ function _wasFirstCountMismatch(sd){return !!sd&&(sd.initialStatus==='audit'||sd
 //   กด ✓ ยืนยันรีเช็คเมื่อไร ผลใหม่ (pass/stock_adjustment) แทนเอง · ไม่แตะสูตร Pass/Audit/Confirm และ marker
 let PHARMACY_AUDIT_IN_ADJUST_DOC=true;
 let ADJUST_DOC_QTY_EDIT=true;
+// รอรีเช็คที่เภสัชกด ↺ ไม่ขึ้นใบจนกว่าจะยืนยันรีเช็ค (6 ต.ค. 2026 · ผู้ใช้เลือก — เคส 200402) · ปิดสวิตช์ = ใช้เลขใน marker เหมือนเดิม
+// ↺ เขียนเลขใน marker ทับเลขตอน Confirm (ยอดนับดิบ + ระบบ ณ ตอนกด) แล้ว _backfillPharmacyAuditMarkersFromLocal ตอน login เขียนซ้ำจาก sd ในเครื่อง
+// (effectiveQty ถอยไปใช้ยอดนับเพราะ ↺ ลบ sd.effectiveQty · systemQty เป็นค่าเก่า) → เลขที่เหลือเชื่อไม่ได้: ผลต่างเดิมหายจากใบ หรือขึ้นใบด้วยเลขข้ามเวลา
+// แก้ฝั่งใบอย่างเดียว — ไม่แตะ ↺/marker/backfill/สแกน · ยืนยันรีเช็คแล้วผลใหม่ (pass/stock_adjustment) แทนเอง ใบใช้กติกาเดิมของ Stock Adj
+let ADJUST_DOC_SKIP_REOPENED=true;
 // audit ที่ขึ้นใบ: สาขายา + ยังไม่มีผู้ยืนยัน + ไม่ได้มาร์คค้างส่ง (ค้างส่ง = เภสัชตัดสินแล้วว่าไม่ต้องปรับ → ตอนยืนยันจะเป็น pass)
 function _isAuditAdjItem(sd){
   return PHARMACY_AUDIT_IN_ADJUST_DOC&&_isPharmacyBranch()&&!!sd&&sd.status==='audit'&&!sd.auditor&&!sd.backorder;
+}
+// audit ที่ถูก ↺ และยังไม่มีผู้ยืนยัน — อ่านจาก marker ของรอบนี้ (sd ไม่เก็บ reopenedAt) · marker ไม่มี/ผิดรอบ = ไม่ถือว่า ↺ (พฤติกรรมเดิม)
+function _isReopenedAudit(sku){
+  if(!ADJUST_DOC_SKIP_REOPENED)return false;
+  const m=_getPharmacyAuditMarker(sku);
+  return !!m&&m.status==='audit'&&!m.auditor&&!!m.reopenedAt;
 }
 // คู่ตัวเลขของ audit = ตัวเลขตอน Confirm — อ่านจาก sd ก่อน (marker พามาลง item ตอน apply) ถ้า sd ไม่มีก็อ่านจาก marker ของ cloud ตรงๆ
 // (marker เป็นต้นทางเดียวกับที่เครื่องมือแปลง Audit ใช้ · sd ที่ marker "same" ไปแล้วแต่ไม่เคยได้เลขลง item จึงไม่หลุดจากใบ)
@@ -8780,11 +8791,12 @@ function _isAdjustRowFresh(sku,sd,liveSys){
   // ไม่มี recheckSystemQty (เช่น noStock จากรอบนับแรก) → fallback เป็นค่าสดเอง ⇒ ถือว่าสด = พฤติกรรมเดิม
   return _recheckBaselineSystemQty(sku,sd)===Number(liveSys||0);
 }
-// ตัวเลขของ "แถวเดียว" บนใบ → {sys,cnt,diff} · null = ไม่ขึ้นใบ (ยอดนับหมดอายุ หรือ audit ที่ไม่มีเลขตอน Confirm)
+// ตัวเลขของ "แถวเดียว" บนใบ → {sys,cnt,diff} · null = ไม่ขึ้นใบ (ยอดนับหมดอายุ · audit ที่ไม่มีเลขตอน Confirm · audit ที่ถูก ↺ ดู _isReopenedAudit)
 // _buildAdjustDocRows กับ setAdjDocQty ใช้ร่วมกัน — ต้องตรงกับ _adjustDocAudit ทุกเงื่อนไข
 function _adjustDocDiff(sku,sd,si,wh){
   // รอรีเช็ค (audit · สาขายา): ตัวเลขตอน Confirm ที่แช่ไว้ — ไม่มีวันหมดอายุ จึงไม่ผ่านด่านความสด · ไม่ดูยอดรีเช็คที่ยังไม่ยืนยัน (ดู _auditAdjPair)
   if(sd.status==='audit'){
+    if(_isReopenedAudit(sku))return null; // ↺ รอรีเช็ค: เลขใน marker ถูกเขียนทับแล้ว — ใบขึ้นเมื่อยืนยันรีเช็ค (ต้องตรงกับ _adjustDocAudit)
     const ap=_auditAdjPair(sd,sku);
     return ap?{sys:ap.sys,cnt:ap.cnt,diff:ap.cnt-ap.sys}:null;
   }
@@ -8822,7 +8834,7 @@ function _buildAdjustDocRows(dir){
 // รายการ stock_adjustment ที่ "ไม่ได้ขึ้นใบ" แยกตามเหตุผล — ห้ามให้หายเงียบ
 // badge บนปุ่มนับทุก stock_adjustment จึงมากกว่าจำนวนแถวบนใบเสมอเมื่อมีสามกลุ่มนี้
 function _adjustDocAudit(){
-  const stale=[],noSku=[],settled=[],noBasis=[];
+  const stale=[],noSku=[],settled=[],noBasis=[],reopened=[];
   const wh=currentBranch==='WH';
   for(const[sku,sd] of state.scanData.entries()){
     if(!_isAdjustDocItem(sd))continue;
@@ -8831,6 +8843,7 @@ function _adjustDocAudit(){
     const name=si.productName||'';
     // รอรีเช็ค (audit): ตัวเลขตอน Confirm ไม่มีวันหมดอายุ · ไม่มีเลข = รายงาน (noBasis) ไม่ใช่หายเงียบ · ต้องตรงกับ _adjustDocDiff
     if(sd.status==='audit'){
+      if(_isReopenedAudit(sku)){reopened.push({sku,name});continue;}   // ↺ รอรีเช็ค — ต้องตรงกับ _adjustDocDiff
       const ap=_auditAdjPair(sd,sku);
       if(!ap)noBasis.push({sku,name});
       else if(ap.cnt-ap.sys===0)settled.push({sku,name,live:ap.sys,cnt:ap.cnt});
@@ -8846,7 +8859,7 @@ function _adjustDocAudit(){
     if(!_isAdjustRowFresh(sku,sd,live)){stale.push({sku,name,live,frozen:_recheckBaselineSystemQty(sku,sd),cnt});continue;}
     if(cnt-live===0)settled.push({sku,name,live,cnt});  // สดแล้วและตรงพอดี = ไม่มีอะไรต้องปรับ (งานจบ)
   }
-  return {stale,noSku,settled,noBasis};
+  return {stale,noSku,settled,noBasis,reopened};
 }
 function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(_isAdjustDocItem(sd))n++;return n;}
 function renderAdjustDocTable(force){
@@ -8987,13 +9000,14 @@ function exportAdjustDocText(){
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
 // (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
 function _warnAdjustDocDropped(){
-  const{stale,noSku,noBasis}=_adjustDocAudit();
-  const n=stale.length+noSku.length+noBasis.length;   // settled ไม่นับ — ไม่มีอะไรต้องปรับอยู่แล้ว ไม่ใช่ของตกหล่น
+  const{stale,noSku,noBasis,reopened}=_adjustDocAudit();
+  const n=stale.length+noSku.length+noBasis.length+reopened.length;   // settled ไม่นับ — ไม่มีอะไรต้องปรับอยู่แล้ว ไม่ใช่ของตกหล่น
   if(!n)return;
   const why=[];
   if(stale.length)why.push(`ต้องรีเช็คใหม่ ${stale.length}`);
   if(noSku.length)why.push(`ยังไม่โหลด R05.106 ${noSku.length}`);
   if(noBasis.length)why.push(`รอรีเช็คที่ไม่มีเลขตอน Confirm ${noBasis.length}`);
+  if(reopened.length)why.push(`รอรีเช็คหลังกด ↺ ${reopened.length} — ยืนยันรีเช็คแล้วจะขึ้นใบ`);
   toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ (${why.join(' · ')})`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)

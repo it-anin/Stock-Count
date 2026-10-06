@@ -134,8 +134,9 @@ test.describe('tools/convert-legacy-pharmacy-audits.js', () => {
       expect(v.st).toEqual([['S-NORM', 'stock_adjustment', true], ['S-MULTI', 'stock_adjustment', true], ['S-1000', 'stock_adjustment', true]]);
       expect(v.ords).toEqual([['S-1000', 2], ['S-NORM', 2], ['S-PRICEY', 2]]);
       // ต.ค. 2026 รอบ 3 (PHARMACY_AUDIT_IN_ADJUST_DOC): รอรีเช็คที่ข้ามไม่ถูกแปลง แต่ขึ้นใบ 📦 ด้วยเลขตอน Confirm ใน marker ด้วย
-      //   S-ZERO (↺ · 1 − 0 = เกิน 1) · S-NEG (0 − (−3) = เกิน 3 · ยอดรีเช็คที่ยังไม่ยืนยันไม่นับ) · S-CATA ไม่มีเลข / S-999 ตรงพอดี = ไม่มีแถว
-      expect(v.irps).toEqual([['S-MULTI', 2], ['S-NEG', 3], ['S-ZERO', 1]]);
+      //   S-NEG (0 − (−3) = เกิน 3 · ยอดรีเช็คที่ยังไม่ยืนยันไม่นับ) · S-CATA ไม่มีเลข / S-999 ตรงพอดี = ไม่มีแถว
+      //   S-ZERO ถูก ↺ มา (marker มี reopenedAt) → ไม่ขึ้นใบจนกว่าจะยืนยันรีเช็ค (ADJUST_DOC_SKIP_REOPENED · เลขใน marker ของ ↺ ถูกเขียนทับ — adjust-doc-reopened.spec.js)
+      expect(v.irps).toEqual([['S-MULTI', 2], ['S-NEG', 3]]);
       expect(v.waiting).toBe(4); // S-ZERO · S-NEG · S-CATA · S-999
     }
 
