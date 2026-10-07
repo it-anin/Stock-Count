@@ -112,6 +112,10 @@
     .adj-erp-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
     .adj-erp-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
     .adj-erp-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
+    /* ปุ่ม 🗂️ ประวัติปรับปรุง ที่ Header ป็อปอัพ 📦 (7 ต.ค. 2026) — ไม่ใช้ .popup-filter (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
+    .adj-hist-btn { display:inline-flex; align-items:center; gap:7px; padding:6px 12px; border-radius:8px; border:1px solid rgba(106,60,181,0.35); background:rgba(155,93,229,0.08); color:#6a3cb5; cursor:pointer; font-family:inherit; font-size:0.78rem; font-weight:700; white-space:nowrap; line-height:1.15; }
+    .adj-hist-btn:hover { background:rgba(155,93,229,0.16); }
+    .adj-hist-btn .adj-hist-pill { font-family:'Inter',sans-serif; font-size:0.68rem; font-weight:700; background:#6a3cb5; color:#fff; padding:1px 8px; border-radius:6px; }
     .btn-export-popup { padding:7px 16px; border-radius:7px; border:1px solid rgba(26,158,92,0.3); background:rgba(26,158,92,0.08); color:var(--green); cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600; transition:background 0.15s; }
     .btn-export-popup:hover { background:rgba(26,158,92,0.16); }
     .upload-guide-popover { display:none; position:absolute; top:0; left:calc(100% + 20px); width:460px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,0.12); z-index:100; padding:24px; animation:popIn 0.2s ease-out; }
@@ -999,7 +1003,10 @@
   <div class="stock-popup" id="adjustDocPopupCard" style="max-width:1100px;">
     <div class="stock-popup-header">
       <h2>📦 ปรับปรุงสินค้า</h2>
-      <button class="stock-popup-close" onclick="closeAdjustDocPopup()">✕</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="adjHistBtn" class="adj-hist-btn" style="display:none;" onclick="openAdjHistPopup()" title="ประวัติการ Export Text — เลขที่เอกสาร / Status"><span>🗂️ ประวัติปรับปรุง</span><span class="adj-hist-pill" id="adjHistCount">0</span></button>
+        <button class="stock-popup-close" onclick="closeAdjustDocPopup()">✕</button>
+      </div>
     </div>
     <div style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
       <button id="adjBtnOrds" class="popup-filter active" onclick="setAdjDocFilter('ords',this)"><span>🔻</span><span>ORDS (ใบปรับปรุงลดสินค้า)</span></button>
@@ -1064,9 +1071,46 @@
       <div style="display:flex;gap:8px;align-items:center;">
         <button onclick="saveAdjustDocToCloud()" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">💾 บันทึก LOT</button>
         <button onclick="exportAdjustDocExcel()" title="Export ทุกรายการของแท็บนี้ (ไม่ใช่เฉพาะหน้าที่เห็น)" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">📊 Export Excel</button>
-        <button id="adjExportTextBtn" onclick="exportAdjustDocText()" title="Export ทุกรายการของแท็บนี้" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
+        <button id="adjExportTextBtn" onclick="onAdjExportTextClick()" title="Export ทุกรายการของแท็บนี้" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
         <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 🗂️ ประวัติปรับปรุง (7 ต.ค. 2026) — เอกสาร ORDS/IRPS ที่ Export Text แล้ว (เลขที่เอกสาร · Status) · ซ้อนเหนือป็อปอัพ 📦 · ข้อมูล {branch}_adjhist ผูกรอบนับ -->
+<div class="stock-popup-overlay" id="adjHistPopupOverlay" style="display:none;z-index:501;" onclick="handleAdjHistOverlayClick(event)">
+  <div class="stock-popup" id="adjHistPopupCard" style="max-width:980px;">
+    <div class="stock-popup-header">
+      <h2>🗂️ ประวัติปรับปรุง</h2>
+      <button class="stock-popup-close" onclick="closeAdjHistPopup()">✕</button>
+    </div>
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.5;">รายการที่ Export Text แล้วย้ายมาอยู่ที่นี่พร้อมเลขที่เอกสาร · ผูกกับรอบนับนี้ (เริ่มนับใหม่ = ว่าง) · Status จะมาจากรายงาน .CSV ที่แนบ (ยังไม่เชื่อม — แสดง "ยังไม่เข้า" ไปก่อน)</div>
+    <div class="stock-popup-body" style="user-select:text;">
+      <table class="ptable">
+        <thead><tr><th>เลขที่เอกสาร</th><th style="text-align:center;">ชนิด</th><th>วันที่ · เวลา</th><th>ผู้ส่งออก</th><th style="text-align:center;">รายการ</th><th style="text-align:center;">Status</th><th></th></tr></thead>
+        <tbody id="adjHistBody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีประวัติ</td></tr></tbody>
+      </table>
+    </div>
+    <div class="stock-popup-footer">
+      <span class="popup-row-count" id="adjHistRowCount">0 เอกสาร</span>
+      <button onclick="closeAdjHistPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ระบุเลขที่เอกสารก่อนดาวน์โหลด Export Text ของใบ 📦 (7 ต.ค. 2026) — กรอกแล้วรายการในไฟล์ย้ายไป 🗂️ ประวัติปรับปรุง -->
+<div id="adjDocNoModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;" onclick="if(event.target.id==='adjDocNoModal')closeAdjDocNoModal()">
+  <div id="adjDocNoCard" style="background:var(--surface);border-radius:16px;padding:26px 30px;min-width:340px;max-width:460px;width:92vw;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid #6a3cb5;">
+    <div style="font-size:2.1rem;margin-bottom:8px;">📝</div>
+    <div style="font-size:1.05rem;font-weight:700;color:#6a3cb5;margin-bottom:8px;">ระบุเลขที่เอกสาร</div>
+    <div id="adjDocNoSummary" style="font-size:0.85rem;color:var(--text2);margin-bottom:12px;line-height:1.5;"></div>
+    <input id="adjDocNoInput" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="เลขที่เอกสาร เช่น ORDS…" oninput="onAdjDocNoInput()" onkeydown="onAdjDocNoKey(event)" style="width:100%;padding:11px 12px;border:2px solid var(--border);border-radius:10px;font-size:1rem;text-align:center;font-weight:700;font-family:'Inter',sans-serif;text-transform:uppercase;outline:none;background:var(--surface);color:var(--text);">
+    <div id="adjDocNoErr" style="min-height:1.3em;font-size:0.75rem;font-weight:600;margin:6px 0 4px;line-height:1.4;"></div>
+    <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;line-height:1.5;">ต้องกรอกก่อนจึงดาวน์โหลดได้ · หลังดาวน์โหลด รายการชุดนี้จะย้ายไป 🗂️ ประวัติปรับปรุงและหายจากตาราง</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeAdjDocNoModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">ยกเลิก</button>
+      <button id="adjDocNoOk" onclick="confirmAdjDocNo()" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#9b5de5,#6a3cb5);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;">⬇️ ดาวน์โหลด</button>
     </div>
   </div>
 </div>
@@ -4085,7 +4129,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjDocNoModal','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -8639,6 +8683,20 @@ let _adjDocPage=1;
 //   ป้ายปุ่ม · ชื่อไฟล์ (_p<หน้า>) · toast บอกหน้า/ช่วงแถวเสมอ (ไม่ให้ไฟล์ไม่ครบแบบเงียบ) · มีหน้าเดียว = ข้อความ/ชื่อไฟล์เดิมทุกตัวอักษร
 //   Export Excel ไม่เปลี่ยน = ทุกแถวของแท็บ · false = Export Text ทุกแถวของแท็บเหมือนเดิม (ทางถอย — เทสสลับได้)
 let ADJUST_DOC_EXPORT_TEXT_BY_PAGE=true;
+// 🗂️ ประวัติปรับปรุง (7 ต.ค. 2026 · ผู้ใช้สั่ง) — ปุ่ม Header ของ 📦 + Export Text ต้องกรอก "เลขที่เอกสาร" ก่อนดาวน์โหลด
+//   กรอกแล้ว: แถวที่อยู่ในไฟล์ "ย้ายไปประวัติ" และหายจากตาราง 📦 (ซ่อนด้วยคีย์ dir|sku|base — ไม่แตะ scanData/items) · เก็บที่ stock_sessions/{branch}_adjhist ผูก countResetAt
+//   atomic: เขียน cloud ไม่ผ่าน = ไม่ดาวน์โหลด ไม่ล้างตาราง · หลักฐานเปลี่ยน (ผลต่าง/ทิศ) แถวโผล่กลับเอง · ↩ คืนรายการ = ลบเอกสารนั้นออกจากประวัติ
+//   Status ("เข้าระบบแล้ว"/"ยังไม่เข้า" จากรายงาน .CSV) ยังไม่เชื่อม — _adjHistStatus คืน "ยังไม่เข้า" เสมอ (จุดเสียบรอบหน้า)
+//   false = ไม่มีปุ่ม/ช่องเลขที่เอกสาร/การซ่อนแถว · Export Text เดิมทุกไบต์ (ทางถอย — เทสสลับได้) · ⚠️ ปิดแล้วแถวที่ส่งออกไปแล้วโผล่กลับตาราง (doc บน cloud ไม่ถูกลบ) ระวังส่งซ้ำ
+let ADJUST_DOC_HISTORY=true;
+const ADJ_HIST_MAX_KB=800;
+let _adjHist=null;           // doc ดิบของ {branch}_adjhist: {branch,countResetAt,entries:[{no,dir,at,by,rows:[[sku,qty,base,price,lot,exp]]}],updatedBy,updatedAt} · กรองรอบด้วย _adjHistCurrent ตอนใช้
+let _adjHistReadToken=0;     // ผลอ่าน cloud ที่ถูกแซง (บันทึกใหม่/เปิดซ้ำ/logout) ถูกทิ้ง
+let _adjHistBusy=false;      // กำลังบันทึก (Export/คืนรายการ) — กันกดซ้ำ
+let _adjHistIdxFor=null,_adjHistIdx=null; // ดัชนีคีย์ที่ส่งออกแล้ว (สร้างใหม่เมื่อ _adjHist เปลี่ยนตัว)
+let _adjHistExpanded=new Set(); // เลขที่เอกสารที่ขยายดูรายการในป็อปอัพประวัติ
+let _adjHistUndoArm='';      // เลขที่เอกสารที่กด ↩ แล้วรอยืนยันขั้นที่ 2
+let _adjDocNoSig='';         // ลายนิ้วมือของแถวที่แสดงใน modal เลขที่เอกสาร — เทียบตอนกดดาวน์โหลด
 let _adjRenderDeferred=false; // เลื่อนการวาดตารางใหม่ไว้ เพราะกำลังพิมพ์ในช่องจำนวน (ดู renderAdjustDocTable)
 // LOT/ราคา — in-memory · เก็บเฉพาะ SKU ในใบ (stock_adjustment + audit ของสาขายา · ไม่เก็บทั้ง 200k แถว)
 // ที่มา (ก.ย. 2026): Supabase ที่บอท auto-adj อัปทุกเช้า → ไฟล์ที่แนบเองชนะ → ถ้า Supabase ล้มใช้ {branch}_adjlot แบบเดิม
@@ -9047,6 +9105,7 @@ function _adjErpExtraSkus(all,dir){
   const st=_adjErpCurrent();const t=ADJ_ERP_DIR_TYPE[dir];
   if(!st||!t||!st.cover[t])return [];
   const inTab=new Set(all.map(r=>r.sku));const out=[];
+  for(const e of _adjHistEntries())if(e.dir===dir)for(const r of e.rows)inTab.add(r[0]);   // ส่งออกแล้ว (อยู่ใน 🗂️ ประวัติ) — ERP มีใบเป็นเรื่องปกติ ไม่ใช่ "หลุดจากแท็บ"
   for(const[sku,list] of _adjErpIndex(st)){
     if(inTab.has(sku))continue;
     const low=_adjErpLowDay(sku);
@@ -9320,6 +9379,7 @@ function _buildAdjustDocRows(dir){
     const diff=ev.diff;
     if(dir==='ords'&&diff>=0)continue;   // ORDS = ขาด (count<system)
     if(dir==='irps'&&diff<=0)continue;   // IRPS = เกิน (count>system)
+    if(_adjHistCovers(dir,sku,Math.abs(diff)))continue;   // ส่งออกแล้ว (อยู่ใน 🗂️ ประวัติปรับปรุง) — ผลต่าง/ทิศเปลี่ยน = คีย์ไม่ตรง แถวโผล่กลับเอง
     const unitInfo=state.skuDirectMap?state.skuDirectMap.get(sku):null;
     // ค่าที่เภสัชแก้ในใบ (ถ้ายังใช้ได้) แทนจำนวนคำนวณ — ทิศ ORDS/IRPS ยังตามผลต่างเดิม · qty 0 = ไม่ลงไฟล์ (ตัดตอน Export)
     const ov=_adjQtyOverride(sd,diff);
@@ -9358,7 +9418,21 @@ function _adjustDocAudit(){
   }
   return {stale,noSku,settled,noBasis,reopened};
 }
-function _countAdjustDocItems(){let n=0;for(const[,sd] of state.scanData.entries())if(_isAdjustDocItem(sd))n++;return n;}
+function _countAdjustDocItems(){
+  const ix=_adjHistIndex();   // null = ไม่มีประวัติ (หรือสวิตช์ปิด/ไม่มีสิทธิ์) → นับทุกตัวเหมือนเดิม
+  const wh=currentBranch==='WH';
+  let n=0;
+  for(const[sku,sd] of state.scanData.entries()){
+    if(!_isAdjustDocItem(sd))continue;
+    if(ix&&ix.skus.has(sku)){   // คำนวณผลต่างเฉพาะ SKU ที่เคยส่งออก — ไม่เพิ่มงานต่อรอบ updateStats
+      const si=state.skuMap.get(sku);
+      const ev=si?_adjustDocDiff(sku,sd,si,wh):null;
+      if(ev&&ev.diff!==0&&_adjHistCovers(ev.diff<0?'ords':'irps',sku,Math.abs(ev.diff)))continue;   // ส่งออกแล้ว — ไม่ใช่งานค้างของใบ
+    }
+    n++;
+  }
+  return n;
+}
 function renderAdjustDocTable(force){
   const thead=document.getElementById('adjustDocThead');
   const tbody=document.getElementById('adjustDocBody');
@@ -9484,16 +9558,22 @@ async function openAdjustDocPopup(){
   renderAdjustDocTable();
   _refreshAdjCards(); // สะท้อนสถานะการ์ดแนบไฟล์ตาม local ปัจจุบัน (กันการ์ดค้างจากรอบก่อน/หลัง logout)
   _loadAdjErpFromCloud();   // ผลตรวจกับ ERP ที่แนบไว้ ({branch}_adjerp) — ไม่รอ · มาแล้ววาดใหม่เอง
+  _refreshAdjHistBtn();_loadAdjHistFromCloud();   // 🗂️ ประวัติปรับปรุง ({branch}_adjhist) — อ่านใหม่ทุกครั้งที่เปิด (เครื่องอื่นอาจเพิ่งส่งออก) · มาแล้ววาดใหม่เอง
   // ดึง LOT/ราคา ของ SKU ในใบจาก Supabase ทุกครั้งที่เปิด + LOT ที่เลือกไว้จาก {branch}_adjlot (ดู _refreshAdjMaster)
   await _refreshAdjMaster();
 }
-function closeAdjustDocPopup(){_closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());}
+function closeAdjustDocPopup(){
+  // ประวัติ/ช่องเลขที่เอกสารซ้อนอยู่เหนือ 📦 — ปิด 📦 ต้องปิดไปด้วย (ไม่ให้ค้างลอย) · กำลังบันทึกอยู่ = คง modal ไว้จนเสร็จ
+  const h=document.getElementById('adjHistPopupOverlay');if(h)h.style.display='none';
+  if(!_adjHistBusy){const m=document.getElementById('adjDocNoModal');if(m)m.style.display='none';}
+  _closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());
+}
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
 // Export ไฟล์ Text ตาม tab ที่เลือก (ORDS/IRPS) "ทีละหน้าที่เห็นบนตาราง" (ADJUST_DOC_EXPORT_TEXT_BY_PAGE) — format: SKU \t จำนวน \t ราคา \t\t\t\t\t\t(6 TAB) LOT \t EXP
 // ราคา = ยอดจาก R05.105 (raw ไม่ใส่ comma เพื่อให้ ERP import ได้), LOT = ค่าที่เลือกจาก dropdown (ว่างถ้ายังไม่เลือก)
 // EXP = ของ LOT ที่เลือก แปลงเป็น DD/MM/YYYY ปี พ.ศ. (_toBeDMY) — ว่างถ้ายังไม่เลือก LOT หรือแปลงวันที่ไม่ได้
-function exportAdjustDocText(){
-  if(_adjExportBusy())return;
+// แผนส่งออก Text ของ "หน้าที่เห็น" — ฟังก์ชันบริสุทธิ์ (ไม่ toast/ไม่ดาวน์โหลด/ไม่เขียนอะไร) · เส้นทางเดิม (exportAdjustDocText) กับเส้นทางประวัติ (confirmAdjDocNo) ใช้ร่วมกัน = เห็นอะไรส่งออกอย่างนั้น
+function _adjTextExportPlan(){
   // ตามตัวกรอง ERP ที่เลือก (ผู้ใช้เลือก ต.ค. 2026) — "ทั้งหมด"/ไม่มีไฟล์ ERP = ทุกแถวของแท็บเหมือนเดิม
   const vr=_adjustDocViewRows(_adjDocFilter);
   // ทีละหน้า (7 ต.ค. 2026 · ผู้ใช้สั่ง): ส่งออกเฉพาะแถวของ "หน้าที่เห็นบนตาราง" — ชุดเดียวกับตารางผ่าน _adjustDocPageView
@@ -9503,24 +9583,335 @@ function exportAdjustDocText(){
   const all=paged?view:vr.rows;
   const pageNote=paged?` · หน้า ${pgn.page}/${pgn.pages} (แถวที่ ${pgn.start+1}–${pgn.start+view.length} จาก ${vr.rows.length})`:'';
   const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ยังเห็นบนจอ — ดู _adjEditNote)
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+pageNote+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
-  const lines=rows.map(r=>{
-    const pr=_priceMap.get(r.sku);
-    const price=pr&&pr.price!=null?pr.price:'';
-    const selEntry=_adjSelectedEntry(r.sku);             // LOT ที่ไม่มีในข้อมูลชุดนี้ = ว่าง (จอก็ไม่ได้แสดง)
-    const lot=selEntry?selEntry.lot:'';
-    const exp=_toBeDMY((selEntry&&selEntry.exp)||'');
-    return `${r.sku}\t${r.qty}\t${price}\t\t\t\t\t\t${lot}\t${exp}`; // 1 TAB, 1 TAB, 6 TAB, 1 TAB
-  });
+  return {dir:_adjDocFilter,vr,pgn,paged,all,pageNote,rows};
+}
+// ค่าของแถวเดียวในไฟล์ Text (ราคา/LOT/EXP) + บรรทัด — ไฟล์กับ 🗂️ ประวัติต้องเป็นตัวเลขชุดเดียวกัน (ห้ามคำนวณแยก)
+function _adjTextRow(r){
+  const pr=_priceMap.get(r.sku);
+  const price=pr&&pr.price!=null?pr.price:'';
+  const selEntry=_adjSelectedEntry(r.sku);             // LOT ที่ไม่มีในข้อมูลชุดนี้ = ว่าง (จอก็ไม่ได้แสดง)
+  const lot=selEntry?selEntry.lot:'';
+  const exp=_toBeDMY((selEntry&&selEntry.exp)||'');
+  return {price,lot,exp,line:`${r.sku}\t${r.qty}\t${price}\t\t\t\t\t\t${lot}\t${exp}`}; // 1 TAB, 1 TAB, 6 TAB, 1 TAB
+}
+function _adjDownloadText(lines,fileName){
   const text=lines.join('\r\n')+'\r\n'; // CRLF + ปิดท้ายด้วย newline สำหรับ import ฝั่ง Windows/ERP
   const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}${paged?'_p'+pgn.page:''}.txt`;   // _p<หน้า> กันไฟล์หลายหน้าชื่อซ้ำ (เบราว์เซอร์จะต่อ (1) (2) จนแยกไม่ออก)
+  a.href=url;a.download=fileName;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${pageNote}${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
+}
+// เส้นทางเดิม (ไม่มีเลขที่เอกสาร/ไม่ล้างตาราง) — ปุ่มเรียกเมื่อสวิตช์ ADJUST_DOC_HISTORY ปิด/ไม่มีสิทธิ์ · เทสเดิมเรียกตรงตัวนี้
+function exportAdjustDocText(){
+  if(_adjExportBusy())return;
+  const {dir,vr,pgn,paged,all,pageNote,rows}=_adjTextExportPlan();
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+pageNote+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
+  _adjDownloadText(rows.map(r=>_adjTextRow(r).line),`stockadj_${dir}_${_fileDateDMY()}${paged?'_p'+pgn.page:''}.txt`);   // _p<หน้า> กันไฟล์หลายหน้าชื่อซ้ำ (เบราว์เซอร์จะต่อ (1) (2) จนแยกไม่ออก)
+  toast(`Export ${dir.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${pageNote}${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
   _warnAdjErpDuplicate(rows,vr);
+}
+
+// ── 🗂️ ประวัติปรับปรุง (7 ต.ค. 2026 · ผู้ใช้สั่ง) ─────────────────────────────────────────
+// Export Text → กรอกเลขที่เอกสาร → ดาวน์โหลด + ย้ายแถวในไฟล์ไปประวัติ (หายจากตาราง 📦) · เก็บ stock_sessions/{branch}_adjhist ผูก countResetAt (รอบใหม่ = ว่างเอง)
+// ซ่อนแถวด้วยคีย์ dir|sku|base (base = |ผลต่าง|) — ไม่แตะ scanData/items · หลักฐานเปลี่ยนจนผลต่างไม่ตรงคีย์ = แถวโผล่กลับเอง (ไม่ซ่อนงานที่เปลี่ยนไปแล้ว)
+// atomic: transaction เขียน cloud สำเร็จก่อน จึงดาวน์โหลด/ล้างตาราง · ล้ม = ไม่ทำอะไร (ต่างจากการ์ด 🧾 ERP ที่มี localOnly โดยเจตนา — ตารางล้างแต่ประวัติหาย = ส่งซ้ำหลังรีโหลด)
+// ไม่มี listener realtime: อ่านตอน login/เปิดป็อปอัพ · transaction ตรวจ "เลขที่เอกสารซ้ำ" และ "แถวทับของเอกสารอื่น" เป็นด่านหลักกันสองเครื่อง Export หน้าเดียวกันพร้อมกัน
+function _adjHistEnabled(){return ADJUST_DOC_HISTORY&&!!currentBranch&&(currentRole==='pharmacist'||currentRole==='supervisor');}
+function _adjHistRef(branch=currentBranch){return _db.collection('stock_sessions').doc(branch+'_adjhist');}
+function _adjHistToDoc(entries,epoch,by){
+  return {countResetAt:epoch||'',entries_json:JSON.stringify(entries||[]),updatedBy:by||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+}
+function _adjHistFromDoc(d){
+  if(!d)return null;
+  try{
+    const arr=JSON.parse(d.entries_json||'[]');const entries=[];
+    for(const x of Array.isArray(arr)?arr:[]){
+      if(!x||typeof x.no!=='string'||!x.no||!['ords','irps'].includes(x.dir)||!Array.isArray(x.rows))continue;
+      entries.push({no:x.no,dir:x.dir,at:x.at||'',by:x.by||'',rows:x.rows.filter(r=>Array.isArray(r)&&typeof r[0]==='string')});
+    }
+    let updatedAt='';try{if(d.updatedAt&&typeof d.updatedAt.toDate==='function')updatedAt=d.updatedAt.toDate().toISOString();}catch(e){}
+    return {countResetAt:d.countResetAt||'',entries,updatedBy:d.updatedBy||'',updatedAt};
+  }catch(e){console.warn('[adjhist parse]',e.message);return null;}
+}
+// ผลของ "รอบนับปัจจุบัน" เท่านั้น — doc ค้างจากรอบเก่า (startNewCount ไม่ลบ) = ไม่มี · กรองตอนใช้ จึงโหลดตอน login ได้แม้ยังไม่รู้ epoch
+function _adjHistCurrent(){
+  if(!_adjHistEnabled()||!_adjHist||_adjHist.branch!==currentBranch)return null;
+  return (_adjHist.countResetAt||'')===(_countResetAt||'')?_adjHist:null;
+}
+function _adjHistEntries(){const h=_adjHistCurrent();return h?h.entries:[];}
+function _adjHistKey(dir,sku,base){return dir+'|'+sku+'|'+_adjErpRound(base);}
+function _adjHistIndex(){
+  const h=_adjHistCurrent();
+  if(!h)return null;
+  if(_adjHistIdxFor===h)return _adjHistIdx;   // _adjHist ถูกแทนที่ทั้งก้อนเสมอ (ไม่ mutate) → เทียบตัวก็พอ
+  const keys=new Map(),skus=new Set();
+  for(const e of h.entries)for(const r of e.rows){keys.set(_adjHistKey(e.dir,r[0],r[2]),e.no);skus.add(r[0]);}
+  _adjHistIdxFor=h;_adjHistIdx={keys,skus};
+  return _adjHistIdx;
+}
+function _adjHistCovers(dir,sku,base){const ix=_adjHistIndex();return !!ix&&ix.keys.has(_adjHistKey(dir,sku,base));}
+function _adjHistApply(branch,epoch,entries,by,at){_adjHist={branch,countResetAt:epoch||'',entries,updatedBy:by||'',updatedAt:at||''};}
+// วาดใหม่ทุกจุดที่เห็นประวัติ: ป้าย 📦 + ปุ่มประวัติ · ตาราง 📦 (ถ้าเปิดอยู่) · ป็อปอัพประวัติ (ถ้าเปิดอยู่)
+function _adjHistRefreshUi(force){
+  updateAdjustDocCount();
+  const ov=document.getElementById('adjustDocPopupOverlay');
+  if(ov&&ov.style.display==='flex')renderAdjustDocTable(force);
+  const hv=document.getElementById('adjHistPopupOverlay');
+  if(hv&&hv.style.display==='flex')renderAdjHistTable();
+}
+function _refreshAdjHistBtn(){
+  const b=document.getElementById('adjHistBtn');if(!b)return;
+  b.style.display=_adjHistEnabled()?'':'none';
+  const c=document.getElementById('adjHistCount');if(c)c.textContent=_adjHistEntries().length;
+}
+async function _loadAdjHistFromCloud(){
+  if(!_adjHistEnabled()||!_db)return;
+  const branch=currentBranch,token=++_adjHistReadToken;
+  let st=null;
+  try{const snap=await _adjHistRef(branch).get();st=snap.exists?_adjHistFromDoc(snap.data()):null;}
+  catch(e){console.warn('[adjhist load]',e&&e.message);return;}
+  if(token!==_adjHistReadToken||!_adjHistEnabled()||currentBranch!==branch)return;   // ผลอ่านที่ถูกแซง (บันทึกใหม่/เปิดซ้ำ/logout) ถูกทิ้ง
+  _adjHist=st?{...st,branch}:null;
+  _adjHistRefreshUi();
+}
+// เอกสารใหม่ชนกับที่มีอยู่? → {type:'dup',entry} (เลขที่เอกสารซ้ำ) | {type:'overlap',hits:[{sku,no,by}]} (แถวเดียวกันถูกส่งออกในเอกสารอื่นแล้ว) | null
+function _adjHistConflict(entries,entry){
+  const dup=entries.find(e=>e.no===entry.no);
+  if(dup)return {type:'dup',entry:dup};
+  const keys=new Map();
+  for(const e of entries)for(const r of e.rows)keys.set(_adjHistKey(e.dir,r[0],r[2]),e);
+  const hits=[];
+  for(const r of entry.rows){const e=keys.get(_adjHistKey(entry.dir,r[0],r[2]));if(e)hits.push({sku:r[0],no:e.no,by:e.by});}
+  return hits.length?{type:'overlap',hits}:null;
+}
+// เพิ่มเอกสารใน transaction (อ่าน-ตรวจ-เขียน) → {ok,entries} | {ok:false,kind:'dup'|'overlap'|'stale'|'fail',...} · ชน = ไม่เขียน แต่ state ในเครื่องถูกอัปเดตตามที่อ่านได้
+async function _adjHistAppend(entry,branch,epoch){
+  if(!_db)return {ok:false,kind:'fail',error:'ไม่ได้เชื่อมต่อ Cloud'};
+  let merged=null,conflict=null;
+  try{
+    await _adjErpWithTimeout(_db.runTransaction(async tx=>{
+      merged=null;conflict=null;   // transaction อาจรันซ้ำ — เริ่มใหม่ทุกครั้ง
+      const ref=_adjHistRef(branch);
+      const snap=await tx.get(ref);
+      const cur=snap.exists?_adjHistFromDoc(snap.data()):null;
+      const entries=cur&&(cur.countResetAt||'')===epoch?cur.entries:[];
+      conflict=_adjHistConflict(entries,entry);
+      if(conflict){merged={entries,by:cur?cur.updatedBy:'',at:cur?cur.updatedAt:''};return;}
+      const next=[...entries,entry];
+      const payload=_adjHistToDoc(next,epoch,entry.by);
+      const kb=Math.ceil(_sessionBlobBytes(payload.entries_json)/1024);
+      if(kb>=ADJ_HIST_MAX_KB)throw new Error(`ประวัติใหญ่ ${kb} KB ใกล้เพดาน Firestore`);
+      tx.set(ref,payload);
+      merged={entries:next,by:entry.by,at:entry.at};
+    }),20000);
+  }catch(e){
+    const msg=String(e&&e.message||e);console.warn('[adjhist save]',msg);
+    return {ok:false,kind:'fail',error:msg};
+  }
+  if(!merged)return {ok:false,kind:'fail',error:'ไม่ได้ผลจาก Cloud'};
+  if(currentBranch!==branch||(_countResetAt||'')!==epoch||!_adjHistEnabled())return {ok:false,kind:'stale'};   // ออกจากระบบ/เปลี่ยนสาขา/เริ่มรอบใหม่ระหว่างบันทึก
+  _adjHistReadToken++;   // ผลอ่าน cloud ที่ค้างอยู่ (เก่ากว่าผลนี้) ห้ามทับ
+  _adjHistApply(branch,epoch,merged.entries,merged.by,merged.at);
+  return conflict?{ok:false,kind:conflict.type,conflict,entries:merged.entries}:{ok:true,entries:merged.entries};
+}
+// ลบเอกสารออกจากประวัติ (↩ คืนรายการ) ใน transaction เดียวกันนี้ — ไม่มีเอกสารนั้นแล้ว (เครื่องอื่นคืนไปก่อน) = ไม่เขียน แต่ state ถูกอัปเดต
+async function _adjHistRemove(no,branch,epoch){
+  if(!_db)return {ok:false,kind:'fail',error:'ไม่ได้เชื่อมต่อ Cloud'};
+  let merged=null,removed=false;
+  try{
+    await _adjErpWithTimeout(_db.runTransaction(async tx=>{
+      merged=null;removed=false;
+      const ref=_adjHistRef(branch);
+      const snap=await tx.get(ref);
+      const cur=snap.exists?_adjHistFromDoc(snap.data()):null;
+      const entries=cur&&(cur.countResetAt||'')===epoch?cur.entries:[];
+      const next=entries.filter(e=>e.no!==no);
+      removed=next.length!==entries.length;
+      if(removed){tx.set(ref,_adjHistToDoc(next,epoch,currentUser||''));merged={entries:next,by:currentUser||'',at:new Date().toISOString()};}
+      else merged={entries,by:cur?cur.updatedBy:'',at:cur?cur.updatedAt:''};
+    }),20000);
+  }catch(e){
+    const msg=String(e&&e.message||e);console.warn('[adjhist remove]',msg);
+    return {ok:false,kind:'fail',error:msg};
+  }
+  if(!merged)return {ok:false,kind:'fail',error:'ไม่ได้ผลจาก Cloud'};
+  if(currentBranch!==branch||(_countResetAt||'')!==epoch||!_adjHistEnabled())return {ok:false,kind:'stale'};
+  _adjHistReadToken++;
+  _adjHistApply(branch,epoch,merged.entries,merged.by,merged.at);
+  return {ok:true,removed,entries:merged.entries};
+}
+// ── เลขที่เอกสาร: ตัดช่องว่าง + ตัวพิมพ์ใหญ่ (ตรงกับ TRANNO ที่ _parseAdjErpRows แปลง toUpperCase — เตรียมจับคู่ Status รอบหน้า) ──
+function _adjNormDocNo(v){return String(v==null?'':v).replace(/\s+/g,'').toUpperCase();}
+function _adjHistFmtAt(iso){
+  const t=_auditTimeMs(iso);
+  if(!Number.isFinite(t))return String(iso||'');
+  const d=new Date(t);const p=n=>String(n).padStart(2,'0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// → {ok,no,error} · ว่าง/ยาวเกิน/ซ้ำในรอบนี้ = บล็อก · ไม่ขึ้นต้นด้วย ORDS/IRPS ของแท็บ = ไม่บล็อก (แค่เตือนใน onAdjDocNoInput)
+function _adjValidateDocNo(raw,entries){
+  const no=_adjNormDocNo(raw);
+  if(!no)return {ok:false,no,error:'กรุณากรอกเลขที่เอกสารก่อนดาวน์โหลด'};
+  if(no.length>40)return {ok:false,no,error:'เลขที่เอกสารยาวเกิน 40 ตัวอักษร'};
+  const dup=(entries||[]).find(e=>e.no===no);
+  if(dup)return {ok:false,no,error:`เลขที่เอกสารนี้ถูกใช้แล้ว (${_adjHistFmtAt(dup.at)}${dup.by?' · '+dup.by:''}) — ใช้เลขอื่น`};
+  return {ok:true,no,error:''};
+}
+// ลายนิ้วมือของแถวที่จะส่งออก — modal เปิดอยู่นานได้ ตาราง/หน้าอาจเปลี่ยนระหว่างนั้น (เครื่องอื่นเพิ่งส่งออก · แก้จำนวน) → ไม่ส่งออกของที่ผู้ใช้ไม่ได้เห็น
+function _adjPlanSig(plan){return plan.dir+'|'+plan.rows.map(r=>r.sku+':'+r.qty).join(',');}
+function _adjDocNoSummaryText(plan){return `${plan.dir.toUpperCase()} · ${plan.rows.length} รายการ${plan.pageNote}`;}
+function _adjDocNoMsg(text,kind){const e=document.getElementById('adjDocNoErr');if(!e)return;e.textContent=text||'';e.style.color=kind==='warn'?'var(--yellow)':'var(--red)';}
+function onAdjExportTextClick(){
+  if(!_adjHistEnabled()){exportAdjustDocText();return;}   // สวิตช์ปิด/ไม่มีสิทธิ์ = เส้นทางเดิม (ไม่มีช่องเลขที่เอกสาร ไม่ล้างตาราง)
+  if(_adjHistBusy||_adjExportBusy())return;
+  const modal=document.getElementById('adjDocNoModal');
+  if(modal&&modal.style.display==='flex')return;
+  const plan=_adjTextExportPlan();
+  if(!plan.rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+plan.pageNote+_adjErpFilterNote(plan.vr)+_adjEditNote(plan.all),'warn');return;}
+  openAdjDocNoModal(plan);
+}
+function openAdjDocNoModal(plan){
+  _adjDocNoSig=_adjPlanSig(plan);
+  const s=document.getElementById('adjDocNoSummary');if(s)s.textContent=_adjDocNoSummaryText(plan);
+  const i=document.getElementById('adjDocNoInput');if(i)i.value='';
+  _adjDocNoMsg('','');
+  const ok=document.getElementById('adjDocNoOk');if(ok){ok.disabled=false;ok.textContent='⬇️ ดาวน์โหลด';}
+  const m=document.getElementById('adjDocNoModal');if(m)m.style.display='flex';
+  setTimeout(()=>{const x=document.getElementById('adjDocNoInput');if(x)x.focus();},50);
+}
+function closeAdjDocNoModal(){
+  if(_adjHistBusy)return;   // กำลังบันทึก — ปิดไม่ได้ (ไม่งั้นไฟล์ดาวน์โหลดแต่ผู้ใช้ไม่เห็นผล)
+  const m=document.getElementById('adjDocNoModal');if(m)m.style.display='none';
+}
+function onAdjDocNoInput(){
+  const i=document.getElementById('adjDocNoInput');if(!i)return;
+  const no=_adjNormDocNo(i.value);
+  if(!no){_adjDocNoMsg('','');return;}
+  const t=ADJ_ERP_DIR_TYPE[_adjDocFilter];
+  _adjDocNoMsg(no.startsWith(t)?'':`ℹ️ ไม่ได้ขึ้นต้นด้วย ${t} — ตรวจเลขที่เอกสารอีกครั้ง (ยังดาวน์โหลดได้)`,'warn');
+}
+function onAdjDocNoKey(e){
+  if(e.key==='Enter'){e.preventDefault();confirmAdjDocNo();}
+  else if(e.key==='Escape'){e.preventDefault();closeAdjDocNoModal();}
+}
+async function confirmAdjDocNo(){
+  if(_adjHistBusy)return;
+  if(!_adjHistEnabled()){closeAdjDocNoModal();return;}   // สวิตช์/สิทธิ์เปลี่ยนระหว่างเปิด modal
+  if(_adjExportBusy())return;                              // LOT/ราคากำลังโหลด — รอ (toast มาจาก _adjExportBusy)
+  const inp=document.getElementById('adjDocNoInput');
+  const branch=currentBranch,epoch=_countResetAt||'';
+  const plan=_adjTextExportPlan();
+  if(_adjPlanSig(plan)!==_adjDocNoSig){
+    if(!plan.rows.length){closeAdjDocNoModal();toast('รายการในหน้านี้เปลี่ยนไปและไม่เหลือให้ Export แล้ว','warn');return;}
+    _adjDocNoSig=_adjPlanSig(plan);
+    const s=document.getElementById('adjDocNoSummary');if(s)s.textContent=_adjDocNoSummaryText(plan);
+    _adjDocNoMsg('รายการในหน้านี้เปลี่ยนไประหว่างรอ — ตรวจสรุปด้านบนอีกครั้ง แล้วกดดาวน์โหลดอีกครั้ง','err');
+    return;
+  }
+  const v=_adjValidateDocNo(inp&&inp.value,_adjHistEntries());
+  if(!v.ok){_adjDocNoMsg(v.error,'err');if(inp)inp.focus();return;}
+  const items=plan.rows.map(r=>({r,t:_adjTextRow(r)}));
+  const entry={no:v.no,dir:plan.dir,at:new Date().toISOString(),by:currentUser||'',
+    rows:items.map(({r,t})=>[r.sku,r.qty,r.baseQty,t.price===''?null:t.price,t.lot,t.exp])};
+  _adjHistBusy=true;
+  const okBtn=document.getElementById('adjDocNoOk');if(okBtn){okBtn.disabled=true;okBtn.textContent='กำลังบันทึก…';}
+  let res;
+  try{res=await _adjHistAppend(entry,branch,epoch);}
+  finally{_adjHistBusy=false;if(okBtn){okBtn.disabled=false;okBtn.textContent='⬇️ ดาวน์โหลด';}}
+  if(!res.ok){
+    if(res.kind==='dup'){_adjDocNoMsg(`เลขที่เอกสารนี้ถูกใช้แล้ว (${_adjHistFmtAt(res.conflict.entry.at)}${res.conflict.entry.by?' · '+res.conflict.entry.by:''}) — ใช้เลขอื่น`,'err');_adjHistRefreshUi();return;}
+    if(res.kind==='overlap'){
+      closeAdjDocNoModal();_adjHistRefreshUi(true);
+      const docs=[...new Set(res.conflict.hits.map(x=>x.no))];
+      toast(`⚠️ ${res.conflict.hits.length} รายการถูกส่งออกไปแล้วในเอกสาร ${docs.join(', ')} — ตารางอัปเดตแล้ว · ไม่ได้ดาวน์โหลด ตรวจแล้วกด Export Text ใหม่`,'warn',9000);
+      return;
+    }
+    if(res.kind==='stale'){closeAdjDocNoModal();toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ไม่ได้ดาวน์โหลด ตรวจ 🗂️ ประวัติปรับปรุง','warn',9000);return;}
+    _adjDocNoMsg(`บันทึกประวัติขึ้น Cloud ไม่สำเร็จ (${res.error}) — ยังไม่ได้ดาวน์โหลดและไม่ได้ล้างตาราง ลองใหม่`,'err');
+    return;
+  }
+  closeAdjDocNoModal();
+  const safeNo=v.no.replace(/[^A-Z0-9_.\-]/g,'_');
+  _adjDownloadText(items.map(x=>x.t.line),`stockadj_${plan.dir}_${safeNo}_${_fileDateDMY()}.txt`);   // ชื่อไฟล์ใช้เลขที่เอกสารแทน _p<หน้า> (หลังล้างตาราง หน้าเดิมจะซ้ำ _p1 ทุกครั้ง)
+  _adjHistRefreshUi(true);   // แถวที่ย้ายแล้วหายจากตาราง · ป้ายตัวเลขปุ่ม 📦 และปุ่มประวัติอัปเดต
+  toast(`Export ${plan.dir.toUpperCase()} ${plan.rows.length} รายการ (Text) สำเร็จ · เลขที่เอกสาร ${v.no} → ย้ายไป 🗂️ ประวัติปรับปรุงแล้ว${plan.pageNote}${_adjErpFilterNote(plan.vr)}${_adjEditNote(plan.all)}`,'success');
+  _warnAdjustDocDropped();
+  _warnAdjErpDuplicate(plan.rows,plan.vr);
+}
+// ── ป็อปอัพ 🗂️ ประวัติปรับปรุง ──
+// Status จะมาจากรายงาน R16 (.CSV) ที่แนบ: "เข้าระบบแล้ว" / "ยังไม่เข้า" — ยังไม่เชื่อม (ผู้ใช้สั่งเว้นไว้ก่อน) · คืน 'none' เสมอ · จุดเสียบรอบหน้า: จับคู่ _adjErpCurrent().docs[entry.no] (การ์ด ERP มีเฉพาะสาขายา — WH ต้องตัดสินใจแยก)
+//   ⚠️ ตอนเชื่อมแล้ว ↩ คืนรายการต้องกัน/เตือนเอกสารที่ "เข้าระบบแล้ว" (คืนแล้วส่งซ้ำ = ปรับสต็อกซ้ำ)
+const ADJ_HIST_STATUS_UI={
+  none:{text:'ยังไม่เข้า',color:'var(--text3)',bg:'rgba(120,130,150,0.14)'},
+  done:{text:'เข้าระบบแล้ว',color:'var(--green)',bg:'rgba(26,158,92,0.14)'},
+};
+function _adjHistStatus(entry){return 'none';}
+function openAdjHistPopup(){
+  if(!_adjHistEnabled())return;
+  _adjHistUndoArm='';
+  renderAdjHistTable();
+  _openModal('adjHistPopupOverlay','adjHistPopupCard');
+  _loadAdjHistFromCloud();   // อ่านใหม่ (ไม่รอ) — มาแล้ววาดใหม่เอง
+}
+function closeAdjHistPopup(){_closeModal('adjHistPopupOverlay','adjHistPopupCard');}
+function handleAdjHistOverlayClick(e){if(e.target===document.getElementById('adjHistPopupOverlay'))closeAdjHistPopup();}
+function toggleAdjHistRow(no){
+  if(_adjHistExpanded.has(no))_adjHistExpanded.delete(no);else _adjHistExpanded.add(no);
+  renderAdjHistTable();
+}
+function armAdjHistUndo(no){_adjHistUndoArm=_adjHistUndoArm===no?'':no;renderAdjHistTable();}
+async function undoAdjHistEntry(no){
+  if(_adjHistBusy||!_adjHistEnabled())return;
+  const branch=currentBranch,epoch=_countResetAt||'';
+  _adjHistBusy=true;_adjHistUndoArm='';renderAdjHistTable();
+  let res;
+  try{res=await _adjHistRemove(no,branch,epoch);}finally{_adjHistBusy=false;}
+  if(!res.ok){
+    if(res.kind==='stale'){toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ตรวจ 🗂️ ประวัติปรับปรุงอีกครั้ง','warn',9000);return;}
+    toast(`คืนรายการไม่สำเร็จ: ${res.error}`,'error',9000);renderAdjHistTable();return;
+  }
+  _adjHistExpanded.delete(no);
+  _adjHistRefreshUi(true);
+  if(res.removed)toast(`↩ คืนรายการของเอกสาร ${no} กลับตารางแล้ว`,'success');
+  else toast(`เอกสาร ${no} ไม่อยู่ในประวัติแล้ว (ถูกคืนจากเครื่องอื่นไปก่อน)`,'info');
+}
+function renderAdjHistTable(){
+  const body=document.getElementById('adjHistBody');if(!body)return;
+  const entries=_adjHistEntries().slice().reverse();   // ใหม่สุดอยู่บน
+  const rc=document.getElementById('adjHistRowCount');if(rc)rc.textContent=`${entries.length} เอกสาร`;
+  if(!entries.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีประวัติ — Export Text แล้วกรอกเลขที่เอกสาร รายการจะย้ายมาที่นี่</td></tr>';return;}
+  const esc=_adjErpEsc;
+  const btn='padding:4px 10px;border-radius:7px;font-family:inherit;font-size:0.72rem;font-weight:700;cursor:pointer;';
+  body.innerHTML=entries.map(e=>{
+    const st=ADJ_HIST_STATUS_UI[_adjHistStatus(e)]||ADJ_HIST_STATUS_UI.none;
+    const open=_adjHistExpanded.has(e.no);
+    const dirCol=e.dir==='irps'?'var(--green)':'var(--red)';
+    const armed=_adjHistUndoArm===e.no;
+    const n=esc(e.no);
+    const undo=armed
+      ?`<button type="button" data-no="${n}" onclick="event.stopPropagation();undoAdjHistEntry(this.dataset.no)" style="${btn}border:none;background:var(--red);color:#fff;">ยืนยันคืน</button> <button type="button" data-no="${n}" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:600;">ไม่</button><div style="font-size:0.66rem;font-weight:400;color:var(--red);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ถ้าไฟล์นี้นำเข้า ERP ไปแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ</div>`
+      :`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ แล้วรายการกลับมาที่ตาราง 📦" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">↩ คืนรายการ</button>`;
+    let html=`<tr data-no="${n}" onclick="toggleAdjHistRow(this.dataset.no)" style="cursor:pointer;">`
+      +`<td style="font-family:'Inter',sans-serif;font-weight:700;color:var(--accent);white-space:nowrap;">${open?'▾':'▸'} ${n}</td>`
+      +`<td style="text-align:center;font-weight:700;white-space:nowrap;color:${dirCol};">${e.dir==='irps'?'🔺 IRPS':'🔻 ORDS'}</td>`
+      +`<td style="white-space:nowrap;color:var(--text2);">${esc(_adjHistFmtAt(e.at))}</td>`
+      +`<td>${esc(e.by||'—')}</td>`
+      +`<td style="text-align:center;">${e.rows.length}</td>`
+      +`<td style="text-align:center;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.72rem;font-weight:700;white-space:nowrap;color:${st.color};background:${st.bg};">${st.text}</span></td>`
+      +`<td style="text-align:right;">${undo}</td></tr>`;
+    if(open){
+      const items=e.rows.map((r,i)=>{
+        const name=state.skuMap.get(r[0])?.productName||'';
+        const price=r[3]!=null&&r[3]!==''&&Number.isFinite(Number(r[3]))?_fmtMoney(r[3]):'—';
+        return `<tr><td style="color:var(--text3);">${i+1}</td><td style="font-family:'Inter',sans-serif;color:var(--accent);font-weight:700;">${esc(r[0])}</td><td class="ptd-name">${esc(name)}</td>`
+          +`<td style="text-align:center;font-weight:700;color:${dirCol};">${esc(r[1])}</td><td style="text-align:center;">${esc(r[4]||'—')}</td><td style="text-align:center;">${esc(r[5]||'—')}</td><td style="text-align:right;">${price}</td></tr>`;
+      }).join('');
+      html+=`<tr><td colspan="7" style="padding:0 14px 12px;background:var(--surface2);cursor:default;"><table class="ptable"><thead><tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:right;">ราคา</th></tr></thead><tbody>${items}</tbody></table></td></tr>`;
+    }
+    return html;
+  }).join('');
 }
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
 // (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
@@ -9601,7 +9992,7 @@ async function _readAdjlotDoc(){
     return{lotMap:toMap(d.lotMap_json),lotSelected:toMap(d.lotSelected_json),priceMap:toMap(d.priceMap_json),updatedBy:d.updatedBy||''};
   }catch(e){console.warn('[adjlot load]',e.message);return null;}
 }
-function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();}
+function updateAdjustDocCount(){const c=document.getElementById('adjustDocCount');if(c)c.textContent=_countAdjustDocItems();_refreshAdjHistBtn();}
 function updateAdjustDocPanel(){
   const p=document.getElementById('adjustDocPanel');if(!p)return;
   const canSee=currentRole==='pharmacist'||currentRole==='supervisor';
@@ -9610,7 +10001,8 @@ function updateAdjustDocPanel(){
     _lotMap.clear();_lotSelected.clear();_priceMap.clear();
     _adjSource={Lot:'',Price:''};_adjMeta={Lot:null,Price:null};_adjCloud=null;_adjSbError='';_adjSbMissing={Lot:false,Price:false};_adjLoading=false;_adjLoadToken++;
     _adjErp=null;_adjErpFilter='all';_adjErpReadToken++;   // ผลตรวจกับ ERP (local) — ของที่บันทึกไว้บน cloud ยังอยู่ เปิดป็อปอัพครั้งหน้าอ่านใหม่
-  }
+    _adjHist=null;_adjHistReadToken++;_adjHistExpanded.clear();_adjHistUndoArm='';   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
+  }else _loadAdjHistFromCloud();   // อ่านประวัติตอนเข้าใช้งาน (ไม่รอ) เพื่อให้ป้ายตัวเลขปุ่ม 📦 ไม่นับแถวที่ส่งออกไปแล้ว — กรองรอบนับตอนใช้ จึงไม่ต้องรอ _countResetAt
   updateAdjustDocCount();
 }
 
