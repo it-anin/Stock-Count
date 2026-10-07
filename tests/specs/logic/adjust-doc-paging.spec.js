@@ -1,14 +1,18 @@
 // ใบ 📦 ปรับปรุงสินค้า: แบ่งหน้า 20 แถวต่อหน้า (ต.ค. 2026 · ผู้ใช้สั่ง — ลดงานวาด DOM)
 //   สวิตช์ ADJUST_DOC_PAGE_SIZE (0 = ไม่แบ่งหน้า = ทางถอย) · _adjDocPage
+//   + Export Text ทีละหน้าที่เห็น (7 ต.ค. 2026 · ผู้ใช้สั่ง) — สวิตช์ ADJUST_DOC_EXPORT_TEXT_BY_PAGE (false = Export Text ทุกแถวของแท็บเหมือนเดิม = ทางถอย)
 //
-// เทสนี้ตรึง 7 ด้าน — ข้อ 5 สำคัญที่สุด: การแบ่งหน้าต้องเป็น "การแสดงผลตาราง" ล้วน ไม่ลามไปที่ Export/ปุ่มนับ
+// เทสนี้ตรึง 10 ด้าน — ข้อ 5–7 สำคัญที่สุด: Export Text = "หน้าที่เห็น" เท่านั้น (ตรงกับตารางทุกหน้า · ทุกหน้าต่อกันครบไม่ซ้ำไม่ตก) ส่วน Export Excel/ปุ่มนับ ไม่ผูกกับหน้า
 //   1. 45 ORDS → 3 หน้า (20/20/5) · ลำดับต่อเนื่องข้ามหน้า · ปุ่มขอบ disabled · ยอดรวมของแท็บ (#adjustDocRowCount) คงเดิม
 //   2. สลับ ORDS↔IRPS / เปิดป็อปอัพใหม่ → กลับหน้า 1 (ไม่จำหน้าเดิม)
 //   3. ขอบ 20/21 แถว: 20 = ไม่มี pager · 21 = 2 หน้า · ใบว่าง = ไม่มี pager
 //   4. re-render (เลือก LOT · แก้จำนวน · โหลดข้อมูลเสร็จ) คงหน้า · วาดจริงแค่ 20 แถว (select/ช่องจำนวน) · LOT ที่เลือกอยู่ข้ามหน้า
-//   5. ★ Export Text/Excel ขณะอยู่หน้า 2 ได้ครบทุกแถวของแท็บ ไม่ใช่เฉพาะที่เห็น · ปุ่มนับ 📦 ยังนับทุกแถว
-//   6. clamp หน้า (แถวหด · Infinity · NaN · ติดลบ · เกิน) · ใบว่างกลับหน้า 1
-//   7. ทางถอย: ADJUST_DOC_PAGE_SIZE=0/ค่าผิด → วาดครบทุกแถว · ค่าอื่นถูกใช้จริง (ไม่ฮาร์ดโค้ด 20) · เปลี่ยนหน้า = เลื่อนขึ้นบนสุด แต่ re-render อื่นคงตำแหน่งเลื่อน
+//   5. ★ Export Text ขณะอยู่หน้า 2 = เฉพาะ 20 แถวที่เห็น · ชื่อไฟล์ _p2 · ป้ายปุ่ม/toast บอกหน้า · Excel ยังครบทุกแถว · ปุ่มนับ 📦 ยังนับทุกแถว
+//   6. ★ Export Text ทุกหน้าตรงกับที่เห็นบนตารางหน้านั้นเป๊ะ และรวมกันได้ครบทุกแถว ไม่ซ้ำไม่ตก
+//   7. ★ แถวแก้เป็น 0 / แก้จำนวน: ข้ามเฉพาะในหน้าที่ส่ง · toast นับเฉพาะหน้านั้น · หน้าที่ไม่มีแถวให้ส่ง = ไม่ออกไฟล์
+//   8. clamp หน้า (แถวหด · Infinity · NaN · ติดลบ · เกิน) · ใบว่างกลับหน้า 1
+//   9. ทางถอย: ADJUST_DOC_PAGE_SIZE=0/ค่าผิด → วาดครบทุกแถว · ค่าอื่นถูกใช้จริง (ไม่ฮาร์ดโค้ด 20) · เปลี่ยนหน้า = เลื่อนขึ้นบนสุด แต่ re-render อื่นคงตำแหน่งเลื่อน
+//  10. ทางถอย Export Text: สวิตช์ปิด/ไม่แบ่งหน้า → ทุกแถวของแท็บ ข้อความ+ชื่อไฟล์เดิม · หน้าเดียว (≤20 แถว) = ข้อความ/ชื่อไฟล์เดิมทุกตัวอักษร
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 const T = '2026-09-20 09:00:00';
@@ -19,7 +23,7 @@ const DIRECT = (extra = {}) => ({ status: 'stock_adjustment', auditStatus: 'stoc
 // nO แถว ORDS (O001…: 8−10 = ขาด 2) แล้วต่อด้วย nI แถว IRPS (I001…: 13−10 = เกิน 3) — ลำดับใส่ = ลำดับในใบ
 async function seed(page, { nO = 45, nI = 25, role = 'pharmacist' } = {}) {
   await page.evaluate(({ nO, nI, role, tpl }) => {
-    ADJUST_DOC_PAGE_SIZE = 20; ADJUST_DOC_QTY_EDIT = true;
+    ADJUST_DOC_PAGE_SIZE = 20; ADJUST_DOC_QTY_EDIT = true; ADJUST_DOC_EXPORT_TEXT_BY_PAGE = true;
     currentBranch = 'SRC'; currentRole = role; currentUser = 'Pharm';
     _branchScanPaused = false; _adjDocFilter = 'ords'; _adjDocPage = 1; _adjLoading = false;
     _lotMap.clear(); _lotSelected.clear(); _priceMap.clear();
@@ -27,10 +31,10 @@ async function seed(page, { nO = 45, nI = 25, role = 'pharmacist' } = {}) {
     window.__marked = []; _markSkuDirty = (s) => { window.__marked.push(String(s)); };   // ไม่แตะ Firestore
     window.__toasts = []; toast = (m) => { window.__toasts.push(String(m)); };
     _refreshAdjMaster = async () => {};                                                  // openAdjustDocPopup ต้องไม่ยิง Supabase
-    window.__exports = [];
+    window.__exports = []; window.__downloads = [];
     URL.createObjectURL = (b) => { window.__exports.push(b); return 'blob:captured'; };
     URL.revokeObjectURL = () => {};
-    HTMLAnchorElement.prototype.click = function () {};
+    HTMLAnchorElement.prototype.click = function () { window.__downloads.push(this.download); };   // ชื่อไฟล์ที่เบราว์เซอร์จะบันทึก
     const pad = (n) => String(n).padStart(3, '0');
     const add = (sku, eff) => {
       state.skuMap.set(sku, { sku, productName: 'สินค้า ' + sku, unitPrice: 20, systemQty: 10, negSys: false, barcodes: [], isDel: false });
@@ -73,6 +77,11 @@ const exportSheet = (page, name) => page.evaluate((name) => {
   try { exportAdjustDocExcel(); } finally { XLSX.writeFile = orig; }
   return s;
 }, name);
+const sendLines = (text) => text.trim().split('\r\n').map((l) => l.split('\t').slice(0, 2));   // [[sku, qty], …] ของไฟล์ Text
+const lastFile = (page) => page.evaluate(() => window.__downloads[window.__downloads.length - 1]);
+const lastToast = (page, prefix) => page.evaluate((p) => [...window.__toasts].reverse().find((m) => m.startsWith(p)), prefix);
+const exportBtn = (page) => page.evaluate(() => { const b = document.getElementById('adjExportTextBtn'); return { text: b.textContent, title: b.title }; });
+const FILE_RE = (suffix = '') => new RegExp(`^stockadj_(ords|irps)_\\d{2}-\\d{2}-\\d{4}${suffix}\\.txt$`);
 
 test('45 ORDS → 3 หน้า (20/20/5) · ลำดับต่อเนื่องข้ามหน้า · ปุ่มขอบถูกปิด · ยอดรวมของแท็บคงเดิม', async ({ browser }) => {
   const app = await bootBare(browser);
@@ -183,28 +192,102 @@ test('re-render (เลือก LOT · แก้จำนวน · โหลด
   await closeApp(app);
 });
 
-test('★ Export Text/Excel ขณะอยู่หน้า 2 ได้ครบทุกแถวของแท็บ (ไม่ใช่เฉพาะ 20 ที่เห็น) · IRPS ไม่ปน · ปุ่มนับ 📦 นับทุกแถว', async ({ browser }) => {
+test('★ Export Text ขณะอยู่หน้า 2 = เฉพาะ 20 แถวที่เห็น · ชื่อไฟล์ _p2 · ป้ายปุ่ม/toast บอกหน้า · Excel ยังครบทุกแถว · IRPS ไม่ปน · ปุ่มนับ 📦 นับทุกแถว', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page);
   await render(app.page);
+
+  // หน้า 1 — ป้ายปุ่มบอกหน้าที่กดแล้วจะได้
+  let b = await exportBtn(app.page);
+  expect(b.text).toBe('⬇️ Export Text · หน้า 1/3');
+  expect(b.title).toContain('แถวที่ 1–20 จาก 45');
+
   await gotoPage(app.page, 2);
   expect((await read(app.page)).skus).toEqual(range('O', 21, 40));            // จอเห็นแค่ 20 แถวของหน้า 2
+  b = await exportBtn(app.page);
+  expect(b.text).toBe('⬇️ Export Text · หน้า 2/3');
+  expect(b.title).toContain('แถวที่ 21–40 จาก 45');
+  expect(b.title).toContain('Export Excel ส่งออกทุกรายการ');                   // บอกทางไปเอาทุกแถว
 
   const text = await exportText(app.page);
-  expect(text.trim().split('\r\n').map((l) => l.split('\t').slice(0, 2))).toEqual(range('O', 1, 45).map((s) => [s, '2']));
-  expect(await app.page.evaluate(() => window.__toasts.find((m) => m.startsWith('Export ORDS')))).toContain('Export ORDS 45 รายการ');
+  expect(sendLines(text)).toEqual(range('O', 21, 40).map((s) => [s, '2']));   // ★ ไม่ใช่ 45
+  expect(await lastFile(app.page)).toMatch(FILE_RE('_p2'));
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 2/3 (แถวที่ 21–40 จาก 45)');
 
+  // หน้าสุดท้าย (5 แถว) · หน้าแรก
+  await gotoPage(app.page, 3);
+  expect((await exportBtn(app.page)).title).toContain('แถวที่ 41–45 จาก 45');   // หน้าสุดท้ายไม่เต็ม 20 → ช่วงต้องไม่เลยยอดรวม
+  expect(sendLines(await exportText(app.page))).toEqual(range('O', 41, 45).map((s) => [s, '2']));
+  expect(await lastFile(app.page)).toMatch(FILE_RE('_p3'));
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 3/3 (แถวที่ 41–45 จาก 45)');
+  await gotoPage(app.page, 1);
+  expect(sendLines(await exportText(app.page))).toEqual(range('O', 1, 20).map((s) => [s, '2']));
+  expect(await lastFile(app.page)).toMatch(FILE_RE('_p1'));
+
+  // ★ Export Excel ไม่เปลี่ยน — ครบทุกแถวของแท็บแม้อยู่หน้า 2 (ลำดับ 1–45 ไม่ถูกหน้าตัด)
+  await gotoPage(app.page, 2);
   const sheet = await exportSheet(app.page, 'ORDS');
-  expect(sheet.slice(1).map((r) => [r[0], r[1], r[4]])).toEqual(range('O', 1, 45).map((s, i) => [i + 1, s, 2]));   // ลำดับใน Excel 1–45 ไม่ถูกหน้าตัด
+  expect(sheet.slice(1).map((r) => [r[0], r[1], r[4]])).toEqual(range('O', 1, 45).map((s, i) => [i + 1, s, 2]));
 
-  // แท็บ IRPS หน้า 2 (เห็น 5 แถว) → ไฟล์ได้ครบ 25
+  // แท็บ IRPS หน้า 2 (เห็น 5 แถว) → ไฟล์ Text ได้ 5 แถวนั้น (ไม่ปน ORDS)
   await app.page.evaluate(() => { setAdjDocFilter('irps', document.getElementById('adjBtnIrps')); setAdjDocPage(2); });
   expect((await read(app.page)).skus).toEqual(range('I', 21, 25));
-  const textI = await exportText(app.page);
-  expect(textI.trim().split('\r\n').map((l) => l.split('\t').slice(0, 2))).toEqual(range('I', 1, 25).map((s) => [s, '3']));
+  expect((await exportBtn(app.page)).text).toBe('⬇️ Export Text · หน้า 2/2');
+  expect(sendLines(await exportText(app.page))).toEqual(range('I', 21, 25).map((s) => [s, '3']));
+  expect(await lastFile(app.page)).toMatch(/^stockadj_irps_\d{2}-\d{2}-\d{4}_p2\.txt$/);
+  expect(await lastToast(app.page, 'Export IRPS')).toBe('Export IRPS 5 รายการ (Text) สำเร็จ · หน้า 2/2 (แถวที่ 21–25 จาก 25)');
 
   // ปุ่มนับ / ชุด SKU ที่ขอ LOT-ราคา ไม่ผูกกับหน้า
   expect(await app.page.evaluate(() => [_countAdjustDocItems(), _adjustDocSkuSet().size])).toEqual([70, 70]);
+  await closeApp(app);
+});
+
+test('★ Export Text ทุกหน้าตรงกับที่เห็นบนตารางหน้านั้นเป๊ะ · ทุกหน้าต่อกันครบทุกแถว ไม่ซ้ำไม่ตก (ORDS 45 · IRPS 25)', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await seed(app.page);
+  await render(app.page);
+  for (const [tab, prefix, total] of [['ords', 'O', 45], ['irps', 'I', 25]]) {
+    await app.page.evaluate((tab) => setAdjDocFilter(tab, document.getElementById(tab === 'ords' ? 'adjBtnOrds' : 'adjBtnIrps')), tab);
+    const pages = Math.ceil(total / 20);
+    const sent = [];
+    for (let p = 1; p <= pages; p++) {
+      await gotoPage(app.page, p);
+      const shown = (await read(app.page)).skus;                              // สิ่งที่ผู้ใช้เห็นบนตาราง
+      const file = sendLines(await exportText(app.page)).map((l) => l[0]);   // สิ่งที่ไฟล์ได้
+      expect(file, `${tab} หน้า ${p}`).toEqual(shown);
+      sent.push(...file);
+    }
+    expect(sent, `${tab} ทุกหน้าต่อกัน`).toEqual(range(prefix, 1, total));
+  }
+  await closeApp(app);
+});
+
+test('★ แถวแก้เป็น 0 / แก้จำนวน: ข้ามเฉพาะในหน้าที่ส่ง · toast นับเฉพาะหน้านั้น · หน้าที่ไม่มีแถวให้ส่ง = ไม่ออกไฟล์', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await seed(app.page);
+  await render(app.page);
+  // O025 (หน้า 2) แก้เป็น 0 · O043 (หน้า 3) แก้เป็น 1
+  await app.page.evaluate(() => { setAdjDocQty('O025', '0'); setAdjDocQty('O043', '1'); });
+
+  await gotoPage(app.page, 2);
+  const t2 = await exportText(app.page);
+  expect(sendLines(t2)).toEqual(range('O', 21, 40).filter((s) => s !== 'O025').map((s) => [s, '2']));   // O025 ยังเห็นบนจอ แต่ไม่ลงไฟล์ → 19 บรรทัด
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 19 รายการ (Text) สำเร็จ · หน้า 2/3 (แถวที่ 21–40 จาก 45) · ข้าม 1 (แก้เป็น 0)');   // ไม่นับ O043 ที่อยู่หน้า 3
+
+  await gotoPage(app.page, 3);
+  const t3 = await exportText(app.page);
+  expect(sendLines(t3)).toEqual([['O041', '2'], ['O042', '2'], ['O043', '1'], ['O044', '2'], ['O045', '2']]);   // ค่าที่แก้ลงไฟล์
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 3/3 (แถวที่ 41–45 จาก 45) · แก้จำนวน 1');   // ไม่นับ O025 ที่อยู่หน้า 2
+
+  // ทั้งหน้า 2 แก้เป็น 0 → ไม่มีอะไรให้ส่ง: ไม่ออกไฟล์ · toast บอกหน้า · หน้าอื่นยังออกไฟล์ได้
+  await app.page.evaluate(() => { for (let i = 21; i <= 40; i++) if (i !== 25) setAdjDocQty('O' + String(i).padStart(3, '0'), '0'); });
+  await gotoPage(app.page, 2);
+  const nFiles = await app.page.evaluate(() => window.__downloads.length);
+  expect(await exportText(app.page)).toBeNull();
+  expect(await app.page.evaluate(() => window.__downloads.length)).toBe(nFiles);
+  expect(await lastToast(app.page, 'ไม่มีรายการให้ Export')).toBe('ไม่มีรายการให้ Export ตามแท็บที่เลือก · หน้า 2/3 (แถวที่ 21–40 จาก 45) · ข้าม 20 (แก้เป็น 0)');
+  await gotoPage(app.page, 1);
+  expect(sendLines(await exportText(app.page))).toEqual(range('O', 1, 20).map((s) => [s, '2']));
   await closeApp(app);
 });
 
@@ -244,6 +327,57 @@ test('ทางถอย: ADJUST_DOC_PAGE_SIZE=0/ค่าผิด → ไม�
   }
   await app.page.evaluate(() => { ADJUST_DOC_PAGE_SIZE = 10; _adjDocPage = 1; renderAdjustDocTable(); });
   expect(await read(app.page)).toMatchObject({ skus: range('O', 1, 10), pager: { info: 'หน้า 1 / 5 (1–10)' } });
+  await closeApp(app);
+});
+
+test('★ ทางถอย Export Text: สวิตช์ปิด/ไม่แบ่งหน้า → ทุกแถวของแท็บ ข้อความ+ชื่อไฟล์เดิม · หน้าเดียว (≤20 แถว) = เดิมทุกตัวอักษร · เปิดกลับ = ตามหน้า', async ({ browser }) => {
+  const app = await bootBare(browser);
+  // ค่าที่ส่งมอบ (ก่อน seed ตั้งค่าเอง): Export Text ตามหน้า = เปิด · 20 แถวต่อหน้า
+  expect(await app.page.evaluate(() => [ADJUST_DOC_EXPORT_TEXT_BY_PAGE, ADJUST_DOC_PAGE_SIZE])).toEqual([true, 20]);
+  await seed(app.page);
+  await render(app.page);
+  await gotoPage(app.page, 2);
+  expect(sendLines(await exportText(app.page))).toHaveLength(20);              // ค่าเริ่มต้น = ตามหน้า
+
+  // สวิตช์ปิด → ค้างหน้า 2 อยู่ก็ได้ทุกแถวของแท็บ · ป้ายปุ่ม/ชื่อไฟล์/toast กลับเป็นเดิม
+  await app.page.evaluate(() => { ADJUST_DOC_EXPORT_TEXT_BY_PAGE = false; renderAdjustDocTable(); });
+  expect(await exportBtn(app.page)).toEqual({ text: '⬇️ Export Text', title: 'Export ทุกรายการของแท็บนี้' });
+  expect(sendLines(await exportText(app.page))).toEqual(range('O', 1, 45).map((s) => [s, '2']));
+  expect(await lastFile(app.page)).toMatch(FILE_RE());
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 45 รายการ (Text) สำเร็จ');
+  expect((await read(app.page)).page).toBe(2);                                  // ตารางยังแบ่งหน้าตามเดิม (สวิตช์นี้คุมเฉพาะ Export Text)
+
+  // เปิดกลับ → ตามหน้าอีกครั้ง (ไม่ได้ลบอะไร)
+  await app.page.evaluate(() => { ADJUST_DOC_EXPORT_TEXT_BY_PAGE = true; renderAdjustDocTable(); });
+  expect((await exportBtn(app.page)).text).toBe('⬇️ Export Text · หน้า 2/3');
+  expect(sendLines(await exportText(app.page))).toEqual(range('O', 21, 40).map((s) => [s, '2']));
+
+  // ไม่แบ่งหน้า (ADJUST_DOC_PAGE_SIZE ไม่ใช่เลขบวก) แม้สวิตช์เปิด → ทุกแถว · ไม่มีส่วนต่อท้าย
+  for (const v of [0, NaN, -5]) {
+    await app.page.evaluate((v) => { ADJUST_DOC_PAGE_SIZE = v; _adjDocPage = 2; renderAdjustDocTable(); }, v);
+    expect(await exportBtn(app.page), `ค่า ${v}`).toEqual({ text: '⬇️ Export Text', title: 'Export ทุกรายการของแท็บนี้' });
+    expect(sendLines(await exportText(app.page)), `ค่า ${v}`).toHaveLength(45);
+    expect(await lastFile(app.page), `ค่า ${v}`).toMatch(FILE_RE());
+    expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 45 รายการ (Text) สำเร็จ');
+  }
+
+  // หน้าเดียว (20 แถว พอดีขอบ) → เดิมทุกตัวอักษร: ไม่มี _p · ไม่มี "หน้า" ใน toast · ป้ายปุ่มเดิม
+  await seed(app.page, { nO: 20, nI: 5 });
+  await render(app.page);
+  expect(await exportBtn(app.page)).toEqual({ text: '⬇️ Export Text', title: 'Export ทุกรายการของแท็บนี้' });
+  expect(sendLines(await exportText(app.page))).toEqual(range('O', 1, 20).map((s) => [s, '2']));
+  expect(await lastFile(app.page)).toMatch(FILE_RE());
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 20 รายการ (Text) สำเร็จ');
+
+  // ใบที่เคยมีหลายหน้าแล้วว่างลง → ป้ายปุ่มกลับเป็นเดิม (ไม่ค้าง "หน้า 3/3") · ไม่ออกไฟล์ · toast เดิม
+  await seed(app.page);
+  await render(app.page);
+  await gotoPage(app.page, 3);
+  expect((await exportBtn(app.page)).text).toBe('⬇️ Export Text · หน้า 3/3');
+  await app.page.evaluate(() => { state.scanData.clear(); renderAdjustDocTable(); });
+  expect(await exportBtn(app.page)).toEqual({ text: '⬇️ Export Text', title: 'Export ทุกรายการของแท็บนี้' });
+  expect(await exportText(app.page)).toBeNull();
+  expect(await lastToast(app.page, 'ไม่มีรายการให้ Export')).toBe('ไม่มีรายการให้ Export ตามแท็บที่เลือก');
   await closeApp(app);
 });
 

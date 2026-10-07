@@ -398,7 +398,7 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 
 **การ์ด 🧾 ตรวจกับ ERP (ต.ค. 2026 · สาขายาเท่านั้น):** เภสัชแนบ R16.104 (ORDS) / R16.103 (IRPS) เอง (ไม่ล็อก Admin · หลายไฟล์ได้) → คอลัมน์ **ERP** ✅/⬜/⚠️ ต่อแถว + ชิปตัวกรอง · ผลเก็บ `${branch}_adjerp` · **Export ตามตัวกรองที่เลือก** ผ่านประตูเดียว `_adjustDocViewRows(dir)` (ค่าเริ่มต้น "ทั้งหมด" = ไฟล์เดิมทุกไบต์) · กติกา/ข้อห้าม/ทางถอยอยู่ CLAUDE.md §🧾 ตรวจกับ ERP · เทส `adjust-doc-erp.spec.js` + `e2e/adjust-doc-erp-sync.spec.js`
 
-**ปุ่ม ⬇️ Export Text (`exportAdjustDocText`):** ตามแท็บที่เลือก (และตัวกรอง ERP ถ้าแท็บนั้นมีไฟล์) · format `SKU⇥จำนวน⇥ราคา⇥⇥⇥⇥⇥⇥LOT⇥EXP` (1,1,6,1 TAB) · CRLF · ไฟล์ `stockadj_<ords|irps>_<date>.txt`
+**ปุ่ม ⬇️ Export Text (`exportAdjustDocText`):** ตามแท็บที่เลือก **ทีละหน้าที่เห็นบนตาราง** (20 แถว · 7 ต.ค. 2026 · ผู้ใช้สั่ง — ผ่าน `_adjustDocPageView` ตัวเดียวกับตาราง · สวิตช์ `ADJUST_DOC_EXPORT_TEXT_BY_PAGE`) (และตัวกรอง ERP ถ้าแท็บนั้นมีไฟล์) · format `SKU⇥จำนวน⇥ราคา⇥⇥⇥⇥⇥⇥LOT⇥EXP` (1,1,6,1 TAB) · CRLF · ไฟล์ `stockadj_<ords|irps>_<date>.txt` (หลายหน้า = ต่อท้าย `_p<หน้า>` เช่น `_p2`) · 📊 Export Excel ยังส่งออกทุกแถวของแท็บ · รายละเอียด/ทางถอยอยู่ CLAUDE.md §📤 Export Text ทีละหน้าที่เห็น
 - EXP = ของ LOT ที่เลือก แปลงเป็น `DD/MM/YYYY` ปี **พ.ศ.** (`_toBeDMY`, +543 จากปี ค.ศ. ที่ `parseTranDate` parse ได้) — ว่างถ้ายังไม่เลือก LOT หรือ parse วันที่ไม่ได้
 - ⚠️ **LOT อ่านผ่าน `_adjSelectedEntry(sku)` เท่านั้น** (ทั้ง Text และ Excel) — LOT ที่เลือกไว้แต่ไม่มีในข้อมูลชุดปัจจุบัน = ว่าง
   เดิมอ่าน `_lotSelected` ตรง ๆ ⇒ พอข้อมูลบน Supabase เปลี่ยน ไฟล์จะมี LOT ที่จอแสดง "— เลือก —" (ไม่ถูกลบจาก `_lotSelected` — เลือกใหม่ได้ ไม่ทำลายงานที่บันทึกไว้)

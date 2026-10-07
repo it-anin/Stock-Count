@@ -76,7 +76,7 @@ async function boot(browser) {
 // ใบ ORDS: A01…A10 (ขาด 2 ยกเว้น A07/A08 ขาด 3 แต่แก้เป็น 0) · ใบ IRPS: B01 เกิน 2 · B02 เกิน 3
 async function seedScenario(page, { branch = 'SRC', role = 'pharmacist' } = {}) {
   await page.evaluate(({ branch, role, EPOCH, tpl }) => {
-    ADJUST_DOC_ERP_CHECK = true; ADJUST_DOC_PAGE_SIZE = 20; ADJUST_DOC_QTY_EDIT = true;
+    ADJUST_DOC_ERP_CHECK = true; ADJUST_DOC_PAGE_SIZE = 20; ADJUST_DOC_QTY_EDIT = true; ADJUST_DOC_EXPORT_TEXT_BY_PAGE = true;
     currentBranch = branch; currentRole = role; currentUser = 'Pharm'; _countResetAt = EPOCH;
     _db = null; _adjErp = null; _adjErpFilter = 'all'; _adjErpBusy = false;
     _branchScanPaused = false; _adjDocFilter = 'ords'; _adjDocPage = 1; _adjLoading = false;
@@ -308,7 +308,7 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   await closeApp(app);
 });
 
-test('★ ตัวกรอง + แบ่งหน้า + Export: กรองแล้วหน้า 1 · Export จากหน้า 2 ได้ทุกแถวของตัวกรอง · "ทั้งหมด" = Text เท่าเดิมทุกไบต์ · Excel +3 คอลัมน์ · เตือนส่งซ้ำ', async ({ browser }) => {
+test('★ ตัวกรอง + แบ่งหน้า + Export: กรองแล้วหน้า 1 · Export Text ตามหน้าที่เห็นของตัวกรอง (Excel ทุกแถวของตัวกรอง) · "ทั้งหมด" = Text เท่าเดิมทุกไบต์ (ต่อหน้า) · Excel +3 คอลัมน์ · เตือนส่งซ้ำ', async ({ browser }) => {
   const app = await boot(browser);
   await seedScenario(app.page);
   // ใบ ORDS 45 แถว (O001…O045 ขาด 2) · ERP: O001–O015 เข้าครบ · O016–O020 เข้า 1 · ที่เหลือ 25 ยังไม่เข้า
@@ -322,8 +322,14 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
     }
     _priceMap.set('O001', { unit: 'เม็ด', price: 5 });
   }, { tpl: DIRECT() });
-  const textBase = await exportText(app.page);                                // ก่อนแนบ ERP = ไฟล์ "เดิม"
-  const sheetBase = await exportSheet(app.page, 'ORDS');
+  // ก่อนแนบ ERP = ไฟล์ "เดิม": สวิตช์ปิด = ทั้งแท็บ 45 บรรทัด (ทางถอย) · สวิตช์เปิด (ค่าเริ่มต้น) = หน้า 1 = 20 บรรทัดแรกของไฟล์เดิมทุกไบต์
+  await app.page.evaluate(() => { ADJUST_DOC_EXPORT_TEXT_BY_PAGE = false; });
+  const textAll = await exportText(app.page);
+  await app.page.evaluate(() => { ADJUST_DOC_EXPORT_TEXT_BY_PAGE = true; });
+  const textBase = await exportText(app.page);
+  expect(textAll.trim().split('\r\n')).toHaveLength(45);
+  expect(textBase).toBe(textAll.trim().split('\r\n').slice(0, 20).join('\r\n') + '\r\n');
+  const sheetBase = await exportSheet(app.page, 'ORDS');                      // Excel = ทุกแถว ไม่ผูกกับหน้า
   const erpLines = [];
   for (let i = 1; i <= 20; i++) erpLines.push(line({ date: '22/9/2026 10:00', no: 'ORDSBY' + String(i).padStart(3, '0'), sku: 'O' + String(i).padStart(3, '0'), qty: i <= 15 ? 2 : 1 }));
   await upload(app.page, [{ name: 'r16104.csv', rows: sheet(erpLines) }]);
@@ -333,7 +339,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   let n0 = await toastCount(app.page);
   expect(await exportText(app.page)).toBe(textBase);
   const t1 = await lastToasts(app.page, n0);
-  expect(t1.some((t) => t.startsWith('success|Export ORDS 45 รายการ (Text) สำเร็จ') && !t.includes('เฉพาะ'))).toBe(true);
+  expect(t1.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 1/3 (แถวที่ 1–20 จาก 45)')).toBe(true);   // ไม่มีคำว่า "เฉพาะ" (ไม่ได้กรอง ERP)
   expect(t1.some((t) => t === 'warn|⚠️ 20 รายการในไฟล์นี้มีใบใน ERP แล้ว (เข้าแล้ว 15 · บางส่วน 5) — ตรวจก่อนนำเข้า ระวังส่งซ้ำ')).toBe(true);
   const sAll = await exportSheet(app.page, 'ORDS');
   expect(sAll[0]).toEqual([...sheetBase[0], 'ERP เข้าแล้ว', 'สถานะ ERP', 'เลขที่เอกสาร ERP']);
@@ -341,6 +347,16 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(sAll[1].slice(9)).toEqual([2, 'เข้าแล้ว', 'ORDSBY001']);
   expect(sAll[16].slice(9)).toEqual([1, 'บางส่วน 1/2', 'ORDSBY016']);
   expect(sAll[21].slice(9)).toEqual([0, 'ยังไม่เข้า', '']);
+
+  // ★ เตือนส่งซ้ำนับเฉพาะแถวในไฟล์ที่ส่งออก: หน้า 2 ของ "ทั้งหมด" (O021–O040) ไม่มีใบใน ERP เลย → ไม่เตือน (ทั้งที่ O001–O020 อยู่หน้า 1 มี)
+  await app.page.evaluate(() => setAdjDocPage(2));
+  n0 = await toastCount(app.page);
+  const tAll2 = await exportText(app.page);
+  expect(tAll2.trim().split('\r\n')).toHaveLength(20);
+  expect(tAll2.trim().split('\r\n')[0]).toBe(textAll.trim().split('\r\n')[20]);
+  const tAll2Toasts = await lastToasts(app.page, n0);
+  expect(tAll2Toasts.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 2/3 (แถวที่ 21–40 จาก 45)')).toBe(true);
+  expect(tAll2Toasts.some((t) => t.includes('ระวังส่งซ้ำ'))).toBe(false);
 
   // ไปหน้า 2 ของ "ทั้งหมด" แล้วเลือก "ยังไม่เข้า" → กลับหน้า 1 · 25 แถว 2 หน้า · ลำดับต่อเนื่อง · ยอด "25 รายการ (จากทั้งหมด 45)"
   await app.page.evaluate(() => setAdjDocPage(2));
@@ -353,15 +369,21 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   r = await read(app.page);
   expect(r).toMatchObject({ page: 2, skus: ['O041', 'O042', 'O043', 'O044', 'O045'], nums: [21, 22, 23, 24, 25] });
 
-  // ★ Export จากหน้า 2 ของตัวกรอง = ทุกแถวของตัวกรอง (25) ไม่ใช่ 5 ที่เห็น และไม่ใช่ 45 ของแท็บ · ไม่มีคำเตือนส่งซ้ำ
+  // ★ Export Text จากหน้า 2 ของตัวกรอง = 5 แถวที่เห็น (O041–O045) ไม่ใช่ 25 ของตัวกรอง และไม่ใช่ 45 ของแท็บ · ไม่มีคำเตือนส่งซ้ำ
   n0 = await toastCount(app.page);
-  const tNone = await exportText(app.page);
+  const tNone2 = await exportText(app.page);
   const want = Array.from({ length: 25 }, (_, i) => 'O' + String(21 + i).padStart(3, '0'));
-  expect(tNone.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(want);
-  expect(tNone.trim().split('\r\n')[0]).toBe(textBase.trim().split('\r\n')[20]);   // บรรทัดเดียวกันทุกไบต์ — เปลี่ยนแค่ "แถวไหนถูกส่ง"
+  expect(tNone2.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(want.slice(20));
+  expect(tNone2.trim().split('\r\n')[0]).toBe(textAll.trim().split('\r\n')[40]);   // บรรทัดเดียวกันทุกไบต์ — เปลี่ยนแค่ "แถวไหนถูกส่ง"
   const t2 = await lastToasts(app.page, n0);
-  expect(t2.some((t) => t.startsWith('success|Export ORDS 25 รายการ (Text) สำเร็จ · เฉพาะ ⬜ ยังไม่เข้า ERP'))).toBe(true);
+  expect(t2.some((t) => t === 'success|Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 2/2 (แถวที่ 21–25 จาก 25) · เฉพาะ ⬜ ยังไม่เข้า ERP')).toBe(true);
   expect(t2.some((t) => t.includes('ระวังส่งซ้ำ'))).toBe(false);
+  // หน้า 1 ของตัวกรอง = 20 แถวแรกของตัวกรอง (O021–O040) · ตัวกรองจัดหน้าเองหลังกรอง ไม่ใช่หน้าของแท็บ
+  await app.page.evaluate(() => setAdjDocPage(1));
+  const tNone1 = await exportText(app.page);
+  expect(tNone1.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(want.slice(0, 20));
+  expect(tNone1.trim().split('\r\n')[0]).toBe(textAll.trim().split('\r\n')[20]);
+  // Excel = ทุกแถวของตัวกรอง (25) ไม่ผูกกับหน้า
   const sNone = await exportSheet(app.page, 'ORDS');
   expect(sNone.slice(1).map((x) => [x[0], x[1], x[10]])).toEqual(want.map((s, i) => [i + 1, s, 'ยังไม่เข้า']));
 

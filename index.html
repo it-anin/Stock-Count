@@ -103,6 +103,11 @@
     .pg-btn:hover:not(:disabled) { border-color:rgba(0,114,198,0.55); color:var(--accent); }
     .pg-btn:disabled { opacity:0.4; cursor:default; }
     .pg-info { font-size:0.78rem; font-weight:600; color:var(--text2); white-space:nowrap; padding:0 4px; }
+    /* ฟุตเตอร์ป็อปอัพ 📦 (7 ต.ค. 2026): ป้ายปุ่ม Export Text ยาวขึ้น ("· หน้า 11/11") — หน้าต่างแคบ (< ~1100px เช่นแบ่งครึ่งจอคู่กับ ProMaxx) ให้กลุ่มปุ่มลงแถวใหม่
+       แทนที่จะบีบจนข้อความในปุ่มขึ้นสองบรรทัด · จอปกติยังแถวเดียวเหมือนเดิม · เฉพาะ 📦 (ไม่แตะป็อปอัพอื่นที่ใช้ .stock-popup-footer) */
+    #adjustDocPopupCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
+    #adjustDocPopupCard .stock-popup-footer > div:last-child { margin-left:auto; }
+    #adjustDocPopupCard .stock-popup-footer button { white-space:nowrap; }
     /* ชิปตัวกรอง "ตรวจกับ ERP" ในป็อปอัพ 📦 (ต.ค. 2026) — ไม่ใช้ .popup-filter ด้วยเหตุผลเดียวกับ .pg-bar (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
     .adj-erp-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
     .adj-erp-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
@@ -1059,7 +1064,7 @@
       <div style="display:flex;gap:8px;align-items:center;">
         <button onclick="saveAdjustDocToCloud()" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">💾 บันทึก LOT</button>
         <button onclick="exportAdjustDocExcel()" title="Export ทุกรายการของแท็บนี้ (ไม่ใช่เฉพาะหน้าที่เห็น)" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">📊 Export Excel</button>
-        <button onclick="exportAdjustDocText()" title="Export ทุกรายการของแท็บนี้ (ไม่ใช่เฉพาะหน้าที่เห็น)" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
+        <button id="adjExportTextBtn" onclick="exportAdjustDocText()" title="Export ทุกรายการของแท็บนี้" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
         <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
     </div>
@@ -8624,11 +8629,16 @@ function handleHistoryStatsOverlayClick(e){if(e.target===document.getElementById
 // ราคา/LOT/EXP/รวมเงิน มาจาก R05.105/R14.102 (Supabase หรือแนบเอง) — ช่องที่ยังไม่มีข้อมูลแสดง '—'
 let _adjDocFilter='ords';
 // แบ่งหน้าตาราง (ต.ค. 2026 · ผู้ใช้สั่ง — ลดงานวาด DOM: เดิมวาดทุกแถวของแท็บ แต่ละแถวมี <select> LOT + ช่องจำนวน)
-// ⚠️ แบ่งเฉพาะ "การแสดงผลตาราง" ใน renderAdjustDocTable — _buildAdjustDocRows · Export Text/Excel · ปุ่มนับ · _adjustDocAudit ยังครอบทุกแถว
-//    ⛔ ห้ามให้ฟังก์ชันพวกนั้นอ่านจากหน้าที่ตัดแล้ว (Export จะออกไม่ครบ) · ลำดับแถวต่อเนื่องข้ามหน้า
+// ⚠️ แบ่งหน้าเฉพาะ "การแสดงผลตาราง" ใน renderAdjustDocTable — _buildAdjustDocRows · Export Excel · ปุ่มนับ · _adjustDocAudit ยังครอบทุกแถว
+//    ⛔ ห้ามให้ฟังก์ชันพวกนั้นอ่านจากหน้าที่ตัดแล้ว (Export Excel จะออกไม่ครบ) · ลำดับแถวต่อเนื่องข้ามหน้า
+//    ข้อยกเว้นเดียว (7 ต.ค. 2026 · ผู้ใช้สั่ง): Export Text ตามหน้าที่เห็น — ผ่าน _adjustDocPageView ตัวเดียวกับตาราง (ADJUST_DOC_EXPORT_TEXT_BY_PAGE ข้างล่าง)
 // ADJUST_DOC_PAGE_SIZE = แถวต่อหน้า · 0 = ไม่แบ่งหน้า (ทางถอย — เทสสลับได้) · _adjDocPage รีเซ็ตเป็น 1 เมื่อเปิดป็อปอัพ/สลับแท็บ ORDS↔IRPS
 let ADJUST_DOC_PAGE_SIZE=20;
 let _adjDocPage=1;
+// Export Text ทีละหน้า (7 ต.ค. 2026 · ผู้ใช้สั่ง "Export จำนวนสินค้าทีละหน้าตามที่แสดงบนตาราง") — ปุ่ม ⬇️ Export Text ส่งออกเฉพาะแถวของ "หน้าที่เห็น" (หลังตัวกรอง ERP)
+//   ป้ายปุ่ม · ชื่อไฟล์ (_p<หน้า>) · toast บอกหน้า/ช่วงแถวเสมอ (ไม่ให้ไฟล์ไม่ครบแบบเงียบ) · มีหน้าเดียว = ข้อความ/ชื่อไฟล์เดิมทุกตัวอักษร
+//   Export Excel ไม่เปลี่ยน = ทุกแถวของแท็บ · false = Export Text ทุกแถวของแท็บเหมือนเดิม (ทางถอย — เทสสลับได้)
+let ADJUST_DOC_EXPORT_TEXT_BY_PAGE=true;
 let _adjRenderDeferred=false; // เลื่อนการวาดตารางใหม่ไว้ เพราะกำลังพิมพ์ในช่องจำนวน (ดู renderAdjustDocTable)
 // LOT/ราคา — in-memory · เก็บเฉพาะ SKU ในใบ (stock_adjustment + audit ของสาขายา · ไม่เก็บทั้ง 200k แถว)
 // ที่มา (ก.ย. 2026): Supabase ที่บอท auto-adj อัปทุกเช้า → ไฟล์ที่แนบเองชนะ → ถ้า Supabase ล้มใช้ {branch}_adjlot แบบเดิม
@@ -9055,6 +9065,21 @@ function _adjustDocViewRows(dir){
   const rows=filter==='all'?all:all.filter(r=>_adjErpInFilter(ev.get(r.sku),filter));
   return {all,rows,ev,covered,filter};
 }
+// ⛔ ประตูเดียวของ "แถวในหน้าที่เห็นบนตาราง" — renderAdjustDocTable กับ Export Text ใช้ตัวนี้ร่วมกัน (เห็นอะไรส่งออกอย่างนั้น · ห้ามคำนวณหน้าแยกที่อื่น)
+//   rows = vr.rows (หลังตัวกรอง ERP) · หน้าถูก clamp ที่ _paginate เหมือนตาราง · ไม่แบ่งหน้า (ADJUST_DOC_PAGE_SIZE ไม่ใช่เลขบวก) = ทุกแถวในหน้าเดียว
+function _adjustDocPageView(rows){
+  const pgn=_paginate(rows.length,ADJUST_DOC_PAGE_SIZE,_adjDocPage);
+  return {pgn,view:rows.slice(pgn.start,pgn.start+pgn.size)};
+}
+// ป้าย/คำอธิบายปุ่ม ⬇️ Export Text — บอกว่ากดแล้วได้หน้าไหน (วาดพร้อมตารางใน renderAdjustDocTable) · หน้าเดียว/สวิตช์ปิด = ข้อความเดิม
+function _updateAdjExportTextBtn(pgn,total){
+  const b=document.getElementById('adjExportTextBtn');if(!b)return;
+  const paged=ADJUST_DOC_EXPORT_TEXT_BY_PAGE&&pgn.pages>1;
+  b.textContent=paged?`⬇️ Export Text · หน้า ${pgn.page}/${pgn.pages}`:'⬇️ Export Text';
+  b.title=paged
+    ?`Export เฉพาะรายการในหน้าที่เห็น (หน้า ${pgn.page}/${pgn.pages} · แถวที่ ${pgn.start+1}–${Math.min(pgn.start+pgn.size,total)} จาก ${total}) — เปลี่ยนหน้าแล้วกดอีกครั้งเพื่อ Export หน้าถัดไป · 📊 Export Excel ส่งออกทุกรายการ`
+    :'Export ทุกรายการของแท็บนี้';
+}
 function _adjErpStateText(e){
   if(!e)return '';
   const ui=ADJ_ERP_STATE_UI[e.state]||ADJ_ERP_STATE_UI.none;
@@ -9352,12 +9377,12 @@ function renderAdjustDocTable(force){
   const rows=vr.rows;
   const nEdit=rows.filter(r=>r.edited).length;
   if(rc)rc.textContent=`${rows.length} รายการ`+(vr.filter!=='all'?` (จากทั้งหมด ${vr.all.length})`:'')+(nEdit?` · แก้จำนวน ${nEdit}`:'');   // ยอดรวมของแท็บ/ตัวกรอง (ไม่ใช่เฉพาะหน้านี้)
-  // แบ่งหน้า (ดู _paginate) — ตัดเฉพาะแถวที่ "วาด" · rows ทั้งชุดยังใช้นับยอด (บรรทัดบน) · Export อ่าน _buildAdjustDocRows เองครบทุกแถว
-  const pgn=_paginate(rows.length,ADJUST_DOC_PAGE_SIZE,_adjDocPage);
+  // แบ่งหน้า (ดู _paginate/_adjustDocPageView) — ตัดเฉพาะแถวที่ "วาด" · rows ทั้งชุดยังใช้นับยอด (บรรทัดบน) · Export Excel อ่านทุกแถวเอง · Export Text อ่านหน้าเดียวกับตารางผ่าน _adjustDocPageView
+  const {pgn,view}=_adjustDocPageView(rows);
   _adjDocPage=pgn.page;
   const start=pgn.start;
-  const view=rows.slice(start,start+pgn.size);
   _renderPagerUi('adjustDocPager',pgn,view.length);
+  _updateAdjExportTextBtn(pgn,rows.length);   // ก่อน early-return ของใบว่าง — ป้ายปุ่มต้องถูกรีเซ็ตด้วย
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="${erpOn?10:9}" style="text-align:center;padding:40px;color:var(--text3)">${vr.filter!=='all'?'ไม่มีรายการในตัวกรองนี้':'ไม่มีรายการ'}</td></tr>`;return;}
   const qtyColor=_adjDocFilter==='irps'?'var(--green)':'var(--red)';
   const canEdit=_canEditAdjDocQty();
@@ -9464,16 +9489,21 @@ async function openAdjustDocPopup(){
 }
 function closeAdjustDocPopup(){_closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());}
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
-// Export ไฟล์ Text ตาม tab ที่เลือก (ORDS/IRPS) — format: SKU \t จำนวน \t ราคา \t\t\t\t\t\t(6 TAB) LOT \t EXP
+// Export ไฟล์ Text ตาม tab ที่เลือก (ORDS/IRPS) "ทีละหน้าที่เห็นบนตาราง" (ADJUST_DOC_EXPORT_TEXT_BY_PAGE) — format: SKU \t จำนวน \t ราคา \t\t\t\t\t\t(6 TAB) LOT \t EXP
 // ราคา = ยอดจาก R05.105 (raw ไม่ใส่ comma เพื่อให้ ERP import ได้), LOT = ค่าที่เลือกจาก dropdown (ว่างถ้ายังไม่เลือก)
 // EXP = ของ LOT ที่เลือก แปลงเป็น DD/MM/YYYY ปี พ.ศ. (_toBeDMY) — ว่างถ้ายังไม่เลือก LOT หรือแปลงวันที่ไม่ได้
 function exportAdjustDocText(){
   if(_adjExportBusy())return;
-  // ตามตัวกรอง ERP ที่เลือก (ผู้ใช้เลือก ต.ค. 2026) — "ทั้งหมด"/ไม่มีไฟล์ ERP = ทุกแถวของแท็บเหมือนเดิม · ทุกหน้า ไม่ใช่เฉพาะหน้าที่เห็น
+  // ตามตัวกรอง ERP ที่เลือก (ผู้ใช้เลือก ต.ค. 2026) — "ทั้งหมด"/ไม่มีไฟล์ ERP = ทุกแถวของแท็บเหมือนเดิม
   const vr=_adjustDocViewRows(_adjDocFilter);
-  const all=vr.rows;
+  // ทีละหน้า (7 ต.ค. 2026 · ผู้ใช้สั่ง): ส่งออกเฉพาะแถวของ "หน้าที่เห็นบนตาราง" — ชุดเดียวกับตารางผ่าน _adjustDocPageView
+  //   สวิตช์ปิด = ทุกแถวของแท็บ · มีหน้าเดียว (paged=false) = ได้ทุกแถวอยู่แล้ว ข้อความ/ชื่อไฟล์เดิมทุกตัวอักษร
+  const {pgn,view}=_adjustDocPageView(vr.rows);
+  const paged=ADJUST_DOC_EXPORT_TEXT_BY_PAGE&&pgn.pages>1;
+  const all=paged?view:vr.rows;
+  const pageNote=paged?` · หน้า ${pgn.page}/${pgn.pages} (แถวที่ ${pgn.start+1}–${pgn.start+view.length} จาก ${vr.rows.length})`:'';
   const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ยังเห็นบนจอ — ดู _adjEditNote)
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+pageNote+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
   const lines=rows.map(r=>{
     const pr=_priceMap.get(r.sku);
     const price=pr&&pr.price!=null?pr.price:'';
@@ -9486,9 +9516,9 @@ function exportAdjustDocText(){
   const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}.txt`;
+  a.href=url;a.download=`stockadj_${_adjDocFilter}_${_fileDateDMY()}${paged?'_p'+pgn.page:''}.txt`;   // _p<หน้า> กันไฟล์หลายหน้าชื่อซ้ำ (เบราว์เซอร์จะต่อ (1) (2) จนแยกไม่ออก)
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
+  toast(`Export ${_adjDocFilter.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${pageNote}${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
   _warnAdjErpDuplicate(rows,vr);
 }
