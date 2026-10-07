@@ -1085,7 +1085,12 @@
       <h2>ประวัติใบปรับปรุง</h2>
       <button class="stock-popup-close" onclick="closeAdjHistPopup()">✕</button>
     </div>
-    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.5;">ประวัติใบปรับปรุงสินค้า</div>
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <span>ประวัติใบปรับปรุงสินค้า</span>
+      <!-- นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026) — R16.104 (ORDS) / R16.103 (IRPS) เป็น .CSV · สาขายาเท่านั้น · ซ่อนจนกว่า _refreshAdjHistImportBtn จะเปิด -->
+      <input type="file" id="adjHistImportInput" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="handleAdjHistImportFiles(event)">
+      <button id="adjHistImportBtn" onclick="openAdjHistImportPicker()" style="display:none;padding:5px 12px;border-radius:7px;border:1px solid rgba(106,60,181,0.4);background:rgba(155,93,229,0.08);color:#6a3cb5;cursor:pointer;font-family:inherit;font-size:0.74rem;font-weight:700;white-space:nowrap;" title="นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R16.104 / R16.103 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦">📥 นำเข้าจาก ERP</button>
+    </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead><tr><th>เลขที่เอกสาร</th><th style="text-align:center;">ประเภทเอกสาร</th><th>วันที่ · เวลา</th><th>ผู้ส่งออก</th><th style="text-align:center;">รายการ</th><th style="text-align:center;">Status</th><th></th></tr></thead>
@@ -1111,6 +1116,21 @@
     <div style="display:flex;gap:10px;">
       <button onclick="closeAdjDocNoModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">ยกเลิก</button>
       <button id="adjDocNoOk" onclick="confirmAdjDocNo()" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#9b5de5,#6a3cb5);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;">⬇️ ดาวน์โหลด</button>
+    </div>
+  </div>
+</div>
+
+<!-- นำเข้าประวัติจาก ERP — ตัวอย่างก่อนนำเข้า (7 ต.ค. 2026) — เป็นประวัติอย่างเดียว ไม่ซ่อนแถวบนใบ 📦 -->
+<div id="adjHistImportModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;" onclick="if(event.target.id==='adjHistImportModal')closeAdjHistImportModal()">
+  <div id="adjHistImportCard" style="background:var(--surface);border-radius:16px;padding:24px 28px;min-width:340px;max-width:600px;width:94vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.35);border-top:6px solid #6a3cb5;">
+    <div style="font-size:2rem;text-align:center;margin-bottom:6px;">📥</div>
+    <div style="font-size:1.05rem;font-weight:700;color:#6a3cb5;margin-bottom:8px;text-align:center;">นำเข้าประวัติจาก ERP</div>
+    <div id="adjHistImportSummary" style="font-size:0.82rem;color:var(--text2);margin-bottom:10px;line-height:1.6;"></div>
+    <div id="adjHistImportList" style="overflow:auto;min-height:0;max-height:34vh;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;"></div>
+    <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;line-height:1.5;">นำเข้าเป็นประวัติอย่างเดียว — ไม่ซ่อนรายการบนใบ 📦 · Status = เข้าระบบแล้ว · เลขที่ใบที่มีในประวัติอยู่แล้วจะถูกข้าม · ลบออกได้ภายหลัง (🗑)</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeAdjHistImportModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">ยกเลิก</button>
+      <button id="adjHistImportOk" onclick="confirmAdjHistImport()" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#9b5de5,#6a3cb5);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;">📥 นำเข้า</button>
     </div>
   </div>
 </div>
@@ -4129,7 +4149,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjDocNoModal','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjDocNoModal','adjHistImportModal','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -8689,6 +8709,12 @@ let ADJUST_DOC_EXPORT_TEXT_BY_PAGE=true;
 //   Status ("เข้าระบบแล้ว"/"ยังไม่เข้า" จากรายงาน .CSV) ยังไม่เชื่อม — _adjHistStatus คืน "ยังไม่เข้า" เสมอ (จุดเสียบรอบหน้า)
 //   false = ไม่มีปุ่ม/ช่องเลขที่เอกสาร/การซ่อนแถว · Export Text เดิมทุกไบต์ (ทางถอย — เทสสลับได้) · ⚠️ ปิดแล้วแถวที่ส่งออกไปแล้วโผล่กลับตาราง (doc บน cloud ไม่ถูกลบ) ระวังส่งซ้ำ
 let ADJUST_DOC_HISTORY=true;
+// 📥 นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026 · ผู้ใช้สั่ง — เคส SSS ออกใบ ORDS/IRPS ไปก่อนมีฟีเจอร์ประวัติ จึงไม่เคยถูกบันทึก)
+//   ปุ่ม 📥 ในป็อปอัพ 🗂️ → เลือก R16.104 (ORDS) / R16.103 (IRPS) เป็น .CSV (ตัวอ่านเดียวกับการ์ด 🧾 — _parseAdjErpRows) → ตัวอย่าง → นำเข้าเป็นเอกสารในประวัติ (src:'erp' · Status "เข้าระบบแล้ว")
+//   ⛔ เป็น "ประวัติอย่างเดียว": ไม่ซ่อนแถวบนใบ 📦 (_adjHistIndex ข้าม src:'erp') และไม่นับเป็นแถวทับตอน Export (_adjHistConflict) — ใบใน ERP อาจเลขซ้ำขนาดกับรายการใหม่ที่ยังไม่ได้ส่ง
+//   สาขายาเท่านั้น (ตัวอ่าน R16 รองรับ SRC/KKL/SSS — WH อยู่ SYSBRANCHID 0 ปะปนกับ SRC) · เลขที่ใบที่มีในประวัติแล้วถูกข้าม (นำเข้าไฟล์เดิมซ้ำได้ ไม่เกิดซ้ำ) · ก่อนวันเริ่มรอบนับ/ใบยกเลิก/คลังอื่น ถูกตัดโดยตัวอ่านและแจ้งในตัวอย่าง
+//   false = ไม่มีปุ่ม 📥 · เอกสารที่นำเข้าไปแล้วยังแสดงในประวัติตามปกติ (doc บน cloud ไม่ถูกลบ) (ทางถอย — เทสสลับได้)
+let ADJUST_DOC_HISTORY_IMPORT=true;
 const ADJ_HIST_MAX_KB=800;
 let _adjHist=null;           // doc ดิบของ {branch}_adjhist: {branch,countResetAt,entries:[{no,dir,at,by,rows:[[sku,qty,base,price,lot,exp]]}],updatedBy,updatedAt} · กรองรอบด้วย _adjHistCurrent ตอนใช้
 let _adjHistReadToken=0;     // ผลอ่าน cloud ที่ถูกแซง (บันทึกใหม่/เปิดซ้ำ/logout) ถูกทิ้ง
@@ -8696,6 +8722,8 @@ let _adjHistBusy=false;      // กำลังบันทึก (Export/คื
 let _adjHistIdxFor=null,_adjHistIdx=null; // ดัชนีคีย์ที่ส่งออกแล้ว (สร้างใหม่เมื่อ _adjHist เปลี่ยนตัว)
 let _adjHistExpanded=new Set(); // เลขที่เอกสารที่ขยายดูรายการในป็อปอัพประวัติ
 let _adjHistUndoArm='';      // เลขที่เอกสารที่กด ↩ แล้วรอยืนยันขั้นที่ 2
+let _adjHistImportBusy=false; // กำลังอ่านไฟล์นำเข้า — กันเลือกไฟล์ซ้อน
+let _adjHistImportCur=null;   // แผนนำเข้าที่แสดงอยู่ในตัวอย่าง {plan,branch,epoch}
 let _adjDocNoSig='';         // ลายนิ้วมือของแถวที่แสดงใน modal เลขที่เอกสาร — เทียบตอนกดดาวน์โหลด
 let _adjRenderDeferred=false; // เลื่อนการวาดตารางใหม่ไว้ เพราะกำลังพิมพ์ในช่องจำนวน (ดู renderAdjustDocTable)
 // LOT/ราคา — in-memory · เก็บเฉพาะ SKU ในใบ (stock_adjustment + audit ของสาขายา · ไม่เก็บทั้ง 200k แถว)
@@ -9565,7 +9593,7 @@ async function openAdjustDocPopup(){
 function closeAdjustDocPopup(){
   // ประวัติ/ช่องเลขที่เอกสารซ้อนอยู่เหนือ 📦 — ปิด 📦 ต้องปิดไปด้วย (ไม่ให้ค้างลอย) · กำลังบันทึกอยู่ = คง modal ไว้จนเสร็จ
   const h=document.getElementById('adjHistPopupOverlay');if(h)h.style.display='none';
-  if(!_adjHistBusy){const m=document.getElementById('adjDocNoModal');if(m)m.style.display='none';}
+  if(!_adjHistBusy){for(const id of ['adjDocNoModal','adjHistImportModal']){const m=document.getElementById(id);if(m)m.style.display='none';}_adjHistImportCur=null;}
   _closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());
 }
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
@@ -9629,7 +9657,9 @@ function _adjHistFromDoc(d){
     const arr=JSON.parse(d.entries_json||'[]');const entries=[];
     for(const x of Array.isArray(arr)?arr:[]){
       if(!x||typeof x.no!=='string'||!x.no||!['ords','irps'].includes(x.dir)||!Array.isArray(x.rows))continue;
-      entries.push({no:x.no,dir:x.dir,at:x.at||'',by:x.by||'',rows:x.rows.filter(r=>Array.isArray(r)&&typeof r[0]==='string')});
+      const en={no:x.no,dir:x.dir,at:x.at||'',by:x.by||'',rows:x.rows.filter(r=>Array.isArray(r)&&typeof r[0]==='string')};
+      if(x.src==='erp'){en.src='erp';en.file=String(x.file||'');en.impBy=String(x.impBy||'');en.impAt=String(x.impAt||'');}   // นำเข้าจาก ERP — ต้องคงธงนี้ไว้ ไม่งั้นถูกมองเป็นเอกสารที่ Export แล้วซ่อนแถวบนใบ
+      entries.push(en);
     }
     let updatedAt='';try{if(d.updatedAt&&typeof d.updatedAt.toDate==='function')updatedAt=d.updatedAt.toDate().toISOString();}catch(e){}
     return {countResetAt:d.countResetAt||'',entries,updatedBy:d.updatedBy||'',updatedAt};
@@ -9647,7 +9677,10 @@ function _adjHistIndex(){
   if(!h)return null;
   if(_adjHistIdxFor===h)return _adjHistIdx;   // _adjHist ถูกแทนที่ทั้งก้อนเสมอ (ไม่ mutate) → เทียบตัวก็พอ
   const keys=new Map(),skus=new Set();
-  for(const e of h.entries)for(const r of e.rows){keys.set(_adjHistKey(e.dir,r[0],r[2]),e.no);skus.add(r[0]);}
+  for(const e of h.entries){
+    if(e.src==='erp')continue;   // นำเข้าจาก ERP = ประวัติอย่างเดียว ไม่ซ่อนแถวบนใบ (รายการใหม่ขนาดเดียวกันที่ยังไม่ได้ส่งต้องไม่หาย)
+    for(const r of e.rows){keys.set(_adjHistKey(e.dir,r[0],r[2]),e.no);skus.add(r[0]);}
+  }
   _adjHistIdxFor=h;_adjHistIdx={keys,skus};
   return _adjHistIdx;
 }
@@ -9681,7 +9714,7 @@ function _adjHistConflict(entries,entry){
   const dup=entries.find(e=>e.no===entry.no);
   if(dup)return {type:'dup',entry:dup};
   const keys=new Map();
-  for(const e of entries)for(const r of e.rows)keys.set(_adjHistKey(e.dir,r[0],r[2]),e);
+  for(const e of entries){if(e.src==='erp')continue;for(const r of e.rows)keys.set(_adjHistKey(e.dir,r[0],r[2]),e);}   // แถวทับ = เฉพาะที่ Export จากแอป (ใบ ERP ที่นำเข้าเป็นประวัติอย่างเดียว) · เลขที่ซ้ำเช็คข้างบนกับทุกเอกสาร
   const hits=[];
   for(const r of entry.rows){const e=keys.get(_adjHistKey(entry.dir,r[0],r[2]));if(e)hits.push({sku:r[0],no:e.no,by:e.by});}
   return hits.length?{type:'overlap',hits}:null;
@@ -9847,10 +9880,12 @@ const ADJ_HIST_STATUS_UI={
   none:{text:'ยังไม่เข้า',color:'var(--text3)',bg:'rgba(120,130,150,0.14)'},
   done:{text:'เข้าระบบแล้ว',color:'var(--green)',bg:'rgba(26,158,92,0.14)'},
 };
-function _adjHistStatus(entry){return 'none';}
+// เอกสารที่นำเข้าจาก ERP (src:'erp') = "เข้าระบบแล้ว" โดยนิยาม (มาจากรายงานของ ProMaxx เอง) · เอกสารที่ Export จากแอปยังคืน 'none' ไปก่อน (จับคู่กับ ERP รอบหน้า)
+function _adjHistStatus(entry){return entry&&entry.src==='erp'?'done':'none';}
 function openAdjHistPopup(){
   if(!_adjHistEnabled())return;
   _adjHistUndoArm='';
+  _refreshAdjHistImportBtn();
   renderAdjHistTable();
   _openModal('adjHistPopupOverlay','adjHistPopupCard');
   _loadAdjHistFromCloud();   // อ่านใหม่ (ไม่รอ) — มาแล้ววาดใหม่เอง
@@ -9865,21 +9900,23 @@ function armAdjHistUndo(no){_adjHistUndoArm=_adjHistUndoArm===no?'':no;renderAdj
 async function undoAdjHistEntry(no){
   if(_adjHistBusy||!_adjHistEnabled())return;
   const branch=currentBranch,epoch=_countResetAt||'';
+  const imported=!!_adjHistEntries().find(e=>e.no===no&&e.src==='erp');   // นำเข้าจาก ERP = ลบประวัติเฉยๆ (ไม่เคยซ่อนแถว จึงไม่มีอะไรกลับตาราง)
   _adjHistBusy=true;_adjHistUndoArm='';renderAdjHistTable();
   let res;
   try{res=await _adjHistRemove(no,branch,epoch);}finally{_adjHistBusy=false;}
   if(!res.ok){
     if(res.kind==='stale'){toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ตรวจ 🗂️ ประวัติปรับปรุงอีกครั้ง','warn',9000);return;}
-    toast(`คืนรายการไม่สำเร็จ: ${res.error}`,'error',9000);renderAdjHistTable();return;
+    toast(`${imported?'ลบ':'คืนรายการ'}ไม่สำเร็จ: ${res.error}`,'error',9000);renderAdjHistTable();return;
   }
   _adjHistExpanded.delete(no);
   _adjHistRefreshUi(true);
-  if(res.removed)toast(`↩ คืนรายการของเอกสาร ${no} กลับตารางแล้ว`,'success');
+  if(res.removed)toast(imported?`🗑 ลบเอกสาร ${no} ออกจากประวัติแล้ว`:`↩ คืนรายการของเอกสาร ${no} กลับตารางแล้ว`,'success');
   else toast(`เอกสาร ${no} ไม่อยู่ในประวัติแล้ว (ถูกคืนจากเครื่องอื่นไปก่อน)`,'info');
 }
 function renderAdjHistTable(){
   const body=document.getElementById('adjHistBody');if(!body)return;
-  const entries=_adjHistEntries().slice().reverse();   // ใหม่สุดอยู่บน
+  // ใหม่สุดอยู่บน ตามเวลาของเอกสาร (นำเข้าจาก ERP มีเวลาย้อนหลัง จึงเรียงตามเวลา ไม่ใช่ลำดับที่เพิ่ม) · เวลาเท่ากัน = เพิ่มทีหลังอยู่บน (เหมือน reverse เดิม)
+  const entries=_adjHistEntries().map((e,i)=>({e,i,t:_auditTimeMs(e.at)||0})).sort((a,b)=>(b.t-a.t)||(b.i-a.i)).map(x=>x.e);
   const rc=document.getElementById('adjHistRowCount');if(rc)rc.textContent=`${entries.length} เอกสาร`;
   if(!entries.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีประวัติ — Export Text แล้วกรอกเลขที่เอกสาร รายการจะย้ายมาที่นี่</td></tr>';return;}
   const esc=_adjErpEsc;
@@ -9890,14 +9927,23 @@ function renderAdjHistTable(){
     const dirCol=e.dir==='irps'?'var(--green)':'var(--red)';
     const armed=_adjHistUndoArm===e.no;
     const n=esc(e.no);
+    const erp=e.src==='erp';   // นำเข้าจาก ERP: ลบได้เฉพาะประวัติ (ไม่มีแถวที่ซ่อนไว้ให้คืน) · ที่ Export จากแอป: ↩ คืนแถวกลับตาราง
     const undo=armed
-      ?`<button type="button" data-no="${n}" onclick="event.stopPropagation();undoAdjHistEntry(this.dataset.no)" style="${btn}border:none;background:var(--red);color:#fff;">ยืนยันคืน</button> <button type="button" data-no="${n}" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:600;">ไม่</button><div style="font-size:0.66rem;font-weight:400;color:var(--red);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ถ้าไฟล์นี้นำเข้า ERP ไปแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ</div>`
-      :`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ แล้วรายการกลับมาที่ตาราง 📦" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">↩ คืนรายการ</button>`;
+      ?`<button type="button" data-no="${n}" onclick="event.stopPropagation();undoAdjHistEntry(this.dataset.no)" style="${btn}border:none;background:var(--red);color:#fff;">${erp?'ยืนยันลบ':'ยืนยันคืน'}</button> <button type="button" data-no="${n}" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:600;">ไม่</button>`
+        +(erp
+          ?`<div style="font-size:0.66rem;font-weight:400;color:var(--text3);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ลบเฉพาะรายการในประวัตินี้ — ไม่กระทบใบใน ERP และตาราง 📦</div>`
+          :`<div style="font-size:0.66rem;font-weight:400;color:var(--red);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ถ้าไฟล์นี้นำเข้า ERP ไปแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ</div>`)
+      :(erp
+        ?`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ (ไม่กระทบใบใน ERP และตาราง 📦)" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">🗑 ลบ</button>`
+        :`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ แล้วรายการกลับมาที่ตาราง 📦" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">↩ คืนรายการ</button>`);
+    const byCell=erp
+      ?`<td title="${esc(`นำเข้าจาก ERP${e.impBy?' โดย '+e.impBy:''}${e.impAt?' · '+_adjHistFmtAt(e.impAt):''}${e.file?' · ไฟล์ '+e.file:''}`)}" style="white-space:nowrap;color:var(--text2);">📥 ERP</td>`
+      :`<td>${esc(e.by||'—')}</td>`;
     let html=`<tr data-no="${n}" onclick="toggleAdjHistRow(this.dataset.no)" style="cursor:pointer;">`
       +`<td style="font-family:'Inter',sans-serif;font-weight:700;color:var(--accent);white-space:nowrap;">${open?'▾':'▸'} ${n}</td>`
       +`<td style="text-align:center;font-weight:700;white-space:nowrap;color:${dirCol};">${e.dir==='irps'?'🔺 IRPS':'🔻 ORDS'}</td>`
       +`<td style="white-space:nowrap;color:var(--text2);">${esc(_adjHistFmtAt(e.at))}</td>`
-      +`<td>${esc(e.by||'—')}</td>`
+      +byCell
       +`<td style="text-align:center;">${e.rows.length}</td>`
       +`<td style="text-align:center;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.72rem;font-weight:700;white-space:nowrap;color:${st.color};background:${st.bg};">${st.text}</span></td>`
       +`<td style="text-align:right;">${undo}</td></tr>`;
@@ -9912,6 +9958,153 @@ function renderAdjHistTable(){
     }
     return html;
   }).join('');
+}
+// ── 📥 นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026 · ดูคอมเมนต์ที่สวิตช์ ADJUST_DOC_HISTORY_IMPORT) ─────────────────────────────
+// ใช้ตัวอ่านเดียวกับการ์ด 🧾 (_parseAdjErpRows: ด่านสาขา/คลัง · ตัดใบยกเลิก · ตัดก่อนวันเริ่มรอบ) แล้วแปลงเป็นเอกสารในประวัติ — ไม่แตะ {branch}_adjerp ของการ์ด
+// ต่างจากเอกสารที่ Export จากแอป: src:'erp' · by ว่าง (ไม่รู้ผู้ออกใบ) · ไม่มีราคา/LOT/EXP (R16 ไม่มี LOT) · ไม่ซ่อนแถวบนใบ · Status = "เข้าระบบแล้ว"
+function _adjHistImportEnabled(){return ADJUST_DOC_HISTORY_IMPORT&&_adjHistEnabled()&&_isPharmacyBranch();}
+function _refreshAdjHistImportBtn(){
+  const b=document.getElementById('adjHistImportBtn');if(!b)return;
+  b.style.display=_adjHistImportEnabled()?'':'none';
+}
+function openAdjHistImportPicker(){
+  if(!_adjHistImportEnabled())return;
+  if(_adjHistImportBusy||_adjHistBusy){toast('กำลังทำรายการก่อนหน้า — รอสักครู่','warn');return;}
+  const el=document.getElementById('adjHistImportInput');if(el)el.click();
+}
+// เวลาของใบจากตัวอ่าน R16 ('YYYY-MM-DD HH:MM' ตามเวลาเครื่อง) → ISO (รูปเดียวกับ at ของเอกสารที่ Export จากแอป) · อ่านไม่ได้ = ''
+function _adjErpDocAtIso(at,day){
+  const m=/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(at||day||'');
+  if(!m)return '';
+  const d=new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0));
+  return Number.isFinite(d.getTime())?d.toISOString():'';
+}
+// ฟังก์ชันบริสุทธิ์ (ไม่แตะ state/cloud): ผลอ่านไฟล์ R16 (_parseAdjErpRows) → แผนนำเข้า {entries,skippedExisting,lines,stats,files}
+// เลขที่ใบที่มีในประวัติแล้ว (ทุกที่มา) ถูกข้าม — นำเข้าไฟล์เดิมซ้ำ/ใบที่ Export จากแอปด้วยเลขเดียวกัน ไม่เกิดซ้ำ
+function _adjHistImportPlan(parsedList,existing,meta={}){
+  const have=new Set((existing||[]).map(e=>e.no));
+  const seen=new Set();
+  const entries=[];let skippedExisting=0,lines=0;
+  const stats={beforeRound:0,otherWh:0,bad:0,cancelledDocs:0};
+  const files=[];
+  for(const p of parsedList||[]){
+    files.push(p.file||'');
+    const s=p.stats||{};
+    stats.beforeRound+=s.beforeRound||0;stats.otherWh+=s.otherWh||0;stats.bad+=(s.bad||0)+(s.badDate||0);stats.cancelledDocs+=s.cancelledDocs||0;
+    for(const d of p.docs||[]){
+      if(!d||!d.no||seen.has(d.no))continue;
+      seen.add(d.no);
+      if(have.has(d.no)){skippedExisting++;continue;}
+      const rows=Object.entries(d.items||{}).filter(([,q])=>Number(q)>0).map(([sku,q])=>[sku,Number(q),Number(q),null,'','']);
+      if(!rows.length)continue;
+      entries.push({no:d.no,dir:d.type==='IRPS'?'irps':'ords',at:_adjErpDocAtIso(d.at,d.day),by:'',src:'erp',file:p.file||'',impBy:meta.by||'',impAt:meta.at||'',rows});
+      lines+=rows.length;
+    }
+  }
+  entries.sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:0);   // เก่า → ใหม่ (ตาราง 🗂️ เรียงใหม่สุดอยู่บนเอง)
+  return {entries,skippedExisting,lines,stats,files};
+}
+// เพิ่มหลายเอกสารใน transaction เดียว (อ่าน-กรองเลขซ้ำ-เขียน) → {ok,added,skipped} | {ok:false,kind:'stale'|'fail',error} · ไม่ตรวจ "แถวทับ" (ประวัติอย่างเดียว)
+async function _adjHistImportSave(entries,branch,epoch,by){
+  if(!_db)return {ok:false,kind:'fail',error:'ไม่ได้เชื่อมต่อ Cloud'};
+  let merged=null,added=0,skipped=0;
+  try{
+    await _adjErpWithTimeout(_db.runTransaction(async tx=>{
+      merged=null;added=0;skipped=0;   // transaction อาจรันซ้ำ — เริ่มใหม่ทุกครั้ง
+      const ref=_adjHistRef(branch);
+      const snap=await tx.get(ref);
+      const cur=snap.exists?_adjHistFromDoc(snap.data()):null;
+      const have=cur&&(cur.countResetAt||'')===epoch?cur.entries:[];
+      const names=new Set(have.map(e=>e.no));
+      const add=entries.filter(e=>!names.has(e.no));   // เครื่องอื่นอาจนำเข้า/Export เลขเดียวกันไปก่อนระหว่างที่ผู้ใช้ดูตัวอย่าง
+      skipped=entries.length-add.length;added=add.length;
+      if(!add.length){merged={entries:have,by:cur?cur.updatedBy:'',at:cur?cur.updatedAt:''};return;}
+      const next=[...have,...add];
+      const payload=_adjHistToDoc(next,epoch,by);
+      const kb=Math.ceil(_sessionBlobBytes(payload.entries_json)/1024);
+      if(kb>=ADJ_HIST_MAX_KB)throw new Error(`ประวัติใหญ่ ${kb} KB ใกล้เพดาน Firestore — นำเข้าช่วงวันที่สั้นลง`);
+      tx.set(ref,payload);
+      merged={entries:next,by:by||'',at:new Date().toISOString()};
+    }),20000);
+  }catch(e){
+    const msg=String(e&&e.message||e);console.warn('[adjhist import]',msg);
+    return {ok:false,kind:'fail',error:msg};
+  }
+  if(!merged)return {ok:false,kind:'fail',error:'ไม่ได้ผลจาก Cloud'};
+  if(currentBranch!==branch||(_countResetAt||'')!==epoch||!_adjHistEnabled())return {ok:false,kind:'stale'};
+  _adjHistReadToken++;   // ผลอ่าน cloud ที่ค้างอยู่ (เก่ากว่าผลนี้) ห้ามทับ
+  _adjHistApply(branch,epoch,merged.entries,merged.by,merged.at);
+  return {ok:true,added,skipped};
+}
+async function handleAdjHistImportFiles(event){
+  const input=event&&event.target;
+  const files=[...((input&&input.files)||[])];
+  if(input)try{input.value='';}catch(e){}   // เลือกไฟล์เดิมซ้ำได้ (onchange ยิงใหม่)
+  if(!files.length||!_adjHistImportEnabled())return;
+  if(_adjHistImportBusy||_adjHistBusy){toast('กำลังทำรายการก่อนหน้า — รอสักครู่','warn');return;}
+  const branch=currentBranch,epoch=_countResetAt||'';
+  _adjHistImportBusy=true;
+  try{
+    const parsed=[];
+    for(const f of files){
+      let rows;
+      try{rows=await _parseFileAsync(f);}catch(e){toast(`${f.name}: ${e&&e.message||e}`,'error',9000);continue;}
+      const p=_parseAdjErpRows(rows,branch,epoch);
+      if(p.error){toast(`${f.name}: ${p.error}`,'error',9000);continue;}
+      p.file=f.name;parsed.push(p);
+    }
+    if(!parsed.length||!_adjHistImportEnabled()||currentBranch!==branch||(_countResetAt||'')!==epoch)return;
+    openAdjHistImportModal(_adjHistImportPlan(parsed,_adjHistEntries(),{by:currentUser||'',at:new Date().toISOString()}),branch,epoch);
+  }finally{_adjHistImportBusy=false;}
+}
+function _adjHistImportOkLabel(plan){return plan.entries.length?`📥 นำเข้า ${plan.entries.length} เอกสาร`:'ปิด';}
+function openAdjHistImportModal(plan,branch,epoch){
+  _adjHistImportCur={plan,branch,epoch};
+  const esc=_adjErpEsc;
+  const n=plan.entries.length;
+  const ords=plan.entries.filter(e=>e.dir==='ords').length;
+  const parts=[`ไฟล์ ${plan.files.length}: ${plan.files.map(esc).join(' · ')}`];
+  parts.push(n?`<b>นำเข้า ${n} เอกสาร</b> (ORDS ${ords} · IRPS ${n-ords}) · ${plan.lines} รายการ`:'<b style="color:var(--red);">ไม่มีเอกสารใหม่ให้นำเข้า</b>');
+  const skip=[];
+  if(plan.skippedExisting)skip.push(`มีในประวัติแล้ว ${plan.skippedExisting} เอกสาร`);
+  if(plan.stats.cancelledDocs)skip.push(`ใบยกเลิก ${plan.stats.cancelledDocs} ใบ`);
+  if(plan.stats.beforeRound)skip.push(`ก่อนวันเริ่มรอบนับ ${plan.stats.beforeRound} บรรทัด`);
+  if(plan.stats.otherWh)skip.push(`ใบของคลังชากค้อ ${plan.stats.otherWh} บรรทัด`);
+  if(plan.stats.bad)skip.push(`ข้อมูลไม่ครบ ${plan.stats.bad} บรรทัด`);
+  if(skip.length)parts.push(`<span style="color:var(--text3);">ข้าม: ${skip.join(' · ')}</span>`);
+  const s=document.getElementById('adjHistImportSummary');if(s)s.innerHTML=parts.join('<br>');
+  const l=document.getElementById('adjHistImportList');
+  if(l)l.innerHTML=n
+    ?`<table class="ptable"><thead><tr><th>เลขที่เอกสาร</th><th style="text-align:center;">ประเภทเอกสาร</th><th>วันที่ · เวลา</th><th style="text-align:center;">รายการ</th></tr></thead><tbody>`
+      +plan.entries.slice().reverse().map(e=>`<tr><td style="font-family:'Inter',sans-serif;font-weight:700;color:var(--accent);white-space:nowrap;">${esc(e.no)}</td><td style="text-align:center;font-weight:700;color:${e.dir==='irps'?'var(--green)':'var(--red)'};">${e.dir==='irps'?'🔺 IRPS':'🔻 ORDS'}</td><td style="white-space:nowrap;">${esc(_adjHistFmtAt(e.at))}</td><td style="text-align:center;">${e.rows.length}</td></tr>`).join('')
+      +`</tbody></table>`
+    :'<div style="padding:18px;text-align:center;color:var(--text3);font-size:0.8rem;">ไม่มีรายการ</div>';
+  const ok=document.getElementById('adjHistImportOk');if(ok){ok.disabled=false;ok.textContent=_adjHistImportOkLabel(plan);}
+  const m=document.getElementById('adjHistImportModal');if(m)m.style.display='flex';
+}
+function closeAdjHistImportModal(){
+  if(_adjHistBusy)return;   // กำลังบันทึก — ปิดไม่ได้
+  _adjHistImportCur=null;
+  const m=document.getElementById('adjHistImportModal');if(m)m.style.display='none';
+}
+async function confirmAdjHistImport(){
+  const cur=_adjHistImportCur;
+  if(!cur||_adjHistBusy)return;
+  if(!cur.plan.entries.length){closeAdjHistImportModal();return;}   // ไม่มีอะไรให้นำเข้า — ปุ่มทำหน้าที่ "ปิด"
+  if(!_adjHistImportEnabled()||currentBranch!==cur.branch||(_countResetAt||'')!==cur.epoch){closeAdjHistImportModal();toast('สาขา/รอบนับเปลี่ยนระหว่างรอ — ไม่ได้นำเข้า เลือกไฟล์ใหม่','warn',9000);return;}
+  _adjHistBusy=true;
+  const ok=document.getElementById('adjHistImportOk');if(ok){ok.disabled=true;ok.textContent='กำลังบันทึก…';}
+  let res;
+  try{res=await _adjHistImportSave(cur.plan.entries,cur.branch,cur.epoch,currentUser||'');}
+  finally{_adjHistBusy=false;if(ok){ok.disabled=false;ok.textContent=_adjHistImportOkLabel(cur.plan);}}
+  if(!res.ok){
+    if(res.kind==='stale'){closeAdjHistImportModal();toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ตรวจ 🗂️ ประวัติปรับปรุง','warn',9000);return;}
+    toast(`นำเข้าประวัติขึ้น Cloud ไม่สำเร็จ (${res.error}) — ยังไม่ได้นำเข้า ลองใหม่`,'error',9000);   // modal ค้างไว้ให้กดซ้ำ
+    return;
+  }
+  closeAdjHistImportModal();
+  _adjHistRefreshUi(true);
+  toast(`📥 นำเข้าประวัติจาก ERP แล้ว ${res.added} เอกสาร${res.skipped?` · ข้าม ${res.skipped} (มีในประวัติแล้ว)`:''}`,'success');
 }
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
 // (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
@@ -10001,7 +10194,7 @@ function updateAdjustDocPanel(){
     _lotMap.clear();_lotSelected.clear();_priceMap.clear();
     _adjSource={Lot:'',Price:''};_adjMeta={Lot:null,Price:null};_adjCloud=null;_adjSbError='';_adjSbMissing={Lot:false,Price:false};_adjLoading=false;_adjLoadToken++;
     _adjErp=null;_adjErpFilter='all';_adjErpReadToken++;   // ผลตรวจกับ ERP (local) — ของที่บันทึกไว้บน cloud ยังอยู่ เปิดป็อปอัพครั้งหน้าอ่านใหม่
-    _adjHist=null;_adjHistReadToken++;_adjHistExpanded.clear();_adjHistUndoArm='';   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
+    _adjHist=null;_adjHistReadToken++;_adjHistExpanded.clear();_adjHistUndoArm='';_adjHistImportCur=null;   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
   }else _loadAdjHistFromCloud();   // อ่านประวัติตอนเข้าใช้งาน (ไม่รอ) เพื่อให้ป้ายตัวเลขปุ่ม 📦 ไม่นับแถวที่ส่งออกไปแล้ว — กรองรอบนับตอนใช้ จึงไม่ต้องรอ _countResetAt
   updateAdjustDocCount();
 }
