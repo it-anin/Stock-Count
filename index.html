@@ -8961,6 +8961,7 @@ function _adjExportBusy(){
 // ── 🧾 ตรวจกับ ERP (6 ต.ค. 2026 · ผู้ใช้สั่ง) ─────────────────────────────────────────────
 // ปัญหา: ใบ 📦 ไม่รู้ว่าแถวไหนคีย์เข้า ProMaxx แล้ว (ระบบไม่มี issuedAt · Stock Adj ตรง/รอรีเช็คแช่ตัวเลข อยู่ในใบตลอดรอบ ⇒ เสี่ยงส่งซ้ำ/ตกหล่น)
 // เภสัชแนบ R16 ที่ Export จาก ProMaxx: R16.104 = เอกสารขาออก (ORCM/OTFB/…/ORDS) → ตรวจ ORDS · R16.103 = ขาเข้า (IRNC/ITFB/…) → ตรวจ IRPS
+//   หรือ "รายงานเคลื่อนไหวสินค้ารายเอกสาร" (ADJ_ERP_MOVE_COLS) ที่เลือกเฉพาะใบปรับปรุง — ไฟล์เดียวครอบทั้ง ORDS และ IRPS
 //   ⏳ IRPS ใน R16.103 ยังไม่ได้ยืนยันกับไฟล์จริง · R16 ไม่มีคอลัมน์ LOT → เทียบ "SKU + จำนวนรวม (BASEQUANTITY) + วันที่" · ORDS 1 ใบแยกบรรทัดตาม LOT → รวมต่อ SKU
 // ผล ERP เป็น "ตัวอ่าน" — ไม่เปลี่ยนสถานะ/ตัวเลขในใบ · ไม่แตะ loadR16 (สูตร Confirm) · บรรทัด Export Text รูปแบบเดิมทุกไบต์
 // Export ตามตัวกรอง ERP ที่เลือก (ผู้ใช้เลือก) · ค่าเริ่มต้น "ทั้งหมด" = ไฟล์เดิมทุกไบต์ · ตาราง/แบ่งหน้า/Export ใช้ประตูเดียว _adjustDocViewRows
@@ -8973,6 +8974,10 @@ const ADJ_ERP_REPORT={ORDS:'R16.104',IRPS:'R16.103'};
 // หัวคอลัมน์ที่ต้องมี — หาตำแหน่งจากชื่อ (R16.103 อาจเรียงต่างจาก R16.104) · ขาดตัวไหน = ปฏิเสธทั้งไฟล์ (fail-closed)
 //   FCANCEL ต้องมี: ไม่รู้ว่าใบไหนยกเลิก = ขึ้น ✅ ทั้งที่ใบถูกยกเลิกได้ ⇒ เภสัชไม่ส่งของที่ยังต้องปรับ (ทิศที่อันตราย)
 const ADJ_ERP_REQUIRED_COLS=['SYSWAREHOUSEID','TRANDATE','TRANNO','FCANCEL','SYSBRANCHID','BASEQUANTITY','ITEMID'];
+// รูปแบบที่สอง (7 ต.ค. 2026 · ผู้ใช้สั่ง): "รายงานเคลื่อนไหวสินค้ารายเอกสาร" (หัว CF_… 45 คอลัมน์ · ORDS+IRPS อยู่ไฟล์เดียว) — ชื่อหัวแบบ R16 → ชื่อหัวในรายงานนี้
+//   TRANDATE ใช้ชื่อเดิม (มีเวลา · ⛔ ไม่ใช่ CF_TRANDATE ที่มีแต่วัน) · CF_TDBASEQUANTITY เทียบ R16 จริงของ SSS แล้วตรงทุก SKU (BASEQUANTITY)
+//   ไม่มี FCANCEL = ผู้ใช้ตัดสินใจรับ (รู้ตอน export ว่าเลือกอะไร · ไม่มีป้ายบนการ์ด · ไม่มีสวิตช์) — ข้อยกเว้นเฉพาะรูปแบบนี้ · R16 ที่ขาด FCANCEL ยังถูกปฏิเสธเหมือนเดิม
+const ADJ_ERP_MOVE_COLS={SYSWAREHOUSEID:'CF_TSYSWAREHOUSEID',TRANDATE:'TRANDATE',TRANNO:'CF_TRANNO',SYSBRANCHID:'CF_TSYSBRANCHID',BASEQUANTITY:'CF_TDBASEQUANTITY',ITEMID:'CF_ITEMID'};
 // SRC อยู่ SYSBRANCHID 0 เดียวกับคลังชากค้อ — แยกด้วย SYSWAREHOUSEID: 1 = หน้าร้าน (SRC · ตรง R01 Front Store) · 0 = คลัง (ใบของคลังห้ามนับเป็นของ SRC)
 const ADJ_ERP_SRC_BRANCH_ID='0';
 const ADJ_ERP_SRC_WAREHOUSE='1';
@@ -9007,15 +9012,20 @@ function _adjErpRound(n){return Math.round(Number(n||0)*1000)/1000;}
 //             ขึ้นต้น I = รายงานขาเข้า (R16.103) ⇒ ตรวจ IRPS · ช่วงของไฟล์ = เอกสารแรก–สุดท้ายของขานั้น (ทุกคลังในไฟล์)
 //   ด่านสาขา: หลาย SYSBRANCHID = ปฏิเสธ · SRC ต้องเป็น 0 + เก็บเฉพาะ SYSWAREHOUSEID 1 · KKL/SSS ต้องไม่ใช่ 0 (ของชากค้อ)
 //   ใบที่ลงวันก่อนวันเริ่มรอบนับ = ทิ้ง · ใบยกเลิก (FCANCEL=1) = จดเลขไว้ลบตอนรวม · บรรทัดที่ทิ้งทุกแบบนับใน stats (โชว์บนการ์ด ไม่หายเงียบ)
+//   รับ 2 รูปแบบ (เลือกจากหัวไฟล์): R16 · รายงานเคลื่อนไหวสินค้า (ADJ_ERP_MOVE_COLS — ไม่มี FCANCEL จึงไม่มีใบยกเลิกให้ตัด · ด่านสาขา/คลังชุดเดียวกัน อ่านจาก CF_TSYSBRANCHID/CF_TSYSWAREHOUSEID)
+//   ⚠️ ใช้ร่วมกับ 📥 นำเข้าประวัติ (handleAdjHistImportFiles) — แก้ที่นี่ = กระทบทั้งสองที่
 function _parseAdjErpRows(rows,branch,epochIso){
   const stats={adjLines:0,otherWh:0,beforeRound:0,bad:0,badDate:0,cancelledDocs:0};
   const res={error:'',docs:[],cancelled:[],cover:{},branchId:'',branchName:'',stats};
   if(!Array.isArray(rows)||!rows.length){res.error='ไฟล์ว่าง';return res;}
   const hdr=(rows[0]||[]).map(v=>(v??'').toString().replace(/^\uFEFF/,'').trim().toUpperCase());
-  const col={};ADJ_ERP_REQUIRED_COLS.forEach(n=>{col[n]=hdr.indexOf(n);});
-  const missing=ADJ_ERP_REQUIRED_COLS.filter(n=>col[n]<0);
-  if(missing.length){res.error=`ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ ${missing.join(', ')})`;return res;}
-  const nameIdx=hdr.indexOf('NAME');
+  // เป็นรายงานเคลื่อนไหวก็ต่อเมื่อมี CF_TRANNO และหัวไม่ครบแบบ R16 — R16 ครบหัว = R16 เสมอ · ไฟล์ R16 ที่ขาด FCANCEL จึงยังถูกปฏิเสธ (fail-closed)
+  const mv=hdr.indexOf('CF_TRANNO')>=0&&ADJ_ERP_REQUIRED_COLS.some(n=>hdr.indexOf(n)<0);
+  const want=mv?ADJ_ERP_MOVE_COLS:Object.fromEntries(ADJ_ERP_REQUIRED_COLS.map(n=>[n,n]));
+  const col={FCANCEL:-1};const missing=[];   // FCANCEL -1 = ไม่มีคอลัมน์ยกเลิก (เฉพาะรายงานเคลื่อนไหว)
+  for(const[n,h] of Object.entries(want)){col[n]=hdr.indexOf(h);if(col[n]<0)missing.push(h);}
+  if(missing.length){res.error=`ไม่ใช่${mv?'รายงานเคลื่อนไหวสินค้า':'ไฟล์ R16'} จาก ProMaxx (ไม่พบคอลัมน์ ${missing.join(', ')})`;return res;}
+  const nameIdx=hdr.indexOf(mv?'CF_BNAME':'NAME');
   const cell=(r,i)=>(r[i]??'').toString().trim();
   const epochDay=_adjErpDayOf(epochIso);
   const branchIds=new Set();const win={};const docs=new Map();const cancelled=new Set();
@@ -9030,7 +9040,7 @@ function _parseAdjErpRows(rows,branch,epochIso){
     else if(side)stats.badDate++;
     const type=ADJ_ERP_TYPES.find(t=>no.startsWith(t));if(!type)continue;
     stats.adjLines++;
-    if(cell(r,col.FCANCEL)==='1'){cancelled.add(no);continue;}
+    if(col.FCANCEL>=0&&cell(r,col.FCANCEL)==='1'){cancelled.add(no);continue;}
     if(branch==='SRC'&&cell(r,col.SYSWAREHOUSEID)!==ADJ_ERP_SRC_WAREHOUSE){stats.otherWh++;continue;}
     const sku=cell(r,col.ITEMID);
     const qRaw=cell(r,col.BASEQUANTITY).replace(/,|\s/g,'');

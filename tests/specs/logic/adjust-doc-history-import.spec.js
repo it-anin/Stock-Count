@@ -9,14 +9,17 @@
 //   3. ★ ประวัติอย่างเดียว: แถวบนใบที่ SKU/จำนวนตรงกับใบที่นำเข้า "ยังอยู่" และนับในป้าย · Export แถวนั้นด้วยเลขใหม่ได้ · ใช้เลขที่ของใบที่นำเข้าซ้ำ = บล็อก · โหลดจาก cloud ซ้ำแล้วธง src ไม่หาย
 //   4. นำเข้าไฟล์เดิมซ้ำ = ไม่มีเอกสารใหม่ (ไม่เขียน cloud) · ผสมใหม่+เก่า = นำเข้าเฉพาะใหม่ · เลขที่ซ้ำกับเอกสารที่ Export จากแอป = ข้าม
 //   5. เครื่องอื่นนำเข้า/Export เลขเดียวกันระหว่างดูตัวอย่าง → transaction ข้ามเอง ไม่ทับ ไม่ซ้ำ
-//   6. ไฟล์ผิด: รายงานเคลื่อนไหว (CF_) · สาขาไม่ตรง (SYSBRANCHID 0 ที่ SSS) · ผสมไฟล์ดี+ผิด = ตัวอย่างของไฟล์ดี + error ของไฟล์ผิด
+//   6. ไฟล์ผิด: รายงานเคลื่อนไหวที่หัวไม่ครบ · ไม่ใช่ทั้ง R16/รายงานเคลื่อนไหว · สาขาไม่ตรง (SYSBRANCHID 0 ที่ SSS) · ผสมไฟล์ดี+ผิด = ตัวอย่างของไฟล์ดี + error ของไฟล์ผิด
+//      (7 ต.ค. 2026: รายงานเคลื่อนไหวสินค้า CF_ 45 คอลัมน์ที่หัวครบ "รับแล้ว" — ดู ข้อ 13)
 //   7. ★ atomic: cloud ล้ม/ไม่มี _db/ใหญ่เกินเพดาน = ไม่เปลี่ยนอะไร · modal ค้างให้ลองใหม่ · กลับมาออนไลน์แล้วกดซ้ำสำเร็จ · สาขา/รอบเปลี่ยนระหว่างรอ = ไม่เขียน
 //   8. 🗑 ลบเอกสารที่นำเข้า: ยืนยัน 2 ขั้น · ข้อความเฉพาะ · ไม่กระทบตาราง 📦 · เอกสารที่ Export จากแอปยังเป็น ↩ คืนรายการ
 //   9. สิทธิ์/สาขา: WH · ผู้ช่วย · สวิตช์ปิด = ไม่มีปุ่ม/นำเข้าไม่ได้ · ปิด 📦 ปิด modal ตัวอย่าง
 //  10. XSS: เลขที่ใบ/ชื่อไฟล์ที่มีอักขระ HTML ไม่ถูกตีความ (ตัวอย่าง + ตาราง)
 //  11. ใบที่ไม่มีบรรทัดจำนวน > 0 ไม่ถูกนำเข้า · ค่าจำนวนทศนิยมคงเดิม
 //  12. เรียงตามเวลาของเอกสารแม้เพิ่มทีหลัง (ใบ ERP ย้อนหลังไม่ขึ้นบนสุด) · เวลาเท่ากัน = เพิ่มทีหลังอยู่บน
+//  13. รายงานเคลื่อนไหวสินค้า (CF_ 45 คอลัมน์ · ไฟล์เดียว ORDS+IRPS) นำเข้าได้ — แผน/ตัวอย่าง/เอกสารบน cloud เท่านำเข้า R16 สองไฟล์ (ใช้ตัวอ่านเดียวกับการ์ด 🧾)
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
+const { fromR16 } = require('../../lib/movement-report');
 
 const EPOCH = '2026-09-20T05:00:00.000Z';   // เริ่มรอบ 20 ก.ย. (เที่ยงวัน UTC — วันที่ท้องถิ่นไม่ขยับในเขตเวลาใกล้ไทย)
 const T = '2026-09-21 09:00:00';
@@ -33,20 +36,25 @@ function line({ date, no, sku, qty, wh = '0', cancel = '0', branch = '5' }) {
 const csv = (lines) => [HDR, ...lines].map((r) => r.join(',')).join('\r\n');
 // R16.104 (ORDS): 001 = 24/9 (A01×2 · A02×1) · 002 = 25/9 (A03 สองบรรทัด 2+2 → รวมเป็นบรรทัดเดียว = 4) · 003 = ยกเลิก · 000 = ก่อนวันเริ่มรอบ (10/9)
 // (บรรทัดจำนวน 0 ตัวอ่านนับเป็น "ข้อมูลไม่ครบ" ไม่เข้า docs — เส้นทาง "ใบไม่มีบรรทัด > 0" ทดสอบผ่าน _adjHistImportPlan ตรงๆ)
-const ORDS = csv([
+const ORDS_LINES = [
   line({ date: '24/9/2026 14:43:28', no: 'ORDSBY001', sku: 'A01', qty: 2 }),
   line({ date: '24/9/2026 14:43:28', no: 'ORDSBY001', sku: 'A02', qty: 1 }),
   line({ date: '25/9/2026 9:10:00', no: 'ORDSBY002', sku: 'A03', qty: 2 }),
   line({ date: '25/9/2026 9:10:00', no: 'ORDSBY002', sku: 'A03', qty: 2 }),
   line({ date: '26/9/2026 8:00:00', no: 'ORDSBY003', sku: 'A07', qty: 5, cancel: '1' }),
   line({ date: '10/9/2026 8:00:00', no: 'ORDSBY000', sku: 'A08', qty: 1 }),
-]);
+];
+const ORDS = csv(ORDS_LINES);
 // R16.103 (IRPS): 001 = 24/9 13:33 (A04×3 · A05×1.5)
-const IRPS = csv([
+const IRPS_LINES = [
   line({ date: '24/9/2026 13:33:14', no: 'IRPSBY001', sku: 'A04', qty: 3 }),
   line({ date: '24/9/2026 13:33:14', no: 'IRPSBY001', sku: 'A05', qty: 1.5 }),
-]);
-const MOVE_REPORT = ['CF_TSYSBRANCHID,CF_ITEMID,CF_TRANNO,CF_TRANDATE,TRANDATE,CF_TDBASEQUANTITY', '5,A01,ORDSBY001,24/09/2026,24/9/2026 14:43:28,2.0000'].join('\r\n');   // รายงานเคลื่อนไหวสินค้า (มี TRANDATE แต่ที่เหลือขึ้นต้น CF_ เหมือนไฟล์จริง) — ไม่ใช่ R16
+];
+const IRPS = csv(IRPS_LINES);
+const MOVE_INCOMPLETE = ['CF_TSYSBRANCHID,CF_ITEMID,CF_TRANNO,CF_TRANDATE,TRANDATE,CF_TDBASEQUANTITY', '5,A01,ORDSBY001,24/09/2026,24/9/2026 14:43:28,2.0000'].join('\r\n');   // หัวแบบรายงานเคลื่อนไหวแต่ไม่ครบ (ขาด CF_TSYSWAREHOUSEID) — ต้องถูกปฏิเสธ
+const NOT_REPORT = 'A,B\r\n1,2';                                                         // ไม่ใช่ทั้ง R16 และรายงานเคลื่อนไหว
+// รายงานเคลื่อนไหวสินค้าฉบับเต็ม (45 คอลัมน์ · ไม่มี FCANCEL) จากบรรทัดชุดเดียวกับ ORDS+IRPS ด้านบน (ไฟล์เดียวรวมขาออก+ขาเข้า) — บรรทัดยกเลิก (ORDSBY003) ถูกตัดทิ้ง เพราะรายงานนี้ไม่มีคอลัมน์ยกเลิก
+const MOVE_ALL = fromR16([HDR, ...ORDS_LINES], [HDR, ...IRPS_LINES]).map((r) => r.join(',')).join('\r\n');
 const WRONG_BRANCH = csv([line({ date: '24/9/2026 14:43:28', no: 'ORDSBY050', sku: 'A01', qty: 1, branch: '0' })]);
 const DIRECT = (extra = {}) => ({ status: 'stock_adjustment', auditStatus: 'stock_adjustment', initialStatus: 'stock_adjustment', auditor: '',
   countedQty: 8, timestamp: T, firstScanAt: T, scannedBy: 'Asst', directAdj: true, ...extra });
@@ -284,18 +292,22 @@ test('เครื่องอื่นนำเข้า/Export เลขเด
   await closeApp(app);
 });
 
-test('ไฟล์ผิด: รายงานเคลื่อนไหว (CF_) · สาขาไม่ตรง · ผสมไฟล์ดี+ผิด = ตัวอย่างของไฟล์ดี + error ของไฟล์ผิด · ไม่เขียนอะไร', async ({ browser }) => {
+test('ไฟล์ผิด: รายงานเคลื่อนไหวหัวไม่ครบ · ไม่ใช่ทั้ง R16/รายงาน · สาขาไม่ตรง · ผสมไฟล์ดี+ผิด = ตัวอย่างของไฟล์ดี + error ของไฟล์ผิด · ไม่เขียนอะไร', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page);
-  await importFiles(app.page, files(['02102sss.CSV', MOVE_REPORT]));
+  await importFiles(app.page, files(['02102sss.CSV', MOVE_INCOMPLETE]));
   expect((await modal(app.page)).open).toBe(false);
-  expect(await lastToast(app.page)).toBe('02102sss.CSV: ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANNO, FCANCEL, SYSBRANCHID, BASEQUANTITY, ITEMID)');
+  expect(await lastToast(app.page)).toBe('02102sss.CSV: ไม่ใช่รายงานเคลื่อนไหวสินค้า จาก ProMaxx (ไม่พบคอลัมน์ CF_TSYSWAREHOUSEID)');
+
+  await importFiles(app.page, files(['other.CSV', NOT_REPORT]));
+  expect((await modal(app.page)).open).toBe(false);
+  expect(await lastToast(app.page)).toBe('other.CSV: ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANDATE, TRANNO, FCANCEL, SYSBRANCHID, BASEQUANTITY, ITEMID)');
 
   await importFiles(app.page, files(['wrong.CSV', WRONG_BRANCH]));
   expect((await modal(app.page)).open).toBe(false);
   expect(await lastToast(app.page)).toBe('wrong.CSV: ไฟล์เป็นของสาขาชากค้อ (SYSBRANCHID 0 · สาขาทดสอบ SSS) ไม่ใช่ SSS');
 
-  await importFiles(app.page, files(['bad.CSV', MOVE_REPORT], ['16103irps_sss.CSV', IRPS]));
+  await importFiles(app.page, files(['bad.CSV', NOT_REPORT], ['16103irps_sss.CSV', IRPS]));
   expect((await toasts(app.page)).at(-1)).toMatch(/^bad\.CSV: ไม่ใช่ไฟล์ R16/);
   expect(await modal(app.page)).toMatchObject({ open: true, list: [['IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '2']] });
   await app.page.evaluate(() => closeAdjHistImportModal());
@@ -307,6 +319,48 @@ test('ไฟล์ผิด: รายงานเคลื่อนไหว (C
   await app.page.evaluate(() => document.querySelector('#adjHistImportCard button').click());   // ปุ่ม "ยกเลิก"
   expect((await modal(app.page)).open).toBe(false);
   expect(await store(app.page)).toBeNull();
+  await closeApp(app);
+});
+
+test('★ รายงานเคลื่อนไหวสินค้า (CF_ 45 คอลัมน์ · ไฟล์เดียว ORDS+IRPS): แผน/ตัวอย่าง/เอกสารบน cloud เท่านำเข้า R16 สองไฟล์ (ต่างแค่ไม่มีใบยกเลิกให้ตัด)', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await seed(app.page);
+  // ระดับแผน: ทุกเอกสาร/บรรทัดเท่ากัน (ต่างแค่ชื่อไฟล์ กับจำนวนใบยกเลิกที่รายงานนี้ไม่มี)
+  const eq = await app.page.evaluate(async ({ ORDS, IRPS, MOVE_ALL }) => {
+    const parse = async (name, text) => { const p = _parseAdjErpRows(await _parseFileAsync(new File([text], name, { type: 'text/csv' })), 'SSS', _countResetAt); p.file = name; return p; };
+    const meta = { by: 'เภสัช', at: '2026-10-07T01:00:00.000Z' };
+    const a = _adjHistImportPlan([await parse('o.CSV', ORDS), await parse('i.CSV', IRPS)], [], meta);
+    const b = _adjHistImportPlan([await parse('m.CSV', MOVE_ALL)], [], meta);
+    const strip = (pl) => pl.entries.map((e) => ({ ...e, file: '' }));
+    return { a: strip(a), b: strip(b), aLines: a.lines, bLines: b.lines, aStats: a.stats, bStats: b.stats };
+  }, { ORDS, IRPS, MOVE_ALL });
+  expect(eq.b.map((e) => e.no)).toEqual(['IRPSBY001', 'ORDSBY001', 'ORDSBY002']);        // ไม่ว่างเปล่า
+  expect(eq.b).toEqual(eq.a);
+  expect(eq.bLines).toBe(eq.aLines);
+  expect(eq.aStats).toEqual({ beforeRound: 1, otherWh: 0, bad: 0, cancelledDocs: 1 });
+  expect(eq.bStats).toEqual({ beforeRound: 1, otherWh: 0, bad: 0, cancelledDocs: 0 });
+
+  // flow เต็ม: ไฟล์เดียว → ตัวอย่าง → นำเข้า → cloud → ตาราง 🗂️
+  await openHist(app.page);
+  await importFiles(app.page, files(['02102sss.CSV', MOVE_ALL]));
+  const m = await modal(app.page);
+  expect(m.open).toBe(true);
+  expect(m.summary).toBe('ไฟล์ 1: 02102sss.CSV นำเข้า 3 เอกสาร (ORDS 2 · IRPS 1) · 5 รายการ ข้าม: ก่อนวันเริ่มรอบนับ 1 บรรทัด');
+  expect(m.list).toEqual([
+    ['ORDSBY002', '🔻 ORDS', '25/09/2026 09:10', '1'],
+    ['ORDSBY001', '🔻 ORDS', '24/09/2026 14:43', '2'],
+    ['IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '2'],
+  ]);
+  await confirmImport(app.page);
+  const st = await store(app.page);
+  expect(st.entries.map((e) => [e.no, e.src, e.file])).toEqual([['IRPSBY001', 'erp', '02102sss.CSV'], ['ORDSBY001', 'erp', '02102sss.CSV'], ['ORDSBY002', 'erp', '02102sss.CSV']]);
+  expect(st.entries[1].rows).toEqual([['A01', 2, 2, null, '', ''], ['A02', 1, 1, null, '', '']]);
+  expect(st.entries[2].rows).toEqual([['A03', 4, 4, null, '', '']]);                      // 2 บรรทัด (LOT) ของ SKU เดียวรวมกัน
+  expect(await tableRows(app.page)).toEqual([
+    ['▸ ORDSBY002', '🔻 ORDS', '25/09/2026 09:10', '📥 ERP', '1', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ ORDSBY001', '🔻 ORDS', '24/09/2026 14:43', '📥 ERP', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '📥 ERP', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
+  ]);
   await closeApp(app);
 });
 

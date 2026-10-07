@@ -12,8 +12,11 @@
 //   7. ทางถอย/ขอบเขต: สวิตช์ปิด = เดิมทุกจุด · WH ไม่เห็นอะไร · ตัวกรองรีเซ็ตเมื่อเปิดป็อปอัพ · แท็บที่ไม่มีไฟล์ไม่ถูกกรอง
 //   8. cloud: บันทึก/อ่าน {branch}_adjerp (fake Firestore) · แนบไฟล์ที่สองรวมกับของบน cloud · รอบนับใหม่ = ว่าง · บันทึกล้ม/ใหญ่เกิน = เฉพาะเครื่องนี้ + บอก · ผลอ่านที่ถูกแซงถูกทิ้ง
 //   9. การ์ด/ไฟล์: นามสกุลผิด → error ไม่ค้าง "กำลังตรวจ" · logout ล้าง
+//  10. รายงานเคลื่อนไหวสินค้า (CF_ 45 คอลัมน์ · 7 ต.ค. 2026 · ผู้ใช้สั่ง — ไม่มี FCANCEL · ไม่มีป้ายบนการ์ด · ไม่มีสวิตช์): ผลเท่า R16 ทุกฟิลด์ · เวลาจาก TRANDATE · ด่านสาขา/คลังชุดเดียวกัน
+//      · R16 ที่ขาด FCANCEL ยังถูกปฏิเสธ (ข้อยกเว้นเฉพาะรูปแบบนี้) · ★ แนบไฟล์เดียวที่การ์ด → สถานะต่อแถวเท่าแนบ R16.104+R16.103
 // (ข้อมูลสังเคราะห์ทั้งหมด — ห้ามใช้ CSV จริง)
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
+const { MHDR, msheet, fromR16 } = require('../../lib/movement-report');
 
 const EPOCH = '2026-09-20T01:00:00.000Z';   // เริ่มรอบ = 20/09 (เวลาเครื่อง)
 const SCAN = '2026-09-21 09:00:00';          // วันที่นับ = 21/09
@@ -204,6 +207,86 @@ test('parser ด่านสาขา/รูปแบบ: หลายสาข�
   await closeApp(app);
 });
 
+// ── รายงานเคลื่อนไหวสินค้า: spec เดียวสร้างทั้ง R16 (line/sheet) และรายงานเคลื่อนไหว (msheet) → ต้องได้ผลเท่ากัน ──
+const EQ_SRC = [
+  { wh: '0', date: '18/9/2026 8:00', no: 'OTFIBY500', sku: 'A01', qty: 4 },        // ขาออกอื่น (คลัง) — ขยายช่วงของไฟล์เฉยๆ
+  { date: '22/9/2026 10:00', no: 'ORDSBY001', sku: 'A01', qty: 2 },
+  { date: '22/9/2026 10:00', no: 'ORDSBY001', sku: 'A02', qty: 1.5 },              // ทศนิยม · 2 บรรทัด (LOT) ต่อ SKU
+  { date: '22/9/2026 10:00', no: 'ORDSBY001', sku: 'A02', qty: 1.5 },
+  { date: '23/9/2026 11:00', no: 'ORDS260900007', sku: 'A03', qty: 1 },            // เลขเอกสารรูปแบบเก่า (ไม่มี BY)
+  { wh: '0', date: '22/9/2026 16:00', no: 'ORDSBY090', sku: 'A04', qty: 2 },       // คลังชากค้อ — ไม่ใช่ของ SRC
+  { date: '19/9/2026 9:00', no: 'ORDSBY092', sku: 'A04', qty: 2 },                 // ก่อนเริ่มรอบ
+  { date: '22/9/2026 18:00', no: 'ORDSBY093', sku: '', qty: 2 },                   // ข้อมูลไม่ครบ
+  { date: '23/9/2026 10:00', no: 'IRPSBY001', sku: 'B01', qty: 2 },
+  { date: '23/9/2026 10:00', no: 'IRPSBY001', sku: 'A05', qty: 2 },
+  { date: '24/9/2026 12:00', no: 'IRPS260900003', sku: 'B02', qty: 3 },
+];
+const EQ_KKL = [
+  { wh: '0', branch: '7', date: '22/9/2026 10:00', no: 'ORDSBY010', sku: 'K1', qty: 2 },
+  { wh: '2', branch: '7', date: '22/9/2026 11:00', no: 'ORDSBY011', sku: 'K2', qty: 1 },
+  { wh: '1', branch: '7', date: '23/9/2026 9:00', no: 'IRPSBY010', sku: 'K1', qty: 1 },
+];
+
+test('รายงานเคลื่อนไหวสินค้า (CF_ 45 คอลัมน์): ผลเท่า R16 ทุกฟิลด์ · เวลาจาก TRANDATE ไม่ใช่ CF_TRANDATE · ด่านคลัง SRC / KKL ไม่กรอง · ไม่มีใบยกเลิก · หาคอลัมน์จากชื่อ', async ({ browser }) => {
+  const app = await boot(browser);
+  const out = await app.page.evaluate(({ r16, mov, kklR16, kklMov, EPOCH }) => {
+    const simp = (p) => ({ error: p.error, branchId: p.branchId, branchName: p.branchName, cover: p.cover, stats: p.stats, cancelled: p.cancelled,
+      docs: Object.fromEntries(p.docs.map((d) => [d.no, [d.type, d.day, d.at, d.items]])) });
+    const perm = mov[0].map((_, i) => i).reverse();                                  // สลับลำดับคอลัมน์ทั้งไฟล์
+    const shuffled = mov.map((r) => perm.map((i) => r[i]));
+    return {
+      srcR16: simp(_parseAdjErpRows(r16, 'SRC', EPOCH)), srcMov: simp(_parseAdjErpRows(mov, 'SRC', EPOCH)),
+      kklR16: simp(_parseAdjErpRows(kklR16, 'KKL', EPOCH)), kklMov: simp(_parseAdjErpRows(kklMov, 'KKL', EPOCH)),
+      shuffled: simp(_parseAdjErpRows(shuffled, 'SRC', EPOCH)),
+    };
+  }, { r16: sheet(EQ_SRC.map(line)), mov: msheet(EQ_SRC), kklR16: sheet(EQ_KKL.map(line)), kklMov: msheet(EQ_KKL), EPOCH });
+  expect(out.srcMov).toEqual(out.srcR16);                                           // เท่า R16 ทุกฟิลด์ (docs/cover/stats/ชื่อสาขา)
+  expect(out.shuffled).toEqual(out.srcMov);                                         // หาคอลัมน์จากชื่อ ไม่ fix ตำแหน่ง
+  expect(out.srcMov).toEqual({
+    error: '', branchId: '0', branchName: 'สาขาทดสอบ', cancelled: [],
+    cover: { ORDS: { fromDay: '2026-09-18', toAt: '2026-09-23 11:00' }, IRPS: { fromDay: '2026-09-23', toAt: '2026-09-24 12:00' } },   // ไฟล์เดียวครอบทั้งสองชนิด
+    stats: { adjLines: 10, otherWh: 1, beforeRound: 1, bad: 1, badDate: 0, cancelledDocs: 0 },                                       // คลังชากค้อ · ก่อนรอบ · ไม่มี SKU = ถูกตัดและนับ
+    docs: {
+      ORDSBY001: ['ORDS', '2026-09-22', '2026-09-22 10:00', { A01: 2, A02: 3 }],   // เวลา 10:00 มาจาก TRANDATE (CF_TRANDATE มีแต่วัน — ถ้าอ่านผิดจะเป็น 23:59) · 2 LOT ต่อ SKU รวมกัน
+      ORDS260900007: ['ORDS', '2026-09-23', '2026-09-23 11:00', { A03: 1 }],
+      IRPSBY001: ['IRPS', '2026-09-23', '2026-09-23 10:00', { B01: 2, A05: 2 }],
+      IRPS260900003: ['IRPS', '2026-09-24', '2026-09-24 12:00', { B02: 3 }],
+    },
+  });
+  expect(out.kklMov).toEqual(out.kklR16);
+  expect(out.kklMov.docs).toEqual({                                                  // KKL ไม่กรองคลัง (wh 0 / 2 / 1 เข้าหมด)
+    ORDSBY010: ['ORDS', '2026-09-22', '2026-09-22 10:00', { K1: 2 }],
+    ORDSBY011: ['ORDS', '2026-09-22', '2026-09-22 11:00', { K2: 1 }],
+    IRPSBY010: ['IRPS', '2026-09-23', '2026-09-23 09:00', { K1: 1 }],
+  });
+  expect(out.kklMov.stats.otherWh).toBe(0);
+
+  // ด่านสาขา/รูปแบบของรายงานเคลื่อนไหว
+  const g = await app.page.evaluate(({ EPOCH, sss, src, multi, noQty, hybrid, whole0 }) => {
+    const p = (rows, br) => _parseAdjErpRows(rows, br, EPOCH);
+    const w = p(whole0, 'SRC');
+    return { sssAsSrc: p(sss, 'SRC').error, srcAsKkl: p(src, 'KKL').error, multi: p(multi, 'SSS').error, noQty: p(noQty, 'SRC').error,
+      hybrid: p(hybrid, 'KKL').error, plain: p([['a', 'b'], ['1', '2']], 'SRC').error, whole0: [w.error, w.docs.length, w.stats.otherWh] };
+  }, {
+    EPOCH,
+    sss: msheet([{ branch: '5', wh: '0', no: 'ORDSBY001', sku: 'K1', qty: 1, name: 'สวนเสือ' }]),
+    src: msheet([{ branch: '0', wh: '1', no: 'ORDSBY001', sku: 'K1', qty: 1 }]),
+    multi: msheet([{ branch: '7', no: 'ORDSBY010', sku: 'K1', qty: 2 }, { branch: '8', no: 'ORDSBY012', sku: 'K2', qty: 1 }]),
+    noQty: msheet([{ no: 'ORDSBY001', sku: 'A01', qty: 1 }]).map((r) => r.filter((_, j) => j !== MHDR.indexOf('CF_TDBASEQUANTITY'))),   // ขาดคอลัมน์จำนวน
+    // R16 ที่ขาด FCANCEL + แทรก CF_TRANNO เข้ามา → ต้องไม่หลุดเข้าทางรายงานเคลื่อนไหว (ข้อยกเว้น FCANCEL ใช้ได้เฉพาะหัวรายงานเคลื่อนไหวครบ)
+    hybrid: [[...HDR.map((h) => (h === 'FCANCEL' ? 'XCANCEL' : h)), 'CF_TRANNO'], ...sheet([line({ branch: '7', no: 'ORDSBY010', sku: 'K1', qty: 2 })]).slice(1).map((r) => [...r, 'ORDSBY010'])],
+    whole0: msheet([{ wh: '0', no: 'ORDSBY001', sku: 'A01', qty: 1 }, { wh: '0', no: 'IRPSBY001', sku: 'A02', qty: 1 }]),               // export คลังมาผิด
+  });
+  expect(g.sssAsSrc).toBe('ไฟล์ไม่ใช่ของสาขา SRC (SYSBRANCHID 5 · สวนเสือ)');         // ชื่อสาขาอ่านจาก CF_BNAME
+  expect(g.srcAsKkl).toBe('ไฟล์เป็นของสาขาชากค้อ (SYSBRANCHID 0 · สาขาทดสอบ) ไม่ใช่ KKL');
+  expect(g.multi).toContain('หลายสาขา');
+  expect(g.noQty).toBe('ไม่ใช่รายงานเคลื่อนไหวสินค้า จาก ProMaxx (ไม่พบคอลัมน์ CF_TDBASEQUANTITY)');
+  expect(g.hybrid).toContain('ไม่ใช่รายงานเคลื่อนไหวสินค้า');
+  expect(g.plain).toBe('ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANDATE, TRANNO, FCANCEL, SYSBRANCHID, BASEQUANTITY, ITEMID)');   // ข้อความเดิมของ R16 ไม่เปลี่ยน
+  expect(g.whole0).toEqual(['', 0, 2]);                                              // SRC: export คลังมาทั้งไฟล์ = ไม่มีใบเข้า + นับว่าข้ามเพราะคลังอื่น (ไม่ปนเป็นของหน้าร้าน)
+  await closeApp(app);
+});
+
 test('merge: ไฟล์ใหม่ทับเฉพาะช่วงของมัน · ใบที่หายจาก ERP ในช่วงถูกลบ · นอกช่วงคงเดิม · ใบยกเลิกถูกลบ · ชนิดอื่นไม่ถูกแตะ', async ({ browser }) => {
   const app = await boot(browser);
   const out = await app.page.evaluate(({ FILE_O, FILE_I, NEXT, LATE, EPOCH }) => {
@@ -305,6 +388,39 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   const r2 = await read(app.page);
   expect(r2.erp).toEqual(['✅ เข้าแล้ว', '⬜ ยังไม่เข้า']);
   expect(r2.bar.extra).toContain('มีใบ IRPS ใน ERP แต่ไม่อยู่ในแท็บนี้ 1 SKU');   // A05
+  await closeApp(app);
+});
+
+test('★ แนบรายงานเคลื่อนไหวสินค้า (ไฟล์เดียว ORDS+IRPS) ที่การ์ด 🧾 → สถานะต่อแถวเท่าแนบ R16.104+R16.103 · การ์ดไม่มีป้ายเพิ่ม · ไม่มีใบของชนิดไหน = แท็บนั้นยังไม่มีสถานะ', async ({ browser }) => {
+  const app = await boot(browser);
+  await seedScenario(app.page);
+  // อ้างอิง: แนบ R16 สองไฟล์ → สถานะต่อแถวทั้งสองแท็บ
+  await upload(app.page, [{ name: 'r16104.csv', rows: FILE_O }, { name: 'r16103.csv', rows: FILE_I }]);
+  const ref = { ords: await stateOf(app.page, 'ords'), irps: await stateOf(app.page, 'irps') };
+  expect(ref.ords.A05).toEqual(['opposite', 0, 2, ['IRPSBY001']]);                 // อ้างอิงไม่ว่างเปล่า — มีหลายสถานะ/ทิศ
+  expect(ref.ords.A03[0]).toBe('over');
+  expect(ref.irps.B01[0]).toBe('done');
+
+  // รายงานเคลื่อนไหวไฟล์เดียวที่มีใบเดียวกัน (ตัดบรรทัดยกเลิกออก — รายงานนี้ไม่มีคอลัมน์ยกเลิก)
+  await app.page.evaluate(() => { _adjErp = null; _adjErpFilter = 'all'; _refreshAdjErpCard(); renderAdjustDocTable(); });
+  const t0 = await toastCount(app.page);
+  await upload(app.page, [{ name: '02102src.CSV', rows: fromR16(FILE_O, FILE_I) }]);
+  expect({ ords: await stateOf(app.page, 'ords'), irps: await stateOf(app.page, 'irps') }).toEqual(ref);
+  await app.page.evaluate(() => renderAdjustDocTable());
+  const r = await read(app.page);
+  expect(r.card).toContain('ORDS ถึง 26/09 18:30');
+  expect(r.card).toContain('IRPS ถึง 23/09 10:00');                                // ไฟล์เดียวครอบทั้งสองชนิด
+  expect(r.card).not.toContain('R16.103');                                          // ไม่มี "ยังไม่มีไฟล์" ค้าง
+  expect(r.card).not.toContain('ยกเลิก');                                           // ไม่มีป้าย/หมายเหตุเรื่องใบยกเลิกบนการ์ด (ผู้ใช้สั่ง)
+  expect(r.bar.chips.map((c) => c.slice(0, 2))).toEqual([['all', 10], ['none', 2], ['done', 3], ['issue', 4]]);   // ชิปเท่าผล R16 (A05 = ทิศตรงข้าม นับเป็น "ไม่ตรง")
+  expect((await lastToasts(app.page, t0))[0]).toContain('ORDS 6 ใบ · IRPS 1 ใบ');
+
+  // ไฟล์ที่มีแต่ใบ ORDS (ไม่มี IRPS เลย) → ตรวจ ORDS ได้ · แท็บ IRPS ยังไม่มีสถานะ (ไม่รู้ว่าครอบ IRPS หรือไม่ จึงไม่อ้าง "ยังไม่เข้า")
+  await app.page.evaluate(() => { _adjErp = null; });
+  await upload(app.page, [{ name: 'ords-only.CSV', rows: fromR16(FILE_O) }]);
+  expect((await stateOf(app.page, 'ords')).A01).toEqual(['done', 2, 2, ['ORDSBY001']]);
+  expect(await stateOf(app.page, 'irps')).toEqual({ B01: null, B02: null });
+  expect((await read(app.page)).card).toContain('IRPS: ยังไม่มีไฟล์ R16.103');
   await closeApp(app);
 });
 
