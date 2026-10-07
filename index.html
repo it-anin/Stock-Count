@@ -1082,13 +1082,13 @@
 <div class="stock-popup-overlay" id="adjHistPopupOverlay" style="display:none;z-index:501;" onclick="handleAdjHistOverlayClick(event)">
   <div class="stock-popup" id="adjHistPopupCard" style="max-width:980px;">
     <div class="stock-popup-header">
-      <h2>🗂️ ประวัติปรับปรุง</h2>
+      <h2>ประวัติใบปรับปรุง</h2>
       <button class="stock-popup-close" onclick="closeAdjHistPopup()">✕</button>
     </div>
-    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.5;">รายการที่ Export Text แล้วย้ายมาอยู่ที่นี่พร้อมเลขที่เอกสาร · ผูกกับรอบนับนี้ (เริ่มนับใหม่ = ว่าง) · Status จะมาจากรายงาน .CSV ที่แนบ (ยังไม่เชื่อม — แสดง "ยังไม่เข้า" ไปก่อน)</div>
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.5;">ประวัติใบปรับปรุงสินค้า</div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
-        <thead><tr><th>เลขที่เอกสาร</th><th style="text-align:center;">ชนิด</th><th>วันที่ · เวลา</th><th>ผู้ส่งออก</th><th style="text-align:center;">รายการ</th><th style="text-align:center;">Status</th><th></th></tr></thead>
+        <thead><tr><th>เลขที่เอกสาร</th><th style="text-align:center;">ประเภทเอกสาร</th><th>วันที่ · เวลา</th><th>ผู้ส่งออก</th><th style="text-align:center;">รายการ</th><th style="text-align:center;">Status</th><th></th></tr></thead>
         <tbody id="adjHistBody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีประวัติ</td></tr></tbody>
       </table>
     </div>
