@@ -458,7 +458,7 @@
       </div>
       <div class="db-status">
         <div class="db-dot active" id="dbDot"></div>
-        <span id="dbStatus" style="color:var(--text2)">Ready</span>
+        <span id="dbStatus" style="color:var(--text2)" ondblclick="_debugShowLog()">Ready</span>
         <button onclick="pullFromCloud()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
         <button id="btnPdaAuditVerify" onclick="openAuditVerifyPopup()" style="display:none;border:1px solid rgba(224,140,0,0.45);background:rgba(224,140,0,0.12);color:var(--yellow);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;font-weight:700;align-items:center;gap:4px;" title="Audit Verify">🔍 <span id="btnPdaAuditCount" style="background:rgba(224,140,0,0.25);padding:0 5px;border-radius:8px;font-size:0.6rem;">0</span></button>
         <button id="btnPdaSettings" onclick="if(typeof Android!=='undefined')Android.openSettings()" style="display:none;border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;" title="ตั้งค่า Scanner">⚙</button>
@@ -1706,6 +1706,7 @@ function _isBranchConfirmLockActive(data=_branchConfirmLockData){
   return !!(_branchUsesConfirmLock()&&data?.token&&(data.countResetAt||'')===(_countResetAt||'')&&_branchConfirmLockExpiresMs(data)>Date.now());
 }
 function _setBranchScanPaused(active,data=null){
+  _debugLog('_setBranchScanPaused',{active,wasPaused:_branchScanPaused}); // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   const wasPaused=_branchScanPaused;_branchScanPaused=!!active;_branchConfirmLockData=data;
   clearTimeout(_branchConfirmLockExpiryTimer);_branchConfirmLockExpiryTimer=null;
   const banner=document.getElementById('branchConfirmLockBanner');
@@ -1725,7 +1726,7 @@ function _setBranchScanPaused(active,data=null){
     updateScanInputMode();if(auditInput)auditInput.disabled=false;
     if(!wasPaused)return;
     if(scanQueue.length)requestAnimationFrame(drainQueue);
-    if(scanInput&&!scanInput.disabled)scanInput.focus();
+    if(scanInput&&!scanInput.disabled){_debugLog('scanInput.focus() called');scanInput.focus();} // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   }
   updateConfirmBtn();
 }
@@ -2155,9 +2156,28 @@ function _rebuildWhConfirmationData(){
   _whCountConfirmationData={...(_whLegacyCountConfirmationData||{}),...(_whCountOpConfirmationData||{})};
   _whRecheckConfirmationData={...(_whLegacyRecheckConfirmationData||{}),...(_whRecheckOpConfirmationData||{})};
 }
+// SCAN_ITEM_LISTENER_PATCH (ขยาย ต.ค. 2026): Count/Recheck Confirm เปลี่ยน status เสมอ (scanning→pass/audit/
+// stock_adjustment หรือ audit→pass/stock_adjustment — ดู _applyWhCountConfirmationToSku/_applyWhRecheckConfirmationToSku)
+// จึงไม่มี "patch เฉพาะ qty" ให้ทำที่นี่ — มีแค่ skip (ของเพื่อนแน่นอน) กับ fallback (ของเราเอง status เปลี่ยนจริง)
+// คืน true = sku นี้เป็นของเพื่อนแน่นอน ไม่เคยอยู่ใน scanListMap ของเครื่องนี้ (เงื่อนไขเดียวกับ guard skip ใน
+// rebuildScanListMap — ดูบรรทัดนั้น) ⇒ ข้ามได้เลย ไม่ต้องนับเป็นเหตุ fallback
+function _whConfirmChangeIsFriendsForSure(sd){
+  if(!sd)return false;
+  const filterUser=currentUser&&currentRole!=='pharmacist'&&currentRole!=='supervisor';
+  if(!filterUser)return false;
+  const whWorklist=currentBranch==='WH'&&currentRole==='warehouse'&&sd.status==='audit'&&window.innerWidth>600;
+  return !whWorklist&&!!sd.scannedBy&&sd.scannedBy!==currentUser;
+}
+// true = มี sku อย่างน้อยหนึ่งตัวในรายการที่ไม่ใช่ของเพื่อนแน่นอน (= อาจเป็นของเรา/role ที่เห็นทุกคน) → ต้อง fallback
+function _whConfirmChangedNeedsRender(skus){
+  if(!SCAN_ITEM_LISTENER_PATCH)return true; // สวิตช์ปิด = พฤติกรรมเดิมทุกไบต์
+  for(const sku of skus)if(!_whConfirmChangeIsFriendsForSure(state.scanData.get(sku)))return true;
+  return false;
+}
 function _renderWhWorkflowStateChanges(countChanged=[],recheckChanged=[]){
   if(!countChanged.length&&!recheckChanged.length)return;
-  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();
+  invalidatePopupRowsCache();saveSession();
+  if(_whConfirmChangedNeedsRender([...countChanged,...recheckChanged])){rebuildScanListMap(true);renderScanList();}
   updateStats();renderTable();updatePharmacistAuditConfirmBtn();updateConfirmBtn();
   if(document.getElementById('auditVerifyPopupOverlay')?.style.display==='flex')renderAuditVerifyTable();
 }
@@ -2315,6 +2335,7 @@ function startWhConfirmOpsListener(){
   if(_whConfirmOpsUnsubscribe&&_whConfirmOpsListenerEpoch===epoch)return;
   stopWhConfirmOpsListener();_whConfirmOpsListenerEpoch=epoch;
   _whConfirmOpsUnsubscribe=getWhConfirmOpsRef().where('countResetAt','==',epoch).onSnapshot(async snap=>{
+    _debugLog('startWhConfirmOpsListener:snapshot',{pending:snap.metadata.hasPendingWrites,docChanges:snap.docChanges().length}); // DEBUG ชั่วคราว
     if(snap.metadata.hasPendingWrites)return;
     try{await _applyWhCommittedOpsSnapshot(snap,{render:true});document.getElementById('dbStatus').textContent='Synced ☁️';}
     catch(e){document.getElementById('dbStatus').textContent='Sync Error';console.warn('[WH confirm ops listener]',e.message);toast('โหลดผลยืนยัน WH ไม่ครบ — คงสถานะเดิมและกำลังรอ Sync','error',5000);}
@@ -2403,7 +2424,8 @@ function _applyWhCountConfirmationsToState(){
 }
 function _renderWhCountConfirmationChanges(changed){
   if(!changed.length)return;
-  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();
+  invalidatePopupRowsCache();saveSession();
+  if(_whConfirmChangedNeedsRender(changed)){rebuildScanListMap(true);renderScanList();}
   updateStats();renderTable();updatePharmacistAuditConfirmBtn();updateConfirmBtn();
 }
 function startWhCountConfirmationListener(){
@@ -2550,7 +2572,8 @@ function _applyWhRecheckConfirmationsToState(){
 }
 function _renderWhRecheckConfirmationChanges(changed){
   if(!changed.length)return;
-  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();
+  invalidatePopupRowsCache();saveSession();
+  if(_whConfirmChangedNeedsRender(changed)){rebuildScanListMap(true);renderScanList();}
   updateStats();renderTable();updatePharmacistAuditConfirmBtn();
 }
 function startWhRecheckConfirmationListener(){
@@ -2704,6 +2727,8 @@ function startScanItemsListener(){
   stopScanItemsListener();
   _scanItemsListenerEpoch=epoch;
   _scanItemsUnsubscribe=getScanItemsRef().where('countResetAt','==',epoch).onSnapshot(snap=>{
+    _debugLog('startScanItemsListener:snapshot',{pending:snap.metadata.hasPendingWrites, // DEBUG ชั่วคราว
+      changes:snap.docChanges().map(ch=>({type:ch.type,sku:ch.doc.id,scannedBy:ch.doc.data()?.scannedBy,status:ch.doc.data()?.status}))});
     // การเขียนของเครื่องนี้เอง (local echo) — state ถูกต้องอยู่แล้ว ไม่ต้อง apply ซ้ำ
     if(snap.metadata.hasPendingWrites)return;
     let touched=false,statusTouched=false,needsFullRender=false;
@@ -2747,6 +2772,7 @@ function startScanItemsListener(){
           if(!patchScanRow(sku)){patched=false;break;}
         }
       }
+      _debugLog('startScanItemsListener:decision',{patched,needsFullRender,toPatch:toPatch.slice()}); // DEBUG ชั่วคราว
       if(!patched){rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();}
     }
     if(SCAN_LIGHT_REFRESH&&!statusTouched){_refreshScanCounters();renderTable();}
@@ -4076,6 +4102,7 @@ function _scanItemLastQty(sku){
 
 // safety net: กวาดหา SKU ที่เปลี่ยนแต่ไม่มีใครเรียก _markSkuDirty (เผื่อมี mutation site ที่ตกหล่น)
 function _reconcileScanItems(){
+  _debugLog('_reconcileScanItems'); // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   if(_adminMode||!_db||!currentBranch||!_isScanSchemaV2())return;
   for(const[sku,sd]of state.scanData.entries()){
     const known=_scanItemSynced.get(sku);
@@ -4409,6 +4436,42 @@ let SCAN_INCREMENTAL_ROW=true;
 // rollback = ตั้ง false แล้ว deploy (listener กลับ renderScanList() ทุกครั้งเหมือนเดิม — ไม่ข้าม ไม่ patch เลย)
 // let เพื่อให้เทสสลับเทียบได้
 let SCAN_ITEM_LISTENER_PATCH=true;
+
+// ⚠️⚠️⚠️ DEBUG ชั่วคราว (ต.ค. 2026) — เก็บหลักฐานจริงว่าอะไร trigger focus หลุดบน WH PDA recheck tab
+// ลบทั้งบล็อกนี้ (จนถึง "DEBUG ชั่วคราว — จบ") ทันทีหลังได้ log มาวิเคราะห์เสร็จ ห้ามค้างใน production
+const _DEBUG_LOG_KEY='_whFocusDebugLog';
+const _DEBUG_LOG_MAX=80;
+function _debugLog(ev,extra){
+  try{
+    const entry={t:new Date().toISOString(),ev,
+      active:document.activeElement?.className||document.activeElement?.tagName||'',
+      branchScanPaused:_branchScanPaused,whCountConfirming:_whCountConfirming,whRecheckConfirming:_whRecheckConfirming,
+      ...extra};
+    const raw=localStorage.getItem(_DEBUG_LOG_KEY);
+    const arr=raw?JSON.parse(raw):[];
+    arr.push(entry);
+    while(arr.length>_DEBUG_LOG_MAX)arr.shift();
+    localStorage.setItem(_DEBUG_LOG_KEY,JSON.stringify(arr));
+  }catch(e){}
+}
+function _debugShowLog(){
+  const raw=localStorage.getItem(_DEBUG_LOG_KEY)||'[]';
+  let overlay=document.getElementById('_debugLogOverlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='_debugLogOverlay';
+    overlay.style.cssText='position:fixed;inset:0;background:#000;color:#0f0;z-index:99999;overflow:auto;padding:10px;font:11px monospace;white-space:pre-wrap;';
+    document.body.appendChild(overlay);
+  }
+  const arr=JSON.parse(raw);
+  const text=arr.map(e=>JSON.stringify(e)).join('\n');
+  overlay.innerHTML=`<button onclick="document.getElementById('_debugLogOverlay').remove()" style="position:fixed;top:6px;right:6px;padding:8px 14px;z-index:1;">ปิด</button>`+
+    `<button onclick="navigator.clipboard.writeText(document.getElementById('_debugLogText').textContent).then(()=>alert('คัดลอกแล้ว'))" style="position:fixed;top:6px;right:70px;padding:8px 14px;z-index:1;">คัดลอก</button>`+
+    `<div id="_debugLogText" style="margin-top:40px;">${(text||'(ว่าง)').replace(/</g,'&lt;')}</div>`;
+}
+function _debugClearLog(){localStorage.removeItem(_DEBUG_LOG_KEY);}
+// DEBUG ชั่วคราว — จบ (ต่อจากนี้ของจริง — ห้ามแก้ logic ด้านล่างนี้ตอนลบ debug block ด้านบน)
+
 // PROGRESS_BY_SCAN = Counted / Pass / Progress ของ "สาขายา" (SRC/KKL/SSS · ทุกอุปกรณ์ Desktop+PDA) นับตามที่สแกน (ก.ย. 2026 · ผู้ใช้สั่ง)
 //   เหตุผล: ตัดขั้น Audit แล้ว (29 ก.ย.) ⇒ "เสร็จ" ของหน้างานคือสแกนครบ ไม่ต้องรอ Desktop Confirm
 //   Counted = ตัวเศษ Progress = SKU ในชุดที่ต้องนับ (_countableSkus) ที่สถานะไม่ใช่ pending (สแกนครั้งแรกก็นับ · รวม scanning ที่ยังไม่ Confirm)
@@ -6132,6 +6195,7 @@ function _scanRowHtml(entry,ctx){
     </div>`;
 }
 function renderScanList(){
+  _debugLog('renderScanList',{stack:new Error().stack?.split('\n').slice(1,5).join(' | ')||''}); // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   const body=document.getElementById('scanListBody');
   if(!scanListMap.size){body.innerHTML='<div class="scan-list-empty">รอการสแกน...</div>';return;}
   const entries=[...scanListMap.values()].reverse();
