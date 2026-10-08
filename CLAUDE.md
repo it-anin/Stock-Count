@@ -749,6 +749,25 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - เริ่มนับใหม่/ล้างข้อมูลต้องล้าง inbox/legacy markers, WH R16 meta/chunks/cache และลบ `results` ใต้ op ก่อนลบ op parent (Firestore ไม่ลบ subcollection ตาม parent); reader กรอง `countResetAt` เสมอเพื่อให้เศษ cleanup รอบเก่าไม่มีผล
 - `firestore.rules` ต้องมี match แยกสำหรับ `WH/confirm_ops/{opId}` และ `results/{sku}` และต้อง Publish ก่อน deploy runtime; Rules ต้องคง immutable result + monotonic op state ตามด้านบน และ update `WH/items/{sku}` ใน epoch เดียวกันต้องคง `whCountOpId`/`whRecheckOpId` ที่มีอยู่แล้ว เพื่อกัน delayed PDA replace ลบ final provenance (branch อื่น, epoch ใหม่, create/delete คง behavior เดิม)
 
+#### 🐛 WH PDA แท็บรีเช็ค ช่อง qty เด้งหลุด/scroll บนสุดขณะพิมพ์ (ผู้ใช้รายงาน · ต.ค. 2026)
+
+**สาเหตุ:** `startScanItemsListener()` ([:2700](index.html)) เรียก `renderScanList()` (`body.innerHTML=...`) แบบไม่มีเงื่อนไขทุกครั้งที่ "ใครก็ตาม" ในสาขาเปลี่ยน SKU — WH มีหลายสิบคนสแกนพร้อมกันเสมอ ⇒ เกือบทุก snapshot เป็นแบบนี้ ขณะที่ user กำลังพิมพ์ช่อง qty ของแถวอื่นอยู่ (ยังไม่ blur/Enter) `innerHTML` ใหม่ทำให้ `scrollTop=0` และ element เดิม (รวม input ที่โฟกัส) ถูกทำลาย → focus หลุดไปที่ `<body>` เอง (ไม่ใช่ force `scrollTo`/`scrollIntoView` — ค้นทั้งไฟล์ไม่พบเลย เป็นธรรมชาติของ browser ตอน `innerHTML` ถูกแทนที่)
+
+⚠️ **ผลที่ร้ายแรงกว่า "เด้งโฟกัส" ที่พิสูจน์ได้จริงระหว่างเขียนเทส (canary):** เมื่อ element ที่มี focus ถูกทำลายจาก `innerHTML=` replacement, browser จะ fire `blur` ให้เองก่อนเสมอ — และ `.inline-qty-input` ของแถว audit มี `onblur="updateRecheckInlineQty(sku,this.value)"` ติดอยู่ ⇒ **ค่าที่พิมพ์ครึ่งๆกลางๆ (ยังไม่ตั้งใจส่ง) ถูกเขียนขึ้น Firestore จริงโดยไม่ได้ตั้งใจ** ไม่ใช่แค่เสียโฟกัส — ยืนยันด้วยการทดลองจริงใน `tests/specs/e2e/wh-recheck-listener-patch.spec.js` (ปิดสวิตช์แล้วค่าที่ seed ไว้ถูกเขียนทับเป็นค่าที่พิมพ์ค้าง ไม่ใช่ค่าที่ cloud ส่งมา)
+
+**แก้ (สวิตช์ `SCAN_ITEM_LISTENER_PATCH`):** listener ตรวจต่อ sku ที่เปลี่ยนในแต่ละ snapshot ก่อนตัดสินใจ:
+1. **sku ของเพื่อนแน่นอน** (`filterUser&&!whWorklist&&sd.scannedBy&&sd.scannedBy!==currentUser` — คัดลอกเงื่อนไข skip 1 บรรทัดจาก `rebuildScanListMap` [:5981](index.html) ไม่ duplicate ทั้ง filter chain) → **ข้ามเลย ไม่กระทบ DOM** เพราะ `rebuildScanListMap()` กรอง PDA warehouse ให้เห็นเฉพาะ `scannedBy===currentUser` เสมอไม่ว่า tab ไหน (`whWorklist`/เห็นของทุกคนต้องการ Desktop `width>600`) — SKU ของเพื่อนไม่เคยเข้า `scanListMap` ของเครื่องนี้อยู่แล้ว ไม่ว่า rebuild กี่ครั้ง
+2. **sku ของเรา + status ไม่เปลี่ยน** (เปลี่ยนแค่ qty เช่น Supervisor confirm ยอด recheck) → `patchScanRow()` ต่อแถว (มี guard `document.activeElement!==input` กันทับช่องที่โฟกัสอยู่อยู่แล้วก่อนงานนี้) แทน `renderScanList()` เต็มรูปแบบ
+3. **sku ของเรา + status เปลี่ยนจริง** (เช่น `scanning`→`audit`/`pass`) หรือ patch ไม่ได้ (ไม่อยู่ใน `scanListMap` ทั้งที่ควรเป็นของเรา) → fallback `renderScanList()` เดิมทุกไบต์ (ยอมรับได้ — แถวนั้นเปลี่ยนความหมายจริง ต้อง rebuild)
+
+⚠️ **ขอบเขตที่ยังไม่ครอบ (ยอมรับแล้ว):** `ch.type==='removed'` ทำให้ `status` กลายเป็น `'pending'` เสมอ (`_applyScanItemRemoved`) ⇒ เข้าเงื่อนไข (3) เสมอ แม้เป็นของเพื่อนแน่นอนก็ fallback (ไม่ skip) — เกิดได้จากปุ่ม ✕ ของคนอื่น ซึ่งไม่บ่อยเท่าการสแกน/confirm ปกติ
+
+**rollback = ตั้ง `SCAN_ITEM_LISTENER_PATCH=false` แล้ว deploy** (listener กลับ `renderScanList()` ทุกครั้งเหมือนเดิม — ไม่ข้าม ไม่ patch เลย) · `let` เพื่อให้เทสสลับเทียบได้ · ไม่มีการเปลี่ยน schema/รูปแบบข้อมูล/`firestore.rules`/APK/`sw.js`
+
+เทส: `tests/specs/e2e/wh-recheck-listener-patch.spec.js` (3 ข้อ: เพื่อนสแกน SKU ตัวเอง + Supervisor confirm ยอด recheck ของเรา → focus ไม่หลุดทั้งคู่ · status เปลี่ยนจริง → fallback ตามคาด (แถวหายจาก DOM เพราะ tab รีเช็คกรองเฉพาะ `audit`) · **canary** ปิดสวิตช์แล้ว coworker write เดิมทำให้ focus หลุดจริง — พิสูจน์ว่าเทสจับบั๊กได้)
+
+**ตรวจแล้ว 8 ต.ค. 2026:** `npm test` ทั้งชุด — logic **240/240** ผ่าน · e2e **78/79** ผ่าน (1 ล้ม = `convert-legacy-audit.spec.js` ซึ่ง**ไม่เกี่ยวกับงานนี้เลย** คนละไฟล์คนละฟังก์ชัน และเป็น flaky test ที่มีมาก่อนงานนี้แล้ว — CLAUDE.md §🧾 ตรวจกับ ERP เคยบันทึกไว้ "ล้ม 2 จาก 7 รอบติดกันตอนต้น แล้วผ่าน 5 รอบติด" · รันแยกเดี่ยวผ่านทันที 18.5s ยืนยัน timing-sensitive ไม่ใช่ regression) · เทสใหม่ของงานนี้ทั้ง 3 ข้อผ่านครบรวม canary · ภาพจอไม่ได้ตรวจ (ไม่มี UI ใหม่ แก้แค่ listener) · ⏳ **ยังไม่ได้ทดสอบบน PDA จริงหลายเครื่องพร้อมกัน** (ตาม §เมื่องานเสร็จ — ต้อง F5/ปิดเปิดแอปก่อนทดสอบ เพราะ heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว ดู Known limitations)
+
 ### รายงานผลการนับ (count_report) — ค่าสด vs ค่าที่แช่ไว้ (ก.ย. 2026)
 
 `_buildCountReportRows()` ผลิตแถวให้ทั้งตารางบนจอและ `exportCountReportExcel()` (ประตูเดียวกันโดยเจตนา)

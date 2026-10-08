@@ -2706,18 +2706,49 @@ function startScanItemsListener(){
   _scanItemsUnsubscribe=getScanItemsRef().where('countResetAt','==',epoch).onSnapshot(snap=>{
     // การเขียนของเครื่องนี้เอง (local echo) — state ถูกต้องอยู่แล้ว ไม่ต้อง apply ซ้ำ
     if(snap.metadata.hasPendingWrites)return;
-    let touched=false,statusTouched=false;
+    let touched=false,statusTouched=false,needsFullRender=false;
+    const toPatch=[]; // SCAN_ITEM_LISTENER_PATCH: sku ที่ต้อง patch แถว (ของเครื่องนี้ + status ไม่เปลี่ยน)
+    // filterUser: เงื่อนไขเดียวกับ guard skip ใน rebuildScanListMap (ดูบรรทัดนั้น) — ใช้แยก sku "ของเพื่อนแน่นอน"
+    // (ไม่เคยเข้า list เครื่องนี้ ไม่ว่า rebuild กี่ครั้ง → ข้ามได้เลย ไม่กระทบ DOM ไม่ต้องนับเป็นเหตุ fallback)
+    // ออกจาก sku ที่ "อาจเป็นของเราเอง" (role ที่เห็นทุกคน หรือ scannedBy ตรง currentUser)
+    const filterUser=currentUser&&currentRole!=='pharmacist'&&currentRole!=='supervisor';
+    const isWh=currentBranch==='WH';
     snap.docChanges().forEach(ch=>{
       const sku=ch.doc.id;
       const prev=state.scanData.get(sku)?.status;
       const applied=ch.type==='removed'?_applyScanItemRemoved(sku):_applyScanItemChange(sku,ch.doc.data());
       if(!applied)return;
       touched=true;
+      const sd=state.scanData.get(sku);
+      const next=sd?.status;
       // เพื่อนสแกนอยู่ (pending/scanning → pending/scanning) เปลี่ยนผล updateStats() ไม่ได้ — ดู SCAN_LIGHT_REFRESH
-      if(!(_isScanCountStatus(prev)&&_isScanCountStatus(state.scanData.get(sku)?.status)))statusTouched=true;
+      if(!(_isScanCountStatus(prev)&&_isScanCountStatus(next)))statusTouched=true;
+      if(!SCAN_ITEM_LISTENER_PATCH){needsFullRender=true;return;} // สวิตช์ปิด = พฤติกรรมเดิมทุกไบต์ (ไม่ข้าม ไม่ patch)
+      if(needsFullRender)return; // fallback ตัดสินแล้วจาก sku ก่อนหน้า — ไม่ต้องคำนวณต่อ (statusTouched ยังต้องวนครบ)
+      const whWorklist=isWh&&currentRole==='warehouse'&&next==='audit'&&window.innerWidth>600;
+      const isFriendsForSure=filterUser&&!whWorklist&&sd?.scannedBy&&sd.scannedBy!==currentUser;
+      if(isFriendsForSure)return; // ไม่กระทบ DOM ของเครื่องนี้แน่นอน — ข้าม sku นี้
+      if(prev!==next||!scanListMap.has(sku)){needsFullRender=true;return;}
+      toPatch.push(sku);
     });
     if(!touched)return;
-    if(!_listCleared){rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();}
+    if(!_listCleared){
+      // SCAN_ITEM_LISTENER_PATCH: เปลี่ยนแค่ qty (status เดิม) ของ sku เครื่องนี้ → patch เฉพาะแถวนั้น กัน
+      // renderScanList() rebuild DOM ทั้งก้อนทับช่อง input ที่กำลังโฟกัส/พิมพ์อยู่ (เช่น WH recheck tab)
+      // — ดู CLAUDE.md §ย้อนกลับ listener patch
+      let patched=!needsFullRender;
+      if(patched){
+        const isPharmRecheck=_isPharmacyBranch()&&currentRole==='pharmacist';
+        for(const sku of toPatch){
+          const sd=state.scanData.get(sku);
+          const e=scanListMap.get(sku);
+          const showRecheck=sd.status==='audit'&&((isWh&&(currentRole==='warehouse'||currentRole==='supervisor'))||isPharmRecheck);
+          e.totalQty=showRecheck?(sd.recheckQty||0):sd.countedQty;
+          if(!patchScanRow(sku)){patched=false;break;}
+        }
+      }
+      if(!patched){rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();}
+    }
     if(SCAN_LIGHT_REFRESH&&!statusTouched){_refreshScanCounters();renderTable();}
     else{updateStats();renderTable();updateConfirmBtn();updatePharmacistAuditConfirmBtn();}
     if(document.getElementById('auditVerifyPopupOverlay')?.style.display==='flex')renderAuditVerifyTable();
@@ -4363,6 +4394,21 @@ function scheduleStatsAfterScan(){
 // ⛔ ห้ามนำ updateStats() ต่อสแกนกลับมาโดยไม่วัดซ้ำ · updateStats() เนื้อในไม่ได้ถูกแก้ — แก้ที่ผู้เรียกเท่านั้น
 let SCAN_LIGHT_REFRESH=true;
 let SCAN_INCREMENTAL_ROW=true;
+// SCAN_ITEM_LISTENER_PATCH (ต.ค. 2026 · ผู้ใช้สั่ง) — แก้บั๊ก: WH PDA แท็บรีเช็ค ช่อง qty เด้งหลุด/scroll บนสุดขณะพิมพ์
+//   สาเหตุ: startScanItemsListener() เรียก renderScanList() (body.innerHTML=...) ทุกครั้งที่ "ใครก็ตาม" ในสาขาเปลี่ยน SKU
+//   ขณะ user กำลังพิมพ์ช่อง qty ของแถวอื่นอยู่ (ยังไม่ blur/Enter) → DOM ใหม่ scrollTop=0 + input หลุด focus เอง
+//   (ไม่ใช่ force scrollTo — ไม่มีโค้ด scroll ใดๆ เป็นธรรมชาติของ browser ตอน innerHTML ถูกแทนที่)
+//   WH มีหลายสิบคนสแกนพร้อมกันเสมอ ⇒ ส่วนใหญ่เป็น "SKU ของเพื่อน" ซึ่ง rebuildScanListMap() กรองไม่ให้เข้า
+//   list ของเราอยู่แล้ว (filterUser — PDA warehouse เห็นเฉพาะ scannedBy ตัวเอง, whWorklist เห็นของทุกคนเฉพาะ
+//   audit+Desktop) ⇒ sku แบบนี้ไม่กระทบ DOM ไม่ว่า rebuild กี่ครั้ง จึงข้ามได้เลย ไม่ต้องนับเป็นเหตุ fallback
+//   เปิดสวิตช์: sku ที่เปลี่ยนในรอบ snapshot นี้ (หลังตัด sku ของเพื่อนแน่นอนออก) "ไม่มีตัวไหนเปลี่ยน status"
+//   (เปลี่ยนแค่ qty เช่น Supervisor confirm ยอด recheck ของ audit SKU อื่นในเครื่องเรา) → patchScanRow() ต่อแถว
+//   (มี guard document.activeElement!==input กันทับช่องที่โฟกัสอยู่แล้ว) แทน renderScanList() เต็มรูปแบบ
+//   sku ไหนเปลี่ยน status จริง (เช่น scanning→audit/pass) หรือ patch ไม่ได้ (ไม่อยู่ใน scanListMap ปัจจุบัน
+//   ทั้งที่ควรเป็นของเรา) = fallback renderScanList() เดิมทุกไบต์
+// rollback = ตั้ง false แล้ว deploy (listener กลับ renderScanList() ทุกครั้งเหมือนเดิม — ไม่ข้าม ไม่ patch เลย)
+// let เพื่อให้เทสสลับเทียบได้
+let SCAN_ITEM_LISTENER_PATCH=true;
 // PROGRESS_BY_SCAN = Counted / Pass / Progress ของ "สาขายา" (SRC/KKL/SSS · ทุกอุปกรณ์ Desktop+PDA) นับตามที่สแกน (ก.ย. 2026 · ผู้ใช้สั่ง)
 //   เหตุผล: ตัดขั้น Audit แล้ว (29 ก.ย.) ⇒ "เสร็จ" ของหน้างานคือสแกนครบ ไม่ต้องรอ Desktop Confirm
 //   Counted = ตัวเศษ Progress = SKU ในชุดที่ต้องนับ (_countableSkus) ที่สถานะไม่ใช่ pending (สแกนครั้งแรกก็นับ · รวม scanning ที่ยังไม่ Confirm)
