@@ -1604,6 +1604,10 @@ const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้า → 
 const R16_OUTBOUND_PREFIXES=['OTFI'];              // สาขา: OTFI ที่ Col A=1 (สาขา→คลัง โอนออกกลับ) → บวกกลับเข้า countedQty (เหมือนยอดขาย); WH ไม่ใช้ (คลังเป็นฝั่งรับ = inbound)
 // ⚠️ SRC ("อนิน สาขาแยกชากค้อ" = สาขา+คลังอยู่ SYSBRANCHID เดียวกัน แยกด้วย Col A = SYSWAREHOUSEID 0=คลัง/1=หน้าร้าน):
 //    OTFB และ OTFI ใช้ Col A → 0=คลังส่ง (ข้าม ไม่กระทบสต็อกหน้าร้าน) / 1=หน้าร้านส่ง (บวกกลับ) — ดู isSrcOtfb/isSrcOtfiSkip ใน loadR16
+// ⚠️ WH (ต.ค. 2026): ORCM/OCTM ที่ Col A=1 (Front Store) = ขายหน้าร้าน ไม่กระทบสต็อก Warehouse (R01 ของ WH = แถว Warehouse) → ไม่บวกกลับ
+//    เคส SKU 800082 (7 ต.ค.): นับ 39 = ระบบ 39 แต่ติด audit เพราะบิลขายหน้าร้าน 1 ชิ้นถูกบวกกลับ · ไฟล์ R16.104 ของ "อนิน สาขาแยกชากค้อ" รวมสองคลังไว้ด้วยกัน (ขาย 819 แถว: หน้าร้าน 794 / คลัง 25)
+//    ข้ามเฉพาะแถวที่ Col A = '1' ตรงๆ (fail-open) — ว่าง/ค่าอื่นนับเหมือนเดิม · false = นับทุกแถวเหมือนก่อนแก้ (rollback) · ดู CLAUDE.md §WH ไม่บวกกลับยอดขายหน้าร้าน
+let WH_R16_SKIP_FRONT_STORE=true;
 const R16_103_PREFIXES=['IRNC','IRVC','IRNM','ICSM','ITFB','ITFW','IPOS','IRCN']; // WH: รับเข้าที่ยังไม่ขึ้นชั้น → บวกกลับเข้า countedQty
 function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
 let currentUser='';
@@ -3373,7 +3377,7 @@ function loadR16(event) {
     let tranDateColIdx=-1;
     if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
     console.log('[R16] headers:',rows[0]?.slice(0,10));console.log('[R16] TRANDATE col index:',tranDateColIdx);if(rows[1])console.log('[R16] row[1] sample TRANDATE:',tranDateColIdx>=0?rows[1][tranDateColIdx]:'(no TRANDATE col)');}
-    let sk=0,matched=0,mismatch=0,missing=0,nCancel=0;
+    let sk=0,matched=0,mismatch=0,missing=0,nCancel=0,nFrontStore=0;
     const isWhBranch=currentBranch==='WH'; // WH: ORCM/OCTM บวกกลับ (ตามไฟล์ที่ใช้จริง)
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
@@ -3387,6 +3391,10 @@ function loadR16(event) {
       const colJ=(r[9]??'').toString().trim();
       if(colJ==='1'){sk++;nCancel++;continue;}
       const isWhSale=isWhBranch&&_matchR16Prefix(colC,R16_SALES_PREFIXES); // WH ใช้ ORCM/OCTM เป็นรายการบวกกลับ
+      // WH: ขายหน้าร้าน (Col A=1) ไม่กระทบสต็อก Warehouse → ไม่สะสมเข้า r16SalesMap/r16RawMap (ดูลูปสะสมด้านล่าง)
+      // ⚠️ แถวต้องยังอยู่ใน r16Data — ด่านวันที่/coverage ด้านล่างอ่านช่วงเวลาจาก r16Data · ตัดก่อน push = ช่วงที่ครอบหดเหลือแค่แถวคลัง (วันละ ~25 แถว) แล้วเตือนผิด
+      // ⚠️ เช็คเฉพาะ '1' ตรงๆ (fail-open): Col A ว่าง/ค่าอื่นนับเหมือนเดิม · ห้ามเปลี่ยนเป็น "เก็บเฉพาะ '0'" ไม่งั้นไฟล์ที่ไม่มี Col A ถูกทิ้งเงียบทั้งไฟล์
+      const isWhFrontStoreSale=WH_R16_SKIP_FRONT_STORE&&isWhSale&&colA==='1';
       const isSale=_matchR16Prefix(colC,R16_SALES_PREFIXES)&&(!isWhBranch||isWhSale); // WH: รับ ORCM/OCTM, สาขา: ORCM/OCTM
       // SRC: "อนิน สาขาแยกชากค้อ" = สาขา SRC + คลังอยู่ SYSBRANCHID เดียวกัน → OTFB ใช้ Col A (SYSWAREHOUSEID) บอกผู้ส่ง: 0=คลัง / 1=สาขาชากค้อ
       //  Col A=0 (คลังเป็นผู้ส่งไปสาขาอื่น เช่น เก้ากิโล) → ไม่กระทบสต็อกสาขา → ข้าม (ไม่นับ)
@@ -3408,7 +3416,7 @@ function loadR16(event) {
       if(!barcode||rawBaseQty===''){sk++;continue;}
       const soldQty=isFinite(+rawBaseQty)&&+rawBaseQty>0?+rawBaseQty:0;
       const tranDate=tranDateColIdx>=0?(r[tranDateColIdx]??'').toString().trim():'';
-      state.r16Data.push({barcode,soldQty,skuR16,tranDate,isInbound});
+      state.r16Data.push({barcode,soldQty,skuR16,tranDate,isInbound,skipWh:isWhFrontStoreSale});
     }
     // Normalize barcode: trim, remove non-printable, normalize spaces
     function normalizeBarcode(b){ return b.replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim(); }
@@ -3430,6 +3438,8 @@ function loadR16(event) {
       }
       // ยืนยัน SKU อยู่ใน R01
       if(!state.skuMap.has(skuFromR05)){missing++;return;}
+      // WH ขายหน้าร้าน: นับเป็น matched เท่าเดิม (ด่านที่ผูกกับ matched>0 ไม่เปลี่ยน) แต่ไม่เข้า map ยอดขาย
+      if(row.skipWh){nFrontStore++;matched++;return;}
       if(row.isInbound){
         // สะสมยอดรับเข้า (OTFB/ORTS/OTFI)
         state.r16InboundMap.set(skuFromR05,(state.r16InboundMap.get(skuFromR05)||0)+row.soldQty);
@@ -3466,7 +3476,9 @@ function loadR16(event) {
       }else{
         toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
       }
-      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch} / บิลยกเลิก ${nCancel}`);
+      // WH: บอกจำนวนแถวขายหน้าร้านที่ข้าม — ไม่ให้แถวหายเงียบ (เหมือนบิลยกเลิก)
+      if(nFrontStore>0)toast(`R16: ข้ามยอดขายหน้าร้าน ${nFrontStore} แถว (Col A=1) — ไม่กระทบสต็อกคลัง`,'info',5000);
+      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch} / บิลยกเลิก ${nCancel} / ข้ามขายหน้าร้าน ${nFrontStore}`);
     } else {
       let msg=`R16.104: ไม่สามารถจับคู่ข้อมูลได้`;
       if(state.r16Data.length>0){
@@ -6737,7 +6749,7 @@ function guideHtml(isWh){
       ?'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — รับเข้าคลังระหว่างนับ (อัพก่อน Confirm)</strong>'
         +'<ul style="padding-left:16px;margin:0;">'
         +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน</strong> → ส่งออก .CSV</li>'
-        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS/OTFI (รับเข้าคลัง) · <strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM</li>'
+        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS/OTFI (รับเข้าคลัง) · <strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM'+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— เฉพาะขายจากคลัง · ข้ามแถว Col A=1 (หน้าร้าน)</span>':'')+'</li>'
         +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY)</li>'
         +'</ul>'
       :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>'
