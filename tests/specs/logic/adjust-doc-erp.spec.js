@@ -14,6 +14,8 @@
 //   9. การ์ด/ไฟล์: นามสกุลผิด → error ไม่ค้าง "กำลังตรวจ" · logout ล้าง
 //  10. รายงานเคลื่อนไหวสินค้า (CF_ 45 คอลัมน์ · 7 ต.ค. 2026 · ผู้ใช้สั่ง — ไม่มี FCANCEL · ไม่มีป้ายบนการ์ด · ไม่มีสวิตช์): ผลเท่า R16 ทุกฟิลด์ · เวลาจาก TRANDATE · ด่านสาขา/คลังชุดเดียวกัน
 //      · R16 ที่ขาด FCANCEL ยังถูกปฏิเสธ (ข้อยกเว้นเฉพาะรูปแบบนี้) · ★ แนบไฟล์เดียวที่การ์ด → สถานะต่อแถวเท่าแนบ R16.104+R16.103
+//  11. ชื่อ+คำอธิบายการ์ด (7 ต.ค. 2026 · ผู้ใช้สั่ง): ชื่อ "ตรวจกับ ERP · R02.102" · "R02.102 อัปเดต วันที่ … เวลา …" รูปเดียวกับการ์ด LOT/ราคา · ชื่อรายงานตามที่แนบ (cover[t].rpt) · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย
+//      · คำเตือน "เฉพาะเครื่องนี้"/หมายเหตุสิ่งที่ถูกตัดไม่หาย · ช่วงของไฟล์/ผู้แนบอยู่ใน tooltip
 // (ข้อมูลสังเคราะห์ทั้งหมด — ห้ามใช้ CSV จริง)
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 const { MHDR, msheet, fromR16 } = require('../../lib/movement-report');
@@ -123,6 +125,7 @@ const read = (page) => page.evaluate(() => {
       extra: (bar.querySelector('#adjErpExtra') || {}).textContent || '',
     },
     card: getComputedStyle(document.getElementById('adjErpCard')).display === 'none' ? null : document.getElementById('adjErpInfo').textContent,
+    tip: document.getElementById('adjErpCard').title,                      // tooltip การ์ด: ชื่อสาขา · ช่วงของไฟล์ · ผู้แนบ · วิธีแนบ
     page: _adjDocPage,
     pager: getComputedStyle(pager).display === 'none' ? null : document.getElementById('adjPgInfo').textContent,
   };
@@ -329,7 +332,7 @@ test('merge: ไฟล์ใหม่ทับเฉพาะช่วงขอ�
     IRPSBY001: { B01: 2, A05: 2 },                                                                // IRPS ไม่ถูกแตะ
   });                                                                                             // 002 ยกเลิก · 005 หายจาก ERP ในช่วง → ลบ
   // ช่วงที่ตรวจแล้วรวมเป็นช่วงกว้างสุด · ผู้แนบ/ไฟล์ล่าสุดของแต่ละชนิด
-  expect(out.cover.ORDS).toEqual({ fromDay: '2026-09-18', toAt: '2026-09-26 18:30', at: 'T3', by: 'C', file: 'next.csv' });
+  expect(out.cover.ORDS).toEqual({ fromDay: '2026-09-18', toAt: '2026-09-26 18:30', at: 'T3', by: 'C', file: 'next.csv', rpt: 'R16.104' });
   expect(out.cover.IRPS).toMatchObject({ fromDay: '2026-09-21', toAt: '2026-09-23 10:00', by: 'B' });
   expect(out.lateCancelled).toEqual(['ORDSBY006']);
   expect(Object.keys(out.afterLate).sort()).toEqual(['IRPSBY001', 'ORDSBY001', 'ORDSBY003', 'ORDSBY004', 'ORDSBY007']);   // 006 หาย · 001 (10:00 หลังช่วง 09:00) คงเดิม
@@ -343,7 +346,7 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   const before = await read(app.page);
   expect(before.head).toHaveLength(9);                                       // ยังไม่แนบ = หน้าตาเดิม
   expect(before.bar).toBeNull();
-  expect(before.card).toContain('แนบ R16.104');
+  expect(before.card).toContain('แนบ R02.102');
 
   // แนบแค่ R16.104 → ตรวจ ORDS ได้ · IRPS ยังไม่มีไฟล์
   await upload(app.page, [{ name: 'r16104.csv', rows: FILE_O }]);
@@ -366,10 +369,11 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   expect(r1.erp).toEqual(['✅ เข้าแล้ว', '⚠️ บางส่วน 1/2', '⚠️ เกิน 3/2', '⬜ ยังไม่เข้า', '⬜ ยังไม่เข้า', '⬜ ยังไม่เข้า', '— ไม่ส่ง', '⚠️ เกิน 3/0', '✅ เข้าแล้ว', '✅ เข้าแล้ว']);
   expect(r1.bar.chips).toEqual([['all', 10, true], ['none', 3, false], ['done', 3, false], ['issue', 3, false]]);
   expect(r1.bar.extra).toContain('ไม่อยู่ในแท็บนี้ 1 SKU');                   // ZZZ
-  expect(r1.card).toContain('ORDS ถึง 26/09 18:30');
-  expect(r1.card).toContain('IRPS: ยังไม่มีไฟล์ R16.103');
+  expect(r1.card).toMatch(/^R16\.104 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2} · IRPS: ยังไม่มีข้อมูล/);   // ชื่อรายงานตามที่แนบ + รูปเวลาเดียวกับการ์ด LOT/ราคา · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย
   expect(r1.card).toContain('ข้ามใบของคลังชากค้อ 1 บรรทัด');
   expect(r1.card).toContain('ใบยกเลิก 1 ใบ');
+  expect(r1.card).not.toContain('ถึง');                                         // ช่วงของไฟล์ย้ายไปอยู่ใน tooltip
+  expect(r1.tip).toBe('ไฟล์ของ: สาขาทดสอบ\nORDS ถึง 26/09 18:30 · IRPS: ยังไม่มีข้อมูล\nแนบล่าสุดโดย Pharm\nกดเพื่อแนบ R02.102 (หรือ R16.104 / R16.103) · เลือกได้หลายไฟล์ · ไฟล์ใหม่ทับเฉพาะช่วงวันที่ของมัน');
   // เลขที่ใบ + tooltip ครบทุกใบ
   const a09 = await app.page.evaluate(() => {
     const tr = [...document.querySelectorAll('#adjustDocBody tr')].find((r) => r.children[1].textContent.trim() === 'A09');
@@ -388,6 +392,8 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   const r2 = await read(app.page);
   expect(r2.erp).toEqual(['✅ เข้าแล้ว', '⬜ ยังไม่เข้า']);
   expect(r2.bar.extra).toContain('มีใบ IRPS ใน ERP แต่ไม่อยู่ในแท็บนี้ 1 SKU');   // A05
+  expect(r2.card).toMatch(/^R16\.104 \+ R16\.103 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2}/);   // ครบทั้งสองชนิดจากสองรายงาน → ชื่อทั้งสอง · ไม่มี "ยังไม่มีข้อมูล"
+  expect(r2.card).not.toContain('ยังไม่มีข้อมูล');
   await closeApp(app);
 });
 
@@ -408,10 +414,12 @@ test('★ แนบรายงานเคลื่อนไหวสินค�
   expect({ ords: await stateOf(app.page, 'ords'), irps: await stateOf(app.page, 'irps') }).toEqual(ref);
   await app.page.evaluate(() => renderAdjustDocTable());
   const r = await read(app.page);
-  expect(r.card).toContain('ORDS ถึง 26/09 18:30');
-  expect(r.card).toContain('IRPS ถึง 23/09 10:00');                                // ไฟล์เดียวครอบทั้งสองชนิด
-  expect(r.card).not.toContain('R16.103');                                          // ไม่มี "ยังไม่มีไฟล์" ค้าง
+  expect(r.card).toMatch(/^R02\.102 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2}/);   // ไฟล์เดียวครอบทั้งสองชนิด → ชื่อรายงานเดียว (ไม่ใช่ R16)
+  expect(r.card).not.toContain('R16');
+  expect(r.card).not.toContain('ยังไม่มีข้อมูล');                                   // ครบทั้ง ORDS/IRPS — ไม่มีชนิดไหนค้าง
   expect(r.card).not.toContain('ยกเลิก');                                           // ไม่มีป้าย/หมายเหตุเรื่องใบยกเลิกบนการ์ด (ผู้ใช้สั่ง)
+  expect(r.tip).toContain('ORDS ถึง 26/09 18:30 · IRPS ถึง 23/09 10:00');          // ช่วงของไฟล์อยู่ใน tooltip
+  expect(await app.page.evaluate(() => [_adjErp.cover.ORDS.rpt, _adjErp.cover.IRPS.rpt])).toEqual(['R02.102', 'R02.102']);   // ชื่อรายงานถูกจดลง cover (ซิงก์ผ่าน cloud ด้วย)
   expect(r.bar.chips.map((c) => c.slice(0, 2))).toEqual([['all', 10], ['none', 2], ['done', 3], ['issue', 4]]);   // ชิปเท่าผล R16 (A05 = ทิศตรงข้าม นับเป็น "ไม่ตรง")
   expect((await lastToasts(app.page, t0))[0]).toContain('ORDS 6 ใบ · IRPS 1 ใบ');
 
@@ -420,7 +428,49 @@ test('★ แนบรายงานเคลื่อนไหวสินค�
   await upload(app.page, [{ name: 'ords-only.CSV', rows: fromR16(FILE_O) }]);
   expect((await stateOf(app.page, 'ords')).A01).toEqual(['done', 2, 2, ['ORDSBY001']]);
   expect(await stateOf(app.page, 'irps')).toEqual({ B01: null, B02: null });
-  expect((await read(app.page)).card).toContain('IRPS: ยังไม่มีไฟล์ R16.103');
+  expect((await read(app.page)).card).toMatch(/^R02\.102 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2} · IRPS: ยังไม่มีข้อมูล/);
+  await closeApp(app);
+});
+
+test('การ์ด 🧾 คำอธิบาย: "<รายงาน> อัปเดต วันที่ … เวลา …" (รูปเดียวกับการ์ด LOT/ราคา) · ชื่อรายงานตามที่แนบ · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย · คำเตือน/หมายเหตุไม่หาย · ช่วง/ผู้แนบอยู่ใน tooltip', async ({ browser }) => {
+  const app = await boot(browser);
+  // HTML เริ่มต้น (ก่อน JS ทับ) ต้องไม่ค้างข้อความ R16 เดิม — ชื่อการ์ด · คำอธิบาย · tooltip ปุ่ม 📥 ในประวัติ
+  expect(await app.page.evaluate(() => document.querySelector('#adjErpCard .upload-file-name').textContent)).toBe('ตรวจกับ ERP · R02.102');
+  expect(await app.page.evaluate(() => document.getElementById('adjErpInfo').textContent)).toBe('แนบ R02.102 จาก ProMaxx เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว');
+  expect(await app.page.evaluate(() => document.getElementById('adjHistImportBtn').title)).toBe('นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R02.102 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦');
+  await seedScenario(app.page);
+  // seed state ตรงๆ (เวลาเป็นเวลาท้องถิ่นไม่มี Z → ผลไม่ขึ้นกับ timezone ของเครื่องที่รันเทส)
+  const card = (cover, extra = {}) => app.page.evaluate(({ cover, extra, EPOCH }) => {
+    const C = (rpt, toAt) => ({ fromDay: '2026-09-18', toAt, at: '', by: '', file: 'x.csv', ...(rpt ? { rpt } : {}) });
+    const c = {}; for (const [t, v] of Object.entries(cover)) if (v) c[t] = C(v[0], v[1]);
+    _adjErp = { docs: {}, cover: c, branchName: 'สาขาทดสอบ', note: '', branch: 'SRC', epoch: EPOCH, updatedBy: 'Pharm', updatedAt: '2026-10-07T15:37:00', localOnly: false, ...extra };
+    _adjErpBusy = false; _refreshAdjErpCard();
+    return { text: document.getElementById('adjErpInfo').textContent, tip: document.getElementById('adjErpCard').title, badge: document.querySelector('#adjErpBadge span').textContent,
+      done: document.getElementById('adjErpCard').classList.contains('adj-card-done') };
+  }, { cover, extra, EPOCH });
+  const TIP = 'กดเพื่อแนบ R02.102 (หรือ R16.104 / R16.103) · เลือกได้หลายไฟล์ · ไฟล์ใหม่ทับเฉพาะช่วงวันที่ของมัน';
+
+  // รายงาน R02.102 ครอบทั้งสองชนิด → คำอธิบายสั้นบรรทัดเดียวตามที่ผู้ใช้สั่ง
+  expect(await card({ ORDS: ['R02.102', '2026-09-26 18:30'], IRPS: ['R02.102', '2026-09-23 10:00'] })).toEqual({
+    text: 'R02.102 อัปเดต วันที่ 07/10/2026 เวลา 15:37',
+    tip: `ไฟล์ของ: สาขาทดสอบ\nORDS ถึง 26/09 18:30 · IRPS ถึง 23/09 10:00\nแนบล่าสุดโดย Pharm\n${TIP}`, badge: 'ตรวจแล้ว', done: true });
+  // มีแค่ ORDS → IRPS บอกต่อท้ายว่ายังไม่มีข้อมูล (ไม่ใช่คำว่า "ไฟล์ R16.103" อีกแล้ว)
+  expect((await card({ ORDS: ['R02.102', '2026-09-26 18:30'] })).text).toBe('R02.102 อัปเดต วันที่ 07/10/2026 เวลา 15:37 · IRPS: ยังไม่มีข้อมูล');
+  // R16 สองไฟล์ · เอกสารเก่าบน cloud ที่ไม่มีฟิลด์ rpt → ถือเป็น R16 ตามชนิด · ปน R16.104 กับ R02.102
+  expect((await card({ ORDS: ['R16.104', '2026-09-26 18:30'], IRPS: ['R16.103', '2026-09-23 10:00'] })).text).toBe('R16.104 + R16.103 อัปเดต วันที่ 07/10/2026 เวลา 15:37');
+  expect((await card({ ORDS: [null, '2026-09-26 18:30'], IRPS: [null, '2026-09-23 10:00'] })).text).toBe('R16.104 + R16.103 อัปเดต วันที่ 07/10/2026 เวลา 15:37');
+  expect((await card({ ORDS: ['R16.104', '2026-09-26 18:30'], IRPS: ['R02.102', '2026-09-23 10:00'] })).text).toBe('R16.104 + R02.102 อัปเดต วันที่ 07/10/2026 เวลา 15:37');
+  // คำเตือน "เห็นเฉพาะเครื่องนี้" + หมายเหตุสิ่งที่ถูกตัด ต้องไม่หาย (ห้ามหายเงียบ) · ป้ายสถานะเปลี่ยนตาม
+  const warn = await card({ ORDS: ['R02.102', '2026-09-26 18:30'], IRPS: ['R02.102', '2026-09-23 10:00'] }, { localOnly: true, note: 'ข้ามใบของคลังชากค้อ 3 บรรทัด · ก่อนเริ่มรอบนับ 2 บรรทัด' });
+  expect(warn.text).toBe('R02.102 อัปเดต วันที่ 07/10/2026 เวลา 15:37 · ⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ) · ข้ามใบของคลังชากค้อ 3 บรรทัด · ก่อนเริ่มรอบนับ 2 บรรทัด');
+  expect(warn).toMatchObject({ badge: 'เฉพาะเครื่องนี้', done: false });
+  // ไม่มีเวลาอัปเดต (ข้อมูลเก่า/อ่านไม่ได้) → ไม่เด้ง undefined/ว่าง
+  expect((await card({ ORDS: ['R02.102', '2026-09-26 18:30'], IRPS: ['R02.102', '2026-09-23 10:00'] }, { updatedAt: '', updatedBy: '' })).text).toBe('R02.102 อัปเดตแล้ว');
+  // ยังไม่ได้แนบ / กำลังอ่านไฟล์
+  const idle = await app.page.evaluate(() => { _adjErp = null; _adjErpBusy = false; _refreshAdjErpCard(); return [document.getElementById('adjErpInfo').textContent, document.getElementById('adjErpCard').title, document.querySelector('#adjErpBadge span').textContent]; });
+  expect(idle).toEqual(['แนบ R02.102 จาก ProMaxx ช่วงวันเริ่มรอบนับ–วันนี้ เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว', TIP, 'ยังไม่ได้ตรวจ']);
+  expect(await app.page.evaluate(() => { _adjErpBusy = true; _refreshAdjErpCard(); const r = [document.getElementById('adjErpInfo').textContent, document.querySelector('#adjErpBadge span').textContent]; _adjErpBusy = false; return r; }))
+    .toEqual(['กำลังอ่านไฟล์และบันทึกผล…', 'กำลังตรวจ']);
   await closeApp(app);
 });
 
@@ -611,9 +661,10 @@ test('cloud: บันทึก/อ่าน {branch}_adjerp · ไฟล์ท�
   await app.page.evaluate(() => { _adjErp = null; });
   await app.page.evaluate(() => _loadAdjErpFromCloud());
   expect((await stateOf(app.page, 'ords')).A05).toEqual(['opposite', 0, 2, ['IRPSBY001']]);
-  const card = (await read(app.page)).card;
-  expect(card).toContain('ORDS ถึง 26/09 18:30 · IRPS ถึง 23/09 10:00');
-  expect(card).toContain('โดย Pharm');
+  const { card, tip } = await read(app.page);
+  expect(card).toMatch(/^R16\.104 \+ R16\.103 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2}$/);   // ชื่อรายงานซิงก์มากับ cover บน cloud (ORDS จากเครื่องแรก · IRPS จากเครื่องที่สอง)
+  expect(tip).toContain('ORDS ถึง 26/09 18:30 · IRPS ถึง 23/09 10:00');
+  expect(tip).toContain('แนบล่าสุดโดย Pharm');
 
   // ผลอ่านที่ถูกแซง: เริ่มอ่าน (ค้างไว้) → แนบไฟล์ใหม่ระหว่างนั้น → ผลอ่านเก่ามาทีหลังต้องไม่ทับ
   await app.page.evaluate(() => {
@@ -631,7 +682,7 @@ test('cloud: บันทึก/อ่าน {branch}_adjerp · ไฟล์ท�
   await app.page.evaluate(() => { _countResetAt = '2026-10-05T01:00:00.000Z'; _refreshAdjCards(); renderAdjustDocTable(); });
   let r = await read(app.page);
   expect(r).toMatchObject({ bar: null });
-  expect(r.card).toContain('แนบ R16.104');
+  expect(r.card).toContain('แนบ R02.102');
   await app.page.evaluate(() => _loadAdjErpFromCloud());
   expect(await app.page.evaluate(() => _adjErpCurrent())).toBeNull();
   await app.page.evaluate(() => { _countResetAt = '2026-09-20T01:00:00.000Z'; });

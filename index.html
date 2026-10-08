@@ -1041,8 +1041,8 @@
         <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
           <div class="upload-file-icon upload-file-icon-optional" id="adjErpIcon" style="font-size:1rem;">🧾</div>
           <div style="min-width:0;">
-            <div class="upload-file-name">ตรวจกับ ERP · R16.104 / R16.103</div>
-            <div class="upload-file-sub" id="adjErpInfo">แนบ R16.104 (ORDS) / R16.103 (IRPS) จาก ProMaxx เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว</div>
+            <div class="upload-file-name">ตรวจกับ ERP · R02.102</div>
+            <div class="upload-file-sub" id="adjErpInfo">แนบ R02.102 จาก ProMaxx เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว</div>
           </div>
         </div>
         <div class="upload-file-badge upload-file-badge-optional" id="adjErpBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่ได้ตรวจ</span></div>
@@ -1087,9 +1087,9 @@
     </div>
     <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
       <span>ประวัติใบปรับปรุงสินค้า</span>
-      <!-- นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026) — R16.104 (ORDS) / R16.103 (IRPS) เป็น .CSV · สาขายาเท่านั้น · ซ่อนจนกว่า _refreshAdjHistImportBtn จะเปิด -->
+      <!-- นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026) — R02.102 (หรือ R16.104 ORDS / R16.103 IRPS) เป็น .CSV · สาขายาเท่านั้น · ซ่อนจนกว่า _refreshAdjHistImportBtn จะเปิด -->
       <input type="file" id="adjHistImportInput" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="handleAdjHistImportFiles(event)">
-      <button id="adjHistImportBtn" onclick="openAdjHistImportPicker()" style="display:none;padding:5px 12px;border-radius:7px;border:1px solid rgba(106,60,181,0.4);background:rgba(155,93,229,0.08);color:#6a3cb5;cursor:pointer;font-family:inherit;font-size:0.74rem;font-weight:700;white-space:nowrap;" title="นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R16.104 / R16.103 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦">📥 นำเข้าจาก ERP</button>
+      <button id="adjHistImportBtn" onclick="openAdjHistImportPicker()" style="display:none;padding:5px 12px;border-radius:7px;border:1px solid rgba(106,60,181,0.4);background:rgba(155,93,229,0.08);color:#6a3cb5;cursor:pointer;font-family:inherit;font-size:0.74rem;font-weight:700;white-space:nowrap;" title="นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R02.102 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦">📥 นำเข้าจาก ERP</button>
     </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
@@ -8710,7 +8710,7 @@ let ADJUST_DOC_EXPORT_TEXT_BY_PAGE=true;
 //   false = ไม่มีปุ่ม/ช่องเลขที่เอกสาร/การซ่อนแถว · Export Text เดิมทุกไบต์ (ทางถอย — เทสสลับได้) · ⚠️ ปิดแล้วแถวที่ส่งออกไปแล้วโผล่กลับตาราง (doc บน cloud ไม่ถูกลบ) ระวังส่งซ้ำ
 let ADJUST_DOC_HISTORY=true;
 // 📥 นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026 · ผู้ใช้สั่ง — เคส SSS ออกใบ ORDS/IRPS ไปก่อนมีฟีเจอร์ประวัติ จึงไม่เคยถูกบันทึก)
-//   ปุ่ม 📥 ในป็อปอัพ 🗂️ → เลือก R16.104 (ORDS) / R16.103 (IRPS) เป็น .CSV (ตัวอ่านเดียวกับการ์ด 🧾 — _parseAdjErpRows) → ตัวอย่าง → นำเข้าเป็นเอกสารในประวัติ (src:'erp' · Status "เข้าระบบแล้ว")
+//   ปุ่ม 📥 ในป็อปอัพ 🗂️ → เลือก R02.102 (หรือ R16.104 ORDS / R16.103 IRPS) เป็น .CSV (ตัวอ่านเดียวกับการ์ด 🧾 — _parseAdjErpRows) → ตัวอย่าง → นำเข้าเป็นเอกสารในประวัติ (src:'erp' · Status "เข้าระบบแล้ว")
 //   ⛔ เป็น "ประวัติอย่างเดียว": ไม่ซ่อนแถวบนใบ 📦 (_adjHistIndex ข้าม src:'erp') และไม่นับเป็นแถวทับตอน Export (_adjHistConflict) — ใบใน ERP อาจเลขซ้ำขนาดกับรายการใหม่ที่ยังไม่ได้ส่ง
 //   สาขายาเท่านั้น (ตัวอ่าน R16 รองรับ SRC/KKL/SSS — WH อยู่ SYSBRANCHID 0 ปะปนกับ SRC) · เลขที่ใบที่มีในประวัติแล้วถูกข้าม (นำเข้าไฟล์เดิมซ้ำได้ ไม่เกิดซ้ำ) · ก่อนวันเริ่มรอบนับ/ใบยกเลิก/คลังอื่น ถูกตัดโดยตัวอ่านและแจ้งในตัวอย่าง
 //   false = ไม่มีปุ่ม 📥 · เอกสารที่นำเข้าไปแล้วยังแสดงในประวัติตามปกติ (doc บน cloud ไม่ถูกลบ) (ทางถอย — เทสสลับได้)
@@ -9021,6 +9021,7 @@ function _parseAdjErpRows(rows,branch,epochIso){
   const hdr=(rows[0]||[]).map(v=>(v??'').toString().replace(/^\uFEFF/,'').trim().toUpperCase());
   // เป็นรายงานเคลื่อนไหวก็ต่อเมื่อมี CF_TRANNO และหัวไม่ครบแบบ R16 — R16 ครบหัว = R16 เสมอ · ไฟล์ R16 ที่ขาด FCANCEL จึงยังถูกปฏิเสธ (fail-closed)
   const mv=hdr.indexOf('CF_TRANNO')>=0&&ADJ_ERP_REQUIRED_COLS.some(n=>hdr.indexOf(n)<0);
+  res.fmt=mv?'R02.102':'R16';   // รูปแบบที่อ่านได้ — _mergeAdjErp จดชื่อรายงานลง cover[t].rpt ให้การ์ดโชว์ถูกรายงาน
   const want=mv?ADJ_ERP_MOVE_COLS:Object.fromEntries(ADJ_ERP_REQUIRED_COLS.map(n=>[n,n]));
   const col={FCANCEL:-1};const missing=[];   // FCANCEL -1 = ไม่มีคอลัมน์ยกเลิก (เฉพาะรายงานเคลื่อนไหว)
   for(const[n,h] of Object.entries(want)){col[n]=hdr.indexOf(h);if(col[n]<0)missing.push(h);}
@@ -9075,7 +9076,7 @@ function _mergeAdjErp(prev,parsed,meta={}){
     for(const no of Object.keys(docs)){const d=docs[no];if(d.type===t&&d.day>=c.fromDay&&d.at<=c.toAt)delete docs[no];}
     const o=cover[t];
     cover[t]={fromDay:o&&o.fromDay<c.fromDay?o.fromDay:c.fromDay,toAt:o&&o.toAt>c.toAt?o.toAt:c.toAt,
-      at:meta.at||'',by:meta.by||'',file:parsed.file||''};
+      at:meta.at||'',by:meta.by||'',file:parsed.file||'',rpt:parsed.fmt==='R02.102'?'R02.102':ADJ_ERP_REPORT[t]};   // rpt = ชื่อรายงานที่แนบ (เอกสารเก่าบน cloud ไม่มีฟิลด์นี้ → การ์ดถือเป็น R16 ตามชนิด)
   }
   for(const no of parsed.cancelled||[])delete docs[no];
   for(const d of parsed.docs||[])docs[d.no]=d;
@@ -9222,17 +9223,21 @@ function _refreshAdjErpCard(){
   const ok=!!st&&!_adjErpBusy;
   let text,badgeText;
   if(_adjErpBusy){text='กำลังอ่านไฟล์และบันทึกผล…';badgeText='กำลังตรวจ';}
-  else if(!st){text='แนบ R16.104 (ORDS) / R16.103 (IRPS) จาก ProMaxx ช่วงวันเริ่มรอบนับ–วันนี้ เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว';badgeText='ยังไม่ได้ตรวจ';}
+  else if(!st){text='แนบ R02.102 จาก ProMaxx ช่วงวันเริ่มรอบนับ–วันนี้ เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว';badgeText='ยังไม่ได้ตรวจ';}
   else{
-    const cov=ADJ_ERP_TYPES.map(t=>st.cover[t]?`${t} ถึง ${_adjErpFmtAt(st.cover[t].toAt)}`:`${t}: ยังไม่มีไฟล์ ${ADJ_ERP_REPORT[t]}`).join(' · ');
-    const t=_auditTimeMs(st.updatedAt);   // การ์ดแคบ — ใช้รูปสั้น "06/10 16:05" (ไม่ใช่ _adjFmtUpdated ของการ์ด LOT/ราคา)
-    const when=Number.isFinite(t)?_adjErpFmtAt(_adjErpAtKey(new Date(t))):'';
-    text=cov+(when?` · แนบล่าสุด ${when}${st.updatedBy?' โดย '+st.updatedBy:''}`:'')
+    // "R02.102 อัปเดต วันที่ 07/10/2026 เวลา 15:37" (7 ต.ค. 2026 · ผู้ใช้สั่ง — รูปเวลาเดียวกับการ์ด LOT/ราคา ผ่าน _adjFmtUpdated)
+    // ชื่อรายงานตามที่แนบจริง (cover[t].rpt · ไม่มี = เอกสารเก่าบน cloud → R16 ตามชนิด) · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย (ไม่หายเงียบ) · ช่วงของไฟล์/ผู้แนบย้ายไป tooltip
+    const rpt=[...new Set(ADJ_ERP_TYPES.filter(t=>st.cover[t]).map(t=>st.cover[t].rpt||ADJ_ERP_REPORT[t]))].join(' + ')||'R02.102';
+    const miss=ADJ_ERP_TYPES.filter(t=>!st.cover[t]).map(t=>`${t}: ยังไม่มีข้อมูล`);
+    text=`${rpt} ${_adjFmtUpdated(st.updatedAt)||'อัปเดตแล้ว'}`+(miss.length?' · '+miss.join(' · '):'')
       +(st.localOnly?' · ⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)':'')+(st.note?` · ${st.note}`:'');
     badgeText=st.localOnly?'เฉพาะเครื่องนี้':'ตรวจแล้ว';
   }
   const sub=document.getElementById('adjErpInfo');if(sub)sub.textContent=text;
-  card.title=(st&&st.branchName?`ไฟล์ของ: ${st.branchName}\n`:'')+'กดเพื่อแนบ R16.104 / R16.103 (เลือกได้หลายไฟล์ · ไฟล์ใหม่ทับเฉพาะช่วงวันที่ของมัน)';
+  card.title=[st&&st.branchName?`ไฟล์ของ: ${st.branchName}`:'',
+    st?ADJ_ERP_TYPES.map(t=>st.cover[t]?`${t} ถึง ${_adjErpFmtAt(st.cover[t].toAt)}`:`${t}: ยังไม่มีข้อมูล`).join(' · '):'',
+    st&&st.updatedBy?`แนบล่าสุดโดย ${st.updatedBy}`:'',
+    'กดเพื่อแนบ R02.102 (หรือ R16.104 / R16.103) · เลือกได้หลายไฟล์ · ไฟล์ใหม่ทับเฉพาะช่วงวันที่ของมัน'].filter(Boolean).join('\n');
   const icon=document.getElementById('adjErpIcon');if(icon)icon.classList.toggle('upload-file-icon-optional',!ok);
   const badge=document.getElementById('adjErpBadge');
   if(badge){
