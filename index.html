@@ -4124,6 +4124,9 @@ function _reconcileScanItems(){
     const known=_scanItemSynced.get(sku);
     // pending = ไม่มี doc บน cloud — ข้ามก่อน stringify (ส่วนใหญ่ของ catalog เป็น pending)
     if(!sd||sd.status==='pending'){if(known!==undefined)_dirtySkus.add(sku);continue;}
+    // WH_ITEM_LOAD_GUARD: item ที่ผูก op เครื่องนี้ไม่เคย sync = Cloud มีอยู่แล้ว (op materialize เขียนไว้) แต่ local อาจขาดฟิลด์ที่ PDA
+    // กรอกหลัง Confirm (recheckQty ฯลฯ) → ห้ามดันขึ้นไป batch.set(merge:false) จะทับของจริงบน Cloud · การกรอกจริงใช้ _markSkuDirty ตรงๆ
+    if(WH_ITEM_LOAD_GUARD&&known===undefined&&(sd.whCountOpId||sd.whRecheckOpId))continue;
     if(known!==_scanItemFingerprint(sd))_dirtySkus.add(sku);
   }
   if(_dirtySkus.size)_scheduleScanFlush(SCAN_ITEM_FLUSH_MS); // เคารพ backoff — ไม่ยิงทับช่วงที่ Firestore หน่วง
@@ -4452,6 +4455,17 @@ let SCAN_INCREMENTAL_ROW=true;
 // rollback = ตั้ง false แล้ว deploy (listener กลับ renderScanList() ทุกครั้งเหมือนเดิม — ไม่ข้าม ไม่ patch เลย)
 // let เพื่อให้เทสสลับเทียบได้
 let SCAN_ITEM_LISTENER_PATCH=true;
+
+// WH_ITEM_LOAD_GUARD (ต.ค. 2026 · ผู้ใช้รายงาน: Desktop Supervisor F5 แล้วยอดรีเช็คที่ PDA กรอกไว้หายเป็น 0 ทั้ง Cloud)
+//   ต้นเหตุ (บั๊กเดิม — ยืนยันด้วยเทสจำลองกับ index.html ก่อนแก้ทั้งหมด): _loadScanItemsFromCloud ข้าม item ที่ผูก op (whCountOpId/
+//   whRecheckOpId) ถ้า op ยังไม่ถูกโหลด · WH Supervisor F5 เรียก restoreFromFirestore ก่อน _loadWhWorkflowCloudState เสมอ ⇒ item ที่
+//   Count Confirm แล้วถูกข้ามทุกตัว → sd ถูกสร้างจาก marker (ไม่มี recheckQty/recheckBy/recheckAt ที่ PDA กรอกหลัง Confirm) และ
+//   _scanItemSynced/_scanItemRev ว่าง → _reconcileScanItems เห็นว่า ไม่เคย sync → _flushDirtySkus batch.set(merge:false) ทับ item
+//   บน Cloud (rev=1) = ยอดรีเช็คหายทั้งชุด · ทุกครั้งที่ Desktop รีโหลด (F5 / รีโหลดอัตโนมัติหลัง deploy) ถ้ามียอดรีเช็คค้างอยู่
+//   เปิดสวิตช์: (1) _loadScanItemsFromCloud โหลด op ก่อนอ่าน items (WH) · (2) _reconcileScanItems ไม่ดัน item ที่ผูก op และเครื่องนี้ไม่เคย
+//   sync (Cloud มีอยู่แล้วจากการ materialize — reconcile ไม่ใช่กลไกเขียน item ของ op · การกรอกยอดจริงใช้ _markSkuDirty ตรงๆ)
+// rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบได้ · เทส tests/specs/e2e/wh-supervisor-f5-keeps-recheck.spec.js
+let WH_ITEM_LOAD_GUARD=true;
 
 // ⚠️⚠️⚠️ DEBUG ชั่วคราว (ต.ค. 2026) — เก็บหลักฐานจริงว่าอะไร trigger focus หลุดบน WH PDA recheck tab
 // ลบทั้งบล็อกนี้ (จนถึง "DEBUG ชั่วคราว — จบ") ทันทีหลังได้ log มาวิเคราะห์เสร็จ ห้ามค้างใน production
@@ -7308,6 +7322,13 @@ function _resetLocalScanDataToPending(){
 // loadedOut (Set, ไม่บังคับ) = เติม SKU ที่มีเอกสารรอบนี้บน Cloud และถูกโหลดลงเครื่องจริง
 async function _loadScanItemsFromCloud(loadedOut=null){
   if(!_db||!currentBranch||!_isScanSchemaV2())return 0;
+  // WH_ITEM_LOAD_GUARD: ต้องรู้จัก op ก่อนอ่าน items ไม่งั้นด่าน whOpId ด้านล่างข้าม item ที่ Count Confirm แล้วทุกตัว
+  // (Supervisor F5 เรียกฟังก์ชันนี้ก่อน _loadWhWorkflowCloudState เสมอ) แล้วเครื่องนี้ไม่เห็น recheckQty ที่ PDA กรอกไว้
+  // โหลดไม่ได้ (ออฟไลน์/ผลไม่ครบ) = พฤติกรรมเดิม — _reconcileScanItems ยังมีด่านกันเขียนทับอีกชั้น
+  if(WH_ITEM_LOAD_GUARD&&currentBranch==='WH'&&(currentRole==='supervisor'||currentRole==='warehouse')&&!_whCommittedOps.size){
+    try{await _loadWhConfirmOpsFromServer({render:false});}
+    catch(e){console.warn('[WH confirm ops preload]',e.message);}
+  }
   const snap=await getScanItemsRef().where('countResetAt','==',_countResetAt||'').get();
   let scanned=0;
   snap.forEach(doc=>{
