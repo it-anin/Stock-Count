@@ -2681,14 +2681,22 @@ function startScanSessionListener(){
           await _applyR01BaselineUpdate(s.r01BaselineAt);
         }
         // v2: scanData ไม่อยู่ใน blob แล้ว — items listener เป็นเจ้าของ ห้ามให้ blob path แตะ
-        if(_isScanSchemaV2())_applyCloudSessionMeta(s);
-        else _applyCloudScanData(s);
+        // sessionMetaChanged: session doc ถูกเขียนทุกครั้งที่ "ใครก็ตาม" ในสาขา saveSession() (ถี่มากใน
+        // WH) แต่ส่วนใหญ่ไม่กระทบ scanData ของเราเลย (v2: items listener เป็นเจ้าของ scanData จริง) —
+        // เดิม rebuildScanListMap(true);renderScanList() แบบไม่มีเงื่อนไขทุกครั้งที่ snapshot มา ทำให้
+        // DOM ถูก rebuild ทับช่อง input ที่โฟกัส/พิมพ์อยู่ (เช่น WH recheck tab) โดยไม่จำเป็น — เช็ค
+        // ผลลัพธ์จริงของแต่ละ apply ก่อน แล้ว render เมื่อมีอย่างน้อยหนึ่งอย่างเปลี่ยนจริงเท่านั้น
+        // _renderWhCountConfirmationChanges/_renderWhRecheckConfirmationChanges จัดการ render ของ
+        // ตัวเองแล้ว (รวม patch-vs-fallback/skip ของเพื่อน — ดู _whConfirmChangedNeedsRender) ไม่ต้อง
+        // ซ้อน render ด้านนอกตามผลของมันอีก · render ด้านนอกนี้ครอบเฉพาะแหล่งที่ยังไม่มี render ของตัวเอง
+        const sessionMetaChanged=_isScanSchemaV2()?_applyCloudSessionMeta(s):(_applyCloudScanData(s),true);
         _renderWhCountConfirmationChanges(_applyWhCountConfirmationsToState());
-        _applyWhCountInboxToState();
+        const countInboxChanged=_applyWhCountInboxToState();
         _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());
-        _applyWhRecheckInboxToState();
+        const recheckInboxChanged=_applyWhRecheckInboxToState();
         updatePharmacistAuditConfirmBtn();
-        if(!_listCleared){
+        _debugLog('startScanSessionListener:decision',{sessionMetaChanged,countInboxChanged,recheckInboxChanged}); // DEBUG ชั่วคราว
+        if(!_listCleared&&(sessionMetaChanged||countInboxChanged||recheckInboxChanged)){
           rebuildScanListMap(true);
           invalidatePopupRowsCache();
           renderScanList();
@@ -2702,7 +2710,13 @@ function startScanSessionListener(){
 }
 
 // v2: ส่วนของ session blob ที่ยังใช้อยู่ (metadata ล้วน) — ไม่มี scanData/scanListMap แล้ว
+// คืน true = scanData/scanListMap เปลี่ยนจริงจาก path นี้ → caller (startScanSessionListener) ต้อง
+// rebuildScanListMap/renderScanList · false = session metadata เปลี่ยนแค่ field อื่น (เช่น WH ปกติ
+// ที่ยังอยู่ epoch เดิม ไม่มี unknownScans ใหม่) ไม่ต้อง rebuild DOM ทั้งก้อนทับช่อง input ที่โฟกัสอยู่
+// (บั๊ก: session doc ถูกเขียนทุกครั้งที่ "ใครก็ตาม" ในสาขา saveSession() ซึ่งเกิดถี่มากใน WH —
+// เดิม caller rebuildScanListMap(true);renderScanList() แบบไม่มีเงื่อนไขทุกครั้งที่ snapshot มา ดู CLAUDE.md)
 function _applyCloudSessionMeta(s){
+  let changed=false;
   if(s.countResetAt&&s.countResetAt>_countResetAt){
     _countResetAt=s.countResetAt;
     _resetLocalScanDataToPending();
@@ -2710,12 +2724,14 @@ function _applyCloudSessionMeta(s){
     _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
     startScanItemsListener(); // epoch เปลี่ยน → query เดิมชี้ epoch เก่า ต้อง restart
     startWhConfirmOpsListener();
+    changed=true;
   }
   if(Array.isArray(s.unknownScans)){
     const existBc=new Set(state.unknownScans.map(u=>u.barcode));
-    for(const u of s.unknownScans){if(!existBc.has(u.barcode)){state.unknownScans.push(u);existBc.add(u.barcode);}}
+    for(const u of s.unknownScans){if(!existBc.has(u.barcode)){state.unknownScans.push(u);existBc.add(u.barcode);changed=true;}}
   }
-  _applyPharmacyAuditMarkersToState();
+  if(_applyPharmacyAuditMarkersToState().length)changed=true;
+  return changed;
 }
 
 // ─── Stage 1 read path: listener ระดับ document ต่อ SKU ──────────────────────────────────────
