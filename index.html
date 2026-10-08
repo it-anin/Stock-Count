@@ -4454,20 +4454,40 @@ function _debugLog(ev,extra){
     localStorage.setItem(_DEBUG_LOG_KEY,JSON.stringify(arr));
   }catch(e){}
 }
+// navigator.clipboard.writeText() ค้างเงียบบน Android WebView หลายรุ่น (ปฏิเสธ permission โดยไม่ reject
+// promise) — ใช้ <textarea readonly> ให้กด long-press คัดลอกแบบ native ของ Android ได้เสมอ เป็นทางหลัก
+// ปุ่ม "คัดลอก" เป็นแค่ทางลัด (execCommand('copy') เก่ากว่าแต่ sync + มี error ชัดเจน, ไม่ใช้ clipboard API ใหม่)
 function _debugShowLog(){
   const raw=localStorage.getItem(_DEBUG_LOG_KEY)||'[]';
   let overlay=document.getElementById('_debugLogOverlay');
   if(!overlay){
     overlay=document.createElement('div');
     overlay.id='_debugLogOverlay';
-    overlay.style.cssText='position:fixed;inset:0;background:#000;color:#0f0;z-index:99999;overflow:auto;padding:10px;font:11px monospace;white-space:pre-wrap;';
+    overlay.style.cssText='position:fixed;inset:0;background:#000;color:#0f0;z-index:99999;display:flex;flex-direction:column;padding:10px;';
     document.body.appendChild(overlay);
   }
   const arr=JSON.parse(raw);
-  const text=arr.map(e=>JSON.stringify(e)).join('\n');
-  overlay.innerHTML=`<button onclick="document.getElementById('_debugLogOverlay').remove()" style="position:fixed;top:6px;right:6px;padding:8px 14px;z-index:1;">ปิด</button>`+
-    `<button onclick="navigator.clipboard.writeText(document.getElementById('_debugLogText').textContent).then(()=>alert('คัดลอกแล้ว'))" style="position:fixed;top:6px;right:70px;padding:8px 14px;z-index:1;">คัดลอก</button>`+
-    `<div id="_debugLogText" style="margin-top:40px;">${(text||'(ว่าง)').replace(/</g,'&lt;')}</div>`;
+  const text=arr.map(e=>JSON.stringify(e)).join('\n')||'(ว่าง)';
+  overlay.innerHTML=
+    `<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">`+
+    `<button onclick="document.getElementById('_debugLogOverlay').remove()" style="padding:8px 14px;">ปิด</button>`+
+    `<button onclick="_debugCopyLog()" style="padding:8px 14px;">คัดลอก</button>`+
+    `<button onclick="document.getElementById('_debugLogText').select()" style="padding:8px 14px;">เลือกทั้งหมด</button>`+
+    `<span id="_debugCopyMsg" style="color:#0f0;align-self:center;font:12px monospace;"></span>`+
+    `</div>`+
+    `<textarea id="_debugLogText" readonly style="flex:1;width:100%;background:#000;color:#0f0;border:1px solid #0f0;font:11px monospace;padding:6px;white-space:pre;box-sizing:border-box;">${text}</textarea>`;
+  document.getElementById('_debugLogText').select();
+}
+function _debugCopyLog(){
+  const msg=document.getElementById('_debugCopyMsg');
+  const ta=document.getElementById('_debugLogText');
+  try{
+    ta.select();
+    const ok=document.execCommand('copy');
+    if(msg)msg.textContent=ok?'คัดลอกแล้ว':'คัดลอกไม่สำเร็จ — long-press ในช่องข้อความแทน';
+  }catch(e){
+    if(msg)msg.textContent='คัดลอกไม่ได้ ('+e.message+') — long-press ในช่องข้อความแทน';
+  }
 }
 function _debugClearLog(){localStorage.removeItem(_DEBUG_LOG_KEY);}
 // ปุ่ม "Cloud" บน PDA มองเห็นเสมอ (#dbStatus text ถูกซ่อนด้วย CSS ที่ breakpoint PDA) — คลิกถี่ 5 ครั้งใน 3 วิ
