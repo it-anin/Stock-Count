@@ -459,7 +459,7 @@
       <div class="db-status">
         <div class="db-dot active" id="dbDot"></div>
         <span id="dbStatus" style="color:var(--text2)">Ready</span>
-        <button onclick="_debugCloudBtnClick()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
+        <button onclick="pullFromCloud()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
         <button id="btnPdaAuditVerify" onclick="openAuditVerifyPopup()" style="display:none;border:1px solid rgba(224,140,0,0.45);background:rgba(224,140,0,0.12);color:var(--yellow);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;font-weight:700;align-items:center;gap:4px;" title="Audit Verify">🔍 <span id="btnPdaAuditCount" style="background:rgba(224,140,0,0.25);padding:0 5px;border-radius:8px;font-size:0.6rem;">0</span></button>
         <button id="btnPdaSettings" onclick="if(typeof Android!=='undefined')Android.openSettings()" style="display:none;border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;" title="ตั้งค่า Scanner">⚙</button>
       </div>
@@ -1706,7 +1706,6 @@ function _isBranchConfirmLockActive(data=_branchConfirmLockData){
   return !!(_branchUsesConfirmLock()&&data?.token&&(data.countResetAt||'')===(_countResetAt||'')&&_branchConfirmLockExpiresMs(data)>Date.now());
 }
 function _setBranchScanPaused(active,data=null){
-  _debugLog('_setBranchScanPaused',{active,wasPaused:_branchScanPaused}); // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   const wasPaused=_branchScanPaused;_branchScanPaused=!!active;_branchConfirmLockData=data;
   clearTimeout(_branchConfirmLockExpiryTimer);_branchConfirmLockExpiryTimer=null;
   const banner=document.getElementById('branchConfirmLockBanner');
@@ -1726,7 +1725,7 @@ function _setBranchScanPaused(active,data=null){
     updateScanInputMode();if(auditInput)auditInput.disabled=false;
     if(!wasPaused)return;
     if(scanQueue.length)requestAnimationFrame(drainQueue);
-    if(scanInput&&!scanInput.disabled){_debugLog('scanInput.focus() called');scanInput.focus();} // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
+    if(scanInput&&!scanInput.disabled)scanInput.focus();
   }
   updateConfirmBtn();
 }
@@ -2335,7 +2334,6 @@ function startWhConfirmOpsListener(){
   if(_whConfirmOpsUnsubscribe&&_whConfirmOpsListenerEpoch===epoch)return;
   stopWhConfirmOpsListener();_whConfirmOpsListenerEpoch=epoch;
   _whConfirmOpsUnsubscribe=getWhConfirmOpsRef().where('countResetAt','==',epoch).onSnapshot(async snap=>{
-    _debugLog('startWhConfirmOpsListener:snapshot',{pending:snap.metadata.hasPendingWrites,docChanges:snap.docChanges().length}); // DEBUG ชั่วคราว
     if(snap.metadata.hasPendingWrites)return;
     try{await _applyWhCommittedOpsSnapshot(snap,{render:true});document.getElementById('dbStatus').textContent='Synced ☁️';}
     catch(e){document.getElementById('dbStatus').textContent='Sync Error';console.warn('[WH confirm ops listener]',e.message);toast('โหลดผลยืนยัน WH ไม่ครบ — คงสถานะเดิมและกำลังรอ Sync','error',5000);}
@@ -2695,8 +2693,7 @@ function startScanSessionListener(){
         _renderWhRecheckConfirmationChanges(_applyWhRecheckConfirmationsToState());
         const recheckInboxChanged=_applyWhRecheckInboxToState();
         updatePharmacistAuditConfirmBtn();
-        _debugLog('startScanSessionListener:decision',{sessionMetaChanged,countInboxChanged,recheckInboxChanged}); // DEBUG ชั่วคราว
-        if(!_listCleared&&(sessionMetaChanged||countInboxChanged||recheckInboxChanged)){
+        if(!_listCleared&&(!SCAN_ITEM_LISTENER_PATCH||sessionMetaChanged||countInboxChanged||recheckInboxChanged)){
           rebuildScanListMap(true);
           invalidatePopupRowsCache();
           renderScanList();
@@ -2743,8 +2740,6 @@ function startScanItemsListener(){
   stopScanItemsListener();
   _scanItemsListenerEpoch=epoch;
   _scanItemsUnsubscribe=getScanItemsRef().where('countResetAt','==',epoch).onSnapshot(snap=>{
-    _debugLog('startScanItemsListener:snapshot',{pending:snap.metadata.hasPendingWrites, // DEBUG ชั่วคราว
-      changes:snap.docChanges().map(ch=>({type:ch.type,sku:ch.doc.id,scannedBy:ch.doc.data()?.scannedBy,status:ch.doc.data()?.status}))});
     // การเขียนของเครื่องนี้เอง (local echo) — state ถูกต้องอยู่แล้ว ไม่ต้อง apply ซ้ำ
     if(snap.metadata.hasPendingWrites)return;
     let touched=false,statusTouched=false,needsFullRender=false;
@@ -2788,7 +2783,6 @@ function startScanItemsListener(){
           if(!patchScanRow(sku)){patched=false;break;}
         }
       }
-      _debugLog('startScanItemsListener:decision',{patched,needsFullRender,toPatch:toPatch.slice()}); // DEBUG ชั่วคราว
       if(!patched){rebuildScanListMap(true);invalidatePopupRowsCache();renderScanList();}
     }
     if(SCAN_LIGHT_REFRESH&&!statusTouched){_refreshScanCounters();renderTable();}
@@ -4118,7 +4112,6 @@ function _scanItemLastQty(sku){
 
 // safety net: กวาดหา SKU ที่เปลี่ยนแต่ไม่มีใครเรียก _markSkuDirty (เผื่อมี mutation site ที่ตกหล่น)
 function _reconcileScanItems(){
-  _debugLog('_reconcileScanItems'); // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   if(_adminMode||!_db||!currentBranch||!_isScanSchemaV2())return;
   for(const[sku,sd]of state.scanData.entries()){
     const known=_scanItemSynced.get(sku);
@@ -4466,72 +4459,6 @@ let SCAN_ITEM_LISTENER_PATCH=true;
 //   sync (Cloud มีอยู่แล้วจากการ materialize — reconcile ไม่ใช่กลไกเขียน item ของ op · การกรอกยอดจริงใช้ _markSkuDirty ตรงๆ)
 // rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบได้ · เทส tests/specs/e2e/wh-supervisor-f5-keeps-recheck.spec.js
 let WH_ITEM_LOAD_GUARD=true;
-
-// ⚠️⚠️⚠️ DEBUG ชั่วคราว (ต.ค. 2026) — เก็บหลักฐานจริงว่าอะไร trigger focus หลุดบน WH PDA recheck tab
-// ลบทั้งบล็อกนี้ (จนถึง "DEBUG ชั่วคราว — จบ") ทันทีหลังได้ log มาวิเคราะห์เสร็จ ห้ามค้างใน production
-const _DEBUG_LOG_KEY='_whFocusDebugLog';
-const _DEBUG_LOG_MAX=80;
-function _debugLog(ev,extra){
-  try{
-    const entry={t:new Date().toISOString(),ev,
-      active:document.activeElement?.className||document.activeElement?.tagName||'',
-      branchScanPaused:_branchScanPaused,whCountConfirming:_whCountConfirming,whRecheckConfirming:_whRecheckConfirming,
-      ...extra};
-    const raw=localStorage.getItem(_DEBUG_LOG_KEY);
-    const arr=raw?JSON.parse(raw):[];
-    arr.push(entry);
-    while(arr.length>_DEBUG_LOG_MAX)arr.shift();
-    localStorage.setItem(_DEBUG_LOG_KEY,JSON.stringify(arr));
-  }catch(e){}
-}
-// navigator.clipboard.writeText() ค้างเงียบบน Android WebView หลายรุ่น (ปฏิเสธ permission โดยไม่ reject
-// promise) — ใช้ <textarea readonly> ให้กด long-press คัดลอกแบบ native ของ Android ได้เสมอ เป็นทางหลัก
-// ปุ่ม "คัดลอก" เป็นแค่ทางลัด (execCommand('copy') เก่ากว่าแต่ sync + มี error ชัดเจน, ไม่ใช้ clipboard API ใหม่)
-function _debugShowLog(){
-  const raw=localStorage.getItem(_DEBUG_LOG_KEY)||'[]';
-  let overlay=document.getElementById('_debugLogOverlay');
-  if(!overlay){
-    overlay=document.createElement('div');
-    overlay.id='_debugLogOverlay';
-    overlay.style.cssText='position:fixed;inset:0;background:#000;color:#0f0;z-index:99999;display:flex;flex-direction:column;padding:10px;';
-    document.body.appendChild(overlay);
-  }
-  const arr=JSON.parse(raw);
-  const text=arr.map(e=>JSON.stringify(e)).join('\n')||'(ว่าง)';
-  overlay.innerHTML=
-    `<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">`+
-    `<button onclick="document.getElementById('_debugLogOverlay').remove()" style="padding:8px 14px;">ปิด</button>`+
-    `<button onclick="_debugCopyLog()" style="padding:8px 14px;">คัดลอก</button>`+
-    `<button onclick="document.getElementById('_debugLogText').select()" style="padding:8px 14px;">เลือกทั้งหมด</button>`+
-    `<span id="_debugCopyMsg" style="color:#0f0;align-self:center;font:12px monospace;"></span>`+
-    `</div>`+
-    `<textarea id="_debugLogText" readonly style="flex:1;width:100%;background:#000;color:#0f0;border:1px solid #0f0;font:11px monospace;padding:6px;white-space:pre;box-sizing:border-box;">${text}</textarea>`;
-  document.getElementById('_debugLogText').select();
-}
-function _debugCopyLog(){
-  const msg=document.getElementById('_debugCopyMsg');
-  const ta=document.getElementById('_debugLogText');
-  try{
-    ta.select();
-    const ok=document.execCommand('copy');
-    if(msg)msg.textContent=ok?'คัดลอกแล้ว':'คัดลอกไม่สำเร็จ — long-press ในช่องข้อความแทน';
-  }catch(e){
-    if(msg)msg.textContent='คัดลอกไม่ได้ ('+e.message+') — long-press ในช่องข้อความแทน';
-  }
-}
-function _debugClearLog(){localStorage.removeItem(_DEBUG_LOG_KEY);}
-// ปุ่ม "Cloud" บน PDA มองเห็นเสมอ (#dbStatus text ถูกซ่อนด้วย CSS ที่ breakpoint PDA) — คลิกถี่ 5 ครั้งใน 3 วิ
-// เปิด debug log แทน · คลิกเดี่ยวปกติหน่วง 350ms แล้วเรียก pullFromCloud() เหมือนเดิม (หน่วงเพื่อรอดูว่าจะครบ 5 คลิกหรือไม่)
-let _debugCloudClicks=[];let _debugCloudPullTimer=null;
-function _debugCloudBtnClick(){
-  clearTimeout(_debugCloudPullTimer);
-  const now=Date.now();
-  _debugCloudClicks=_debugCloudClicks.filter(t=>now-t<3000);
-  _debugCloudClicks.push(now);
-  if(_debugCloudClicks.length>=5){_debugCloudClicks=[];_debugShowLog();return;}
-  _debugCloudPullTimer=setTimeout(()=>{_debugCloudClicks=[];pullFromCloud();},350);
-}
-// DEBUG ชั่วคราว — จบ (ต่อจากนี้ของจริง — ห้ามแก้ logic ด้านล่างนี้ตอนลบ debug block ด้านบน)
 
 // PROGRESS_BY_SCAN = Counted / Pass / Progress ของ "สาขายา" (SRC/KKL/SSS · ทุกอุปกรณ์ Desktop+PDA) นับตามที่สแกน (ก.ย. 2026 · ผู้ใช้สั่ง)
 //   เหตุผล: ตัดขั้น Audit แล้ว (29 ก.ย.) ⇒ "เสร็จ" ของหน้างานคือสแกนครบ ไม่ต้องรอ Desktop Confirm
@@ -6256,7 +6183,6 @@ function _scanRowHtml(entry,ctx){
     </div>`;
 }
 function renderScanList(){
-  _debugLog('renderScanList',{stack:new Error().stack?.split('\n').slice(1,5).join(' | ')||''}); // DEBUG ชั่วคราว — ลบทิ้งพร้อมบล็อกด้านบน
   const body=document.getElementById('scanListBody');
   if(!scanListMap.size){body.innerHTML='<div class="scan-list-empty">รอการสแกน...</div>';return;}
   const entries=[...scanListMap.values()].reverse();

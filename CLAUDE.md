@@ -751,7 +751,9 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 
 #### 🐛 WH PDA แท็บรีเช็ค ช่อง qty เด้งหลุด/scroll บนสุดขณะพิมพ์ (ผู้ใช้รายงาน · ต.ค. 2026)
 
-**สาเหตุ:** `startScanItemsListener()` ([:2700](index.html)) เรียก `renderScanList()` (`body.innerHTML=...`) แบบไม่มีเงื่อนไขทุกครั้งที่ "ใครก็ตาม" ในสาขาเปลี่ยน SKU — WH มีหลายสิบคนสแกนพร้อมกันเสมอ ⇒ เกือบทุก snapshot เป็นแบบนี้ ขณะที่ user กำลังพิมพ์ช่อง qty ของแถวอื่นอยู่ (ยังไม่ blur/Enter) `innerHTML` ใหม่ทำให้ `scrollTop=0` และ element เดิม (รวม input ที่โฟกัส) ถูกทำลาย → focus หลุดไปที่ `<body>` เอง (ไม่ใช่ force `scrollTo`/`scrollIntoView` — ค้นทั้งไฟล์ไม่พบเลย เป็นธรรมชาติของ browser ตอน `innerHTML` ถูกแทนที่)
+**สาเหตุ:** listener หลายตัวเรียก `rebuildScanListMap(true);renderScanList()` (`body.innerHTML=...`) แบบไม่มีเงื่อนไขทุกครั้งที่ "ใครก็ตาม" ในสาขาเปลี่ยนข้อมูล — WH มีหลายสิบคนทำงานพร้อมกันเสมอ ⇒ เกิดถี่มาก ขณะที่ user กำลังพิมพ์ช่อง qty ของแถวอื่นอยู่ (ยังไม่ blur/Enter) `innerHTML` ใหม่ทำให้ `scrollTop=0` และ element เดิม (รวม input ที่โฟกัส) ถูกทำลาย → focus หลุดไปที่ `<body>` เอง (ไม่ใช่ force `scrollTo`/`scrollIntoView` — ค้นทั้งไฟล์ไม่พบเลย เป็นธรรมชาติของ browser ตอน `innerHTML` ถูกแทนที่) · มี 5 จุด: (ก) `startScanItemsListener` (ข) `startWhConfirmOpsListener` → `_renderWhWorkflowStateChanges` (ค)(ง) legacy marker listener ของ Count/Recheck (`_renderWh{Count,Recheck}ConfirmationChanges`) (จ) **`startScanSessionListener` — ตัวที่ผู้ใช้เจอจริง:** ฟัง session doc ของทั้งสาขา debounce 3000 ms แล้ว render ทุกครั้ง ตรงกับ "เด้งทุก 4-5 วิ" ที่รายงาน (session doc ถูกเขียนทุกครั้งที่ใครในสาขา `saveSession()`)
+
+⚠️ **บทเรียน (ตามกฎ 0):** อ่านโค้ดอย่างเดียวพลาด 3 รอบ (items listener → confirm_ops → `scanInput.focus()` หลังปลด lock) เพราะแต่ละตัวมี "ทฤษฎีที่อธิบายได้" แต่ไม่มีตัวไหนตรง 4-5 วิ · ตัวชี้ขาดคือ log จริงจากเครื่อง PDA (hook `renderScanList` + stack ลง localStorage แล้วเปิดดูบนเครื่อง) ซึ่งชี้ stack ไปที่ session listener ทันที · PDA ไม่มี console และตัดข้อความ `#dbStatus` ออกจากหัวจอ — ถ้าต้องเก็บ log จากเครื่องจริงอีก ทางเข้าที่ใช้ได้คือปุ่ม "Cloud" ที่ยังแสดงบน PDA และใช้ `<textarea readonly>` ให้ long-press คัดลอก (`navigator.clipboard` ค้างเงียบบน WebView) · ⚠️ ห้ามเก็บ snapshot ทั้งก้อนลง localStorage — snapshot WH หลายร้อย SKU/ครั้ง ทำให้ log โตหลาย MB แข่งกับ `saveSession`
 
 ⚠️ **ผลที่ร้ายแรงกว่า "เด้งโฟกัส" ที่พิสูจน์ได้จริงระหว่างเขียนเทส (canary):** เมื่อ element ที่มี focus ถูกทำลายจาก `innerHTML=` replacement, browser จะ fire `blur` ให้เองก่อนเสมอ — และ `.inline-qty-input` ของแถว audit มี `onblur="updateRecheckInlineQty(sku,this.value)"` ติดอยู่ ⇒ **ค่าที่พิมพ์ครึ่งๆกลางๆ (ยังไม่ตั้งใจส่ง) ถูกเขียนขึ้น Firestore จริงโดยไม่ได้ตั้งใจ** ไม่ใช่แค่เสียโฟกัส — ยืนยันด้วยการทดลองจริงใน `tests/specs/e2e/wh-recheck-listener-patch.spec.js` (ปิดสวิตช์แล้วค่าที่ seed ไว้ถูกเขียนทับเป็นค่าที่พิมพ์ค้าง ไม่ใช่ค่าที่ cloud ส่งมา)
 
@@ -760,13 +762,42 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 2. **sku ของเรา + status ไม่เปลี่ยน** (เปลี่ยนแค่ qty เช่น Supervisor confirm ยอด recheck) → `patchScanRow()` ต่อแถว (มี guard `document.activeElement!==input` กันทับช่องที่โฟกัสอยู่อยู่แล้วก่อนงานนี้) แทน `renderScanList()` เต็มรูปแบบ
 3. **sku ของเรา + status เปลี่ยนจริง** (เช่น `scanning`→`audit`/`pass`) หรือ patch ไม่ได้ (ไม่อยู่ใน `scanListMap` ทั้งที่ควรเป็นของเรา) → fallback `renderScanList()` เดิมทุกไบต์ (ยอมรับได้ — แถวนั้นเปลี่ยนความหมายจริง ต้อง rebuild)
 
-⚠️ **ขอบเขตที่ยังไม่ครอบ (ยอมรับแล้ว):** `ch.type==='removed'` ทำให้ `status` กลายเป็น `'pending'` เสมอ (`_applyScanItemRemoved`) ⇒ เข้าเงื่อนไข (3) เสมอ แม้เป็นของเพื่อนแน่นอนก็ fallback (ไม่ skip) — เกิดได้จากปุ่ม ✕ ของคนอื่น ซึ่งไม่บ่อยเท่าการสแกน/confirm ปกติ
+ส่วน (ข)(ค)(ง) ใช้ `_whConfirmChangedNeedsRender(skus)` — Count/Recheck Confirm **เปลี่ยน status เสมอ** จึงไม่มีทาง patch มีแค่ skip (ของเพื่อนแน่นอน) กับ fallback (ของเราเอง) · ส่วน (จ) `_applyCloudSessionMeta()` / `_applyWh{Count,Recheck}InboxToState()` คืนค่า "เปลี่ยนจริงไหม" แล้ว render เฉพาะเมื่อมีอย่างน้อยหนึ่งอย่างเปลี่ยน (WH ที่อยู่ epoch เดิม ไม่มี unknownScans ใหม่ = ไม่ render) — v2 ไม่มี scanData ใน session blob แล้ว ส่วนใหญ่จึงไม่มีอะไรให้ rebuild
 
-**rollback = ตั้ง `SCAN_ITEM_LISTENER_PATCH=false` แล้ว deploy** (listener กลับ `renderScanList()` ทุกครั้งเหมือนเดิม — ไม่ข้าม ไม่ patch เลย) · `let` เพื่อให้เทสสลับเทียบได้ · ไม่มีการเปลี่ยน schema/รูปแบบข้อมูล/`firestore.rules`/APK/`sw.js`
+⚠️ **ขอบเขตที่ยังไม่ครอบ (ยอมรับแล้ว):** (1) `ch.type==='removed'` ทำให้ `status` กลายเป็น `'pending'` เสมอ (`_applyScanItemRemoved`) ⇒ เข้าเงื่อนไข (3) เสมอ แม้เป็นของเพื่อนแน่นอนก็ fallback — เกิดได้จากปุ่ม ✕ ของคนอื่น (2) **`_setBranchScanPaused(false)` บรรทัด `scanInput.focus()` ดึงโฟกัส PDA กลับช่องสแกนหลักทุกครั้งที่ Supervisor Confirm จบ** (พบจากเทสจริง — element ยังอยู่ใน DOM แต่ `document.activeElement` เปลี่ยน) ยังไม่ได้แก้เพราะเป็น branch confirm lock (กฎ 1) และผู้ใช้ยืนยันว่าอาการ "เด้งหลุด" หายแล้วหลังแก้ (จ) · ถ้าอาการกลับมาเฉพาะช่วง Confirm ให้ดูจุดนี้ก่อน (เทสร่างเก็บไว้นอก repo เพราะยังไม่ผ่าน: ต้องแก้จุดนี้ก่อนถึงจะเขียนเทส)
+
+**rollback = ตั้ง `SCAN_ITEM_LISTENER_PATCH=false` แล้ว deploy** (ทั้ง 5 จุดกลับ rebuild ทุกครั้งเหมือนเดิม — ไม่ข้าม ไม่ patch เลย) · `let` เพื่อให้เทสสลับเทียบได้ · ไม่มีการเปลี่ยน schema/รูปแบบข้อมูล/`firestore.rules`/APK/`sw.js`
 
 เทส: `tests/specs/e2e/wh-recheck-listener-patch.spec.js` (3 ข้อ: เพื่อนสแกน SKU ตัวเอง + Supervisor confirm ยอด recheck ของเรา → focus ไม่หลุดทั้งคู่ · status เปลี่ยนจริง → fallback ตามคาด (แถวหายจาก DOM เพราะ tab รีเช็คกรองเฉพาะ `audit`) · **canary** ปิดสวิตช์แล้ว coworker write เดิมทำให้ focus หลุดจริง — พิสูจน์ว่าเทสจับบั๊กได้)
 
-**ตรวจแล้ว 8 ต.ค. 2026:** `npm test` ทั้งชุด — logic **240/240** ผ่าน · e2e **78/79** ผ่าน (1 ล้ม = `convert-legacy-audit.spec.js` ซึ่ง**ไม่เกี่ยวกับงานนี้เลย** คนละไฟล์คนละฟังก์ชัน และเป็น flaky test ที่มีมาก่อนงานนี้แล้ว — CLAUDE.md §🧾 ตรวจกับ ERP เคยบันทึกไว้ "ล้ม 2 จาก 7 รอบติดกันตอนต้น แล้วผ่าน 5 รอบติด" · รันแยกเดี่ยวผ่านทันที 18.5s ยืนยัน timing-sensitive ไม่ใช่ regression) · เทสใหม่ของงานนี้ทั้ง 3 ข้อผ่านครบรวม canary · ภาพจอไม่ได้ตรวจ (ไม่มี UI ใหม่ แก้แค่ listener) · ⏳ **ยังไม่ได้ทดสอบบน PDA จริงหลายเครื่องพร้อมกัน** (ตาม §เมื่องานเสร็จ — ต้อง F5/ปิดเปิดแอปก่อนทดสอบ เพราะ heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว ดู Known limitations)
+**ตรวจแล้ว 8 ต.ค. 2026:** เทส 3 ข้อของ `wh-recheck-listener-patch.spec.js` ผ่านรวม canary · ผู้ใช้ทดสอบบน PDA จริงหลังแก้จุด (จ) แล้วยืนยันว่าอาการเด้งหลุด **หายแล้ว** · ผลรันทั้งชุดรอบสุดท้ายอยู่ท้ายหัวข้อ F5 ด้านล่าง · ⏳ ยังไม่ได้ทดสอบ PDA หลายเครื่องพร้อมกัน/ช่วง Supervisor กด Confirm (ดูข้อ (2) ของ "ขอบเขตที่ยังไม่ครอบ") · ต้องปิด-เปิดแอป PDA หลัง deploy เพราะ heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว (ดู Known limitations)
+
+#### 🐛 WH Supervisor F5 แล้วยอดรีเช็คที่ PDA กรอกไว้หายเป็น 0 ทั้ง Cloud (บั๊กเดิม · ผู้ใช้รายงาน ต.ค. 2026)
+
+**อาการ:** PDA กรอกยอดรีเช็คแล้ว → Desktop Supervisor กด F5 → ยอดทั้งหมดกลับเป็น 0 ทั้งบน Desktop และ PDA (Cloud ถูกเขียนทับจริง ไม่ใช่แค่หน้าจอ)
+
+**ไม่ได้เกิดจากงานแก้ listener ด้านบน** — จำลองซ้ำบน `index.html` ก่อนแก้ทั้งหมด (`0c7f238`) แล้วหายเหมือนกันเป๊ะ · ที่ผ่านมาไม่ค่อยมีใครเจอเพราะต้องมียอดรีเช็คค้างอยู่ตอนรีโหลด
+
+**ต้นเหตุ (ตามลำดับที่ดักได้จริงด้วย hook `Map.prototype.set`):**
+1. WH Supervisor ล็อกอินแล้วเรียก `restoreFromFirestore(force=true)` **ก่อน** `_loadWhWorkflowCloudState` เสมอ ([initAfterLogin](index.html)) — ตอนนั้น `_whCommittedOps` ว่าง
+2. `_loadScanItemsFromCloud` ข้าม item ที่ผูก op (`whCountOpId`/`whRecheckOpId`) ถ้า op ยังไม่ถูกโหลด ⇒ **ทุก item ที่ Count Confirm แล้วถูกข้าม** → `_scanItemRev`/`_scanItemSynced` ว่าง
+3. `sd` ถูกสร้างจาก marker ของ op (มีแต่ผล Count — **`recheckQty/recheckBy/recheckAt` ที่ PDA กรอกหลัง Confirm อยู่ที่ item บน Cloud เท่านั้น**)
+4. `syncToFirestore` → `_syncSessionMetaToFirestore` เรียก `_reconcileScanItems()` ทุกครั้ง → เห็นว่า item "ไม่เคย sync" (`known===undefined`) → `_flushDirtySkus` **`batch.set(…,{merge:false})` ทับ item ทั้งก้อน** ด้วย `rev=1` ไม่มี `recheckQty`
+5. listener ของ PDA รับ item ที่ถูกทับกลับมา → ขึ้น 0
+
+**ขอบเขตความเสียหาย:** เฉพาะ item ที่ Count Confirm แล้วและมียอดรีเช็คค้าง (ยังไม่ Recheck Confirm) · ยอดนับรอบแรกและผลที่ Confirm แล้วไม่หาย (marker มีครบ) · **ยอดที่หายไปแล้วกู้จากในระบบไม่ได้** (กรอกใหม่ · หรือ Firestore Point-in-time recovery ถ้าเปิดไว้ — ปกติปิด) · เส้นทางเดียวกันนี้เกิดกับ Desktop รีโหลดอัตโนมัติหลัง deploy ด้วย (ผ่าน `initAfterLogin` เหมือนกัน — ยังไม่ได้ทดสอบเส้นทางรีโหลดอัตโนมัติแยก) ⇒ **ก่อนแก้นี้ถึงเครื่องทุกเครื่อง ห้าม F5 Desktop Supervisor และห้าม deploy ขณะมียอดรีเช็คค้าง**
+
+**แก้ (สวิตช์ `WH_ITEM_LOAD_GUARD` · 2 ชั้นซ้อนกัน):**
+1. `_loadScanItemsFromCloud` (WH · supervisor/warehouse · `_whCommittedOps` ว่าง) **โหลด op ก่อนอ่าน items** — item ผูก op จึงไม่ถูกข้าม Desktop เห็นยอดรีเช็คจริงหลังรีโหลด · โหลดไม่ได้ (ออฟไลน์/ผลไม่ครบ) = พฤติกรรมเดิม ไม่ throw
+2. `_reconcileScanItems` **ไม่ดัน item ที่ผูก op และเครื่องนี้ไม่เคย sync** — Cloud มีอยู่แล้วจากการ materialize · reconcile ไม่ใช่กลไกเขียน item ของ op · การกรอกยอดจริงใช้ `_markSkuDirty` ตรงๆ จึงไม่โดน
+
+⛔ **ห้าม** ให้ `_reconcileScanItems` กลับไปดัน item ผูก op ที่ `known===undefined` · **ห้าม** ย้าย preload op ออกจาก `_loadScanItemsFromCloud` · โค้ดใหม่ที่อ่าน items ก่อนโหลด op ต้องมีด่านแบบเดียวกัน · ข้อควรรู้: preload ทำให้ login WH อ่านผลของ op 2 รอบ (preload + `_loadWhWorkflowCloudState`) ยอมรับต้นทุนนี้แทนการแตะ `_loadWhWorkflowCloudState` · PDA ที่แก้ยอดออฟไลน์บน item ผูก op แล้วปิดแอปก่อนซิงก์ จะถูกค่า Cloud ทับตอนเปิดใหม่ (เหมือน item ปกติที่เป็นแบบนี้อยู่แล้ว)
+
+**rollback = ตั้ง `WH_ITEM_LOAD_GUARD=false` แล้ว deploy** (กลับไปบั๊กเดิม — ใช้เฉพาะเมื่อด่านนี้ทำให้ login WH พัง) · จุดก่อนแก้ = `8be5471` · ไม่มีการเปลี่ยน schema/รูปแบบข้อมูล/`firestore.rules`/APK/`sw.js`
+
+เทส: `tests/specs/e2e/wh-supervisor-f5-keeps-recheck.spec.js` (4 ข้อ: Supervisor F5 จริงยอดรอดทั้ง Cloud/Desktop/PDA + `rev` ไม่ถูกรีเซ็ต · PDA ปิด-เปิดแอปยอดไม่หาย · ด่าน reconcile ข้ามเฉพาะ item ผูก op · **canary** ปิดสวิตช์แล้วรันลำดับบูตซ้ำ ยอดหายจริง) — ทุกข้อพิสูจน์ก่อนว่า Count Confirm commit op จริงและยอดขึ้น Cloud จริง ไม่งั้นเทสผ่านด้วยเหตุผลผิด · ทดลองปิดสวิตช์ในไฟล์จริงแล้วข้อ F5 ล้มตรงจุดบั๊ก (Desktop ไม่เห็นยอดรีเช็ค)
+
+**ตรวจแล้ว 8 ต.ค. 2026:** `npm test` ทั้งชุด exit code 0 — logic **240/240** · e2e **83 ผ่าน + 2 ข้าม** (เทสวัดแบบ opt-in) ไม่มีข้อล้มเลย (รอบก่อนหน้าเคยเจอ `convert-legacy-audit` / `wh-workflow-rules` ล้มเป็นครั้งคราว แล้วผ่านเมื่อรันเดี่ยว — flaky เดิม ไม่เกี่ยวกับงานนี้) · ⏳ **ยังไม่ได้ทดสอบกับ Desktop/PDA จริง:** (ก) Supervisor F5 ตอน PDA มียอดรีเช็คค้าง (ข) รีโหลดอัตโนมัติหลัง deploy (ค) ข้อมูล WH ขนาดจริง — preload op อ่านผลของทุก op อีก 1 รอบตอน login ดูว่า login ช้าลงจนรู้สึกไหม · ❌ ยังไม่ได้ทดลอง `git revert` (ยังไม่ commit)
 
 ### รายงานผลการนับ (count_report) — ค่าสด vs ค่าที่แช่ไว้ (ก.ย. 2026)
 
