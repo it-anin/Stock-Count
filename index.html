@@ -543,7 +543,7 @@
               <strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>
               <ul style="padding-left:16px;margin:0;">
                 <li>รายงาน R16.104 → ตามวันที่ <strong>ตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (สะสม ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · อัพใหม่ทุกครั้งก่อน Confirm</li>
-                <li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— WH: OTFI หักออกเสมอ · SRC: OTFB/OTFI Col A=0 ข้าม (คลังชากค้อส่ง) / Col A=1 บวกกลับ</span></li>
+                <li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— WH: OTFI Col A=0 (คลังโอนออก) บวกกลับ · Col A=1 (หน้าร้าน) ข้าม · SRC: OTFB/OTFI Col A=0 ข้าม (คลังชากค้อส่ง) / Col A=1 บวกกลับ</span></li>
                 <li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>
               </ul>
             </div>
@@ -1600,14 +1600,19 @@ const EMPLOYEE_PROFILES={
 };
 // R16 document type prefixes (Col C). Add new OXXX codes to the appropriate array.
 const R16_SALES_PREFIXES=['ORCM','OCTM'];          // ยอดขาย → บวกกลับเข้า countedQty
-const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้า → หักออกจาก countedQty (KKL/SSS: OTFB คลัง→สาขา รับเข้า; OTFI Col A=0/ว่าง คลัง→สาขา; WH: OTFI ทุกตัวที่คลังรับโอนเข้า)
-const R16_OUTBOUND_PREFIXES=['OTFI'];              // สาขา: OTFI ที่ Col A=1 (สาขา→คลัง โอนออกกลับ) → บวกกลับเข้า countedQty (เหมือนยอดขาย); WH ไม่ใช้ (คลังเป็นฝั่งรับ = inbound)
+const R16_INBOUND_PREFIXES=['OTFB','ORTS','OTFI']; // รับเข้า → หักออกจาก countedQty (KKL/SSS: OTFB คลัง→สาขา รับเข้า; OTFI Col A=0/ว่าง คลัง→สาขา; WH: OTFI Col A=0 = คลังโอนออก → บวกกลับ · Col A=1 → ข้าม · ค่าอื่น/ปิดสวิตช์ = หักเหมือนเดิม — ดู WH_R16_OTFI_OUT)
+const R16_OUTBOUND_PREFIXES=['OTFI'];              // สาขา: OTFI ที่ Col A=1 (สาขา→คลัง โอนออกกลับ) → บวกกลับเข้า countedQty (เหมือนยอดขาย); WH ใช้ Col A=0 แทน (คลังโอนออก — ดู isWhOtfiOut ใน loadR16)
 // ⚠️ SRC ("อนิน สาขาแยกชากค้อ" = สาขา+คลังอยู่ SYSBRANCHID เดียวกัน แยกด้วย Col A = SYSWAREHOUSEID 0=คลัง/1=หน้าร้าน):
 //    OTFB และ OTFI ใช้ Col A → 0=คลังส่ง (ข้าม ไม่กระทบสต็อกหน้าร้าน) / 1=หน้าร้านส่ง (บวกกลับ) — ดู isSrcOtfb/isSrcOtfiSkip ใน loadR16
 // ⚠️ WH (ต.ค. 2026): ORCM/OCTM ที่ Col A=1 (Front Store) = ขายหน้าร้าน ไม่กระทบสต็อก Warehouse (R01 ของ WH = แถว Warehouse) → ไม่บวกกลับ
 //    เคส SKU 800082 (7 ต.ค.): นับ 39 = ระบบ 39 แต่ติด audit เพราะบิลขายหน้าร้าน 1 ชิ้นถูกบวกกลับ · ไฟล์ R16.104 ของ "อนิน สาขาแยกชากค้อ" รวมสองคลังไว้ด้วยกัน (ขาย 819 แถว: หน้าร้าน 794 / คลัง 25)
 //    ข้ามเฉพาะแถวที่ Col A = '1' ตรงๆ (fail-open) — ว่าง/ค่าอื่นนับเหมือนเดิม · false = นับทุกแถวเหมือนก่อนแก้ (rollback) · ดู CLAUDE.md §WH ไม่บวกกลับยอดขายหน้าร้าน
 let WH_R16_SKIP_FRONT_STORE=true;
+// ⚠️ WH (8 ต.ค. 2026): สวิตช์ข้างบนครอบ 3 อย่าง — ORCM/OCTM Col A=1 · OTFI Col A=1 (หน้าร้านโอนออก ไม่กระทบสต็อกคลังจนกว่าจะมีใบรับ) · R16.103 ทุกแถว Col A=1 (เช่น ITFW ของหน้าร้าน)
+// ⚠️ WH OTFI Col A=0 (คลังโอนออก · FSTOCKMAIN −1 ตัดของออกจากคลัง) = ขาออก → บวกกลับเหมือนยอดขาย แทนการหักเป็นรับเข้า
+//    เคส SKU 101378 (7 ต.ค.): ระบบ 250 · นับ 150 · คลังส่งออก 100 → เดิม 150−100 → audit → ใบปรับปรุง −100 ซ้ำกับที่ ERP ตัดไปแล้ว · ที่ถูก 150+100=250 pass
+//    เช็คเฉพาะ '0' ตรงๆ (fail-open: ว่าง/ค่าอื่น = หักเหมือนเดิม) · false = หักเหมือนก่อนแก้ (rollback) · OTFB/ORTS ไม่เปลี่ยน · ดู CLAUDE.md §WH OTFI ตามทิศ Col A
+let WH_R16_OTFI_OUT=true;
 const R16_103_PREFIXES=['IRNC','IRVC','IRNM','ICSM','ITFB','ITFW','IPOS','IRCN']; // WH: รับเข้าที่ยังไม่ขึ้นชั้น → บวกกลับเข้า countedQty
 function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
 let currentUser='';
@@ -3377,12 +3382,12 @@ function loadR16(event) {
     let tranDateColIdx=-1;
     if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
     console.log('[R16] headers:',rows[0]?.slice(0,10));console.log('[R16] TRANDATE col index:',tranDateColIdx);if(rows[1])console.log('[R16] row[1] sample TRANDATE:',tranDateColIdx>=0?rows[1][tranDateColIdx]:'(no TRANDATE col)');}
-    let sk=0,matched=0,mismatch=0,missing=0,nCancel=0,nFrontStore=0;
+    let sk=0,matched=0,mismatch=0,missing=0,nCancel=0,nFrontStore=0,nFrontOtfi=0,nOtfiOut=0;
     const isWhBranch=currentBranch==='WH'; // WH: ORCM/OCTM บวกกลับ (ตามไฟล์ที่ใช้จริง)
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase(); // Col C (index 2)
-      const colA=(r[0]??'').toString().trim(); // Col A (index 0) = SYSWAREHOUSEID — ทิศ OTFI ของสาขา: '1'=สาขา→คลัง บวกกลับ, '0'=คลัง→สาขา หัก (SRC: '0'=คลังชากค้อ → ข้าม ดู isSrcOtfiSkip)
+      const colA=(r[0]??'').toString().trim(); // Col A (index 0) = SYSWAREHOUSEID — ทิศ OTFI ของสาขา: '1'=สาขา→คลัง บวกกลับ, '0'=คลัง→สาขา หัก (SRC: '0'=คลังชากค้อ → ข้าม ดู isSrcOtfiSkip · WH: '0'=คลังโอนออก บวกกลับ / '1'=หน้าร้านโอนออก ข้าม ดู isWhOtfiOut)
       // Col J (index 9) = FCANCEL · '1' = บิลถูกยกเลิก สินค้าไม่ได้ออกจากชั้นจริง → ห้ามนับเป็นยอดขาย
       // (ก.ย. 2026) เดิมไม่เคยอ่านคอลัมน์นี้ ⇒ บิลยกเลิกถูกบวกกลับเข้า effectiveQty ทำให้ของที่นับตรงติด audit
       // ⚠️ เช็คเฉพาะค่า '1' ไม่ใช่ "เก็บเฉพาะ 0" โดยเจตนา — ถ้าวันหนึ่ง export ไม่มีคอลัมน์นี้หรือส่งค่าว่างมา
@@ -3395,6 +3400,12 @@ function loadR16(event) {
       // ⚠️ แถวต้องยังอยู่ใน r16Data — ด่านวันที่/coverage ด้านล่างอ่านช่วงเวลาจาก r16Data · ตัดก่อน push = ช่วงที่ครอบหดเหลือแค่แถวคลัง (วันละ ~25 แถว) แล้วเตือนผิด
       // ⚠️ เช็คเฉพาะ '1' ตรงๆ (fail-open): Col A ว่าง/ค่าอื่นนับเหมือนเดิม · ห้ามเปลี่ยนเป็น "เก็บเฉพาะ '0'" ไม่งั้นไฟล์ที่ไม่มี Col A ถูกทิ้งเงียบทั้งไฟล์
       const isWhFrontStoreSale=WH_R16_SKIP_FRONT_STORE&&isWhSale&&colA==='1';
+      // WH OTFI (ใบโอน · FSTOCKMAIN −1 ทุกแถว = ตัดของออกจากคลังตาม Col A · ฝั่งรับเปลี่ยนตอนมีใบรับ ไม่ใช่ตอน OTFI)
+      //  Col A=0 คลังโอนออก → บวกกลับเหมือนขาย (เข้า isOutbound → r16SalesMap) · Col A=1 หน้าร้านโอนออก → ข้าม (เก็บแถวไว้ใน r16Data เหมือนขายหน้าร้าน)
+      // ⚠️ เช็ค '0'/'1' ตรงๆ (fail-open): ว่าง/ค่าอื่น = หักเป็นรับเข้าเหมือนเดิม · OTFB/ORTS ไม่แตะ (ยังไม่มีแถวที่นับแล้วให้ยืนยันทิศ)
+      const isWhOtfi=isWhBranch&&colC.startsWith('OTFI');
+      const isWhOtfiOut=WH_R16_OTFI_OUT&&isWhOtfi&&colA==='0';
+      const isWhOtfiFront=WH_R16_SKIP_FRONT_STORE&&isWhOtfi&&colA==='1';
       const isSale=_matchR16Prefix(colC,R16_SALES_PREFIXES)&&(!isWhBranch||isWhSale); // WH: รับ ORCM/OCTM, สาขา: ORCM/OCTM
       // SRC: "อนิน สาขาแยกชากค้อ" = สาขา SRC + คลังอยู่ SYSBRANCHID เดียวกัน → OTFB ใช้ Col A (SYSWAREHOUSEID) บอกผู้ส่ง: 0=คลัง / 1=สาขาชากค้อ
       //  Col A=0 (คลังเป็นผู้ส่งไปสาขาอื่น เช่น เก้ากิโล) → ไม่กระทบสต็อกสาขา → ข้าม (ไม่นับ)
@@ -3405,10 +3416,10 @@ function loadR16(event) {
       const isSrcOtfbSkip=isSrcOtfb&&colA!=='1';  // คลังเป็นผู้ส่ง → ข้าม ไม่กระทบสต็อกสาขา
       // SRC OTFI (ก.ย. 2026): Col A = SYSWAREHOUSEID → 0=Warehouse (คลังชากค้อ) / 1=Front Store · FSTOCKMAIN=-1 ทุกแถว = ขาตัดของออกจากคลังตาม Col A
       //  Col A=0 = คลังชากค้อโอนออก ของไม่เข้าหน้าร้าน → ข้าม (เดิมหักเป็น "รับเข้า" ⇒ ของที่นับตรงติด audit/Stock Adj — 28 ก.ย. 14/16 รายการ เช่น 900202)
-      //  Col A=1 = หน้าร้านโอนออก → ยังบวกกลับผ่าน isOutbound ตามเดิม · KKL/SSS/WH ไม่แตะ (ยังไม่มีไฟล์ยืนยันความหมาย Col A ของสาขานั้น)
+      //  Col A=1 = หน้าร้านโอนออก → ยังบวกกลับผ่าน isOutbound ตามเดิม · KKL/SSS ไม่แตะ (ยังไม่มีไฟล์ยืนยันความหมาย Col A ของสาขานั้น) · WH ดู isWhOtfiOut/isWhOtfiFront ด้านบน
       const isSrcOtfiSkip=currentBranch==='SRC'&&colC.startsWith('OTFI')&&colA!=='1';
-      const isOutbound=(!isWhBranch&&((_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES)&&colA==='1')||isSrcOtfbOut))||isWhSale; // WH ORCM/OCTM + สาขา OTFI Col A=1 / SRC OTFB Col A=1 → บวกกลับ
-      const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES)&&!isOutbound&&!isSrcOtfbSkip&&!isSrcOtfiSkip;   // OTFB/ORTS=inbound; SRC OTFB/OTFI Col A=0 → ข้าม; OTFI KKL/SSS ขึ้นกับ Col A; WH OTFI=inbound เสมอ
+      const isOutbound=(!isWhBranch&&((_matchR16Prefix(colC,R16_OUTBOUND_PREFIXES)&&colA==='1')||isSrcOtfbOut))||isWhSale||isWhOtfiOut; // WH ORCM/OCTM + WH OTFI Col A=0 + สาขา OTFI Col A=1 / SRC OTFB Col A=1 → บวกกลับ
+      const isInbound=_matchR16Prefix(colC,R16_INBOUND_PREFIXES)&&!isOutbound&&!isSrcOtfbSkip&&!isSrcOtfiSkip;   // OTFB/ORTS=inbound; SRC OTFB/OTFI Col A=0 → ข้าม; OTFI KKL/SSS ขึ้นกับ Col A; WH OTFI: Col A=0 → isOutbound · Col A=1 → ข้ามที่ลูปสะสม (skipWh) · ว่าง/อื่น = inbound เหมือนเดิม
       if(!isSale&&!isInbound&&!isOutbound){sk++;continue;}
       const barcode=(r[14]??'').toString().trim();   // Col O (index 14)
       const rawBaseQty=(r[17]??'').toString().replace(/,|\s/g,'').trim(); // Col R (index 17) = BASEQUANTITY (จำนวนแปลงเป็นหน่วยเล็กสุดแล้ว)
@@ -3416,7 +3427,7 @@ function loadR16(event) {
       if(!barcode||rawBaseQty===''){sk++;continue;}
       const soldQty=isFinite(+rawBaseQty)&&+rawBaseQty>0?+rawBaseQty:0;
       const tranDate=tranDateColIdx>=0?(r[tranDateColIdx]??'').toString().trim():'';
-      state.r16Data.push({barcode,soldQty,skuR16,tranDate,isInbound,skipWh:isWhFrontStoreSale});
+      state.r16Data.push({barcode,soldQty,skuR16,tranDate,isInbound,skipWh:isWhFrontStoreSale?'sale':(isWhOtfiFront?'otfi':false),otfiOut:isWhOtfiOut});
     }
     // Normalize barcode: trim, remove non-printable, normalize spaces
     function normalizeBarcode(b){ return b.replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim(); }
@@ -3438,8 +3449,9 @@ function loadR16(event) {
       }
       // ยืนยัน SKU อยู่ใน R01
       if(!state.skuMap.has(skuFromR05)){missing++;return;}
-      // WH ขายหน้าร้าน: นับเป็น matched เท่าเดิม (ด่านที่ผูกกับ matched>0 ไม่เปลี่ยน) แต่ไม่เข้า map ยอดขาย
-      if(row.skipWh){nFrontStore++;matched++;return;}
+      // WH แถวของหน้าร้าน (Col A=1: ขาย/โอนออก): นับเป็น matched เท่าเดิม (ด่านที่ผูกกับ matched>0 ไม่เปลี่ยน) แต่ไม่เข้า map
+      if(row.skipWh){if(row.skipWh==='otfi')nFrontOtfi++;else nFrontStore++;matched++;return;}
+      if(row.otfiOut)nOtfiOut++;
       if(row.isInbound){
         // สะสมยอดรับเข้า (OTFB/ORTS/OTFI)
         state.r16InboundMap.set(skuFromR05,(state.r16InboundMap.get(skuFromR05)||0)+row.soldQty);
@@ -3478,7 +3490,9 @@ function loadR16(event) {
       }
       // WH: บอกจำนวนแถวขายหน้าร้านที่ข้าม — ไม่ให้แถวหายเงียบ (เหมือนบิลยกเลิก)
       if(nFrontStore>0)toast(`R16: ข้ามยอดขายหน้าร้าน ${nFrontStore} แถว (Col A=1) — ไม่กระทบสต็อกคลัง`,'info',5000);
-      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch} / บิลยกเลิก ${nCancel} / ข้ามขายหน้าร้าน ${nFrontStore}`);
+      // WH: OTFI ตามทิศ Col A — บอกว่าบวกกลับ/ข้ามไปกี่แถว (ไม่ให้เปลี่ยนทิศแบบเงียบ)
+      if(nOtfiOut>0||nFrontOtfi>0)toast(`R16: OTFI คลังโอนออก ${nOtfiOut} แถว (Col A=0) บวกกลับ · ข้ามหน้าร้านโอนออก ${nFrontOtfi} แถว (Col A=1)`,'info',5000);
+      console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch} / บิลยกเลิก ${nCancel} / ข้ามขายหน้าร้าน ${nFrontStore} / OTFI คลังออก ${nOtfiOut} / ข้าม OTFI หน้าร้าน ${nFrontOtfi}`);
     } else {
       let msg=`R16.104: ไม่สามารถจับคู่ข้อมูลได้`;
       if(state.r16Data.length>0){
@@ -3569,18 +3583,21 @@ function loadR16_103(event){
     let tranDateColIdx=-1;
     if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
     console.log('[R16.103] TRANDATE col index:',tranDateColIdx);}
-    const data103=[];let sk=0,matched=0,missing=0;
+    const data103=[];let sk=0,matched=0,missing=0,nFront103=0;
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase();
       if(!_matchR16Prefix(colC,R16_103_PREFIXES)){sk++;continue;}
+      // WH: แถว Col A=1 (Front Store เช่น ITFW หน้าร้านรับโอน) ไม่ใช่ของที่ "ยังไม่ขึ้นชั้น" ของคลัง → ไม่บวกกลับ (เช็คเฉพาะ '1' ตรงๆ = fail-open · ไม่มี date/coverage ในลูปนี้ แต่ธงแทนการตัดทิ้งเพื่อให้ matched นับเท่าเดิม)
+      const colA103=(r[0]??'').toString().trim();
+      const skipWh=WH_R16_SKIP_FRONT_STORE&&currentBranch==='WH'&&colA103==='1';
       const barcode=(r[14]??'').toString().trim();
       const rawBaseQty=(r[17]??'').toString().replace(/,|\s/g,'').trim();
       const skuR16=(r[23]??'').toString().trim();
       if(!barcode||rawBaseQty===''){sk++;continue;}
       const qty=isFinite(+rawBaseQty)&&+rawBaseQty>0?+rawBaseQty:0;
       const tranDate=tranDateColIdx>=0?(r[tranDateColIdx]??'').toString().trim():'';
-      data103.push({barcode,qty,skuR16,tranDate});
+      data103.push({barcode,qty,skuR16,tranDate,skipWh});
     }
     function normalizeBarcode(b){return b.replace(/[​-‍﻿]/g,'').replace(/\s+/g,' ').trim();}
     data103.forEach(row=>{
@@ -3588,6 +3605,7 @@ function loadR16_103(event){
       let sku=state.barcodeMap.get(bcNorm)||state.barcodeMap.get(bcNorm.toUpperCase())||state.barcodeMap.get(bcNorm.toLowerCase());
       if(!sku&&row.skuR16&&state.skuMap.has(row.skuR16))sku=row.skuR16;
       if(!sku||!state.skuMap.has(sku)){missing++;return;}
+      if(row.skipWh){nFront103++;matched++;return;}   // WH แถวหน้าร้าน: นับ matched เท่าเดิม แต่ไม่เข้า map
       state.r16_103Map.set(sku,(state.r16_103Map.get(sku)||0)+row.qty);
       const rawArr=state.r16_103RawMap.get(sku)||[];rawArr.push({qty:row.qty,tranDate:row.tranDate||''});state.r16_103RawMap.set(sku,rawArr);
       matched++;
@@ -3608,8 +3626,10 @@ function loadR16_103(event){
     syncR16MetaToFirestore();
     const total103=[...state.r16_103Map.values()].reduce((a,b)=>a+b,0);
     if(matched>0){
-      toast(`R16.103: จับคู่ได้ ${matched} SKU / ${total103} ชิ้น (รับเข้ายังไม่ขึ้นชั้น)`,'success');
-      console.log(`[R16.103] match ${matched} SKU / ${total103} ชิ้น / ไม่พบ ${missing}`);
+      // WH: บอกจำนวนแถวหน้าร้านที่ข้าม (ไม่ให้หายเงียบ) · ตัวเลข "จับคู่ได้" ไม่รวมแถวที่ข้าม — ไม่มีแถวข้าม = ข้อความเดิมเป๊ะ
+      if(nFront103>0)toast(`R16.103: ข้ามรายการหน้าร้าน ${nFront103} แถว (Col A=1) — ไม่กระทบสต็อกคลัง`,'info',5000);
+      toast(`R16.103: จับคู่ได้ ${matched-nFront103} SKU / ${total103} ชิ้น (รับเข้ายังไม่ขึ้นชั้น)`,'success');
+      console.log(`[R16.103] match ${matched-nFront103} SKU / ${total103} ชิ้น / ไม่พบ ${missing} / ข้ามหน้าร้าน ${nFront103}`);
     }else{
       toast(`R16.103: ไม่สามารถจับคู่ข้อมูลได้ — ตรวจสอบว่าไฟล์มี code IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN ใน Col C`,'warn');
     }
@@ -6749,7 +6769,7 @@ function guideHtml(isWh){
       ?'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — รับเข้าคลังระหว่างนับ (อัพก่อน Confirm)</strong>'
         +'<ul style="padding-left:16px;margin:0;">'
         +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน</strong> → ส่งออก .CSV</li>'
-        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS/OTFI (รับเข้าคลัง) · <strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM'+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— เฉพาะขายจากคลัง · ข้ามแถว Col A=1 (หน้าร้าน)</span>':'')+'</li>'
+        +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS'+(WH_R16_OTFI_OUT&&WH_R16_SKIP_FRONT_STORE?'':'/OTFI')+' (รับเข้าคลัง) · <strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM'+(WH_R16_OTFI_OUT?' + OTFI <strong>Col A=0</strong> (คลังโอนออก)':'')+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— เฉพาะของคลัง · ข้ามแถว Col A=1 (หน้าร้าน) ทั้งขายและโอนออก</span>':'')+'</li>'
         +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY)</li>'
         +'</ul>'
       :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>'
@@ -6762,7 +6782,7 @@ function guideHtml(isWh){
   +(isWh?'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
     +'<strong style="color:var(--orange);display:block;margin-bottom:5px;">3. R16.103 — รับเข้าที่ยังไม่ขึ้นชั้น (เฉพาะ WH)</strong>'
     +'<ul style="padding-left:16px;margin:0;">'
-      +'<li>IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN → <strong style="color:var(--green);">บวกกลับ</strong> (อยู่ในระบบแต่ยังไม่ได้นับ)</li>'
+      +'<li>IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN → <strong style="color:var(--green);">บวกกลับ</strong> (อยู่ในระบบแต่ยังไม่ได้นับ)'+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— ข้ามแถว Col A=1 (หน้าร้าน)</span>':'')+'</li>'
       +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R · ปุ่มแสดงเฉพาะ Desktop WH</li>'
     +'</ul>'
   +'</div>':'')

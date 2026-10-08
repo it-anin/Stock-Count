@@ -111,18 +111,19 @@ test('SRC/KKL/SSS — ORCM Col A=1 และ 0 นับครบเหมือ
   }
 });
 
-test('WH — รับเข้า (OTFI/OTFB/ORTS) ไม่ถูกกระทบ ทั้ง Col A=0 และ 1', async ({ browser }) => {
+// ⚠️ OTFI ของ WH ตามทิศ Col A แล้ว (8 ต.ค. 2026) — เทสของ OTFI อยู่ที่ r16-wh-transfer.spec.js · ที่นี่ตรึงเฉพาะ OTFB/ORTS ที่ยังไม่เปลี่ยน
+test('WH — รับเข้า (OTFB/ORTS) ไม่ถูกกระทบ ทั้ง Col A=0 และ 1', async ({ browser }) => {
   const app = await bootBare(browser);
   await seedCatalog(app.page, 'WH');
 
   const out = await upload(app.page, toCsv([
-    row({ colA: '1', tranNo: 'OTFI260900001', qty: 2 }),
-    row({ colA: '0', tranNo: 'OTFI260900002', qty: 3 }),
     row({ colA: '1', tranNo: 'ORTS260900001', qty: 4 }),
     row({ colA: '0', tranNo: 'OTFB260900001', qty: 5 }),
+    row({ colA: '1', tranNo: 'OTFB260900002', qty: 2 }),
+    row({ colA: '0', tranNo: 'ORTS260900002', qty: 3 }),
   ]));
 
-  expect(out.inbound).toBe(14);              // 2+3+4+5 · WH ไม่อ่าน Col A ของรับเข้า (พฤติกรรมเดิม)
+  expect(out.inbound).toBe(14);              // 4+5+2+3 · WH ไม่อ่าน Col A ของ OTFB/ORTS (พฤติกรรมเดิม)
   expect(out.sold).toBe(0);
   expect(out.skipped).toBe(0);
   await closeApp(app);
