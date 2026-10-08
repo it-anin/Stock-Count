@@ -458,8 +458,8 @@
       </div>
       <div class="db-status">
         <div class="db-dot active" id="dbDot"></div>
-        <span id="dbStatus" style="color:var(--text2)" ondblclick="_debugShowLog()">Ready</span>
-        <button onclick="pullFromCloud()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
+        <span id="dbStatus" style="color:var(--text2)">Ready</span>
+        <button onclick="_debugCloudBtnClick()" style="border:1px solid var(--border);background:var(--surface2);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:10px;" title="ดึงข้อมูลล่าสุดจาก Cloud">Cloud</button>
         <button id="btnPdaAuditVerify" onclick="openAuditVerifyPopup()" style="display:none;border:1px solid rgba(224,140,0,0.45);background:rgba(224,140,0,0.12);color:var(--yellow);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;font-weight:700;align-items:center;gap:4px;" title="Audit Verify">🔍 <span id="btnPdaAuditCount" style="background:rgba(224,140,0,0.25);padding:0 5px;border-radius:8px;font-size:0.6rem;">0</span></button>
         <button id="btnPdaSettings" onclick="if(typeof Android!=='undefined')Android.openSettings()" style="display:none;border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;" title="ตั้งค่า Scanner">⚙</button>
       </div>
@@ -4470,6 +4470,17 @@ function _debugShowLog(){
     `<div id="_debugLogText" style="margin-top:40px;">${(text||'(ว่าง)').replace(/</g,'&lt;')}</div>`;
 }
 function _debugClearLog(){localStorage.removeItem(_DEBUG_LOG_KEY);}
+// ปุ่ม "Cloud" บน PDA มองเห็นเสมอ (#dbStatus text ถูกซ่อนด้วย CSS ที่ breakpoint PDA) — คลิกถี่ 5 ครั้งใน 3 วิ
+// เปิด debug log แทน · คลิกเดี่ยวปกติหน่วง 350ms แล้วเรียก pullFromCloud() เหมือนเดิม (หน่วงเพื่อรอดูว่าจะครบ 5 คลิกหรือไม่)
+let _debugCloudClicks=[];let _debugCloudPullTimer=null;
+function _debugCloudBtnClick(){
+  clearTimeout(_debugCloudPullTimer);
+  const now=Date.now();
+  _debugCloudClicks=_debugCloudClicks.filter(t=>now-t<3000);
+  _debugCloudClicks.push(now);
+  if(_debugCloudClicks.length>=5){_debugCloudClicks=[];_debugShowLog();return;}
+  _debugCloudPullTimer=setTimeout(()=>{_debugCloudClicks=[];pullFromCloud();},350);
+}
 // DEBUG ชั่วคราว — จบ (ต่อจากนี้ของจริง — ห้ามแก้ logic ด้านล่างนี้ตอนลบ debug block ด้านบน)
 
 // PROGRESS_BY_SCAN = Counted / Pass / Progress ของ "สาขายา" (SRC/KKL/SSS · ทุกอุปกรณ์ Desktop+PDA) นับตามที่สแกน (ก.ย. 2026 · ผู้ใช้สั่ง)
