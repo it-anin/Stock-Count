@@ -210,7 +210,7 @@ function failingSaves(page, steps) {
         if (s.rewind) _backupFailToastAt -= s.rewind;
         if (s.coalesce !== undefined) TOAST_COALESCE = s.coalesce;
         for (let i = 0; i < s.saves; i++) saveSession();
-        out.push(calls.filter((m) => m === 'warn|แบ็คอัพล้มเหลว').length);   // ชนิด warn ต้องคงเดิม
+        out.push(calls.filter((m) => m.startsWith('warn|แบ็คอัพล้มเหลว')).length);   // ชนิด warn ต้องคงเดิม · ข้อความต่อท้ายตามสาเหตุ (backup-quota-heal)
       }
     } finally { Storage.prototype.setItem = realSet; toast = realToast; _adminMode = false; }
     return out;

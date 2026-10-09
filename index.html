@@ -3193,7 +3193,9 @@ async function selectBranch(branch){
     saveSession();
     await syncToFirestore();
   }
-  currentBranch=branch;localStorage.setItem('selectedBranch',branch);
+  currentBranch=branch;
+  // localStorage เต็มจนไม่เหลือที่ = setItem โยน QuotaExceededError → เดิมหน้าเลือกสาขาค้าง (modal ไม่ปิด) · จำสาขาไม่ได้ไม่เป็นไร ต้องเข้าสาขาต่อได้
+  try{localStorage.setItem('selectedBranch',branch);}catch(e){console.warn('[selectBranch] จำสาขาที่เลือกไม่ได้ (localStorage):',e&&e.name);}
   document.getElementById('branchModal').style.display='none';
   currentUser='';currentRole='';updateUserDisplay();updateAuditVerifyPanel();updateHistoryStatsPanel();updateAdjustDocPanel();updateScanInputMode();
   if(!_pinVerified){
@@ -4161,13 +4163,59 @@ function startScanItemReconcile(){
 // localStorage เต็ม = save ล้มซ้ำทุกรอบ (4–12 วิ) → เตือนครั้งแรกทันที แล้วห่างกันอย่างน้อย 1 นาที (TOAST_COALESCE=false → เตือนทุกครั้งเหมือนเดิม)
 let _backupFailToastAt=0;
 const BACKUP_FAIL_TOAST_GAP_MS=60000;
-function _warnBackupFailed(){
+function _warnBackupFailed(e,len){
   const now=Date.now();
   if(TOAST_COALESCE&&now-_backupFailToastAt<BACKUP_FAIL_TOAST_GAP_MS)return;
-  _backupFailToastAt=now;toast('แบ็คอัพล้มเหลว','warn');
+  _backupFailToastAt=now;
+  if(!BACKUP_QUOTA_HEAL){toast('แบ็คอัพล้มเหลว','warn');return;}
+  const name=(e&&e.name)||'Error';
+  console.warn(`[backup] บันทึกสำรองในเครื่องไม่สำเร็จ: ${name} ${(e&&e.message)||''} · ข้อมูล ${(len||0).toLocaleString()} ตัวอักษร · localStorage ใช้อยู่ ${_localStorageChars().toLocaleString()} / ${LOCAL_STORAGE_QUOTA_CHARS.toLocaleString()}`);
+  toast(_isQuotaError(e)?'แบ็คอัพล้มเหลว — พื้นที่เก็บในเครื่องเต็ม':`แบ็คอัพล้มเหลว (${name})`,'warn');
+}
+// ── backup ในเครื่องเต็ม (ผู้ใช้สั่ง 9 ต.ค. 2026) ──
+// localStorage มีโควต้า 5,242,880 ตัวอักษรต่อเว็บไซต์ ใช้ร่วมทุกคีย์ = backup ทุกสาขาที่เคยเปิดบนเครื่องนั้น + คีย์เก่าที่ไม่มีโค้ดอ่านแล้ว
+// เคสจริง: Desktop ใช้ 5,220,607 (WH 1.94M · SRC 1.14M · SSS 1.03M · KKL 0.57M · _whFocusDebugLog 0.54M) → backup สาขาที่เปิดอยู่ (2.2M) เขียนไม่ได้ทุกรอบ
+// ① เปิดแอป: ลบคีย์ที่ไม่มีโค้ดอ่านแล้ว ② save เจอโควต้าเต็ม: ลบ backup ของสาขาอื่นบนเครื่องนี้ (สำเนา — ข้อมูลจริงอยู่ Cloud) แล้วเขียนซ้ำ 1 ครั้ง
+// ⛔ ห้ามลบ backup ของสาขาที่เปิดอยู่ (lsKey) — เป็นสำเนาเดียวของยอดที่สแกนตอนออฟไลน์ · ⛔ ห้ามลบเมื่อ error ไม่ใช่โควต้า หรือยังไม่ได้เลือกสาขา
+// BACKUP_QUOTA_HEAL=false → ไม่ลบอะไร และข้อความเตือนกลับเป็น "แบ็คอัพล้มเหลว" เดิม (ทางถอย)
+let BACKUP_QUOTA_HEAL=true;
+const LOCAL_STORAGE_QUOTA_CHARS=5242880;
+// _whFocusDebugLog = log debug 8 ต.ค. (cdddd89 ลบโค้ดแต่ไม่ได้ล้างข้อมูลบนเครื่อง) · stockCountSession = backup ก่อนแยกสาขา (มี.ค. 2026)
+// googleSheet* / progressMode_* = ฟีเจอร์ที่ถอดออกแล้ว — ไม่มีโค้ดไหนอ่านคีย์เหล่านี้อีก
+const LEGACY_LOCAL_KEYS=['_whFocusDebugLog','stockCountSession','googleSheetTitle','googleSpreadsheetUrl','googleSpreadsheetId'];
+function _isQuotaError(e){return !!e&&(e.name==='QuotaExceededError'||e.code===22);}
+function _localStorageKeys(){const ks=[];try{for(let i=0;i<localStorage.length;i++)ks.push(localStorage.key(i));}catch(e){}return ks;}
+function _localStorageChars(){let n=0;try{for(const k of _localStorageKeys())n+=k.length+(localStorage.getItem(k)||'').length;}catch(e){}return n;}
+function _cleanupLegacyLocalKeys(){
+  if(!BACKUP_QUOTA_HEAL)return [];
+  const gone=[];
+  for(const k of _localStorageKeys())if(LEGACY_LOCAL_KEYS.includes(k)||k.startsWith('progressMode_')){try{localStorage.removeItem(k);gone.push(k);}catch(e){}}
+  return gone;
+}
+function _evictOtherBranchBackups(keep){
+  const gone=[];
+  for(const k of _localStorageKeys())if(k.startsWith('stockCountSession_')&&k!==keep){try{localStorage.removeItem(k);gone.push(k);}catch(e){}}
+  return gone;
+}
+function _setSessionBackup(json){
+  const key=lsKey();
+  try{localStorage.setItem(key,json);return;}
+  catch(e){
+    if(!BACKUP_QUOTA_HEAL||!_isQuotaError(e)||!currentBranch)throw e;
+    let err=e;
+    // ลบให้น้อยที่สุด: คีย์เก่าก่อน → ยังไม่พอค่อยลบ backup ของสาขาอื่น · ยังไม่พออีก = throw ให้ saveSession เตือน (ค่าเดิมของ key นี้ไม่ถูกแตะ)
+    for(const free of [_cleanupLegacyLocalKeys,()=>_evictOtherBranchBackups(key)]){
+      const gone=free();
+      if(!gone.length)continue;
+      console.warn('[backup] localStorage เต็ม — ลบเพื่อคืนพื้นที่:',gone.join(', '));
+      try{localStorage.setItem(key,json);return;}catch(e2){if(!_isQuotaError(e2))throw e2;err=e2;}
+    }
+    throw err;
+  }
 }
 function saveSession() {
   _cancelPendingSave(); // ทุกทางเข้า (timer / เรียกตรง / flush) — save เต็มรอบนี้ครอบทุกอย่างที่ค้างอยู่แล้ว
+  let json='';
   try {
     const sdObj={};for(const[k,v]of state.scanData.entries()){
       const{retries,scans,...keep}=v;sdObj[k]=keep;
@@ -4176,8 +4224,9 @@ function saveSession() {
     const r16Obj={};for(const[k,v]of state.r16SalesMap.entries())r16Obj[k]=v;
     const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
     const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
-    localStorage.setItem(lsKey(),JSON.stringify({r01UploadedAt:state.r01UploadedAt,r01Version:state.r01Version||'',r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16DetailVersion:state.r16DetailVersion||'',r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,r16_103DetailVersion:state.r16_103DetailVersion||'',countResetAt:_countResetAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj}));
-  } catch(e){_warnBackupFailed();}
+    json=JSON.stringify({r01UploadedAt:state.r01UploadedAt,r01Version:state.r01Version||'',r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16DetailVersion:state.r16DetailVersion||'',r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,r16_103DetailVersion:state.r16_103DetailVersion||'',countResetAt:_countResetAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj});
+    _setSessionBackup(json);
+  } catch(e){_warnBackupFailed(e,json.length);}
   if(!_adminMode){
     clearTimeout(_firestoreSyncTimer);
     _firestoreSyncTimer = setTimeout(syncToFirestore, 3000);
@@ -4225,6 +4274,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
       }
     }
   }catch(e){/* offline/error → ปล่อยผ่าน ไม่ block การใช้งานปกติ */}
+  // backup ในเครื่องเต็ม: คืนพื้นที่จากคีย์ที่ไม่มีโค้ดอ่านแล้วก่อนเริ่มทำงาน (ดู _cleanupLegacyLocalKeys) — ทุกเครื่องได้เองเมื่อโหลดรุ่นนี้
+  {const _gone=_cleanupLegacyLocalKeys();if(_gone.length)console.warn('[backup] ลบคีย์เก่าใน localStorage:',_gone.join(', '));}
   // แสดงปุ่ม ⚙ Settings เฉพาะเมื่อรันใน PDA app (WebView)
   if(navigator.userAgent.includes('StockCountPDA')){
     document.body.classList.add('pda-power-save');

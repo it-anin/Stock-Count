@@ -426,7 +426,7 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 
 | Layer | Key/Path | เมื่อไหร่เขียน |
 |---|---|---|
-| localStorage | `stockCountSession_${branch}` | ทุก `saveSession()` debounce 400ms |
+| localStorage | `stockCountSession_${branch}` | `scheduleSave()` trailing 4 วิ + maxWait 12 วิ (ออฟไลน์ 1.5 / 3 วิ) + flush ตอน background/ปิดหน้า · โควต้า 5,242,880 ตัวอักษรต่อเว็บไซต์ **รวมทุกสาขาและทุกคีย์** — เต็ม → ลบคีย์เก่า/backup สาขาอื่นแล้วเขียนซ้ำ (CLAUDE.md §💾) |
 | Firestore `stock_sessions/${branch}` | scan data | 3s หลัง localStorage |
 | Firestore `stock_sessions/${branch}_r01` | R01 master + R16 upload metadata | หลัง upload R01; R16: `r16UploadedAt`/`r16Loaded` merge เข้า `_r01` doc ทุกครั้ง `loadR16()` |
 | Firestore `stock_sessions/${branch}_adjlot` | LOT ที่เลือก + LOT/ราคา สำรอง ใบปรับปรุง (เฉพาะ SKU ที่ปรับ) | **กดปุ่ม 💾 บันทึก LOT เท่านั้น**; อ่านทุกครั้งที่เปิด popup (`_readAdjlotDoc`) |
