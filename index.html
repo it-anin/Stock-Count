@@ -1137,8 +1137,13 @@
   <div id="pinModalCard" style="background:var(--surface);border-radius:16px;padding:40px 48px;min-width:300px;box-shadow:0 8px 40px rgba(0,0,0,0.25);text-align:center;">
     <div style="font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:6px;">Stock Count System</div>
     <div style="color:var(--text3);font-size:0.82rem;margin-bottom:20px;">กรุณาใส่รหัส PIN เพื่อเข้าใช้งาน</div>
-    <input type="password" id="pinInput" maxlength="10" placeholder="PIN" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:10px;font-size:1.2rem;text-align:center;letter-spacing:8px;font-weight:700;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter')verifyPin()">
-    <button onclick="verifyPin()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:1rem;font-weight:700;cursor:pointer;">เข้าสู่ระบบ</button>
+    <!-- ช่อง PIN อยู่ใน <form> ของตัวเอง + autocomplete="one-time-code" (ต.ค. 2026): ช่อง password ที่ไม่มี form ทำให้ Password Manager ของ Chrome/Edge
+         เดาว่าช่อง text ก่อนหน้า (#scanInput) คือ "ชื่อผู้ใช้" แล้วเติมเลข SKU ลงช่อง Scan + เติม PIN เอง (autocomplete="off" กัน Password Manager ไม่ได้)
+         ⛔ ห้ามย้าย #pinInput ออกจาก #pinForm · ห้ามเพิ่มช่อง text ในฟอร์มนี้ · ห้ามถอด one-time-code (ผู้ใช้เลือกไม่ให้เบราว์เซอร์จำ PIN) · เทส pin-form-autofill.spec.js -->
+    <form id="pinForm" onsubmit="event.preventDefault();verifyPin();" style="margin:0;">
+      <input type="password" id="pinInput" autocomplete="one-time-code" maxlength="10" placeholder="PIN" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:10px;font-size:1.2rem;text-align:center;letter-spacing:8px;font-weight:700;margin-bottom:16px;outline:none;" onkeydown="if(event.key==='Enter'){event.preventDefault();verifyPin();}">
+      <button type="button" onclick="verifyPin()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-size:1rem;font-weight:700;cursor:pointer;">เข้าสู่ระบบ</button>
+    </form>
     <div id="pinError" style="color:var(--red);font-size:0.8rem;margin-top:10px;display:none;">รหัส PIN ไม่ถูกต้อง</div>
   </div>
 </div>
