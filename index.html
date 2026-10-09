@@ -4161,6 +4161,14 @@ function startScanItemReconcile(){
   _scanItemReconcileTimer=setInterval(_reconcileScanItems,SCAN_ITEM_RECONCILE_MS);
 }
 
+// localStorage เต็ม = save ล้มซ้ำทุกรอบ (4–12 วิ) → เตือนครั้งแรกทันที แล้วห่างกันอย่างน้อย 1 นาที (TOAST_COALESCE=false → เตือนทุกครั้งเหมือนเดิม)
+let _backupFailToastAt=0;
+const BACKUP_FAIL_TOAST_GAP_MS=60000;
+function _warnBackupFailed(){
+  const now=Date.now();
+  if(TOAST_COALESCE&&now-_backupFailToastAt<BACKUP_FAIL_TOAST_GAP_MS)return;
+  _backupFailToastAt=now;toast('แบ็คอัพล้มเหลว','warn');
+}
 function saveSession() {
   _cancelPendingSave(); // ทุกทางเข้า (timer / เรียกตรง / flush) — save เต็มรอบนี้ครอบทุกอย่างที่ค้างอยู่แล้ว
   try {
@@ -4172,7 +4180,7 @@ function saveSession() {
     const r16InbObj={};for(const[k,v]of state.r16InboundMap.entries())r16InbObj[k]=v;
     const r16_103Obj={};for(const[k,v]of state.r16_103Map.entries())r16_103Obj[k]=v;
     localStorage.setItem(lsKey(),JSON.stringify({r01UploadedAt:state.r01UploadedAt,r01Version:state.r01Version||'',r01BaselineAt:_r01BaselineAt,r16SalesMap:r16Obj,r16InboundMap:r16InbObj,r16Loaded:state.r16Loaded,r16UploadedAt:state.r16UploadedAt,r16DetailVersion:state.r16DetailVersion||'',r16_103Map:r16_103Obj,r16_103Loaded:state.r16_103Loaded,r16_103UploadedAt:state.r16_103UploadedAt,r16_103DetailVersion:state.r16_103DetailVersion||'',countResetAt:_countResetAt,scanData:sdObj,unknownScans:state.unknownScans,scanListMap:slObj}));
-  } catch(e){toast('แบ็คอัพล้มเหลว','warn');}
+  } catch(e){_warnBackupFailed();}
   if(!_adminMode){
     clearTimeout(_firestoreSyncTimer);
     _firestoreSyncTimer = setTimeout(syncToFirestore, 3000);
@@ -6872,7 +6880,28 @@ function _toastMessageForDevice(msg){
     .replace(/^(.+): ระบบติดลบ → บันทึกนับ 0 \(มีของจริงให้สแกนซ้ำ\)$/,'$1: นับ 0 · มีของ = สแกนซ้ำ')
     .replace(/^Export รายงานผลลัพธ์การนับ \(.+\) (\d+) รายการ สำเร็จ$/,'Export รายงาน $1 รายการแล้ว');
 }
-function toast(msg,type='info',ms=2500){const c=document.getElementById('toastContainer'),t=document.createElement('div'),s=document.createElement('span');t.className=`toast toast-${type}`;s.textContent=_toastMessageForDevice(msg);t.appendChild(s);c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
+// ลดงานของ toast บน PDA (ต.ค. 2026): ข้อความ+ชนิดเดียวกันที่ยังขึ้นอยู่ไม่ต่อ element ซ้ำ (แค่ยืดเวลา) · info/success อายุสั้น (≤ TOAST_SOFT_MAX_MS) ที่ซ้อนเกิน TOAST_MAX_SOFT เอาอันเก่าสุดออก
+// warn/error และ info/success ที่ call site ตั้งให้ค้างนานกว่านั้น (R16 ข้ามหน้าร้าน/OTFI 5 วิ ฯลฯ) ห้ามถูกรวมข้ามชนิดหรือตัดทิ้ง — ต้องไม่หายเงียบ · toastAction ไม่ผ่านด่านนี้ (ปุ่ม ↩ เรียกคืน)
+// TOAST_COALESCE=false → ต่อ element ใหม่ทุกครั้งเหมือนก่อนแก้ (ทางถอย · คุม _warnBackupFailed ด้วย)
+let TOAST_COALESCE=true;
+const TOAST_MAX_SOFT=4,TOAST_SOFT_MAX_MS=3000;
+function _toastFadeOut(t){t._leaving=true;t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);}
+function _toastArm(t,ms){clearTimeout(t._tm);t._end=Date.now()+ms;t._tm=setTimeout(()=>_toastFadeOut(t),ms);}
+function toast(msg,type='info',ms=2500){
+  const c=document.getElementById('toastContainer'),text=_toastMessageForDevice(msg),key=type+'|'+text,soft=(type==='info'||type==='success')&&ms<=TOAST_SOFT_MAX_MS;
+  if(TOAST_COALESCE){
+    const live=[];
+    for(const el of c.children){
+      if(el._leaving||!el._toastKey)continue;
+      if(el._toastKey===key){if(Date.now()+ms>el._end)_toastArm(el,ms);return;}
+      if(el._soft)live.push(el);
+    }
+    if(soft)while(live.length&&live.length>=TOAST_MAX_SOFT){const old=live.shift();clearTimeout(old._tm);old.remove();}
+  }
+  const t=document.createElement('div'),s=document.createElement('span');
+  t.className=`toast toast-${type}`;s.textContent=text;t.appendChild(s);c.appendChild(t);
+  t._toastKey=key;t._soft=soft;_toastArm(t,ms);
+}
 // toast แบบมีปุ่ม action (เช่น "เรียกคืน") — กดปุ่มแล้วรัน action + ปิด toast
 function toastAction(msg,btnLabel,btnAction,type='info',ms=6000){const c=document.getElementById('toastContainer'),t=document.createElement('div'),s=document.createElement('span'),b=document.createElement('button');t.className=`toast toast-${type}`;s.textContent=_toastMessageForDevice(msg);b.textContent=String(btnLabel??'');b.style.cssText='margin-left:12px;padding:6px 14px;border-radius:8px;border:none;background:rgba(255,255,255,0.28);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;font-family:inherit;';b.addEventListener('click',()=>{if(typeof btnAction==='function')btnAction();t.remove();});t.appendChild(s);t.appendChild(b);c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
 
