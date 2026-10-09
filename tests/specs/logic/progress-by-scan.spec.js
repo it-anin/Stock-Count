@@ -28,6 +28,7 @@ const IN_PAGE = `
   window.__setup = ({ role, branch, user, countable, offPlan }) => {
     currentRole = role; currentBranch = branch; currentUser = user;   // ต้องตั้งก่อน rebuildMaps (updateStats อ่านสาขา)
     _adminMode = true;                                                // ตัด Firestore/inbox/sync — เหลือเฉพาะ state + DOM
+    PHARMACY_ADJ_ERP_CARD = false;                                    // เทสนี้ตรึงการ์ด Audit เดิม (ไม่กรอง) = ทางถอย · การ์ด "Stock Adj เข้าระบบ" คู่กับ Progress อยู่ที่ adj-erp-stat-card.spec.js
     for (let i = 0; i < countable; i++) {
       const sku = __sku(i);
       state.productMasterData.push({ sku, productName: 'Synthetic ' + sku, unitPrice: 20, cat: 'A' });

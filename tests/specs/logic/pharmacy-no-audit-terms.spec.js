@@ -54,7 +54,8 @@ test('★ เภสัชสาขายา มีรายการรอรี
       btn: document.getElementById('pharmacistAuditBtnLabel').textContent,
       pill: document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill').innerText, // Desktop แบ่ง 2 บรรทัด (ช่อง 128px)
     }));
-    expect(t, branch).toEqual({ card: 'รอรีเช็ค', sub: 'เภสัชรีเช็คแล้ว', panel: 'Stock Adj', btn: '✓ ยืนยันรีเช็ค', pill: '⚠️ Stock Adj\nรอรีเช็ค' });
+    // การ์ดใบที่ 4 ของสาขายา = "Stock Adj เข้าระบบ" (ต.ค. 2026 · PHARMACY_ADJ_ERP_CARD — การ์ดรอรีเช็คเดิมตรึงไว้ในเทสสวิตช์ปิดด้านล่าง)
+    expect(t, branch).toEqual({ card: 'Stock Adj เข้าระบบ', sub: 'เข้า ProMaxx แล้ว', panel: 'Stock Adj', btn: '✓ ยืนยันรีเช็ค', pill: '⚠️ Stock Adj\nรอรีเช็ค' });
     // ป้ายต้องไม่ล้นช่อง STATUS (เคยถูกตัดเป็น "Stock Adj · รอรีเช็…" เมื่ออยู่บรรทัดเดียว)
     const fit = await app.page.evaluate(() => { const p = document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill'); const c = p.parentElement;
       return p.getBoundingClientRect().right <= c.getBoundingClientRect().right + 0.5; });
@@ -170,6 +171,8 @@ test('★ WH ไม่ถูกแตะ — ยังเป็น Recheck ท�
 
 test('★ สวิตช์ปิด (PHARMACY_RECHECK_TERMS=false) → ข้อความเดิมทุกตัวอักษร', async ({ browser }) => {
   const app = await bootBare(browser);
+  // ตรึงข้อความเดิมของการ์ดใบที่ 4 ด้วย → ปิดการ์ด "Stock Adj เข้าระบบ" (PHARMACY_ADJ_ERP_CARD) ไปพร้อมกัน = ทางถอยทั้งสองชั้น
+  await app.page.evaluate(() => { PHARMACY_ADJ_ERP_CARD = false; });
   await setup(app.page, { terms: false });
   const t = await app.page.evaluate(() => {
     const txt = (id) => document.getElementById(id).textContent;

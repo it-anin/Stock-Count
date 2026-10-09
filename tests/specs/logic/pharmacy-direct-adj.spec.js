@@ -232,6 +232,8 @@ test('_isDirectAdjItem — ต้องครบทุกเงื่อนไ�
 test('บาร์ "เภสัชตรวจแล้ว X/Y" ไม่นับ Stock Adj ตรง — ไม่งั้นโชว์ว่าตรวจแล้วทั้งที่ไม่มีใครตรวจ', async ({ browser }) => {
   const app = await bootBare(browser);
   const r = await app.page.evaluate(() => {
+    // บาร์นี้อยู่บนการ์ด "รอรีเช็ค" เดิม = ทางถอย (ต.ค. 2026 สาขายาใช้การ์ด "Stock Adj เข้าระบบ" แทน — ดู adj-erp-stat-card.spec.js)
+    PHARMACY_ADJ_ERP_CARD = false;
     currentBranch = 'SRC'; currentRole = 'pharmacist';
     state.scanData.clear();
     const read = () => {

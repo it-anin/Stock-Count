@@ -3024,7 +3024,7 @@ function selectEmployee(name,role){
     else{
       startWhMasterListeners();startScanSessionListener();startBranchConfirmLockListener();startPharmacyAuditMarkerListener();
       startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();startWhConfirmOpsListener();
-      startScanItemReconcile();
+      startScanItemReconcile();startAdjErpListener();
     }
     _employeeCallback=null;
   });
@@ -3120,6 +3120,7 @@ async function initAfterLogin(){
     startWhConfirmOpsListener();
     startBranchConfirmLockListener();
     startPharmacyAuditMarkerListener();
+    startAdjErpListener();   // สาขายา: ผล R02.102 ของการ์ด "Stock Adj เข้าระบบ" (PHARMACY_ADJ_ERP_CARD · ไม่ใช่ scan data)
     // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
     rebuildScanListMap(currentRole==='pharmacist');
     renderScanList();updateStats();renderTable();
@@ -3191,6 +3192,7 @@ async function selectBranch(branch){
   stopWhConfirmOpsListener();
   stopLocationListener();
   stopR05Listener();
+  stopAdjErpListener();
   if(_pinVerified){
     // สลับสาขาระหว่างใช้งาน — save สาขาเดิมก่อน
     clearTimeout(_firestoreSyncTimer);
@@ -6582,6 +6584,7 @@ function applyAuditTerminology(){
   setHtml('guideQtyRule','ราคาบาร์โค้ด (R05.106 คอลัมน์ B) &lt; 1,000 บาท → แก้ Qty ได้ · ตั้งแต่ 1,000 บาทหรือไม่มีราคา → สแกนทีละชิ้น');
   set('guideAuditPill',isWh?'⚠️ Recheck':_pharmTxt('⚠️ Audit','⚠️ รอรีเช็ค'));
   set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':_pharmTxt('จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify','Stock Adj ที่เภสัชกด ↺ (หรือค้างจากรอบก่อน) — ขึ้นใบ 📦 แล้ว · สแกนนับใหม่แล้วยืนยันบน Desktop เพื่อปรับผล'));
+  _applyStatAuditCardMode(); // ป้าย statAuditLabel ด้านบนเป็นของการ์ดเดิม — สาขายา (PHARMACY_ADJ_ERP_CARD) ทับกลับเป็น "Stock Adj เข้าระบบ"
 }
 function getScanRowStyle(s){
   const m={
@@ -6663,6 +6666,8 @@ function updateStats(){
   // สาขายา (ก.ย. 2026): Counted = ตัวเศษ Progress = สแกนแล้ว ∩ ชุดนับ · Pass = pass จริง — เขียนทับชุดที่คำนวณแบบ Confirm ด้านบนเป็นตัวสุดท้ายเสมอ
   // (ปิดสวิตช์/WH ผ่านตรงนี้ไปโดยไม่ทำอะไร → ค่าจากลูปด้านบนอยู่ครบ · ดู PROGRESS_BY_SCAN)
   if(_progressByScanOn())_writeScanProgress();
+  // สาขายา (ต.ค. 2026 · PHARMACY_ADJ_ERP_CARD): การ์ดใบที่ 4 = "Stock Adj เข้าระบบ" X / Y แทน "รอรีเช็ค" — เขียนทับค่าการ์ด Audit ที่คำนวณด้านบน
+  _applyStatAuditCardMode();
 }
 function getActiveSkus(){return[...state.skuMap.keys()];}
 
@@ -9221,8 +9226,14 @@ const ADJ_ERP_STATE_UI={
 };
 const ADJ_ERP_FILTER_LABEL={none:'⬜ ยังไม่เข้า ERP',done:'✅ เข้า ERP แล้ว',issue:'⚠️ ไม่ตรงกับ ERP'};
 function _adjErpEnabled(){return ADJUST_DOC_ERP_CHECK&&_isPharmacyBranch()&&(currentRole==='pharmacist'||currentRole==='supervisor');}
+// ── การ์ดสถิติใบที่ 4 ของสาขายา: "Stock Adj เข้าระบบ" X / Y (9 ต.ค. 2026 · ผู้ใช้สั่ง — แทนการ์ด "รอรีเช็ค") ──
+// X = รายการที่ ERP (R02.102/R16 ที่แนบที่การ์ด 🧾) มีใบทิศเดียวกันจำนวนรวมเท่ากันพอดี · Y = รายการที่ต้องปรับทั้งหมดของรอบนี้ (รวมที่เข้าแล้ว) — ดู _adjErpCardStats
+// ทุก role ในสาขายา (ผู้ช่วย PDA/คอม + เภสัช) → ผู้ช่วยอ่านผล ERP ได้ (อ่านอย่างเดียว · การ์ด 🧾/อัปไฟล์ยังล็อกเภสัช/หัวหน้า) + ฟัง {branch}_adjerp แบบ realtime (startAdjErpListener)
+// PHARMACY_ADJ_ERP_CARD=false = การ์ด "รอรีเช็ค" เดิมทุกตัวอักษร · ไม่มี listener · ผู้ช่วยไม่โหลดผล ERP (ทางถอย — เทสสลับได้) · ปิด ADJUST_DOC_ERP_CHECK ก็กลับการ์ดเดิมเช่นกัน
+let PHARMACY_ADJ_ERP_CARD=true;
+function _adjErpCardOn(){return PHARMACY_ADJ_ERP_CARD&&ADJUST_DOC_ERP_CHECK&&_isPharmacyBranch()&&!!currentRole;}
 // ผลที่แนบใช้ได้เฉพาะสาขา/รอบนับเดียวกับตอนแนบ — ค้างข้ามสาขา/รอบ = ไม่มี
-function _adjErpCurrent(){return _adjErpEnabled()&&_adjErp&&_adjErp.branch===currentBranch&&_adjErp.epoch===(_countResetAt||'')?_adjErp:null;}
+function _adjErpCurrent(){return (_adjErpEnabled()||_adjErpCardOn())&&_adjErp&&_adjErp.branch===currentBranch&&_adjErp.epoch===(_countResetAt||'')?_adjErp:null;}
 function _adjErpCovered(type){const s=_adjErpCurrent();return !!(s&&s.cover&&s.cover[type]);}
 function _adjErpEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 // วัน/เวลาตามเวลาเครื่อง ('YYYY-MM-DD' / 'YYYY-MM-DD HH:MM' เทียบแบบสตริงได้) — ⛔ ห้ามใช้ toISOString (UTC ถอย 7 ชม. วันเลื่อน)
@@ -9439,6 +9450,8 @@ function setAdjErpFilter(f){
   const body=document.querySelector('#adjustDocPopupCard .stock-popup-body');
   if(body)body.scrollTop=0;
 }
+// ชื่อรายงานที่แนบ (cover[t].rpt · ไม่มี = เอกสารเก่าบน cloud → R16 ตามชนิด) — การ์ด 🧾 กับการ์ดสถิติใช้ร่วมกัน
+function _adjErpRptName(st){return [...new Set(ADJ_ERP_TYPES.filter(t=>st.cover[t]).map(t=>st.cover[t].rpt||ADJ_ERP_REPORT[t]))].join(' + ')||'R02.102';}
 function _refreshAdjErpCard(){
   const card=document.getElementById('adjErpCard');if(!card)return;
   const on=_adjErpEnabled();
@@ -9452,7 +9465,7 @@ function _refreshAdjErpCard(){
   else{
     // "R02.102 อัปเดต วันที่ 07/10/2026 เวลา 15:37" (7 ต.ค. 2026 · ผู้ใช้สั่ง — รูปเวลาเดียวกับการ์ด LOT/ราคา ผ่าน _adjFmtUpdated)
     // ชื่อรายงานตามที่แนบจริง (cover[t].rpt · ไม่มี = เอกสารเก่าบน cloud → R16 ตามชนิด) · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย (ไม่หายเงียบ) · ช่วงของไฟล์/ผู้แนบย้ายไป tooltip
-    const rpt=[...new Set(ADJ_ERP_TYPES.filter(t=>st.cover[t]).map(t=>st.cover[t].rpt||ADJ_ERP_REPORT[t]))].join(' + ')||'R02.102';
+    const rpt=_adjErpRptName(st);
     const miss=ADJ_ERP_TYPES.filter(t=>!st.cover[t]).map(t=>`${t}: ยังไม่มีข้อมูล`);
     text=`${rpt} ${_adjFmtUpdated(st.updatedAt)||'อัปเดตแล้ว'}`+(miss.length?' · '+miss.join(' · '):'')
       +(st.localOnly?' · ⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)':'')+(st.note?` · ${st.note}`:'');
@@ -9513,7 +9526,7 @@ async function handleAdjErpFiles(event){
     else toast(`ตรวจกับ ERP แล้ว · ${sum} — แต่บันทึกขึ้น Cloud ไม่สำเร็จ (${res.fail}) ผลนี้เห็นเฉพาะเครื่องนี้`,'warn',9000);
   }finally{
     _adjErpBusy=false;
-    _refreshAdjErpCard();renderAdjustDocTable();
+    _refreshAdjErpCard();renderAdjustDocTable();_applyStatAuditCardMode();
   }
 }
 function _adjErpRef(branch=currentBranch){return _db.collection('stock_sessions').doc(branch+'_adjerp');}
@@ -9574,7 +9587,123 @@ async function _loadAdjErpFromCloud(){
   if(cur&&cur.localOnly)return;
   if(!st&&!cur)return;   // ไม่มีทั้งสองฝั่ง — ไม่ต้องวาดใหม่
   _adjErp=st?{...st,branch,epoch,localOnly:false}:null;
-  _refreshAdjErpCard();renderAdjustDocTable();
+  _refreshAdjErpCard();renderAdjustDocTable();_applyStatAuditCardMode();
+}
+// realtime ของการ์ดสถิติ "Stock Adj เข้าระบบ" (ทุก role สาขายา · PHARMACY_ADJ_ERP_CARD) — เครื่องอื่นแนบไฟล์แล้วทุกเครื่องขยับเอง ไม่ต้องเปิดป็อปอัพ/ล็อกอินใหม่
+// กติกาเดียวกับ _loadAdjErpFromCloud: กรองรอบนับ · ผลในเครื่องที่ยังไม่ขึ้น cloud (localOnly) ไม่ถูกทับ · ผลอ่านแบบ get() ที่ค้างอยู่ถูกทิ้ง (_adjErpReadToken++)
+// อ่านอย่างเดียว → ไม่หยุดใน Admin Mode · start ใน initAfterLogin/selectEmployee · stop ใน selectBranch · สวิตช์ปิด = ไม่ฟัง (การ์ด 🧾 อ่านตอนเปิดป็อปอัพเหมือนเดิม)
+let _adjErpUnsubscribe=null;
+function stopAdjErpListener(){if(_adjErpUnsubscribe){_adjErpUnsubscribe();_adjErpUnsubscribe=null;}}
+function startAdjErpListener(){
+  stopAdjErpListener();
+  if(!_db||!_adjErpCardOn())return;
+  const branch=currentBranch;
+  _adjErpUnsubscribe=_adjErpRef(branch).onSnapshot(snap=>{
+    if(currentBranch!==branch||!_adjErpCardOn())return;
+    const epoch=_countResetAt||'';
+    const st=snap.exists?_adjErpFromDoc(snap.data(),epoch):null;
+    const cur=_adjErpCurrent();
+    if(cur&&cur.localOnly)return;
+    if(!st&&!cur)return;
+    _adjErpReadToken++;
+    _adjErp=st?{...st,branch,epoch,localOnly:false}:null;
+    _refreshAdjErpCard();
+    const ov=document.getElementById('adjustDocPopupOverlay');if(ov&&ov.style.display==='flex')renderAdjustDocTable();
+    _applyStatAuditCardMode();
+  },e=>console.warn('[adjerp listener]',e&&e.message));
+}
+// ตัวเลขของการ์ด "Stock Adj เข้าระบบ" (อ่านอย่างเดียว ไม่แตะ state) — ต่อ SKU ของรอบนี้ที่เป็นงานของใบ 📦 (_isAdjustDocItem)
+//   ยอดที่ต้องปรับ = ตัวเลขเดียวกับใบ (_adjustDocDiff + ค่าที่เภสัชแก้ _adjQtyOverride) · รวมแถวที่ส่งออกไป 🗂️ แล้ว (ไม่กรองประวัติ — ส่งออกแล้วไม่ได้แปลว่าเข้า ERP)
+//   Stock Adj เก่า "ต้องรีเช็คใหม่" (stale — ใบตัดออกเพราะยอดระบบเปลี่ยนหลังรีเช็ค) = เลขตอนรีเช็ค (ยอดรีเช็ค − ยอดระบบที่ freeze)
+//     = เลขที่ใบเคยแสดงตอนยังสด (ตอนสด ยอดสด = ยอด freeze) · ค่าที่แก้ยังใช้ได้ถ้า adjBase ตรง (ผู้ใช้เลือก 9 ต.ค. 2026 — เช่น SSS ที่ปรับเข้า ERP แล้วต้องไม่หายจากการ์ด)
+//   ผลต่างเป็น 0 แล้ว (เช่น 🚫 ไม่มีของที่ปรับเข้า ERP แล้ว R01 ใหม่เหลือ 0) = เข้าแล้ว เมื่อ ERP มีใบ ORDS/IRPS ของ SKU นี้ตั้งแต่วันที่นับ · ไม่มีใบ = ไม่มีอะไรต้องปรับ (ไม่นับ)
+//   ไม่นับ: ↺ รอรีเช็ค / รอรีเช็คที่ไม่มีเลขตอน Confirm (ยังไม่รู้ผล) · ค้างส่ง (ไม่ใช่งานของใบ) · แก้จำนวนเป็น 0 (ไม่ส่ง) · R05 ยังไม่โหลด (ไม่มี skuMap)
+//   เข้าแล้ว = done ของ _adjErpEval (ตัวเดียวกับคอลัมน์ ERP ในใบ) · บางส่วน/เกิน/ทิศตรงข้าม = ไม่ตรง (issue) · ทิศที่ไฟล์ยังไม่ครอบ/ยังไม่อัป = ยังไม่เข้า
+function _adjErpCardStats(){
+  const st=_adjErpCurrent();
+  const rows={ords:[],irps:[]};const settled=[];
+  let stale=0,exported=0;
+  for(const[sku,sd] of state.scanData.entries()){
+    if(!_isAdjustDocItem(sd))continue;
+    const si=state.skuMap.get(sku);if(!si)continue;
+    let ev=_adjustDocDiff(sku,sd,si,false),isStale=false;
+    if(!ev){
+      if(sd.status==='audit')continue;   // ↺ รอรีเช็ค / ไม่มีเลขตอน Confirm — ยังไม่รู้ว่าต้องปรับเท่าไร
+      // รายการที่ไม่ใช่ audit ได้ null ทางเดียว = ยอดนับหมดอายุ (stale · เงื่อนไขเดียวกับ _adjustDocAudit)
+      const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+      const sys=_recheckBaselineSystemQty(sku,sd);
+      ev={sys,cnt,diff:cnt-sys};isStale=true;
+    }
+    if(!Number.isFinite(ev.diff))continue;
+    if(ev.diff===0){settled.push(sku);continue;}
+    const dir=ev.diff<0?'ords':'irps';
+    const ov=_adjQtyOverride(sd,ev.diff);
+    const qty=ov!==null?ov:Math.abs(ev.diff);
+    if(!(qty>0))continue;   // แก้เป็น 0 = ไม่ส่ง
+    if(isStale)stale++;
+    else if(_adjHistCovers(dir,sku,Math.abs(ev.diff)))exported++;
+    rows[dir].push({sku,qty});
+  }
+  const by={};const uncovered=[];let done=0,issue=0,total=0;
+  for(const dir of ['ords','irps']){
+    const t=ADJ_ERP_DIR_TYPE[dir];
+    const ev=_adjErpEval(rows[dir],dir);
+    let d=0;
+    for(const r of rows[dir]){const g=_adjErpGroup(ev.get(r.sku)?.state);if(g==='done')d++;else if(g==='issue')issue++;}
+    by[t]={done:d,total:rows[dir].length};
+    if(st&&rows[dir].length&&!st.cover[t])uncovered.push(t);
+    done+=d;total+=rows[dir].length;
+  }
+  let settledDone=0;
+  if(st){
+    const idx=_adjErpIndex(st);
+    for(const sku of settled){const low=_adjErpLowDay(sku);if((idx.get(sku)||[]).some(x=>x.day>=low))settledDone++;}
+  }
+  return {st,done:done+settledDone,total:total+settledDone,issue,by,uncovered,stale,exported,settledDone};
+}
+const ADJ_ERP_CARD_LABEL='Stock Adj เข้าระบบ';
+// การ์ดใบที่ 4 ของแถบสถิติ — สาขายา + สวิตช์เปิด = "Stock Adj เข้าระบบ" X / Y · อื่นๆ = การ์ดเดิม (ค่าถูกเขียนโดย updateStats/applyAuditTerminology แล้ว)
+// เรียกท้าย updateStats + applyAuditTerminology (ไม่งั้นป้ายถูกทับกลับเป็น "รอรีเช็ค") + ทุกจุดที่ผล ERP/จำนวนในใบเปลี่ยน · สแกนล้วนไม่เปลี่ยนตัวเลขนี้ (ไม่แตะเส้นทางเบา)
+function _applyStatAuditCardMode(){
+  const val=document.getElementById('statFail');if(!val)return;
+  const card=val.closest('.stat-card');
+  if(!_adjErpCardOn()){
+    // คืนเฉพาะสิ่งที่โหมดนี้เพิ่ม (สี/คำอธิบาย) — ป้าย/ค่า/บรรทัดย่อย/แถบ updateStats เขียนค่าเดิมกลับเอง
+    if(card&&card.dataset.adjErpCard){delete card.dataset.adjErpCard;card.removeAttribute('title');val.classList.remove('green');val.classList.add('red');}
+    return;
+  }
+  const s=_adjErpCardStats();
+  const put=(id,v)=>{const el=document.getElementById(id);if(el&&el.textContent!==String(v))el.textContent=v;};
+  put('statAuditLabel',ADJ_ERP_CARD_LABEL);
+  put('statFail',`${s.done} / ${s.total}`);
+  const complete=s.done===s.total;
+  val.classList.toggle('green',complete);val.classList.toggle('red',!complete);
+  const notes=[];
+  if(s.total&&!s.st)notes.push('ยังไม่อัป R02.102');
+  for(const t of s.uncovered)notes.push(`${t}: ยังไม่มีข้อมูล ERP`);
+  if(s.issue)notes.push(`⚠️ ไม่ตรง ${s.issue}`);
+  const sub=document.getElementById('statAuditSub');
+  if(sub){sub.style.display=notes.length?'block':'none';put('statAuditSub',notes.join(' · '));}
+  const pct=s.total?Math.round(s.done/s.total*100):0;
+  const wrap=document.getElementById('auditProgressWrap');
+  if(wrap){
+    wrap.style.display=s.total?'block':'none';
+    put('auditProgressLabel','เข้า ProMaxx แล้ว');put('auditProgressPct',pct+'%');
+    const fill=document.getElementById('auditProgressFill');
+    if(fill){fill.style.width=pct+'%';fill.style.background=pct>=100?'var(--green)':'var(--red)';}
+  }
+  if(card){
+    card.dataset.adjErpCard='1';
+    card.title=['Stock Adj ที่เข้า ProMaxx แล้ว / ที่ต้องปรับทั้งหมดของรอบนี้ (ตรวจจาก R02.102 ที่แนบที่ 📦 ปรับปรุงสินค้า)',
+      ADJ_ERP_TYPES.map(t=>`${t} เข้าแล้ว ${s.by[t].done}/${s.by[t].total}`).join(' · '),
+      s.issue?`ไม่ตรงกับ ERP ${s.issue} (บางส่วน/เกิน/ทิศตรงข้าม) — ดูที่ 📦 ตัวกรอง ⚠️ ไม่ตรง`:'',
+      s.settledDone?`ปรับเข้า ERP แล้วจนยอดระบบตรง ${s.settledDone}`:'',
+      s.exported?`รวมที่ส่งออกแล้ว (🗂️ ประวัติปรับปรุง) ${s.exported}`:'',
+      s.stale?`รวม Stock Adj ที่ต้องรีเช็คใหม่ ${s.stale} (ไม่อยู่ในใบ 📦 · ใช้เลขตอนรีเช็ค)`:'',
+      s.st?`${_adjErpRptName(s.st)} ${_adjFmtUpdated(s.st.updatedAt)||'อัปเดตแล้ว'}${s.st.localOnly?' · เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)':''}`
+        :'ยังไม่อัป R02.102 — เภสัชแนบที่ 📦 ปรับปรุงสินค้า → 🧾 ตรวจกับ ERP',
+    ].filter(Boolean).join('\n');
+  }
 }
 // ท้าย toast ตอน Export เมื่อใช้ตัวกรอง ERP
 function _adjErpFilterNote(vr){return vr&&vr.filter!=='all'?` · เฉพาะ ${ADJ_ERP_FILTER_LABEL[vr.filter]}`:'';}
@@ -9789,6 +9918,7 @@ function setAdjDocQty(sku,v){
   sd.manualEditAt=Date.now(); // กัน snapshot เก่าทับค่าที่เพิ่งแก้ (เหมือน markBackorderItem/updatePharmacyRecheckQty)
   _markSkuDirty(sku);scheduleSave();
   renderAdjustDocTable(true);
+  _applyStatAuditCardMode();   // จำนวนในใบ = ยอดที่ต้องเข้า ERP ของการ์ด "Stock Adj เข้าระบบ"
 }
 function resetAdjDocQty(sku){
   if(!_canEditAdjDocQty()||_blockScanForBranchConfirm())return;
@@ -9796,6 +9926,7 @@ function resetAdjDocQty(sku){
   _clearAdjQty(sd);sd.manualEditAt=Date.now();
   _markSkuDirty(sku);scheduleSave();
   renderAdjustDocTable(true);
+  _applyStatAuditCardMode();
 }
 // ท้าย toast ตอน Export: บอกว่ามีกี่แถวที่เภสัชแก้จำนวน / กี่แถวถูกข้ามเพราะแก้เป็น 0 (ไม่ให้หายเงียบ)
 function _adjEditNote(all){
@@ -10433,10 +10564,14 @@ function updateAdjustDocPanel(){
   if(!canSee){ // logout/เปลี่ยน role ที่ไม่มีสิทธิ์ → ล้าง LOT/ราคา (local) + ทิ้งผลที่กำลังโหลดค้าง
     _lotMap.clear();_lotSelected.clear();_priceMap.clear();
     _adjSource={Lot:'',Price:''};_adjMeta={Lot:null,Price:null};_adjCloud=null;_adjSbError='';_adjSbMissing={Lot:false,Price:false};_adjLoading=false;_adjLoadToken++;
-    _adjErp=null;_adjErpFilter='all';_adjErpReadToken++;   // ผลตรวจกับ ERP (local) — ของที่บันทึกไว้บน cloud ยังอยู่ เปิดป็อปอัพครั้งหน้าอ่านใหม่
+    _adjErpFilter='all';
+    // ผลตรวจกับ ERP (local) — ของที่บันทึกไว้บน cloud ยังอยู่ เปิดป็อปอัพครั้งหน้าอ่านใหม่
+    // ผู้ช่วยสาขายายังต้องใช้ผลนี้กับการ์ด "Stock Adj เข้าระบบ" (_adjErpCardOn) → ล้างเฉพาะเมื่อไม่มีใครใช้ (logout/สาขาอื่น/สวิตช์ปิด)
+    if(!_adjErpCardOn()){_adjErp=null;_adjErpReadToken++;}
     _adjHist=null;_adjHistReadToken++;_adjHistExpanded.clear();_adjHistUndoArm='';_adjHistImportCur=null;   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
   }else _loadAdjHistFromCloud();   // อ่านประวัติตอนเข้าใช้งาน (ไม่รอ) เพื่อให้ป้ายตัวเลขปุ่ม 📦 ไม่นับแถวที่ส่งออกไปแล้ว — กรองรอบนับตอนใช้ จึงไม่ต้องรอ _countResetAt
   updateAdjustDocCount();
+  _applyStatAuditCardMode();
 }
 
 function isAssistantFirstAuditShort(sd,si){
