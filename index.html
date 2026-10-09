@@ -276,8 +276,6 @@
     body.pda-power-save .progress-fill { animation:none!important; }
     body.pda-power-save .progress-fill { background-size:100% 100%; }
     body.pda-power-save #btnConfirm { display:none!important; }
-    #pdaConfirmNotice { display:none; flex:1; padding:9px 12px; border-radius:9px; background:rgba(0,114,198,0.08); color:var(--accent); font-size:0.72rem; font-weight:700; text-align:center; }
-    body.pda-power-save #pdaConfirmNotice { display:block; }
     #branchConfirmLockBanner { display:none; position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:10020; max-width:calc(100vw - 24px); padding:10px 16px; border-radius:10px; background:#fff8e1; border:1px solid rgba(224,140,0,0.45); color:#7a5800; font-size:0.78rem; font-weight:700; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,0.16); }
     .progress-count { font-size:0.72rem; color:var(--text3); margin-top:4px; font-weight:600; }
     .db-status { display:flex; align-items:center; gap:6px; font-size:0.72rem; }
@@ -678,7 +676,6 @@
 
         <div id="confirmClearRow" style="display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:flex-start;">
           <button id="btnConfirm" class="btn btn-confirm" style="flex:1;" onclick="validateAndProcess()" disabled>✓ Confirm</button>
-          <div id="pdaConfirmNotice">Confirm ที่ Desktop เท่านั้น</div>
           <div id="supervisorCountBtns" style="display:none;flex-wrap:wrap;gap:6px;"></div>
           <button id="btnHideList" class="btn btn-clear" style="flex:1;" onclick="askClearScanList()">✕ ซ่อนรายการ</button>
         </div>
@@ -5964,6 +5961,11 @@ function _pharmTxt(oldStr,newStr){return _pharmNoAuditTerms()?newStr:oldStr;}
 // ปิด = guard เดิม (รับเฉพาะ initialStatus audit / directAdj) · ดู reopenPharmacyAudit
 let PHARMACY_NOSTOCK_REOPEN=true;
 function _noStockReopenEnabled(){return PHARMACY_NOSTOCK_REOPEN&&_isPharmacyBranch();}
+// ── สาขายา PDA: ไม่มีแถวปุ่มใต้ RESULT (9 ต.ค. 2026 · ผู้ใช้สั่ง) ──
+// เดิมผู้ช่วยบน PDA เห็นป้าย "Confirm ที่ Desktop เท่านั้น" + ปุ่ม ✕ ซ่อนรายการ → ซ่อนทั้งแถว #confirmClearRow แบบเดียวกับ WH PDA (ดู updateScanInputMode)
+// ตัดสินด้วย User-Agent (_isPdaApp) ไม่ใช่ความกว้างจอ — กติกาเดียวกับด่าน Confirm สาขายา · Desktop/WH ไม่แตะ
+// ปิด = แถวกลับมาพร้อม ✕ ซ่อนรายการ (ป้ายถูกลบโค้ดแล้ว) · ⛔ ด่านกัน Confirm บน PDA (validateAndProcess/updateConfirmBtn/CSS ซ่อน #btnConfirm) ห้ามลบ
+let PHARMACY_PDA_HIDE_CONFIRM_ROW=true;
 function _legacyAuditCount(){let n=0;for(const[,sd] of state.scanData.entries())if(sd&&sd.status==='audit')n++;return n;}
 function _pharmAuditIdle(nAudit){return PHARMACIST_STOCKADJ_ONLY&&_isPharmacyBranch()&&currentRole==='pharmacist'&&nAudit===0;}
 let _pharmIdleApplied=false;
@@ -8335,8 +8337,10 @@ function updateScanInputMode(){
   // WH PDA: ซ่อนทั้งแถว Confirm/Clear — Confirm ถูกซ่อนบน PDA อยู่แล้ว เหลือแต่ Clear ที่พนักงานเผลอกดโดนง่าย
   // (Clear ลบแค่มุมมอง RESULT ไม่ลบ scanData แต่กันความสับสน) — Desktop WH ยังมีปุ่มครบ
   const _whPda=window.innerWidth<=600&&currentBranch==='WH';
+  // สาขายา PDA (UA): ซ่อนทั้งแถวเหมือน WH PDA — บน PDA เหลือแค่ป้ายบอกให้ไป Confirm ที่ Desktop กับปุ่มซ่อนรายการ (PHARMACY_PDA_HIDE_CONFIRM_ROW)
+  const _pharmPda=PHARMACY_PDA_HIDE_CONFIRM_ROW&&_isPharmacyBranch()&&_isPdaApp();
   const ccRow=document.getElementById('confirmClearRow');
-  if(ccRow)ccRow.style.display=(isPharm||_whPda)?'none':'flex';
+  if(ccRow)ccRow.style.display=(isPharm||_whPda||_pharmPda)?'none':'flex';
   // WH PDA warehouse: แสดง tab "เริ่มนับ"/"รีเช็ค" แทน label RESULT
   const _whWhse=_whPda&&currentRole==='warehouse';
   const rLabel=document.getElementById('resultLabel');const whTabs=document.getElementById('whResultTabs');

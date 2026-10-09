@@ -447,7 +447,7 @@ WH Recheck รอบสองเปรียบเทียบ `recheckQty` ก�
 | supervisor | WH | ยืนยันนับ + ยืนยันรีเช็ค (Desktop only) |
 | warehouse | WH | สแกนนับ + สแกนรีเช็ค (PDA) |
 
-สาขายา (`SRC`/`KKL`/`SSS`) ใช้ Confirm รอบแรกบน Desktop เท่านั้น ปุ่มถูกซ่อนและ guard ด้วย User-Agent `StockCountPDA` โดยตรง ไม่อิง viewport
+สาขายา (`SRC`/`KKL`/`SSS`) ใช้ Confirm รอบแรกบน Desktop เท่านั้น ปุ่มถูกซ่อนและ guard ด้วย User-Agent `StockCountPDA` โดยตรง ไม่อิง viewport · ต.ค. 2026: PDA สาขายาไม่มีแถวปุ่มใต้ RESULT เลย (§📵 ใต้ Pharmacy Desktop Confirm)
 Audit Verify ของเภสัชก็เช่นกัน — สแกนรีเช็คบน PDA ได้ แต่ปุ่มยืนยันถูก disable และ guard ด้วย `_isPdaApp()`
 
 ### Firestore Workflow Documents (ปัจจุบัน)
@@ -568,6 +568,16 @@ Schema v2 deploy จริงครั้งแรก 24 ก.ค. 2026 (commit `
 - ถ้า cloud sync หลัง apply ล้มเหลว ผล local ยังคงอยู่และ lock อยู่จน retry สำเร็จหรือ TTL หมด เพื่อกันกดซ้ำ
 - รายการที่คำนวณเป็น Audit ต้องเขียน `{branch}_pharmacy_audit_markers` ก่อน apply local; marker ใน epoch เดียวกันชนะ session/local ที่ stale และซ่อม SKU ที่หายกลับเข้า session
 - `syncToFirestore(true)` สงวนไว้สำหรับ `startNewCount()` เท่านั้น; login stale reset และออก Admin Mode ต้อง merge
+
+#### 📵 PDA สาขายาไม่มีแถวปุ่มใต้ RESULT (ผู้ใช้สั่ง 9 ต.ค. 2026)
+
+เดิมผู้ช่วยสาขายาบน PDA เห็นแถว `#confirmClearRow` = ป้าย "Confirm ที่ Desktop เท่านั้น" (`#pdaConfirmNotice`) + ปุ่ม "✕ ซ่อนรายการ" → `updateScanInputMode()` ซ่อนทั้งแถวเมื่อ `_isPharmacyBranch()&&_isPdaApp()` (แบบเดียวกับ `_whPda`) · **ลบโค้ดป้าย** (HTML + CSS 2 บรรทัด — ไม่มีใครอ่าน) · UI ล้วน ไม่แตะ scan-related/schema/rules/APK/`sw.js`
+- **ตัดสินด้วย User-Agent ไม่ใช่ความกว้างจอ** (กติกาเดียวกับด่าน Confirm) — มือถือเบราว์เซอร์ธรรมดายังเห็นแถวเหมือน Desktop · **Desktop สาขายา (ผู้ช่วย) ยังมี ✓ Confirm + ✕ ซ่อนรายการ** (ผู้ใช้เลือก) · WH ไม่แตะ · เภสัชไม่มีแถวนี้อยู่แล้ว (`isPharm`)
+- ⛔ **ห้ามลบต่อแม้ PDA สาขายามองไม่เห็นแล้ว:** ด่านกัน Confirm บน PDA (`validateAndProcess` guard · `updateConfirmBtn` `pdaBlocked` · CSS `body.pda-power-save #btnConfirm`) — กฎ 3 · PDA ไม่มี R16 raw timeline ตัดสินผิดทั้งสาขา · ฟังก์ชันซ่อนรายการ (`askClearScanList`/`clearScanList`/`restoreScanList`/`#clearConfirmModal`/toast ย่อ PDA) — Desktop สาขายา + WH Desktop + `btnHideListWh` ยังใช้ · **`_listCleared`** — ไม่ใช่ของปุ่ม เป็นกลไก "PDA เริ่ม RESULT ว่าง" + กัน listener rebuild 7 จุด
+- ผลที่ผู้ใช้รับ: ผู้ช่วย PDA ล้างจอกลางรอบไม่ได้ (RESULT เริ่มว่างทุกครั้งที่เข้าระบบอยู่แล้ว · แสดง ≤ 30 แถว) · กด ☁️ Cloud แล้วรายการเก่าขึ้นมา = ล้างไม่ได้จนกว่าออก-เข้าใหม่ · ข้อมูลไม่กระทบ (ปุ่มแตะแค่ `scanListMap`)
+- **ทางถอย:** จุดก่อนแก้ = HEAD ก่อนคอมมิตงานนี้ (ตอนเขียน `8797785`) · คอมมิตขึ้นต้น **`feat(pharm-pda-row):`** · ระดับ 1 `let PHARMACY_PDA_HIDE_CONFIRM_ROW=false;` → แถวกลับมาพร้อม ✕ ซ่อนรายการ (ป้ายไม่กลับ — ลบโค้ดแล้ว) · ระดับ 2 `git revert` คอมมิตของงานนี้ = กลับเป๊ะรวมป้าย · ตรวจรุ่น (Console) `typeof PHARMACY_PDA_HIDE_CONFIRM_ROW` = `'boolean'` · หลัง deploy/ย้อน ปิด-เปิดแอป PDA (heartbeat ไม่รีโหลดเครื่องที่สแกนแล้ว)
+- เทส `tests/specs/logic/pharmacy-pda-confirm-row.spec.js` (6 ข้อ: ค่าเริ่มต้น + ป้ายหายทั้ง HTML/CSS · PDA 3 สาขาซ่อน + ปลดล็อก Confirm แล้วยังซ่อน · Desktop/จอแคบไม่ใช่ PDA เท่าเดิม · WH ทุก role เท่าเดิม + UA PDA จอกว้างที่ WH ยังเห็นแถว · สวิตช์ปิด · ★ ด่านกัน Confirm ยังอยู่ (stub `_confirmPharmacyBatched` + canary Desktop))
+- **ตรวจแล้ว 9 ต.ค. 2026:** `npm test` ทั้งชุด exit 0 — logic **279/279** (273 เดิม + 6 ใหม่) · e2e **87 ผ่าน + 2 ข้าม** (เทสวัด opt-in) · canary บน `index.html` ก่อนแก้ล้ม 4/6 (2 ข้อที่ผ่านตรึงพฤติกรรมเดิม: Desktop · ด่าน Confirm) · ใส่บั๊กจงใจ 12 แบบลงสำเนา scratch (พอร์ต 4273) เทสจับได้ครบ 12 (ใช้ความกว้างแทน UA · ตัดเช็คสาขายา · สวิตช์ถูกเมิน · ค่าเริ่มต้นปิด · ซ่อนบน Desktop ด้วย · ลบด่าน `validateAndProcess` · ลบ `pdaBlocked` · ป้ายยังอยู่ใน HTML · CSS ป้ายยังอยู่ · ลบ CSS ซ่อน ✓ Confirm · ซ่อนแถวทุก UA PDA รวม WH · ลืมใส่เงื่อนไข) โดย baseline 6/6 · ภาพจอ PDA 393px ก่อน/หลัง: แถวล่างหาย รายการเต็มพื้นที่ · inline JS ผ่าน `node --check` · `git diff --check` สะอาด · ทำตามระดับ 2 (`git revert`) ใน worktree แยก กับคอมมิตชั่วคราวของต้นไม้ที่ stage จริง → `git diff 8797785 HEAD` **ว่างทั้งต้นไม้** · ⏳ **ยังไม่ได้ทดสอบบน PDA จริง** (ผู้ช่วย SRC ปิด-เปิดแอป → ไม่มีแถวล่าง · Desktop ผู้ช่วยยังมี Confirm + ซ่อนรายการ)
 
 ### Pharmacy Audit Verify (ก.ค. 2026)
 
