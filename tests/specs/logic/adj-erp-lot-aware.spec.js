@@ -3,7 +3,7 @@
 //   → ตัดสินจากผลรวมสุทธิต่อสินค้า (IRPS บวก · ORDS ลบ) ของใบตั้งแต่วันที่นับสินค้านั้น
 //
 // เทสนี้ตรึง — ★ = ข้อที่พังแล้วหน้างานแก้ ProMaxx ผิด/ไม่รู้ว่าต้องแก้
-//   1. ★ สินค้าที่แอปสั่งปรับ: ใบสองทิศที่สุทธิเท่ายอดที่ต้องปรับ = เข้าแล้ว + "สลับ LOT" · สุทธิไม่เท่า = ทิศตรงข้ามเหมือนเดิม
+//   1. ★ สินค้าที่แอปสั่งปรับ: ใบสองทิศที่สุทธิเท่ายอดที่ต้องปรับ = เข้าแล้ว + "ปรับปรุง LOT" · สุทธิไม่เท่า = ทิศตรงข้ามเหมือนเดิม
 //   2. ★ รายการนอกใบ: สลับ LOT (สุทธิ 0) · ปรับยอดนอกใบ + เหตุผลทุกแบบ (Pass ตั้งแต่นับ = 5 ตัวของ SSS · รีเช็ค Pass ก่อนออกใบ = 100429)
 //      · ปกติ (ปรับก่อนรีเช็ค / ↺ รอรีเช็ค) · ใบก่อนวันที่นับไม่นับ · สินค้าใน Y / ผลต่าง 0 ที่ปรับจริง ไม่อยู่ในรายการ · เรียงตามประเภท
 //   3. ★ การ์ด: ผลต่าง 0 + สลับ LOT ล้วน ไม่นับเป็นเข้าแล้ว · สลับ LOT ของสินค้าที่สั่งปรับนับเป็นเข้าแล้ว
@@ -93,7 +93,7 @@ test('ค่าเริ่มต้นที่ส่งมอบ: ADJ_ERP_LOT_
 test('★ สินค้าที่แอปสั่งปรับ: สองทิศที่สุทธิ = ที่ต้องปรับ → เข้าแล้ว · สลับ LOT · สุทธิไม่เท่า → ทิศตรงข้าม', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page);
-  expect(await evalOf(app.page, 'LOTAPP')).toEqual({ state: 'done', got: 3, opp: 1, need: 2, lotSwap: true, text: 'เข้าแล้ว (สลับ LOT IRPS 1)' });
+  expect(await evalOf(app.page, 'LOTAPP')).toEqual({ state: 'done', got: 3, opp: 1, need: 2, lotSwap: true, text: 'เข้าแล้ว (ปรับปรุง LOT IRPS 1)' });
   expect(await evalOf(app.page, 'OPPAPP')).toMatchObject({ state: 'opposite', got: 3, opp: 2, need: 2, lotSwap: false });
   expect(await evalOf(app.page, 'IN-Y')).toMatchObject({ state: 'done', lotSwap: false, text: 'เข้าแล้ว' });
   // คอลัมน์ ERP บนตาราง 📦 บอกว่าเป็นสลับ LOT
@@ -102,7 +102,7 @@ test('★ สินค้าที่แอปสั่งปรับ: สอ�
     const tr = [...document.querySelectorAll('#adjustDocBody tr')].find((r) => r.children[1] && r.children[1].textContent.trim() === 'LOTAPP');
     return tr.children[9].querySelector('span').textContent.trim();
   });
-  expect(cell).toBe('✅ เข้าแล้ว · สลับ LOT');
+  expect(cell).toBe('✅ เข้าแล้ว · ปรับปรุง LOT');
   await closeApp(app);
 });
 
@@ -110,14 +110,15 @@ test('★ รายการนอกใบ: ปรับยอดนอกใ�
   const app = await bootBare(browser);
   await seed(app.page);
   expect(await outside(app.page)).toEqual([
-    ['outside', 'BACK', 1, 'ค้างส่ง — เภสัชตัดสินว่าไม่ต้องปรับ'],
-    ['outside', 'NOROUND', -1, 'ไม่อยู่ในรอบนับนี้'],
-    ['outside', 'P-FIRST', 1, 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ'],
-    ['outside', 'PEND', -1, 'ยังไม่ได้นับ'],
-    ['outside', 'PR-AFTER', -1, 'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ'],
-    ['outside', 'ZERO', -2, 'แก้จำนวนในใบ 📦 เป็น 0 (ไม่ส่ง)'],
-    ['lotswap', 'SET-SWAP', 0, 'มีทั้ง ORDS และ IRPS เท่ากัน — ยอดรวมไม่เปลี่ยน'],
-    ['lotswap', 'SWAP', 0, 'มีทั้ง ORDS และ IRPS เท่ากัน — ยอดรวมไม่เปลี่ยน'],
+    // ทุกบรรทัดในเทสนี้ไม่ได้ Export จากแอป = ปรับปรุง LOT สินค้า (นอกแอป) → ขาเดียวบอกว่าไม่ครบคู่ (ดูที่มาแบบ "ออกจากแอป" ใน adj-erp-outside-ack.spec.js)
+    ['outside', 'BACK', 1, 'ค้างส่ง — เภสัชตัดสินว่าไม่ต้องปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ IRPS)'],
+    ['outside', 'NOROUND', -1, 'ไม่อยู่ในรอบนับนี้ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
+    ['outside', 'P-FIRST', 1, 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ IRPS)'],
+    ['outside', 'PEND', -1, 'ยังไม่ได้นับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
+    ['outside', 'PR-AFTER', -1, 'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
+    ['outside', 'ZERO', -2, 'แก้จำนวนในใบ 📦 เป็น 0 (ไม่ส่ง) · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
+    ['lotswap', 'SET-SWAP', 0, 'ORDS (LOT เดิม) + IRPS (LOT ใหม่) เท่ากัน — ยอดรวมไม่เปลี่ยน'],
+    ['lotswap', 'SWAP', 0, 'ORDS (LOT เดิม) + IRPS (LOT ใหม่) เท่ากัน — ยอดรวมไม่เปลี่ยน'],
     ['ok', 'PR-BEFORE', -1, 'ปรับก่อนรีเช็ค แล้วรีเช็คตรง'],
     ['ok', 'REOPEN', -1, 'รอรีเช็ค — แอปยังไม่สรุป'],
   ]);
@@ -163,7 +164,7 @@ test('ปุ่มในแถบ 🧾 · ป็อปอัพรายกา�
     const b = document.getElementById('adjErpOutsideBtn');
     return { text: b && b.textContent, warn: b && b.classList.contains('warn'), chips: document.querySelectorAll('#adjErpBar .adj-erp-chip').length, oldExtra: !!document.getElementById('adjErpExtra') };
   });
-  expect(bar).toEqual({ text: '⚠️ ปรับยอดนอกใบ 📦 6 · 🔁 สลับ LOT 2', warn: true, chips: 4, oldExtra: false });
+  expect(bar).toEqual({ text: '⚠️ ปรับยอดนอกใบ 📦 6 · 🔁 ปรับปรุง LOT สินค้า 2', warn: true, chips: 4, oldExtra: false });
   const pop = await app.page.evaluate(() => {
     document.getElementById('adjErpOutsideBtn').click();
     const rows = [...document.querySelectorAll('#adjErpOutsideBody tr')];
@@ -172,9 +173,9 @@ test('ปุ่มในแถบ 🧾 · ป็อปอัพรายกา�
       kinds: rows.map((r) => r.dataset.kind), xss: !!document.querySelector('#adjErpOutsideBody img') || !!window.__xss,
       pfirst: rows.find((r) => r.dataset.sku === 'P-FIRST').children[3].textContent };
   });
-  expect(pop).toMatchObject({ shown: 'flex', count: '10 รายการ · ปรับยอดนอกใบ 6 · สลับ LOT 2 · ปกติ 2', first: ['outside', 'BACK', '⚠️ ปรับยอดนอกใบ 📦', '+1'], xss: false,
+  expect(pop).toMatchObject({ shown: 'flex', count: '10 รายการ · ปรับยอดนอกใบ 6 · ปรับปรุง LOT สินค้า 2 · ปกติ 2', first: ['outside', 'BACK', '⚠️ ปรับยอดนอกใบ 📦', '+1'], xss: false,
     kinds: ['outside', 'outside', 'outside', 'outside', 'outside', 'outside', 'lotswap', 'lotswap', 'ok', 'ok'] });
-  expect(pop.pfirst).toBe('IRPSBY001 · 24/09/2026 13:33 · +1');
+  expect(pop.pfirst).toBe('IRPSBY001 · 24/09/2026 13:33 · +1 ปรับปรุง LOT สินค้า');
   // Export Excel = ทุกแถวของรายการ (ไม่ขึ้นกับแท็บ)
   const xl = await app.page.evaluate(() => {
     let got = null; const orig = XLSX.writeFile; XLSX.writeFile = (wb, name) => { got = { name, aoa: XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) }; };
@@ -182,7 +183,7 @@ test('ปุ่มในแถบ 🧾 · ป็อปอัพรายกา�
     return got;
   });
   expect(xl.name).toMatch(/^erp_outside_SRC_\d{2}-\d{2}-\d{4}\.xlsx$/);
-  expect(xl.aoa[0]).toEqual(['ประเภท', 'รหัสสินค้า', 'ชื่อสินค้า', 'ORDS (ลด)', 'IRPS (เพิ่ม)', 'ผลรวม', 'ใบใน ERP', 'สถานะในแอป', 'เหตุผล']);
+  expect(xl.aoa[0]).toEqual(['ประเภท', 'รหัสสินค้า', 'ชื่อสินค้า', 'ORDS (ลด)', 'IRPS (เพิ่ม)', 'ผลรวม', 'ใบใน ERP', 'สถานะในแอป', 'เหตุผล', 'รับทราบ', 'รับทราบโดย']);
   expect(xl.aoa).toHaveLength(11);
   expect(xl.aoa[1].slice(0, 6)).toEqual(['ปรับยอดนอกใบ', 'BACK', 'สินค้า BACK', 0, 1, 1]);
   // ปิด 📦 = ปิดป็อปอัพรายการ (ไม่ค้างลอย)
