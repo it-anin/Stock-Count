@@ -342,7 +342,9 @@ test('merge: ไฟล์ใหม่ทับเฉพาะช่วงขอ�
 test('★ สถานะต่อแถว + แสดงผล: เข้าแล้ว/บางส่วน/เกิน/ยังไม่เข้า/ทิศตรงข้าม/ไม่ส่ง · ขอบล่างรายแถว · คอลัมน์/ชิป/สรุปเฉพาะแท็บที่มีไฟล์', async ({ browser }) => {
   const app = await boot(browser);
   await seedScenario(app.page);
-  await app.page.evaluate(() => { _adjDocFilter = 'ords'; renderAdjustDocTable(); _refreshAdjErpCard(); });
+  // ข้อความ "มีใบใน ERP แต่ไม่อยู่ในแท็บนี้" เป็นของเดิม = ทางถอยของ ADJ_ERP_LOT_AWARE (เปิดแล้วแทนด้วยปุ่ม "นอกใบ 📦" — ดู adj-erp-lot-aware.spec.js)
+  // สถานะต่อแถวที่เทสนี้ตรวจไม่มีเคสสลับ LOT (A05 สุทธิ −2 ≠ 2 = ทิศตรงข้ามทั้งเปิด/ปิดสวิตช์)
+  await app.page.evaluate(() => { ADJ_ERP_LOT_AWARE = false; _adjDocFilter = 'ords'; renderAdjustDocTable(); _refreshAdjErpCard(); });
   const before = await read(app.page);
   expect(before.head).toHaveLength(9);                                       // ยังไม่แนบ = หน้าตาเดิม
   expect(before.bar).toBeNull();

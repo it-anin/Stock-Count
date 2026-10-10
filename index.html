@@ -112,6 +112,9 @@
     .adj-erp-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
     .adj-erp-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
     .adj-erp-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
+    .adj-erp-outside-btn { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
+    .adj-erp-outside-btn.warn { border-color:rgba(217,48,37,0.45); color:var(--red); background:rgba(217,48,37,0.06); }
+    .adj-erp-outside-btn:hover { border-color:rgba(0,114,198,0.4); }
     /* ปุ่ม 🗂️ ประวัติปรับปรุง ที่ Header ป็อปอัพ 📦 (7 ต.ค. 2026) — ไม่ใช้ .popup-filter (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
     .adj-hist-btn { display:inline-flex; align-items:center; gap:7px; padding:6px 12px; border-radius:8px; border:1px solid rgba(106,60,181,0.35); background:rgba(155,93,229,0.08); color:#6a3cb5; cursor:pointer; font-family:inherit; font-size:0.78rem; font-weight:700; white-space:nowrap; line-height:1.15; }
     .adj-hist-btn:hover { background:rgba(155,93,229,0.16); }
@@ -1097,6 +1100,35 @@
     <div class="stock-popup-footer">
       <span class="popup-row-count" id="adjHistRowCount">0 เอกสาร</span>
       <button onclick="closeAdjHistPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ใบใน ERP นอกใบ 📦 (10 ต.ค. 2026 · ADJ_ERP_LOT_AWARE) — ใบ ORDS/IRPS ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ: ปรับยอดนอกใบ / สลับ LOT / ปกติ · เปิดจากปุ่มในแถบ 🧾 ของ 📦 -->
+<div class="stock-popup-overlay" id="adjErpOutsideOverlay" style="display:none;z-index:501;" onclick="handleAdjErpOutsideOverlayClick(event)">
+  <div class="stock-popup" id="adjErpOutsideCard" style="max-width:1080px;">
+    <div class="stock-popup-header">
+      <h2>ใบใน ERP นอกใบ 📦</h2>
+      <button class="stock-popup-close" onclick="closeAdjErpOutsidePopup()">✕</button>
+    </div>
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.6;">
+      ใบ ORDS/IRPS ใน ProMaxx ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ (นับตั้งแต่วันที่นับสินค้านั้น)<br>
+      <b style="color:var(--red);">⚠️ ปรับยอดนอกใบ</b> = ยอดรวมใน ProMaxx เปลี่ยนทั้งที่แอปบอกว่าไม่ต้องปรับ → ตรวจของจริงแล้วแก้ใน ProMaxx ·
+      <b style="color:var(--accent);">🔁 สลับ LOT</b> = มีทั้ง ORDS และ IRPS เท่ากัน ยอดรวมไม่เปลี่ยน<br>
+      แก้ LOT ที่ถูก: ทำเป็นคู่ ORDS (LOT ผิด) + IRPS (LOT ถูก) ของสินค้าเดียวกัน จำนวนเท่ากัน และแยกเป็นใบของมันเอง
+    </div>
+    <div class="stock-popup-body" style="user-select:text;">
+      <table class="ptable">
+        <thead><tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ใบใน ERP</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th>เหตุผล</th></tr></thead>
+        <tbody id="adjErpOutsideBody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีใบใน ERP นอกใบ 📦</td></tr></tbody>
+      </table>
+    </div>
+    <div class="stock-popup-footer">
+      <span class="popup-row-count" id="adjErpOutsideCount">0 รายการ</span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="exportAdjErpOutsideExcel()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">📊 Export Excel</button>
+        <button onclick="closeAdjErpOutsidePopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4314,7 +4346,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjDocNoModal','adjHistImportModal','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjErpOutsideOverlay','adjDocNoModal','adjHistImportModal','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -9232,6 +9264,14 @@ function _adjErpEnabled(){return ADJUST_DOC_ERP_CHECK&&_isPharmacyBranch()&&(cur
 // PHARMACY_ADJ_ERP_CARD=false = การ์ด "รอรีเช็ค" เดิมทุกตัวอักษร · ไม่มี listener · ผู้ช่วยไม่โหลดผล ERP (ทางถอย — เทสสลับได้) · ปิด ADJUST_DOC_ERP_CHECK ก็กลับการ์ดเดิมเช่นกัน
 let PHARMACY_ADJ_ERP_CARD=true;
 function _adjErpCardOn(){return PHARMACY_ADJ_ERP_CARD&&ADJUST_DOC_ERP_CHECK&&_isPharmacyBranch()&&!!currentRole;}
+// ── แยก "สลับ LOT" ออกจาก "ปรับยอดนอกใบ 📦" (10 ต.ค. 2026 · ผู้ใช้สั่ง — เคส SSS 24/9: พิมพ์เพิ่ม 6 บรรทัดใน ProMaxx "เพื่อแก้ LOT" ทั้งที่แอปบอก Pass) ──
+// R02.102/R16 ไม่มีเลข LOT (CF_SERIALNO ว่าง) → ตัดสินจาก "ผลรวมสุทธิต่อสินค้า" ของใบ ORDS/IRPS ตั้งแต่วันที่นับ (_adjErpLowDay):
+//   สินค้าที่แอปสั่งปรับ: มีใบทิศตรงข้ามด้วยแต่สุทธิ = ยอดที่ต้องปรับ → เข้าแล้ว + "สลับ LOT" (เดิม ⚠️ ทิศตรงข้าม) — _adjErpEval
+//   สินค้าที่แอปไม่ได้สั่ง: สุทธิ 0 = สลับ LOT (ยอดรวมไม่เปลี่ยน) · สุทธิ ≠ 0 = ⚠️ ปรับยอดนอกใบ 📦 — _adjErpOutsideList (แทนข้อความ "มีใบใน ERP แต่ไม่อยู่ในแท็บนี้")
+//   การ์ด: "ผลต่าง 0 แล้ว + มีใบใน ERP" ต้องสุทธิ ≠ 0 (สลับ LOT ล้วนไม่ใช่การปรับยอด) — _adjErpSettledByErp
+// ⚠️ แยกได้แค่ "สินค้าเดียวกัน + กับ − เท่ากัน" — ขาหนึ่งอยู่ก่อนวันที่นับ/ใบชนิดอื่น (ไม่ใช่ ORDS/IRPS) = เห็นเป็นปรับยอดนอกใบ
+// ADJ_ERP_LOT_AWARE=false = ทุกอย่างเท่าก่อนแก้ทุกตัวอักษร (ทางถอย — เทสสลับได้)
+let ADJ_ERP_LOT_AWARE=true;
 // ผลที่แนบใช้ได้เฉพาะสาขา/รอบนับเดียวกับตอนแนบ — ค้างข้ามสาขา/รอบ = ไม่มี
 function _adjErpCurrent(){return (_adjErpEnabled()||_adjErpCardOn())&&_adjErp&&_adjErp.branch===currentBranch&&_adjErp.epoch===(_countResetAt||'')?_adjErp:null;}
 function _adjErpCovered(type){const s=_adjErpCurrent();return !!(s&&s.cover&&s.cover[type]);}
@@ -9364,12 +9404,16 @@ function _adjErpEval(rows,dir){
     }
     got=_adjErpRound(got);opp=_adjErpRound(opp);
     const need=_adjErpRound(r.qty);
-    let s;
-    if(opp>0)s='opposite';
+    let s,lotSwap=false;
+    if(opp>0){
+      // ADJ_ERP_LOT_AWARE: มีใบสองทิศแต่สุทธิเท่ายอดที่ต้องปรับพอดี = ปรับครบแล้ว ส่วนเกินคือย้าย LOT (ยอดรวมไม่เปลี่ยน)
+      if(ADJ_ERP_LOT_AWARE&&need>0&&_adjErpRound(got-opp)===need){s='done';lotSwap=true;}
+      else s='opposite';
+    }
     else if(got===0)s=need>0?'none':'skip';
     else if(got===need)s='done';
     else s=got<need?'partial':'over';
-    out.set(r.sku,{state:s,got,opp,need,oppType:o,docs});
+    out.set(r.sku,{state:s,got,opp,need,oppType:o,docs,lotSwap});
   }
   return out;
 }
@@ -9419,12 +9463,13 @@ function _adjErpStateText(e){
   const ui=ADJ_ERP_STATE_UI[e.state]||ADJ_ERP_STATE_UI.none;
   if(e.state==='partial'||e.state==='over')return `${ui.plain} ${e.got}/${e.need}`;
   if(e.state==='opposite')return `${ui.plain} (${e.oppType} ${e.opp})`;
+  if(e.lotSwap)return `${ui.plain} (สลับ LOT ${e.oppType} ${e.opp})`;
   return ui.plain;
 }
 function _adjErpCellHtml(e){
   if(!e)return '<td style="text-align:center;color:var(--text3);">—</td>';
   const ui=ADJ_ERP_STATE_UI[e.state]||ADJ_ERP_STATE_UI.none;
-  const amt=e.state==='partial'||e.state==='over'?` ${e.got}/${e.need}`:e.state==='opposite'?` (${e.oppType} ${e.opp})`:'';
+  const amt=e.state==='partial'||e.state==='over'?` ${e.got}/${e.need}`:e.state==='opposite'?` (${e.oppType} ${e.opp})`:e.lotSwap?' · สลับ LOT':'';
   const first=e.docs[0];
   const sub=first?`<div style="font-size:0.64rem;font-weight:400;color:var(--text3);margin-top:2px;white-space:nowrap;">${_adjErpEsc(first.no)} · ${_adjErpFmtAt(first.day)}${e.docs.length>1?` +${e.docs.length-1}`:''}</div>`:'';
   const title=e.docs.length?e.docs.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):'ไม่พบใบใน ERP ตั้งแต่วันที่นับรายการนี้';
@@ -9437,12 +9482,73 @@ function _renderAdjErpBar(vr){
   const n={none:0,done:0,issue:0};
   for(const r of vr.all){const g=_adjErpGroup(vr.ev.get(r.sku)?.state);if(g)n[g]++;}
   const chip=(k,label,cnt)=>`<button type="button" class="adj-erp-chip${vr.filter===k?' active':''}" data-erp-filter="${k}" onclick="setAdjErpFilter('${k}')">${label} <b>${cnt}</b></button>`;
-  const extra=_adjErpExtraSkus(vr.all,_adjDocFilter);
-  const extraTip=extra.slice(0,40).map(x=>`${x.sku} · ${x.qty} · ${x.docs.map(d=>d.no).join(', ')}`).join('\n')+(extra.length>40?`\n… อีก ${extra.length-40} SKU`:'');
+  // ADJ_ERP_LOT_AWARE: ปุ่ม "นอกใบ 📦" (ทั้งสองทิศ · แยกสลับ LOT/ปรับยอดนอกใบ) แทนข้อความเดิม — เดิมถูกใบที่ 📥 นำเข้าใน 🗂️ บังจนไม่เตือน (เคส SSS)
+  let tail='';
+  if(ADJ_ERP_LOT_AWARE){
+    const outs=_adjErpOutsideList();
+    tail=_adjErpOutsideBtnHtml(outs);
+    const ov=document.getElementById('adjErpOutsideOverlay');if(ov&&ov.style.display==='flex')renderAdjErpOutsideTable(outs);
+  }else{
+    const extra=_adjErpExtraSkus(vr.all,_adjDocFilter);
+    const extraTip=extra.slice(0,40).map(x=>`${x.sku} · ${x.qty} · ${x.docs.map(d=>d.no).join(', ')}`).join('\n')+(extra.length>40?`\n… อีก ${extra.length-40} SKU`:'');
+    tail=extra.length?`<span id="adjErpExtra" title="${_adjErpEsc(extraTip)}" style="font-size:0.72rem;color:var(--text3);cursor:help;">· มีใบ ${ADJ_ERP_DIR_TYPE[_adjDocFilter]} ใน ERP แต่ไม่อยู่ในแท็บนี้ ${extra.length} SKU</span>`:'';
+  }
   bar.innerHTML=`<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ตรวจกับ ERP:</span>`
     +chip('all','ทั้งหมด',vr.all.length)+chip('none','⬜ ยังไม่เข้า',n.none)+chip('done','✅ เข้าแล้ว',n.done)+chip('issue','⚠️ ไม่ตรง',n.issue)
-    +(extra.length?`<span id="adjErpExtra" title="${_adjErpEsc(extraTip)}" style="font-size:0.72rem;color:var(--text3);cursor:help;">· มีใบ ${ADJ_ERP_DIR_TYPE[_adjDocFilter]} ใน ERP แต่ไม่อยู่ในแท็บนี้ ${extra.length} SKU</span>`:'');
+    +tail;
   bar.style.display='flex';
+}
+// ปุ่มเปิดรายการ "ใบใน ERP นอกใบ 📦" — ⛔ ห้ามใช้คลาส .adj-erp-chip (ชิปตัวกรองถูกวนอ่าน/ล้าง active ตามคลาสนี้)
+function _adjErpOutsideBtnHtml(list){
+  if(!list.length)return '';
+  const n=list.filter(x=>x.kind==='outside').length,m=list.filter(x=>x.kind==='lotswap').length;
+  const parts=[];
+  if(n)parts.push(`⚠️ ปรับยอดนอกใบ 📦 <b>${n}</b>`);
+  if(m)parts.push(`🔁 สลับ LOT <b>${m}</b>`);
+  if(!parts.length)parts.push(`ℹ️ ใบใน ERP นอกใบ 📦 <b>${list.length}</b>`);
+  return `<button type="button" id="adjErpOutsideBtn" class="adj-erp-outside-btn${n?' warn':''}" onclick="openAdjErpOutsidePopup()" title="ใบ ORDS/IRPS ใน ProMaxx ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ — กดเพื่อดูรายการ">${parts.join(' · ')}</button>`;
+}
+function _adjErpStatusLabel(s){return({pass:'✅ Pass',stock_adjustment:'Stock Adj',audit:'รอรีเช็ค',pending:'ยังไม่นับ',scanning:'กำลังนับ'})[s]||(s?s:'— ไม่อยู่ในรอบนับ');}
+function openAdjErpOutsidePopup(){
+  if(!_adjErpEnabled()||!ADJ_ERP_LOT_AWARE)return;
+  renderAdjErpOutsideTable();
+  _openModal('adjErpOutsideOverlay','adjErpOutsideCard');
+}
+function closeAdjErpOutsidePopup(){_closeModal('adjErpOutsideOverlay','adjErpOutsideCard');}
+function handleAdjErpOutsideOverlayClick(e){if(e.target===document.getElementById('adjErpOutsideOverlay'))closeAdjErpOutsidePopup();}
+function renderAdjErpOutsideTable(pre){
+  const body=document.getElementById('adjErpOutsideBody');if(!body)return;
+  const list=pre||_adjErpOutsideList();
+  const n=list.filter(x=>x.kind==='outside').length,m=list.filter(x=>x.kind==='lotswap').length;
+  const cnt=document.getElementById('adjErpOutsideCount');
+  if(cnt)cnt.textContent=`${list.length} รายการ · ปรับยอดนอกใบ ${n} · สลับ LOT ${m} · ปกติ ${list.length-n-m}`;
+  if(!list.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีใบใน ERP นอกใบ 📦</td></tr>';return;}
+  const signed=v=>v>0?'+'+v:String(v);
+  body.innerHTML=list.map(x=>{
+    const ui=ADJ_ERP_OUT_KIND_UI[x.kind];
+    const docs=x.docs.map(d=>`${_adjErpEsc(d.no)} · ${_adjErpFmtAt(d.at,true)} · ${d.type==='IRPS'?'+':'−'}${d.qty}`).join('<br>');
+    return `<tr data-sku="${_adjErpEsc(x.sku)}" data-kind="${x.kind}">`
+      +`<td style="white-space:nowrap;font-weight:700;font-size:0.76rem;color:${ui.color};">${ui.text}</td>`
+      +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${_adjErpEsc(x.sku)}</td>`
+      +`<td class="ptd-name">${_adjErpEsc(x.name)}</td>`
+      +`<td style="font-size:0.7rem;white-space:nowrap;color:var(--text2);">${docs}</td>`
+      +`<td style="text-align:center;font-weight:700;">${signed(x.net)}</td>`
+      +`<td style="font-size:0.76rem;white-space:nowrap;">${_adjErpEsc(_adjErpStatusLabel(x.status))}</td>`
+      +`<td style="font-size:0.74rem;">${_adjErpEsc(x.reason)}</td></tr>`;
+  }).join('');
+}
+function exportAdjErpOutsideExcel(){
+  const list=_adjErpOutsideList();
+  if(!list.length){toast('ไม่มีใบใน ERP นอกใบ 📦 ให้ Export','warn');return;}
+  const header=['ประเภท','รหัสสินค้า','ชื่อสินค้า','ORDS (ลด)','IRPS (เพิ่ม)','ผลรวม','ใบใน ERP','สถานะในแอป','เหตุผล'];
+  const aoa=[header].concat(list.map(x=>[ADJ_ERP_OUT_KIND_UI[x.kind].plain,x.sku,x.name,x.ords,x.irps,x.net,
+    x.docs.map(d=>`${d.no} ${_adjErpFmtAt(d.at,true)} ${d.type} ${d.qty}`).join(', '),_adjErpStatusLabel(x.status),x.reason]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=header.map((_,c)=>{let w=String(header[c]).length;aoa.slice(1).forEach(row=>{const v=row[c]==null?'':String(row[c]);if(v.length>w)w=v.length;});return{wch:Math.min(w+2,60)};});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'นอกใบ');
+  XLSX.writeFile(wb,`erp_outside_${currentBranch||'all'}_${_fileDateDMY()}.xlsx`);
+  toast(`Export ใบใน ERP นอกใบ 📦 ${list.length} รายการ (Excel) สำเร็จ`,'success');
 }
 function setAdjErpFilter(f){
   _adjErpFilter=ADJ_ERP_FILTER_LABEL[f]?f:'all';_adjDocPage=1;
@@ -9619,30 +9725,54 @@ function startAdjErpListener(){
 //   ผลต่างเป็น 0 แล้ว (เช่น 🚫 ไม่มีของที่ปรับเข้า ERP แล้ว R01 ใหม่เหลือ 0) = เข้าแล้ว เมื่อ ERP มีใบ ORDS/IRPS ของ SKU นี้ตั้งแต่วันที่นับ · ไม่มีใบ = ไม่มีอะไรต้องปรับ (ไม่นับ)
 //   ไม่นับ: ↺ รอรีเช็ค / รอรีเช็คที่ไม่มีเลขตอน Confirm (ยังไม่รู้ผล) · ค้างส่ง (ไม่ใช่งานของใบ) · แก้จำนวนเป็น 0 (ไม่ส่ง) · R05 ยังไม่โหลด (ไม่มี skuMap)
 //   เข้าแล้ว = done ของ _adjErpEval (ตัวเดียวกับคอลัมน์ ERP ในใบ) · บางส่วน/เกิน/ทิศตรงข้าม = ไม่ตรง (issue) · ทิศที่ไฟล์ยังไม่ครอบ/ยังไม่อัป = ยังไม่เข้า
+// ยอดที่ต้องปรับของ SKU หนึ่งตามกติกาการ์ด — ตัวจัดกลุ่มเดียวที่ทั้งการ์ด (_adjErpCardStats) และรายการนอกใบ (_adjErpOutsideList) ใช้ ⛔ ห้ามเขียนกติกาซ้ำที่อื่น
+//   {inY,dir,qty,base,stale} = อยู่ใน Y · {settled} = ผลต่าง 0 แล้ว · {reason} = ไม่อยู่ใน Y (รหัสใน ADJ_ERP_OUT_REASON · reopened · noBasis · status:*)
+function _adjErpItemNeed(sku,sd){
+  if(!sd)return{reason:'notInRound'};
+  if(!_isAdjustDocItem(sd)){
+    if(sd.status==='pending'||sd.status==='scanning')return{reason:'notCounted'};
+    if(sd.backorder)return{reason:'backorder'};
+    if(sd.status==='pass')return{reason:sd.auditor?'passRecheck':'passFirst'};
+    if(sd.status==='audit')return{reason:'noBasis'};
+    return{reason:'status:'+sd.status};
+  }
+  const si=state.skuMap.get(sku);if(!si)return{reason:'noSku'};
+  let ev=_adjustDocDiff(sku,sd,si,false),stale=false;
+  if(!ev){
+    if(sd.status==='audit')return{reason:_isReopenedAudit(sku)?'reopened':'noBasis'};   // ยังไม่รู้ว่าต้องปรับเท่าไร
+    // รายการที่ไม่ใช่ audit ได้ null ทางเดียว = ยอดนับหมดอายุ (stale · เงื่อนไขเดียวกับ _adjustDocAudit)
+    const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
+    const sys=_recheckBaselineSystemQty(sku,sd);
+    ev={sys,cnt,diff:cnt-sys};stale=true;
+  }
+  if(!Number.isFinite(ev.diff))return{reason:'noBasis'};
+  if(ev.diff===0)return{settled:true};
+  const dir=ev.diff<0?'ords':'irps';
+  const ov=_adjQtyOverride(sd,ev.diff);
+  const qty=ov!==null?ov:Math.abs(ev.diff);
+  if(!(qty>0))return{reason:'zeroEdit'};   // แก้เป็น 0 = ไม่ส่ง
+  return{inY:true,dir,qty,base:Math.abs(ev.diff),stale};
+}
+// สุทธิของใบ (IRPS บวก · ORDS ลบ) — 0 = มีแต่ย้าย LOT ยอดรวมไม่เปลี่ยน
+function _adjErpNet(docs){let n=0;for(const x of docs)n+=x.type==='IRPS'?x.qty:-x.qty;return _adjErpRound(n);}
+// ผลต่าง 0 แล้ว + มีใบใน ERP ตั้งแต่วันที่นับ = ปรับเข้าระบบแล้ว · ADJ_ERP_LOT_AWARE: ใบที่สุทธิ 0 (สลับ LOT ล้วน) ไม่ใช่การปรับยอด → ไม่นับ
+function _adjErpSettledByErp(idx,sku){
+  const low=_adjErpLowDay(sku);
+  const docs=(idx.get(sku)||[]).filter(x=>x.day>=low);
+  return docs.length>0&&(!ADJ_ERP_LOT_AWARE||_adjErpNet(docs)!==0);
+}
 function _adjErpCardStats(){
   const st=_adjErpCurrent();
   const rows={ords:[],irps:[]};const settled=[];
   let stale=0,exported=0;
   for(const[sku,sd] of state.scanData.entries()){
     if(!_isAdjustDocItem(sd))continue;
-    const si=state.skuMap.get(sku);if(!si)continue;
-    let ev=_adjustDocDiff(sku,sd,si,false),isStale=false;
-    if(!ev){
-      if(sd.status==='audit')continue;   // ↺ รอรีเช็ค / ไม่มีเลขตอน Confirm — ยังไม่รู้ว่าต้องปรับเท่าไร
-      // รายการที่ไม่ใช่ audit ได้ null ทางเดียว = ยอดนับหมดอายุ (stale · เงื่อนไขเดียวกับ _adjustDocAudit)
-      const cnt=sd.recheckQty!==undefined?Number(sd.recheckQty):Number(sd.countedQty||0);
-      const sys=_recheckBaselineSystemQty(sku,sd);
-      ev={sys,cnt,diff:cnt-sys};isStale=true;
-    }
-    if(!Number.isFinite(ev.diff))continue;
-    if(ev.diff===0){settled.push(sku);continue;}
-    const dir=ev.diff<0?'ords':'irps';
-    const ov=_adjQtyOverride(sd,ev.diff);
-    const qty=ov!==null?ov:Math.abs(ev.diff);
-    if(!(qty>0))continue;   // แก้เป็น 0 = ไม่ส่ง
-    if(isStale)stale++;
-    else if(_adjHistCovers(dir,sku,Math.abs(ev.diff)))exported++;
-    rows[dir].push({sku,qty});
+    const n=_adjErpItemNeed(sku,sd);
+    if(n.settled){settled.push(sku);continue;}
+    if(!n.inY)continue;
+    if(n.stale)stale++;
+    else if(_adjHistCovers(n.dir,sku,n.base))exported++;
+    rows[n.dir].push({sku,qty:n.qty});
   }
   const by={};const uncovered=[];let done=0,issue=0,total=0;
   for(const dir of ['ords','irps']){
@@ -9657,9 +9787,51 @@ function _adjErpCardStats(){
   let settledDone=0;
   if(st){
     const idx=_adjErpIndex(st);
-    for(const sku of settled){const low=_adjErpLowDay(sku);if((idx.get(sku)||[]).some(x=>x.day>=low))settledDone++;}
+    for(const sku of settled)if(_adjErpSettledByErp(idx,sku))settledDone++;
   }
   return {st,done:done+settledDone,total:total+settledDone,issue,by,uncovered,stale,exported,settledDone};
+}
+// ── ใบใน ERP นอกใบ 📦 (ADJ_ERP_LOT_AWARE) — ใบ ORDS/IRPS ของสินค้าที่ไม่อยู่ใน Y (แอปไม่ได้สั่งปรับ/ยังไม่สรุป) ตั้งแต่วันที่นับสินค้านั้น ──
+//   lotswap = สุทธิ 0 (ย้าย LOT · ยอดรวมไม่เปลี่ยน) · outside = สุทธิ ≠ 0 ทั้งที่แอปบอกว่าไม่ต้องปรับ (ยอดรวมใน ProMaxx เปลี่ยน — ตรวจของจริงแล้วแก้)
+//   ok = รอรีเช็ค (แอปยังไม่สรุป) · ใบออกก่อนรีเช็คที่ได้ Pass (ปรับแล้วรีเช็คตรง)
+//   สินค้าใน Y ไม่อยู่ในรายการนี้ (ประเมินในใบ/การ์ดแล้ว) · ผลต่าง 0 + สุทธิ ≠ 0 นับเป็นเข้าแล้วในการ์ด จึงไม่อยู่ในรายการนี้
+const ADJ_ERP_OUT_REASON={
+  passFirst:'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ',
+  passRecheck:'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ',
+  notCounted:'ยังไม่ได้นับ',
+  notInRound:'ไม่อยู่ในรอบนับนี้',
+  backorder:'ค้างส่ง — เภสัชตัดสินว่าไม่ต้องปรับ',
+  zeroEdit:'แก้จำนวนในใบ 📦 เป็น 0 (ไม่ส่ง)',
+  noSku:'ไม่มีใน R05.106',
+};
+const ADJ_ERP_OUT_KIND_UI={
+  outside:{text:'⚠️ ปรับยอดนอกใบ 📦',plain:'ปรับยอดนอกใบ',color:'var(--red)'},
+  lotswap:{text:'🔁 สลับ LOT',plain:'สลับ LOT',color:'var(--accent)'},
+  ok:{text:'ℹ️ ปกติ',plain:'ปกติ',color:'var(--text3)'},
+};
+function _adjErpDocsBefore(docs,iso){const t=_auditTimeMs(iso);return Number.isFinite(t)&&docs.every(x=>_auditTimeMs(x.at)<=t);}
+function _adjErpOutsideList(){
+  const st=_adjErpCurrent();
+  if(!ADJ_ERP_LOT_AWARE||!st)return [];
+  const out=[];
+  for(const[sku,list] of _adjErpIndex(st)){
+    const low=_adjErpLowDay(sku);
+    const docs=list.filter(x=>x.day>=low);if(!docs.length)continue;
+    const sd=state.scanData.get(sku);
+    const n=_adjErpItemNeed(sku,sd);
+    if(n.inY)continue;
+    const net=_adjErpNet(docs);
+    if(n.settled&&net!==0)continue;
+    let kind,reason;
+    if(net===0){kind='lotswap';reason='มีทั้ง ORDS และ IRPS เท่ากัน — ยอดรวมไม่เปลี่ยน';}
+    else if(n.reason==='reopened'||n.reason==='noBasis'){kind='ok';reason='รอรีเช็ค — แอปยังไม่สรุป';}
+    else if(n.reason==='passRecheck'&&_adjErpDocsBefore(docs,sd.recheckAt)){kind='ok';reason='ปรับก่อนรีเช็ค แล้วรีเช็คตรง';}
+    else{kind='outside';reason=ADJ_ERP_OUT_REASON[n.reason]||(String(n.reason||'').startsWith('status:')?`สถานะ ${n.reason.slice(7)}`:'แอปไม่ได้สั่งปรับ');}
+    let ords=0,irps=0;for(const x of docs){if(x.type==='ORDS')ords+=x.qty;else irps+=x.qty;}
+    out.push({sku,name:state.skuMap.get(sku)?.productName||'',docs,ords:_adjErpRound(ords),irps:_adjErpRound(irps),net,kind,reason,status:sd?sd.status:''});
+  }
+  const order={outside:0,lotswap:1,ok:2};
+  return out.sort((a,b)=>order[a.kind]-order[b.kind]||(a.sku<b.sku?-1:a.sku>b.sku?1:0));
 }
 const ADJ_ERP_CARD_LABEL='Stock Adj เข้าระบบ';
 // การ์ดใบที่ 4 ของแถบสถิติ — สาขายา + สวิตช์เปิด = "Stock Adj เข้าระบบ" X / Y · อื่นๆ = การ์ดเดิม (ค่าถูกเขียนโดย updateStats/applyAuditTerminology แล้ว)
@@ -9964,6 +10136,7 @@ async function openAdjustDocPopup(){
 function closeAdjustDocPopup(){
   // ประวัติ/ช่องเลขที่เอกสารซ้อนอยู่เหนือ 📦 — ปิด 📦 ต้องปิดไปด้วย (ไม่ให้ค้างลอย) · กำลังบันทึกอยู่ = คง modal ไว้จนเสร็จ
   const h=document.getElementById('adjHistPopupOverlay');if(h)h.style.display='none';
+  const xo=document.getElementById('adjErpOutsideOverlay');if(xo)xo.style.display='none';
   if(!_adjHistBusy){for(const id of ['adjDocNoModal','adjHistImportModal']){const m=document.getElementById(id);if(m)m.style.display='none';}_adjHistImportCur=null;}
   _closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());
 }
