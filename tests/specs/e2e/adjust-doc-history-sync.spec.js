@@ -2,7 +2,7 @@
 //   เภสัช Desktop A กด Export Text → กรอกเลขที่เอกสาร → stock_sessions/SRC_adjhist (ผูก countResetAt) → เภสัช Desktop B เปิดป็อปอัพเห็นแถวหายจากตาราง + เห็นเอกสาร
 //   → A กับ B กด Export "หน้าเดียวกัน" พร้อมกัน → transaction ให้ผ่านแค่เครื่องเดียว อีกเครื่องถูกบล็อก (ไม่ดาวน์โหลด · ตารางอัปเดตตาม cloud)
 //   → A กด ↩ คืนรายการ → B เปิดใหม่เห็นแถวกลับมา → เริ่มรอบนับใหม่ → ประวัติรอบเก่าไม่ถูกใช้
-// + 📥 นำเข้าประวัติจาก ERP (R16.104/R16.103): A นำเข้า → cloud → B เห็น 📥 ERP · ไม่ซ่อนแถวบนใบ · สองเครื่องนำเข้าคนละไฟล์พร้อมกันไม่หาย · รอบใหม่ว่าง
+// + 📥 นำเข้าประวัติ Report (R16.104/R16.103): A นำเข้า → cloud → B เห็น 📥 Report · ไม่ซ่อนแถวบนใบ · สองเครื่องนำเข้าคนละไฟล์พร้อมกันไม่หาย · รอบใหม่ว่าง
 // logic ล้วน (คีย์ซ่อนแถว · modal · atomic · WH · ทางถอย) อยู่ที่ specs/logic/adjust-doc-history.spec.js · นำเข้า: specs/logic/adjust-doc-history-import.spec.js
 // ใช้ SKU จาก catalog สังเคราะห์ (S-F01…S-F05) + ตั้งขนาดหน้าเป็น 2 แถว เพื่อให้มีหลายหน้าโดยไม่ต้องมีสินค้า 20+ ตัว
 const { test, expect, closeApp, requireEmulator } = require('../../lib/hooks');
@@ -124,7 +124,7 @@ test.describe('ใบ 📦 — ประวัติปรับปรุงซ�
     await closeApp(A);
   });
 
-  test('📥 A นำเข้าประวัติจาก ERP → cloud → B เห็น 📥 ERP · ไม่ซ่อนแถวบนใบ · สองเครื่องนำเข้าคนละไฟล์พร้อมกันไม่หาย · รอบนับใหม่ไม่ใช้ผลเก่า', async ({ browser }) => {
+  test('📥 A นำเข้าประวัติ Report → cloud → B เห็น 📥 Report · ไม่ซ่อนแถวบนใบ · สองเครื่องนำเข้าคนละไฟล์พร้อมกันไม่หาย · รอบนับใหม่ไม่ใช้ผลเก่า', async ({ browser }) => {
     const A = await bootFreshCount(browser, { role: 'pharmacist', user: 'PharmA', mode: 'desktop' });
     await seedItems(PROJECT_ID, 'SRC', A.epoch, SKUS.map((sku) => ({ sku, ...DIRECT })));
     const B = await bootJoinCount(browser, { role: 'pharmacist', user: 'PharmB', mode: 'desktop', expectEpoch: A.epoch });
@@ -143,10 +143,10 @@ test.describe('ใบ 📦 — ประวัติปรับปรุงซ�
     expect(await tableSkus(A.page)).toEqual(ids(1, 2));                                  // ประวัติอย่างเดียว — แถวบนใบไม่หาย
     expect(await badge(A.page)).toBe('5');
 
-    // B เปิด 🗂️ → อ่านจาก cloud → เห็นเอกสารที่ A นำเข้า (📥 ERP · เข้าระบบแล้ว) · ตารางของ B ไม่เปลี่ยน
+    // B เปิด 🗂️ → อ่านจาก cloud → เห็นเอกสารที่ A นำเข้า (📥 Report · เข้าระบบแล้ว) · ตารางของ B ไม่เปลี่ยน
     await B.page.evaluate(() => openAdjHistPopup());
     await B.page.waitForFunction(() => _adjHistEntries().length === 1, null, { timeout: 20000, polling: 100 });
-    expect(await histRows(B.page)).toEqual([['▸ ORDSIMP001', '🔻 ORDS', expect.stringMatching(/^\d{2}\/\d{2}\/\d{4} 10:00$/), '📥 ERP', '2', 'เข้าระบบแล้ว']]);
+    expect(await histRows(B.page)).toEqual([['▸ ORDSIMP001', '🔻 ORDS', expect.stringMatching(/^\d{2}\/\d{2}\/\d{4} 10:00$/), '📥 Report', '2', 'เข้าระบบแล้ว']]);
     expect(await tableSkus(B.page)).toEqual(ids(1, 2));
     expect(await badge(B.page)).toBe('5');
 

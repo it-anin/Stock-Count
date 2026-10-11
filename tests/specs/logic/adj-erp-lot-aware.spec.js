@@ -164,28 +164,35 @@ test('ปุ่มในแถบ 🧾 · ป็อปอัพรายกา�
     const b = document.getElementById('adjErpOutsideBtn');
     return { text: b && b.textContent, warn: b && b.classList.contains('warn'), chips: document.querySelectorAll('#adjErpBar .adj-erp-chip').length, oldExtra: !!document.getElementById('adjErpExtra') };
   });
-  expect(bar).toEqual({ text: '⚠️ ปรับยอดนอกใบ 📦 6 · 🔁 ปรับปรุง LOT สินค้า 2', warn: true, chips: 4, oldExtra: false });
+  // ชื่อบนจอ (11 ต.ค. 2026): outside แยกตามทิศสุทธิ — ลด = ใบ ORDS (NOROUND · PEND · PR-AFTER · ZERO) · เพิ่ม = ใบ IRPS (BACK · P-FIRST)
+  expect(bar).toEqual({ text: '⚠️ ใบปรับปรุงลดสินค้า 4 · ใบปรับปรุงเพิ่มสินค้า 2 · 🔁 ปรับปรุง LOT สินค้า 2', warn: true, chips: 4, oldExtra: false });
   const pop = await app.page.evaluate(() => {
     document.getElementById('adjErpOutsideBtn').click();
     const rows = [...document.querySelectorAll('#adjErpOutsideBody tr')];
     return { shown: document.getElementById('adjErpOutsideOverlay').style.display, count: document.getElementById('adjErpOutsideCount').textContent,
       first: [rows[0].dataset.kind, rows[0].dataset.sku, rows[0].children[0].textContent, rows[0].children[4].textContent],
       kinds: rows.map((r) => r.dataset.kind), xss: !!document.querySelector('#adjErpOutsideBody img') || !!window.__xss,
-      pfirst: rows.find((r) => r.dataset.sku === 'P-FIRST').children[3].textContent };
+      pfirst: rows.find((r) => r.dataset.sku === 'P-FIRST').children[3].textContent,
+      noround: rows.find((r) => r.dataset.sku === 'NOROUND').children[0].textContent,
+      title: document.querySelector('#adjErpOutsideCard h2').textContent,
+      desc: document.querySelector('#adjErpOutsideCard .stock-popup-header + div').textContent.trim().split('\n')[0].trim() };
   });
-  expect(pop).toMatchObject({ shown: 'flex', count: '10 รายการ · ปรับยอดนอกใบ 6 · ปรับปรุง LOT สินค้า 2 · ปกติ 2', first: ['outside', 'BACK', '⚠️ ปรับยอดนอกใบ 📦', '+1'], xss: false,
-    kinds: ['outside', 'outside', 'outside', 'outside', 'outside', 'outside', 'lotswap', 'lotswap', 'ok', 'ok'] });
+  expect(pop).toMatchObject({ shown: 'flex', count: '10 รายการ · ใบปรับปรุงลดสินค้า 4 · ใบปรับปรุงเพิ่มสินค้า 2 · ปรับปรุง LOT สินค้า 2 · ปกติ 2', first: ['outside', 'BACK', '⚠️ ใบปรับปรุงเพิ่มสินค้า', '+1'], xss: false,
+    kinds: ['outside', 'outside', 'outside', 'outside', 'outside', 'outside', 'lotswap', 'lotswap', 'ok', 'ok'],
+    noround: '⚠️ ใบปรับปรุงลดสินค้า', title: 'เอกสารปรับปรุง LOT สินค้า', desc: 'ตรวจสอบรายการเอกสาร ORDS/IRPS ที่มีการเพิ่มเข้า ProMaxx' });
   expect(pop.pfirst).toBe('IRPSBY001 · 24/09/2026 13:33 · +1 ปรับปรุง LOT สินค้า');
   // Export Excel = ทุกแถวของรายการ (ไม่ขึ้นกับแท็บ)
   const xl = await app.page.evaluate(() => {
-    let got = null; const orig = XLSX.writeFile; XLSX.writeFile = (wb, name) => { got = { name, aoa: XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) }; };
+    let got = null; const orig = XLSX.writeFile; XLSX.writeFile = (wb, name) => { got = { name, sheet: wb.SheetNames[0], aoa: XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) }; };
     try { exportAdjErpOutsideExcel(); } finally { XLSX.writeFile = orig; }
-    return got;
+    return { ...got, toast: window.__toasts.at(-1) };
   });
   expect(xl.name).toMatch(/^erp_outside_SRC_\d{2}-\d{2}-\d{4}\.xlsx$/);
+  expect([xl.sheet, xl.toast]).toEqual(['เอกสารปรับปรุง LOT สินค้า', 'success|Export เอกสารปรับปรุง LOT สินค้า 10 รายการ (Excel) สำเร็จ']);
   expect(xl.aoa[0]).toEqual(['ประเภท', 'รหัสสินค้า', 'ชื่อสินค้า', 'ORDS (ลด)', 'IRPS (เพิ่ม)', 'ผลรวม', 'ใบใน ERP', 'สถานะในแอป', 'เหตุผล', 'รับทราบ', 'รับทราบโดย']);
   expect(xl.aoa).toHaveLength(11);
-  expect(xl.aoa[1].slice(0, 6)).toEqual(['ปรับยอดนอกใบ', 'BACK', 'สินค้า BACK', 0, 1, 1]);
+  expect(xl.aoa[1].slice(0, 6)).toEqual(['ใบปรับปรุงเพิ่มสินค้า', 'BACK', 'สินค้า BACK', 0, 1, 1]);
+  expect(xl.aoa.find((r) => r[1] === 'NOROUND').slice(0, 6)).toEqual(['ใบปรับปรุงลดสินค้า', 'NOROUND', '', 1, 0, -1]);
   // ปิด 📦 = ปิดป็อปอัพรายการ (ไม่ค้างลอย)
   expect(await app.page.evaluate(() => { closeAdjustDocPopup(); return document.getElementById('adjErpOutsideOverlay').style.display; })).toBe('none');
   // ผู้ช่วย: เปิดป็อปอัพไม่ได้ (การ์ด 🧾 / 📦 เป็นของเภสัช)

@@ -5,7 +5,7 @@
 //
 // เทสนี้ตรึง 12 ด้าน — ข้อ 2–3 สำคัญที่สุด: "นำเข้าแล้วเป็นประวัติอย่างเดียว ไม่ซ่อนแถวบนใบ/ไม่บล็อก Export" และ "เขียน cloud ไม่ผ่านต้องไม่เปลี่ยนอะไร"
 //   1. ค่าเริ่มต้นที่ส่งมอบ (สวิตช์เปิด · ปุ่ม/ช่องเลือกไฟล์/modal มีใน DOM) + แผนนำเข้า (ฟังก์ชันบริสุทธิ์): เรียงเวลา · รวมบรรทัดซ้ำ SKU · ตัดก่อนรอบ/ยกเลิก · ข้ามเลขที่ซ้ำ
-//   2. ★ flow เต็ม: เลือก 2 ไฟล์ → ตัวอย่าง (สรุป+รายการ) → นำเข้า → doc บน cloud (src:'erp' · rows [sku,q,q,null,'','']) → ตาราง 🗂️ ใหม่สุดอยู่บน · 📥 ERP · "เข้าระบบแล้ว" · 🗑
+//   2. ★ flow เต็ม: เลือก 2 ไฟล์ → ตัวอย่าง (สรุป+รายการ) → นำเข้า → doc บน cloud (src:'erp' · rows [sku,q,q,null,'','']) → ตาราง 🗂️ ใหม่สุดอยู่บน · 📥 Report · "เข้าระบบแล้ว" · 🗑
 //   3. ★ ประวัติอย่างเดียว: แถวบนใบที่ SKU/จำนวนตรงกับใบที่นำเข้า "ยังอยู่" และนับในป้าย · Export แถวนั้นด้วยเลขใหม่ได้ · ใช้เลขที่ของใบที่นำเข้าซ้ำ = บล็อก · โหลดจาก cloud ซ้ำแล้วธง src ไม่หาย
 //   4. นำเข้าไฟล์เดิมซ้ำ = ไม่มีเอกสารใหม่ (ไม่เขียน cloud) · ผสมใหม่+เก่า = นำเข้าเฉพาะใหม่ · เลขที่ซ้ำกับเอกสารที่ Export จากแอป = ข้าม
 //   5. เครื่องอื่นนำเข้า/Export เลขเดียวกันระหว่างดูตัวอย่าง → transaction ข้ามเอง ไม่ทับ ไม่ซ้ำ
@@ -155,7 +155,7 @@ test('แผนนำเข้า (บริสุทธิ์): เรียง
   await closeApp(app);
 });
 
-test('★ flow เต็ม: เลือก 2 ไฟล์ → ตัวอย่าง → นำเข้า → doc บน cloud → ตาราง 🗂️ (ใหม่สุดอยู่บน · 📥 ERP · เข้าระบบแล้ว · 🗑)', async ({ browser }) => {
+test('★ flow เต็ม: เลือก 2 ไฟล์ → ตัวอย่าง → นำเข้า → doc บน cloud → ตาราง 🗂️ (ใหม่สุดอยู่บน · 📥 Report · เข้าระบบแล้ว · 🗑)', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page);
   await openHist(app.page);
@@ -180,15 +180,15 @@ test('★ flow เต็ม: เลือก 2 ไฟล์ → ตัวอย�
   expect(st.entries.map((e) => e.no)).toEqual(['IRPSBY001', 'ORDSBY001', 'ORDSBY002']);   // เก่า → ใหม่ (ลำดับเก็บ)
   expect(st.entries[1]).toMatchObject({ no: 'ORDSBY001', dir: 'ords', src: 'erp', file: '16104ords_sss.CSV', impBy: 'เภสัช', by: '', rows: [['A01', 2, 2, null, '', ''], ['A02', 1, 1, null, '', '']] });
   expect(st.entries[1].impAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-  expect(await lastToast(app.page)).toBe('📥 นำเข้าประวัติจาก ERP แล้ว 3 เอกสาร');
+  expect(await lastToast(app.page)).toBe('📥 นำเข้าประวัติ Report แล้ว 3 เอกสาร');
 
   expect(await tableRows(app.page)).toEqual([                                            // ตาราง 🗂️ วาดใหม่เอง (ป็อปอัพเปิดอยู่)
-    ['▸ ORDSBY002', '🔻 ORDS', '25/09/2026 09:10', '📥 ERP', '1', 'เข้าระบบแล้ว', '🗑 ลบ'],
-    ['▸ ORDSBY001', '🔻 ORDS', '24/09/2026 14:43', '📥 ERP', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
-    ['▸ IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '📥 ERP', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ ORDSBY002', '🔻 ORDS', '25/09/2026 09:10', '📥 Report', '1', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ ORDSBY001', '🔻 ORDS', '24/09/2026 14:43', '📥 Report', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '📥 Report', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
   ]);
   expect(await app.page.evaluate(() => document.getElementById('adjHistCount').textContent)).toBe('3');   // ปุ่มประวัติบน Header 📦
-  expect(await app.page.evaluate(() => document.querySelector('#adjHistBody > tr[data-no="ORDSBY001"] td:nth-child(4)').title)).toMatch(/^นำเข้าจาก ERP โดย เภสัช · \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} · ไฟล์ 16104ords_sss\.CSV$/);
+  expect(await app.page.evaluate(() => document.querySelector('#adjHistBody > tr[data-no="ORDSBY001"] td:nth-child(4)').title)).toMatch(/^นำเข้า Report โดย เภสัช · \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} · ไฟล์ 16104ords_sss\.CSV$/);
   // ขยายดูรายการ: ชื่อจาก skuMap (ไม่มีใน skuMap = ว่าง) · ไม่มีราคา/LOT/EXP = —
   await app.page.evaluate(() => document.querySelector('#adjHistBody > tr[data-no="ORDSBY001"]').click());
   expect(await app.page.evaluate(() => [...document.querySelectorAll('#adjHistBody table tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent.trim())))).toEqual([
@@ -281,7 +281,7 @@ test('เครื่องอื่นนำเข้า/Export เลขเด
   await confirmImport(app.page);
   const st = await store(app.page);
   expect(st.entries.map((e) => [e.no, e.file])).toEqual([['ORDSBY001', 'other.CSV'], ['IRPSBY001', 'i.CSV'], ['ORDSBY002', 'o.CSV']]);   // ของเครื่องอื่นอยู่เดิม · ที่เหลือต่อท้ายตามเวลา
-  expect(await lastToast(app.page)).toBe('📥 นำเข้าประวัติจาก ERP แล้ว 2 เอกสาร · ข้าม 1 (มีในประวัติแล้ว)');
+  expect(await lastToast(app.page)).toBe('📥 นำเข้าประวัติ Report แล้ว 2 เอกสาร · ข้าม 1 (มีในประวัติแล้ว)');
   expect(await app.page.evaluate(() => window.__writes)).toBe(w0 + 1);
   expect(await app.page.evaluate(() => _adjHistEntries().length)).toBe(3);                // state ในเครื่องตามผลจริงบน cloud
 
@@ -357,9 +357,9 @@ test('★ รายงานเคลื่อนไหวสินค้า (CF
   expect(st.entries[1].rows).toEqual([['A01', 2, 2, null, '', ''], ['A02', 1, 1, null, '', '']]);
   expect(st.entries[2].rows).toEqual([['A03', 4, 4, null, '', '']]);                      // 2 บรรทัด (LOT) ของ SKU เดียวรวมกัน
   expect(await tableRows(app.page)).toEqual([
-    ['▸ ORDSBY002', '🔻 ORDS', '25/09/2026 09:10', '📥 ERP', '1', 'เข้าระบบแล้ว', '🗑 ลบ'],
-    ['▸ ORDSBY001', '🔻 ORDS', '24/09/2026 14:43', '📥 ERP', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
-    ['▸ IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '📥 ERP', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ ORDSBY002', '🔻 ORDS', '25/09/2026 09:10', '📥 Report', '1', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ ORDSBY001', '🔻 ORDS', '24/09/2026 14:43', '📥 Report', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
+    ['▸ IRPSBY001', '🔺 IRPS', '24/09/2026 13:33', '📥 Report', '2', 'เข้าระบบแล้ว', '🗑 ลบ'],
   ]);
   await closeApp(app);
 });
@@ -424,7 +424,7 @@ test('กันกดซ้ำ: เลือกไฟล์ซ้อน/ยื�
   await app.page.evaluate(async () => { await Promise.all([confirmAdjHistImport(), confirmAdjHistImport()]); });
   expect(await app.page.evaluate(() => window.__writes)).toBe(w0 + 1);
   expect((await store(app.page)).entries.map((e) => e.no)).toEqual(['IRPSBY001']);
-  expect((await toasts(app.page)).filter((t) => t.startsWith('📥 นำเข้าประวัติจาก ERP แล้ว'))).toHaveLength(1);
+  expect((await toasts(app.page)).filter((t) => t.startsWith('📥 นำเข้าประวัติ Report แล้ว'))).toHaveLength(1);
 
   // ระหว่างบันทึก (busy) ปิด modal ตัวอย่างไม่ได้ (ไม่งั้นผู้ใช้ไม่เห็นผล) · พ้น busy แล้วปิดได้
   await importFiles(app.page, files(['o.CSV', ORDS]));

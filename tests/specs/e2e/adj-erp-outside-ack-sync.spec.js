@@ -61,7 +61,7 @@ test.describe('ใบใน ERP นอกใบ 📦 — รับทราบ�
     await B.page.evaluate(() => openAdjustDocPopup());
     await B.page.waitForFunction(() => _adjErpCovered('IRPS') && _adjErpOutsideList().some((x) => x.sku === 'S-NORM' && x.ack && x.ack.valid), null, { timeout: 20000, polling: 100 });
     expect(await outside(B.page)).toEqual([['S-F05', 'outside', ''], ['S-NORM', 'outside', 'ปรับปรุง LOT สินค้า — ขา ORDS อยู่ใบอื่น']]);
-    expect(await B.page.evaluate(() => document.getElementById('adjErpOutsideBtn').textContent)).toBe('⚠️ ปรับยอดนอกใบ 📦 1 · ✓ รับทราบแล้ว 1');
+    expect(await B.page.evaluate(() => document.getElementById('adjErpOutsideBtn').textContent)).toBe('⚠️ ใบปรับปรุงลดสินค้า 1 · ✓ รับทราบแล้ว 1');   // เหลือ S-F05 (ใบ ORDS) ที่ยังไม่รับทราบ
 
     // A และ B รับทราบคนละตัว "พร้อมกัน" → transaction รวมกัน ไม่มีตัวไหนหาย
     await B.page.evaluate(() => openAdjErpOutsidePopup());

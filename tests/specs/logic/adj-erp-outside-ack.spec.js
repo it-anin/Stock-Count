@@ -107,7 +107,7 @@ test('★ ที่มาของบรรทัด: ออกจากแอ�
     ['outside', 'P-FIRST', 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ IRPS)', 'IRPSBY001:lot'],
     ['lotswap', 'LOT-PAIR', 'ORDS (LOT เดิม) + IRPS (LOT ใหม่) เท่ากัน — ยอดรวมไม่เปลี่ยน', 'ORDSBY002:lot,IRPSBY002:lot'],
   ]);
-  // 📥 นำเข้าจาก ERP (src:'erp') เก็บทุกบรรทัดรวมที่พิมพ์เพิ่ม → บอกที่มาไม่ได้ ต้องไม่ถูกนับเป็นออกจากแอป
+  // 📥 นำเข้า Report (src:'erp') เก็บทุกบรรทัดรวมที่พิมพ์เพิ่ม → บอกที่มาไม่ได้ ต้องไม่ถูกนับเป็นออกจากแอป
   const imported = await app.page.evaluate(({ EPOCH }) => {
     _adjHistApply('SRC', EPOCH, [{ no: 'ORDSBY001', dir: 'ords', at: '2026-09-24T07:43:00.000Z', by: '', src: 'erp', file: 'x.csv', impBy: 'Pharm', impAt: '2026-10-07T07:00:00.000Z',
       rows: [['IN-Y', 2, 2, null, '', ''], ['P-APP', 1, 1, null, '', ''], ['LOT-UNEVEN', 3, 3, null, '', '']] }], '', '');
@@ -127,7 +127,8 @@ test('★ รับทราบ → cloud → ปุ่ม/ตาราง/เ�
   await app.page.evaluate(() => { _refreshAdjMaster = async () => {}; });
   await seed(app.page);
   const before = await app.page.evaluate(async () => { renderAdjustDocTable(true); document.getElementById('adjustDocPopupOverlay').style.display = 'flex'; openAdjErpOutsidePopup(); await new Promise((r) => setTimeout(r, 30)); return { btn: __btn(), rows: __rows() }; });
-  expect(before.btn).toEqual(['⚠️ ปรับยอดนอกใบ 📦 3 · 🔁 ปรับปรุง LOT สินค้า 1', true]);
+  // ลด = LOT-UNEVEN (ORDS 3 + IRPS 1 ปนกัน → ตามทิศสุทธิ −2) + P-APP · เพิ่ม = P-FIRST
+  expect(before.btn).toEqual(['⚠️ ใบปรับปรุงลดสินค้า 2 · ใบปรับปรุงเพิ่มสินค้า 1 · 🔁 ปรับปรุง LOT สินค้า 1', true]);
   expect(before.rows.map((x) => [x.sku, x.ack])).toEqual([['LOT-UNEVEN', 'รับทราบ'], ['P-APP', 'รับทราบ'], ['P-FIRST', 'รับทราบ'], ['LOT-PAIR', '—']]);
 
   // กดรับทราบ P-FIRST → ช่องหมายเหตุ (ค่าเริ่มต้น "ปรับปรุง LOT สินค้า") → แก้ → บันทึก
@@ -148,10 +149,10 @@ test('★ รับทราบ → cloud → ปุ่ม/ตาราง/เ�
       btn: __btn(), rows: __rows().map((x) => [x.sku, x.acked, x.type]), count: document.getElementById('adjErpOutsideCount').textContent, toast: window.__toasts.at(-1) };
   }, ACK_KEY);
   expect(saved).toMatchObject({ epoch: EPOCH, by: 'Pharm', keys: ['P-FIRST'], note: 'แก้ LOT 24/9 — ขา ORDS ทำแยก', ackBy: 'Pharm', sig: 'IRPSBY001:IRPS:1',
-    btn: ['⚠️ ปรับยอดนอกใบ 📦 2 · ✓ รับทราบแล้ว 1 · 🔁 ปรับปรุง LOT สินค้า 1', true],
-    count: '4 รายการ · ปรับยอดนอกใบ 3 (รับทราบแล้ว 1) · ปรับปรุง LOT สินค้า 1 · ปกติ 0', toast: 'success|✓ รับทราบ P-FIRST — แก้ LOT 24/9 — ขา ORDS ทำแยก' });
-  expect(saved.rows).toEqual([['LOT-UNEVEN', false, '⚠️ ปรับยอดนอกใบ 📦'], ['P-APP', false, '⚠️ ปรับยอดนอกใบ 📦'],
-    ['P-FIRST', true, '✓ ปรับยอดนอกใบ 📦 รับทราบแล้ว'], ['LOT-PAIR', false, '🔁 ปรับปรุง LOT สินค้า']]);   // รับทราบแล้วลงไปอยู่ใต้ที่ยังไม่รับทราบ
+    btn: ['⚠️ ใบปรับปรุงลดสินค้า 2 · ✓ รับทราบแล้ว 1 · 🔁 ปรับปรุง LOT สินค้า 1', true],
+    count: '4 รายการ · ใบปรับปรุงลดสินค้า 2 · ใบปรับปรุงเพิ่มสินค้า 1 · รับทราบแล้ว 1 · ปรับปรุง LOT สินค้า 1 · ปกติ 0', toast: 'success|✓ รับทราบ P-FIRST — แก้ LOT 24/9 — ขา ORDS ทำแยก' });
+  expect(saved.rows).toEqual([['LOT-UNEVEN', false, '⚠️ ใบปรับปรุงลดสินค้า'], ['P-APP', false, '⚠️ ใบปรับปรุงลดสินค้า'],
+    ['P-FIRST', true, '✓ ใบปรับปรุงเพิ่มสินค้า รับทราบแล้ว'], ['LOT-PAIR', false, '🔁 ปรับปรุง LOT สินค้า']]);   // รับทราบแล้วลงไปอยู่ใต้ที่ยังไม่รับทราบ
   expect((await app.page.evaluate(() => __rows().find((x) => x.sku === 'P-FIRST').ack))).toContain('✓ รับทราบแก้ LOT 24/9 — ขา ORDS ทำแยก');
 
   // Excel มีคอลัมน์รับทราบ
@@ -187,7 +188,7 @@ test('★ รับทราบ → cloud → ปุ่ม/ตาราง/เ�
     await new Promise((r) => setTimeout(r, 50));
   });
   expect(await app.page.evaluate((k) => ({ keys: Object.keys(JSON.parse(window.__store[k].acks_json)), btn: __btn() }), ACK_KEY))
-    .toEqual({ keys: ['P-APP'], btn: ['⚠️ ปรับยอดนอกใบ 📦 2 · ✓ รับทราบแล้ว 1 · 🔁 ปรับปรุง LOT สินค้า 1', true] });
+    .toEqual({ keys: ['P-APP'], btn: ['⚠️ ใบปรับปรุงลดสินค้า 1 · ใบปรับปรุงเพิ่มสินค้า 1 · ✓ รับทราบแล้ว 1 · 🔁 ปรับปรุง LOT สินค้า 1', true] });
   // ลำดับ: ที่ยังไม่รับทราบ (เรียงรหัส) → รับทราบแล้ว (P-APP มาก่อน P-FIRST ตามรหัส แต่รับทราบแล้วจึงลงล่าง) → ปรับปรุง LOT
   expect(await app.page.evaluate(() => __rows().map((x) => x.sku))).toEqual(['LOT-UNEVEN', 'P-FIRST', 'P-APP', 'LOT-PAIR']);
   await closeApp(app);
@@ -208,7 +209,7 @@ test('★ มีใบใหม่หลังรับทราบ = กลั�
     return { okBefore, valid: x.ack.valid, net: x.net, acked: row.acked, ack: row.ack, type: row.type, counts: _adjErpOutsideCounts(_adjErpOutsideList()),
       xl: xl.find((y) => y[1] === 'P-FIRST')[9] };
   }, { O: FILE_O, I2: FILE_I_MORE });
-  expect(r).toEqual({ okBefore: true, valid: false, net: 2, acked: false, ack: '⚠️ มีใบใหม่หลังรับทราบรับทราบใหม่', type: '⚠️ ปรับยอดนอกใบ 📦',
+  expect(r).toEqual({ okBefore: true, valid: false, net: 2, acked: false, ack: '⚠️ มีใบใหม่หลังรับทราบรับทราบใหม่', type: '⚠️ ใบปรับปรุงเพิ่มสินค้า',
     counts: { warn: 3, acked: 0, lot: 1, ok: 0 }, xl: 'มีใบใหม่หลังรับทราบ (เดิม: ปรับปรุง LOT สินค้า)' });
   await closeApp(app);
 });
@@ -284,7 +285,7 @@ test('ผู้ช่วย/สวิตช์ปิด = ไม่มีรั�
     return { th: document.querySelectorAll('#adjErpOutsideThead th').length, ackBtns: document.querySelectorAll('#adjErpOutsideBody .adj-ack-btn').length,
       btn: __btn(), counts: _adjErpOutsideCounts(_adjErpOutsideList()), reads, header: xl[0].length };
   });
-  expect(off).toEqual({ th: 7, ackBtns: 0, btn: ['⚠️ ปรับยอดนอกใบ 📦 3 · 🔁 ปรับปรุง LOT สินค้า 1', true], counts: { warn: 3, acked: 0, lot: 1, ok: 0 }, reads: 0, header: 9 });
+  expect(off).toEqual({ th: 7, ackBtns: 0, btn: ['⚠️ ใบปรับปรุงลดสินค้า 2 · ใบปรับปรุงเพิ่มสินค้า 1 · 🔁 ปรับปรุง LOT สินค้า 1', true], counts: { warn: 3, acked: 0, lot: 1, ok: 0 }, reads: 0, header: 9 });
   // ผู้ช่วย: ไม่มีสิทธิ์รับทราบ (การ์ด 🧾/📦 เป็นของเภสัช)
   const asst = await app.page.evaluate(async () => { ADJ_ERP_OUTSIDE_ACK = true; currentRole = 'assistant'; const before = window.__toasts.length; await confirmAdjErpAck('P-APP'); return [_adjErpAckOn(), window.__toasts.length === before]; });
   expect(asst).toEqual([false, true]);
@@ -315,6 +316,6 @@ test('ตารางไม่ล้นป็อปอัพที่ 1280px (�
   }, { O, I });
   expect(res).toEqual({ cols: 8, overflow: 0, ackVisible: true,
     docs: 'ORDSBY006260900002 · 25/09/2026 10:00 · −2 ปรับปรุง LOT สินค้าIRPSBY006260900002 · 25/09/2026 10:05 · +2 ปรับปรุง LOT สินค้า',
-    type: '✓ ปรับยอดนอกใบ 📦 รับทราบแล้ว' });
+    type: '✓ ใบปรับปรุงเพิ่มสินค้า รับทราบแล้ว' });
   await closeApp(app);
 });

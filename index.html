@@ -1089,7 +1089,7 @@
       <span>ประวัติใบปรับปรุงสินค้า</span>
       <!-- นำเข้าประวัติย้อนหลังจาก ERP (7 ต.ค. 2026) — R02.102 (หรือ R16.104 ORDS / R16.103 IRPS) เป็น .CSV · สาขายาเท่านั้น · ซ่อนจนกว่า _refreshAdjHistImportBtn จะเปิด -->
       <input type="file" id="adjHistImportInput" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="handleAdjHistImportFiles(event)">
-      <button id="adjHistImportBtn" onclick="openAdjHistImportPicker()" style="display:none;padding:5px 12px;border-radius:7px;border:1px solid rgba(106,60,181,0.4);background:rgba(155,93,229,0.08);color:#6a3cb5;cursor:pointer;font-family:inherit;font-size:0.74rem;font-weight:700;white-space:nowrap;" title="นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R02.102 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦">📥 นำเข้าจาก ERP</button>
+      <button id="adjHistImportBtn" onclick="openAdjHistImportPicker()" style="display:none;padding:5px 12px;border-radius:7px;border:1px solid rgba(106,60,181,0.4);background:rgba(155,93,229,0.08);color:#6a3cb5;cursor:pointer;font-family:inherit;font-size:0.74rem;font-weight:700;white-space:nowrap;" title="นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R02.102 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦">📥 นำเข้า Report</button>
     </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
@@ -1104,23 +1104,23 @@
   </div>
 </div>
 
-<!-- ใบใน ERP นอกใบ 📦 (10 ต.ค. 2026 · ADJ_ERP_LOT_AWARE) — ใบ ORDS/IRPS ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ: ปรับยอดนอกใบ / สลับ LOT / ปกติ · เปิดจากปุ่มในแถบ 🧾 ของ 📦 -->
+<!-- เอกสารปรับปรุง LOT สินค้า (เดิม "ใบใน ERP นอกใบ 📦" · 10 ต.ค. 2026 · ADJ_ERP_LOT_AWARE · ชื่อบนจอใหม่ 11 ต.ค. 2026) — ใบ ORDS/IRPS ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ: ใบปรับปรุงลด/เพิ่มสินค้า (outside) / ปรับปรุง LOT สินค้า / ปกติ · เปิดจากปุ่มในแถบ 🧾 ของ 📦 -->
 <div class="stock-popup-overlay" id="adjErpOutsideOverlay" style="display:none;z-index:501;" onclick="handleAdjErpOutsideOverlayClick(event)">
   <div class="stock-popup" id="adjErpOutsideCard" style="max-width:1240px;">
     <div class="stock-popup-header">
-      <h2>ใบใน ERP นอกใบ 📦</h2>
+      <h2>เอกสารปรับปรุง LOT สินค้า</h2>
       <button class="stock-popup-close" onclick="closeAdjErpOutsidePopup()">✕</button>
     </div>
     <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.6;">
-      ใบ ORDS/IRPS ใน ProMaxx ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ (นับตั้งแต่วันที่นับสินค้านั้น)<br>
-      <b style="color:var(--red);">⚠️ ปรับยอดนอกใบ</b> = ยอดรวมใน ProMaxx เปลี่ยนทั้งที่แอปบอกว่าไม่ต้องปรับ → ตรวจของจริงแล้วแก้ใน ProMaxx หรือกด <b>รับทราบ</b> พร้อมหมายเหตุ ·
+      ตรวจสอบรายการเอกสาร ORDS/IRPS ที่มีการเพิ่มเข้า ProMaxx<br>
+      <b style="color:var(--red);">⚠️ ใบปรับปรุงลดสินค้า (ORDS) / ใบปรับปรุงเพิ่มสินค้า (IRPS)</b> = ยอดรวมใน ProMaxx ลด/เพิ่ม ทั้งที่แอปบอกว่าไม่ต้องปรับ → ตรวจของจริงแล้วแก้ใน ProMaxx หรือกด <b>รับทราบ</b> พร้อมหมายเหตุ ·
       <b style="color:var(--accent);">🔁 ปรับปรุง LOT สินค้า</b> = ORDS (LOT เดิม) + IRPS (LOT ใหม่) ของสินค้าเดียวกันเท่ากัน ยอดรวมไม่เปลี่ยน<br>
       ป้ายท้ายแต่ละใบ: <b>ออกจากแอป</b> = Export Text จากใบ 📦 · <b>ปรับปรุง LOT สินค้า</b> = ทำใน ProMaxx นอกแอป — ต้องทำเป็นคู่ ORDS + IRPS ของสินค้าเดียวกัน จำนวนเท่ากัน
     </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="adjErpOutsideThead"><tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ใบใน ERP</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th>เหตุผล</th></tr></thead>
-        <tbody id="adjErpOutsideBody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีใบใน ERP นอกใบ 📦</td></tr></tbody>
+        <tbody id="adjErpOutsideBody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีเอกสารปรับปรุง LOT สินค้า</td></tr></tbody>
       </table>
     </div>
     <div class="stock-popup-footer">
@@ -1149,11 +1149,11 @@
   </div>
 </div>
 
-<!-- นำเข้าประวัติจาก ERP — ตัวอย่างก่อนนำเข้า (7 ต.ค. 2026) — เป็นประวัติอย่างเดียว ไม่ซ่อนแถวบนใบ 📦 -->
+<!-- นำเข้าประวัติ Report — ตัวอย่างก่อนนำเข้า (7 ต.ค. 2026) — เป็นประวัติอย่างเดียว ไม่ซ่อนแถวบนใบ 📦 -->
 <div id="adjHistImportModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;" onclick="if(event.target.id==='adjHistImportModal')closeAdjHistImportModal()">
   <div id="adjHistImportCard" style="background:var(--surface);border-radius:16px;padding:24px 28px;min-width:340px;max-width:600px;width:94vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.35);border-top:6px solid #6a3cb5;">
     <div style="font-size:2rem;text-align:center;margin-bottom:6px;">📥</div>
-    <div style="font-size:1.05rem;font-weight:700;color:#6a3cb5;margin-bottom:8px;text-align:center;">นำเข้าประวัติจาก ERP</div>
+    <div style="font-size:1.05rem;font-weight:700;color:#6a3cb5;margin-bottom:8px;text-align:center;">นำเข้าประวัติ Report</div>
     <div id="adjHistImportSummary" style="font-size:0.82rem;color:var(--text2);margin-bottom:10px;line-height:1.6;"></div>
     <div id="adjHistImportList" style="overflow:auto;min-height:0;max-height:34vh;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;"></div>
     <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;line-height:1.5;">นำเข้าเป็นประวัติอย่างเดียว — ไม่ซ่อนรายการบนใบ 📦 · Status = เข้าระบบแล้ว · เลขที่ใบที่มีในประวัติอยู่แล้วจะถูกข้าม · ลบออกได้ภายหลัง (🗑)</div>
@@ -9522,15 +9522,23 @@ function _adjErpOutsideCounts(list){
   for(const x of list){if(x.kind==='outside'){if(x.ack&&x.ack.valid)c.acked++;else c.warn++;}else if(x.kind==='lotswap')c.lot++;else c.ok++;}
   return c;
 }
+// ใบปรับปรุงลด/เพิ่มสินค้า (outside) แยกตามทิศ — warn = ยังไม่รับทราบ (ปุ่ม) · all = ทั้งหมด (สรุปท้ายป็อปอัพ)
+function _adjErpOutsideDirCounts(list){
+  const c={warn:{dec:0,inc:0},all:{dec:0,inc:0}};
+  for(const x of list)if(x.kind==='outside'){const d=_adjErpOutDir(x);c.all[d]++;if(!(x.ack&&x.ack.valid))c.warn[d]++;}
+  return c;
+}
 function _adjErpOutsideBtnHtml(list){
   if(!list.length)return '';
-  const c=_adjErpOutsideCounts(list);
-  const parts=[];
-  if(c.warn)parts.push(`⚠️ ปรับยอดนอกใบ 📦 <b>${c.warn}</b>`);
+  const c=_adjErpOutsideCounts(list),d=_adjErpOutsideDirCounts(list);
+  const parts=[],warn=[];
+  if(d.warn.dec)warn.push(`${ADJ_ERP_OUT_KIND_UI.dec.plain} <b>${d.warn.dec}</b>`);
+  if(d.warn.inc)warn.push(`${ADJ_ERP_OUT_KIND_UI.inc.plain} <b>${d.warn.inc}</b>`);
+  if(warn.length)parts.push('⚠️ '+warn.join(' · '));
   if(c.acked)parts.push(`✓ รับทราบแล้ว <b>${c.acked}</b>`);
   if(c.lot)parts.push(`🔁 ปรับปรุง LOT สินค้า <b>${c.lot}</b>`);
-  if(!parts.length)parts.push(`ℹ️ ใบใน ERP นอกใบ 📦 <b>${list.length}</b>`);
-  return `<button type="button" id="adjErpOutsideBtn" class="adj-erp-outside-btn${c.warn?' warn':''}" onclick="openAdjErpOutsidePopup()" title="ใบ ORDS/IRPS ใน ProMaxx ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ — กดเพื่อดูรายการ">${parts.join(' · ')}</button>`;
+  if(!parts.length)parts.push(`ℹ️ ${ADJ_ERP_OUT_TITLE} <b>${list.length}</b>`);
+  return `<button type="button" id="adjErpOutsideBtn" class="adj-erp-outside-btn${c.warn?' warn':''}" onclick="openAdjErpOutsidePopup()" title="${ADJ_ERP_OUT_TITLE}: ตรวจสอบรายการเอกสาร ORDS/IRPS ที่มีการเพิ่มเข้า ProMaxx — กดเพื่อดูรายการ">${parts.join(' · ')}</button>`;
 }
 function _adjErpStatusLabel(s){return({pass:'✅ Pass',stock_adjustment:'Stock Adj',audit:'รอรีเช็ค',pending:'ยังไม่นับ',scanning:'กำลังนับ'})[s]||(s?s:'— ไม่อยู่ในรอบนับ');}
 function openAdjErpOutsidePopup(){
@@ -9567,15 +9575,16 @@ function renderAdjErpOutsideTable(pre){
   const ackOn=_adjErpAckOn();
   const thead=document.getElementById('adjErpOutsideThead');
   if(thead)thead.innerHTML='<tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ใบใน ERP</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th style="min-width:210px;">เหตุผล</th>'+(ackOn?'<th style="min-width:170px;">รับทราบ</th>':'')+'</tr>';
-  const c=_adjErpOutsideCounts(list);
+  const c=_adjErpOutsideCounts(list),d=_adjErpOutsideDirCounts(list);
   const cnt=document.getElementById('adjErpOutsideCount');
-  if(cnt)cnt.textContent=`${list.length} รายการ · ปรับยอดนอกใบ ${c.warn+c.acked}${c.acked?` (รับทราบแล้ว ${c.acked})`:''} · ปรับปรุง LOT สินค้า ${c.lot} · ปกติ ${c.ok}`;
-  if(!list.length){body.innerHTML=`<tr><td colspan="${ackOn?8:7}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีใบใน ERP นอกใบ 📦</td></tr>`;return;}
+  if(cnt)cnt.textContent=`${list.length} รายการ · ${ADJ_ERP_OUT_KIND_UI.dec.plain} ${d.all.dec} · ${ADJ_ERP_OUT_KIND_UI.inc.plain} ${d.all.inc}${c.acked?` · รับทราบแล้ว ${c.acked}`:''} · ปรับปรุง LOT สินค้า ${c.lot} · ปกติ ${c.ok}`;
+  if(!list.length){body.innerHTML=`<tr><td colspan="${ackOn?8:7}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มี${ADJ_ERP_OUT_TITLE}</td></tr>`;return;}
   const signed=v=>v>0?'+'+v:String(v);
   body.innerHTML=list.map(x=>{
     const acked=x.kind==='outside'&&x.ack&&x.ack.valid;
     // รับทราบแล้ว = บรรทัดที่สอง (บรรทัดเดียวทำคอลัมน์กว้างจนคอลัมน์ "รับทราบ" ตกขอบขวา)
-    const ui=acked?{text:'✓ ปรับยอดนอกใบ 📦<span style="display:block;font-size:0.68rem;color:var(--green);"> รับทราบแล้ว</span>',color:'var(--text2)'}:ADJ_ERP_OUT_KIND_UI[x.kind];
+    const kui=_adjErpOutKindUi(x);
+    const ui=acked?{text:`✓ ${kui.plain}<span style="display:block;font-size:0.68rem;color:var(--green);"> รับทราบแล้ว</span>`,color:'var(--text2)'}:kui;
     // ที่มาของแต่ละบรรทัด: ออกจากแอป (Export Text จากใบ 📦) · ปรับปรุง LOT สินค้า (ทำใน ProMaxx นอกแอป)
     // ป้ายที่มาขึ้นบรรทัดใหม่ได้เมื่อจอแคบ (ข้อความใบไม่ตัดกลาง) — ป้ายติดบรรทัดเดียวกันทำตารางล้นป็อปอัพ
     const docs=x.docs.map(d=>`<div><span style="white-space:nowrap;">${_adjErpEsc(d.no)} · ${_adjErpFmtAt(d.at,true)} · ${d.type==='IRPS'?'+':'−'}${d.qty}</span>`
@@ -9594,11 +9603,11 @@ function renderAdjErpOutsideTable(pre){
 }
 function exportAdjErpOutsideExcel(){
   const list=_adjErpOutsideList();
-  if(!list.length){toast('ไม่มีใบใน ERP นอกใบ 📦 ให้ Export','warn');return;}
+  if(!list.length){toast(`ไม่มี${ADJ_ERP_OUT_TITLE} ให้ Export`,'warn');return;}
   const ackOn=_adjErpAckOn();
   const header=['ประเภท','รหัสสินค้า','ชื่อสินค้า','ORDS (ลด)','IRPS (เพิ่ม)','ผลรวม','ใบใน ERP','สถานะในแอป','เหตุผล'].concat(ackOn?['รับทราบ','รับทราบโดย']:[]);
   const aoa=[header].concat(list.map(x=>{
-    const row=[ADJ_ERP_OUT_KIND_UI[x.kind].plain,x.sku,x.name,x.ords,x.irps,x.net,
+    const row=[_adjErpOutKindUi(x).plain,x.sku,x.name,x.ords,x.irps,x.net,
       x.docs.map(d=>`${d.no} ${_adjErpFmtAt(d.at,true)} ${d.type} ${d.qty} (${ADJ_ERP_ORIGIN_UI[d.origin]})`).join(', '),_adjErpStatusLabel(x.status),x.reason];
     if(ackOn){
       const a=x.ack;
@@ -9609,9 +9618,9 @@ function exportAdjErpOutsideExcel(){
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=header.map((_,c)=>{let w=String(header[c]).length;aoa.slice(1).forEach(row=>{const v=row[c]==null?'':String(row[c]);if(v.length>w)w=v.length;});return{wch:Math.min(w+2,60)};});
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'นอกใบ');
+  XLSX.utils.book_append_sheet(wb,ws,ADJ_ERP_OUT_TITLE);   // ≤ 31 ตัวอักษร (ข้อจำกัดชื่อชีต Excel)
   XLSX.writeFile(wb,`erp_outside_${currentBranch||'all'}_${_fileDateDMY()}.xlsx`);
-  toast(`Export ใบใน ERP นอกใบ 📦 ${list.length} รายการ (Excel) สำเร็จ`,'success');
+  toast(`Export ${ADJ_ERP_OUT_TITLE} ${list.length} รายการ (Excel) สำเร็จ`,'success');
 }
 function setAdjErpFilter(f){
   _adjErpFilter=ADJ_ERP_FILTER_LABEL[f]?f:'all';_adjDocPage=1;
@@ -9870,14 +9879,21 @@ const ADJ_ERP_OUT_REASON={
   zeroEdit:'แก้จำนวนในใบ 📦 เป็น 0 (ไม่ส่ง)',
   noSku:'ไม่มีใน R05.106',
 };
+// ชื่อบนจอ (ผู้ใช้สั่ง 11 ต.ค. 2026): หัวป็อปอัพ = ADJ_ERP_OUT_TITLE (เดิม "ใบใน ERP นอกใบ 📦")
+//   outside แยกชื่อตามทิศ (เดิม "⚠️ ปรับยอดนอกใบ 📦"): ยอดสุทธิลด = ใบ ORDS → dec · เพิ่ม = ใบ IRPS → inc
+//   ใบสองชนิดปนกัน (ปรับปรุง LOT ไม่เท่ากัน) ใช้ทิศของยอดสุทธิ — outside สุทธิ ≠ 0 เสมอ · kind ภายในยังเป็น 'outside' (data-kind · การนับ · รับทราบ)
+const ADJ_ERP_OUT_TITLE='เอกสารปรับปรุง LOT สินค้า';
 const ADJ_ERP_OUT_KIND_UI={
-  outside:{text:'⚠️ ปรับยอดนอกใบ 📦',plain:'ปรับยอดนอกใบ',color:'var(--red)'},
+  dec:{text:'⚠️ ใบปรับปรุงลดสินค้า',plain:'ใบปรับปรุงลดสินค้า',color:'var(--red)'},
+  inc:{text:'⚠️ ใบปรับปรุงเพิ่มสินค้า',plain:'ใบปรับปรุงเพิ่มสินค้า',color:'var(--red)'},
   lotswap:{text:'🔁 ปรับปรุง LOT สินค้า',plain:'ปรับปรุง LOT สินค้า',color:'var(--accent)'},
   ok:{text:'ℹ️ ปกติ',plain:'ปกติ',color:'var(--text3)'},
 };
+function _adjErpOutDir(x){return x.net<0?'dec':'inc';}
+function _adjErpOutKindUi(x){return ADJ_ERP_OUT_KIND_UI[x.kind==='outside'?_adjErpOutDir(x):x.kind];}
 const ADJ_ERP_ORIGIN_UI={app:'ออกจากแอป',lot:'ปรับปรุง LOT สินค้า'};
 function _adjErpDocsBefore(docs,iso){const t=_auditTimeMs(iso);return Number.isFinite(t)&&docs.every(x=>_auditTimeMs(x.at)<=t);}
-// เลขที่ใบ|SKU ที่ Export Text ออกจากใบ 📦 — ไม่รวม 📥 นำเข้าจาก ERP (เก็บทุกบรรทัดของใบ รวมที่พิมพ์เพิ่มเอง จึงบอกที่มาไม่ได้)
+// เลขที่ใบ|SKU ที่ Export Text ออกจากใบ 📦 — ไม่รวม 📥 นำเข้า Report (เก็บทุกบรรทัดของใบ รวมที่พิมพ์เพิ่มเอง จึงบอกที่มาไม่ได้)
 function _adjErpAppLineKeys(){
   const set=new Set();
   for(const e of _adjHistEntries())if(e.src!=='erp')for(const r of e.rows)set.add(String(e.no).toUpperCase()+'|'+r[0]);
@@ -9996,7 +10012,7 @@ function armAdjErpAck(sku){
 async function confirmAdjErpAck(sku){
   if(!_adjErpAckOn()||_adjErpAckBusy)return;
   const item=_adjErpOutsideList().find(x=>x.sku===sku&&x.kind==='outside');
-  if(!item){toast('รายการนี้ไม่ใช่ปรับยอดนอกใบแล้ว — ปิดแล้วเปิดใหม่','warn');_adjErpAckEdit='';renderAdjErpOutsideTable();return;}
+  if(!item){toast('รายการนี้ไม่ต้องรับทราบแล้ว — ปิดแล้วเปิดใหม่','warn');_adjErpAckEdit='';renderAdjErpOutsideTable();return;}
   const inp=document.getElementById('adjErpAckNote');
   const note=String(inp?inp.value:'').replace(/\s+/g,' ').trim()||ADJ_ERP_ACK_DEFAULT_NOTE;
   if(note.length>ADJ_ERP_ACK_NOTE_MAX){toast(`หมายเหตุยาวเกิน ${ADJ_ERP_ACK_NOTE_MAX} ตัวอักษร`,'warn');return;}
@@ -10669,7 +10685,7 @@ function renderAdjHistTable(){
         ?`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ (ไม่กระทบใบใน ERP และตาราง 📦)" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">🗑 ลบ</button>`
         :`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ แล้วรายการกลับมาที่ตาราง 📦" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">↩ คืนรายการ</button>`);
     const byCell=erp
-      ?`<td title="${esc(`นำเข้าจาก ERP${e.impBy?' โดย '+e.impBy:''}${e.impAt?' · '+_adjHistFmtAt(e.impAt):''}${e.file?' · ไฟล์ '+e.file:''}`)}" style="white-space:nowrap;color:var(--text2);">📥 ERP</td>`
+      ?`<td title="${esc(`นำเข้า Report${e.impBy?' โดย '+e.impBy:''}${e.impAt?' · '+_adjHistFmtAt(e.impAt):''}${e.file?' · ไฟล์ '+e.file:''}`)}" style="white-space:nowrap;color:var(--text2);">📥 Report</td>`
       :`<td>${esc(e.by||'—')}</td>`;
     let html=`<tr data-no="${n}" onclick="toggleAdjHistRow(this.dataset.no)" style="cursor:pointer;">`
       +`<td style="font-family:'Inter',sans-serif;font-weight:700;color:var(--accent);white-space:nowrap;">${open?'▾':'▸'} ${n}</td>`
@@ -10836,7 +10852,7 @@ async function confirmAdjHistImport(){
   }
   closeAdjHistImportModal();
   _adjHistRefreshUi(true);
-  toast(`📥 นำเข้าประวัติจาก ERP แล้ว ${res.added} เอกสาร${res.skipped?` · ข้าม ${res.skipped} (มีในประวัติแล้ว)`:''}`,'success');
+  toast(`📥 นำเข้าประวัติ Report แล้ว ${res.added} เอกสาร${res.skipped?` · ข้าม ${res.skipped} (มีในประวัติแล้ว)`:''}`,'success');
 }
 // ไฟล์ที่ Export ออกไปมีเท่าที่เห็นบนจอ — ถ้ามีรายการตกหล่นต้องบอกตอนนี้ ไม่ใช่ให้หายเงียบ
 // (แถบเตือน #adjustDocWarn ในป็อปอัพถูกถอดออกแล้ว ก.ย. 2026 — toast นี้เป็นสัญญาณเดียวที่เหลือ)
