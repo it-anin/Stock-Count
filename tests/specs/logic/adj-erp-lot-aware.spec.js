@@ -9,7 +9,7 @@
 //   3. ★ การ์ด: ผลต่าง 0 + สลับ LOT ล้วน ไม่นับเป็นเข้าแล้ว · สลับ LOT ของสินค้าที่สั่งปรับนับเป็นเข้าแล้ว
 //   4. ★ ใบที่ 📥 นำเข้าใน 🗂️ ไม่บังรายการ (เหตุที่ 6 ตัวของ SSS ไม่เคยถูกเตือน)
 //   5. ปุ่มในแถบ 🧾 · ป็อปอัพรายการ · Export Excel · ปิด 📦 ปิดป็อปอัพ · กัน XSS · ผู้ช่วยเปิดไม่ได้
-//   6. ★ ทางถอย: สวิตช์ปิด = ทุกอย่างเท่าก่อนแก้ (ทิศตรงข้าม · ข้อความเดิม "ไม่อยู่ในแท็บนี้" · การ์ดนับผลต่าง 0 ทุกใบ) · ค่าเริ่มต้นที่ส่งมอบ
+//   6. ★ ทางถอย: สวิตช์ปิด = ทิศตรงข้าม · การ์ดนับผลต่าง 0 ทุกใบ เหมือนก่อนแก้ (ข้อความเดิม "ไม่อยู่ในแท็บนี้" ถอดแล้ว 11 ต.ค. 2026 — ต้องไม่โผล่) · ค่าเริ่มต้นที่ส่งมอบ
 // (ข้อมูลสังเคราะห์ทั้งหมด — ห้ามใช้ CSV จริง)
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
@@ -147,10 +147,9 @@ test('★ ใบที่ 📥 นำเข้าใน 🗂️ ประวั�
   const r = await app.page.evaluate(({ EPOCH }) => {
     const rows = ['P-FIRST', 'PR-AFTER', 'PEND', 'NOROUND', 'BACK', 'ZERO', 'SWAP'].map((s) => [s, 1, 1, null, '', '']);
     _adjHistApply('SRC', EPOCH, [{ no: 'ORDSBY001', dir: 'ords', at: '2026-09-24T07:43:00.000Z', by: '', src: 'erp', file: 'x.csv', impBy: 'Pharm', impAt: '2026-10-07T07:00:00.000Z', rows }], '', '');
-    return { list: _adjErpOutsideList().map((x) => [x.kind, x.sku, x.net, x.reason]), oldMasked: _adjErpExtraSkus(_buildAdjustDocRows('ords'), 'ords').map((x) => x.sku) };
+    return { list: _adjErpOutsideList().map((x) => [x.kind, x.sku, x.net, x.reason]) };
   }, { EPOCH });
-  expect(r.list).toEqual(before);
-  expect(r.oldMasked).not.toContain('P-FIRST');   // ข้อความเดิมถูกประวัติที่นำเข้าบัง — สาเหตุที่ต้องมีรายการนี้
+  expect(r.list).toEqual(before);   // ข้อความเดิม (_adjErpExtraSkus) เคยถูกประวัติที่นำเข้าบัง — ถอดแล้ว 11 ต.ค. 2026 · รายการนี้ต้องไม่ถูกบัง
   await closeApp(app);
 });
 
@@ -189,7 +188,7 @@ test('ปุ่มในแถบ 🧾 · ป็อปอัพรายกา�
   });
   expect(xl.name).toMatch(/^erp_outside_SRC_\d{2}-\d{2}-\d{4}\.xlsx$/);
   expect([xl.sheet, xl.toast]).toEqual(['เอกสารปรับปรุง LOT สินค้า', 'success|Export เอกสารปรับปรุง LOT สินค้า 10 รายการ (Excel) สำเร็จ']);
-  expect(xl.aoa[0]).toEqual(['ประเภท', 'รหัสสินค้า', 'ชื่อสินค้า', 'ORDS (ลด)', 'IRPS (เพิ่ม)', 'ผลรวม', 'ใบใน ERP', 'สถานะในแอป', 'เหตุผล', 'รับทราบ', 'รับทราบโดย']);
+  expect(xl.aoa[0]).toEqual(['ประเภท', 'รหัสสินค้า', 'ชื่อสินค้า', 'ORDS (ลด)', 'IRPS (เพิ่ม)', 'ผลรวม', 'เลขที่เอกสาร', 'สถานะในแอป', 'เหตุผล', 'รับทราบ', 'รับทราบโดย']);
   expect(xl.aoa).toHaveLength(11);
   expect(xl.aoa[1].slice(0, 6)).toEqual(['ใบปรับปรุงเพิ่มสินค้า', 'BACK', 'สินค้า BACK', 0, 1, 1]);
   expect(xl.aoa.find((r) => r[1] === 'NOROUND').slice(0, 6)).toEqual(['ใบปรับปรุงลดสินค้า', 'NOROUND', '', 1, 0, -1]);
@@ -200,7 +199,7 @@ test('ปุ่มในแถบ 🧾 · ป็อปอัพรายกา�
   await closeApp(app);
 });
 
-test('★ ทางถอย: ADJ_ERP_LOT_AWARE=false → ทิศตรงข้าม · ไม่มีรายการ/ปุ่ม · ข้อความเดิม "ไม่อยู่ในแท็บนี้" · เปิดป็อปอัพไม่ได้', async ({ browser }) => {
+test('★ ทางถอย: ADJ_ERP_LOT_AWARE=false → ทิศตรงข้าม · ไม่มีรายการ/ปุ่ม · ไม่มีข้อความเดิม "ไม่อยู่ในแท็บนี้" (ถอดแล้ว 11 ต.ค. 2026) · เปิดป็อปอัพไม่ได้', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page);
   await app.page.evaluate(() => { ADJ_ERP_LOT_AWARE = false; });
@@ -209,8 +208,8 @@ test('★ ทางถอย: ADJ_ERP_LOT_AWARE=false → ทิศตรงข�
     renderAdjustDocTable(true);
     openAdjErpOutsidePopup();
     return { list: _adjErpOutsideList().length, btn: !!document.getElementById('adjErpOutsideBtn'), extra: (document.getElementById('adjErpExtra') || {}).textContent || '',
-      shown: document.getElementById('adjErpOutsideOverlay').style.display };
+      old: document.getElementById('adjErpBar').textContent.includes('ไม่อยู่ในแท็บนี้'), shown: document.getElementById('adjErpOutsideOverlay').style.display };
   });
-  expect(r).toEqual({ list: 0, btn: false, extra: '· มีใบ ORDS ใน ERP แต่ไม่อยู่ในแท็บนี้ 8 SKU', shown: 'none' });
+  expect(r).toEqual({ list: 0, btn: false, extra: '', old: false, shown: 'none' });
   await closeApp(app);
 });

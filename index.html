@@ -108,7 +108,7 @@
     #adjustDocPopupCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
     #adjustDocPopupCard .stock-popup-footer > div:last-child { margin-left:auto; }
     #adjustDocPopupCard .stock-popup-footer button { white-space:nowrap; }
-    /* ชิปตัวกรอง "ตรวจกับ ERP" ในป็อปอัพ 📦 (ต.ค. 2026) — ไม่ใช้ .popup-filter ด้วยเหตุผลเดียวกับ .pg-bar (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
+    /* ชิปตัวกรอง "ตรวจสอบ Report" (เดิม "ตรวจกับ ERP") ในป็อปอัพ 📦 (ต.ค. 2026) — ไม่ใช้ .popup-filter ด้วยเหตุผลเดียวกับ .pg-bar (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
     .adj-erp-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
     .adj-erp-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
     .adj-erp-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
@@ -1035,13 +1035,13 @@
         </div>
         <div class="upload-file-badge upload-file-badge-optional" id="adjPriceBadge"><div class="upload-file-badge-dot"></div><span>ยังไม่แนบ</span></div>
       </div>
-      <!-- ตรวจกับ ERP (ต.ค. 2026 · สาขายา) — เภสัชแนบเองได้ (ไม่ล็อก Admin) · ซ่อนจนกว่า _refreshAdjErpCard จะเปิด -->
+      <!-- ตรวจสอบ รายงาน R02.102 (เดิม "ตรวจกับ ERP" · ต.ค. 2026 · สาขายา) — เภสัชแนบเองได้ (ไม่ล็อก Admin) · ซ่อนจนกว่า _refreshAdjErpCard จะเปิด -->
       <input type="file" id="adjErpFileInput" accept=".csv,.xlsx,.xls" multiple style="display:none" onchange="handleAdjErpFiles(event)">
       <div class="upload-file-item" id="adjErpCard" style="flex:1 1 320px;margin-bottom:0;display:none;" onclick="openAdjErpFilePicker()">
         <div class="upload-file-info" style="display:flex;align-items:center;gap:10px;min-width:0;">
           <div class="upload-file-icon upload-file-icon-optional" id="adjErpIcon" style="font-size:1rem;">🧾</div>
           <div style="min-width:0;">
-            <div class="upload-file-name">ตรวจกับ ERP · R02.102</div>
+            <div class="upload-file-name">ตรวจสอบ รายงาน R02.102</div>
             <div class="upload-file-sub" id="adjErpInfo">แนบ R02.102 จาก ProMaxx เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว</div>
           </div>
         </div>
@@ -1119,7 +1119,7 @@
     </div>
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
-        <thead id="adjErpOutsideThead"><tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ใบใน ERP</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th>เหตุผล</th></tr></thead>
+        <thead id="adjErpOutsideThead"><tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>เลขที่เอกสาร</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th>เหตุผล</th></tr></thead>
         <tbody id="adjErpOutsideBody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีเอกสารปรับปรุง LOT สินค้า</td></tr></tbody>
       </table>
     </div>
@@ -9272,7 +9272,7 @@ const ADJ_ERP_STATE_UI={
   opposite:{text:'⚠️ ทิศตรงข้าม',plain:'ทิศตรงข้าม',color:'var(--red)'},
   skip:{text:'— ไม่ส่ง',plain:'ไม่ส่ง (แก้เป็น 0)',color:'var(--text3)'},
 };
-const ADJ_ERP_FILTER_LABEL={none:'⬜ ยังไม่เข้า ERP',done:'✅ เข้า ERP แล้ว',issue:'⚠️ ไม่ตรงกับ ERP'};
+const ADJ_ERP_FILTER_LABEL={none:'⬜ ยังไม่เข้า ProMaxx',done:'✅ เข้า ProMaxx แล้ว',issue:'⚠️ ไม่ตรงกับ ProMaxx'};
 function _adjErpEnabled(){return ADJUST_DOC_ERP_CHECK&&_isPharmacyBranch()&&(currentRole==='pharmacist'||currentRole==='supervisor');}
 // ── การ์ดสถิติใบที่ 4 ของสาขายา: "Stock Adj เข้าระบบ" X / Y (9 ต.ค. 2026 · ผู้ใช้สั่ง — แทนการ์ด "รอรีเช็ค") ──
 // X = รายการที่ ERP (R02.102/R16 ที่แนบที่การ์ด 🧾) มีใบทิศเดียวกันจำนวนรวมเท่ากันพอดี · Y = รายการที่ต้องปรับทั้งหมดของรอบนี้ (รวมที่เข้าแล้ว) — ดู _adjErpCardStats
@@ -9436,20 +9436,6 @@ function _adjErpEval(rows,dir){
 }
 function _adjErpGroup(s){return s==='none'?'none':s==='done'?'done':(s==='partial'||s==='over'||s==='opposite')?'issue':'';}
 function _adjErpInFilter(e,f){return f==='all'||(!!e&&_adjErpGroup(e.state)===f);}
-// SKU ที่ ERP มีใบชนิดของแท็บนี้ (หลังขอบล่างรายตัว) แต่ไม่อยู่ในแท็บ — คีย์ผิดรหัส / ↺ ไปแล้ว / ปรับแล้วระบบตรงจึงหลุดจากใบ
-function _adjErpExtraSkus(all,dir){
-  const st=_adjErpCurrent();const t=ADJ_ERP_DIR_TYPE[dir];
-  if(!st||!t||!st.cover[t])return [];
-  const inTab=new Set(all.map(r=>r.sku));const out=[];
-  for(const e of _adjHistEntries())if(e.dir===dir)for(const r of e.rows)inTab.add(r[0]);   // ส่งออกแล้ว (อยู่ใน 🗂️ ประวัติ) — ERP มีใบเป็นเรื่องปกติ ไม่ใช่ "หลุดจากแท็บ"
-  for(const[sku,list] of _adjErpIndex(st)){
-    if(inTab.has(sku))continue;
-    const low=_adjErpLowDay(sku);
-    const hit=list.filter(x=>x.type===t&&x.day>=low);
-    if(hit.length)out.push({sku,qty:_adjErpRound(hit.reduce((a,x)=>a+x.qty,0)),docs:hit});
-  }
-  return out;
-}
 // ⛔ ประตูเดียวของ "แถวที่ผู้ใช้เลือกดู/ส่งออก" — ตาราง · แบ่งหน้า · Export Text · Export Excel ต้องใช้ตัวนี้ทั้งหมด (ห้ามกรองซ้ำที่อื่น)
 //   ตัวกรอง ERP มีผลเฉพาะเมื่อแท็บนั้นมีไฟล์ (ไม่มี = "ทั้งหมด" เหมือนเดิม) · all = ทุกแถวของแท็บ (ชิป/ยอดรวมนับจากชุดนี้)
 function _adjustDocViewRows(dir){
@@ -9489,7 +9475,7 @@ function _adjErpCellHtml(e){
   const amt=e.state==='partial'||e.state==='over'?` ${e.got}/${e.need}`:e.state==='opposite'?` (${e.oppType} ${e.opp})`:e.lotSwap?' · ปรับปรุง LOT':'';
   const first=e.docs[0];
   const sub=first?`<div style="font-size:0.64rem;font-weight:400;color:var(--text3);margin-top:2px;white-space:nowrap;">${_adjErpEsc(first.no)} · ${_adjErpFmtAt(first.day)}${e.docs.length>1?` +${e.docs.length-1}`:''}</div>`:'';
-  const title=e.docs.length?e.docs.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):'ไม่พบใบใน ERP ตั้งแต่วันที่นับรายการนี้';
+  const title=e.docs.length?e.docs.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):'ไม่พบใน Report';
   return `<td style="text-align:center;white-space:nowrap;" title="${_adjErpEsc(title)}"><span style="font-weight:700;font-size:0.76rem;color:${ui.color};">${ui.text}${amt}</span>${sub}</td>`;
 }
 // แถบชิปตัวกรอง + สรุป "มีใน ERP แต่ไม่อยู่ในแท็บนี้" — วาดก่อนตาราง (ต้องอยู่แม้ตัวกรองไม่เหลือแถว ไม่งั้นกดกลับไม่ได้)
@@ -9500,17 +9486,14 @@ function _renderAdjErpBar(vr){
   for(const r of vr.all){const g=_adjErpGroup(vr.ev.get(r.sku)?.state);if(g)n[g]++;}
   const chip=(k,label,cnt)=>`<button type="button" class="adj-erp-chip${vr.filter===k?' active':''}" data-erp-filter="${k}" onclick="setAdjErpFilter('${k}')">${label} <b>${cnt}</b></button>`;
   // ADJ_ERP_LOT_AWARE: ปุ่ม "นอกใบ 📦" (ทั้งสองทิศ · แยกสลับ LOT/ปรับยอดนอกใบ) แทนข้อความเดิม — เดิมถูกใบที่ 📥 นำเข้าใน 🗂️ บังจนไม่เตือน (เคส SSS)
+  // ข้อความเดิม "มีใบ … ใน ERP แต่ไม่อยู่ในแท็บนี้" (เคยโผล่ตอนปิดสวิตช์) ถอดแล้วพร้อม _adjErpExtraSkus — ผู้ใช้สั่ง 11 ต.ค. 2026 · ปิดสวิตช์ = ไม่มีทั้งปุ่มและข้อความ
   let tail='';
   if(ADJ_ERP_LOT_AWARE){
     const outs=_adjErpOutsideList();
     tail=_adjErpOutsideBtnHtml(outs);
     const ov=document.getElementById('adjErpOutsideOverlay');if(ov&&ov.style.display==='flex')renderAdjErpOutsideTable(outs);
-  }else{
-    const extra=_adjErpExtraSkus(vr.all,_adjDocFilter);
-    const extraTip=extra.slice(0,40).map(x=>`${x.sku} · ${x.qty} · ${x.docs.map(d=>d.no).join(', ')}`).join('\n')+(extra.length>40?`\n… อีก ${extra.length-40} SKU`:'');
-    tail=extra.length?`<span id="adjErpExtra" title="${_adjErpEsc(extraTip)}" style="font-size:0.72rem;color:var(--text3);cursor:help;">· มีใบ ${ADJ_ERP_DIR_TYPE[_adjDocFilter]} ใน ERP แต่ไม่อยู่ในแท็บนี้ ${extra.length} SKU</span>`:'';
   }
-  bar.innerHTML=`<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ตรวจกับ ERP:</span>`
+  bar.innerHTML=`<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ตรวจสอบ Report</span>`
     +chip('all','ทั้งหมด',vr.all.length)+chip('none','⬜ ยังไม่เข้า',n.none)+chip('done','✅ เข้าแล้ว',n.done)+chip('issue','⚠️ ไม่ตรง',n.issue)
     +tail;
   bar.style.display='flex';
@@ -9574,7 +9557,7 @@ function renderAdjErpOutsideTable(pre){
   const list=pre||_adjErpOutsideList();
   const ackOn=_adjErpAckOn();
   const thead=document.getElementById('adjErpOutsideThead');
-  if(thead)thead.innerHTML='<tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ใบใน ERP</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th style="min-width:210px;">เหตุผล</th>'+(ackOn?'<th style="min-width:170px;">รับทราบ</th>':'')+'</tr>';
+  if(thead)thead.innerHTML='<tr><th>ประเภท</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>เลขที่เอกสาร</th><th style="text-align:center;">ผลรวม</th><th>สถานะในแอป</th><th style="min-width:210px;">เหตุผล</th>'+(ackOn?'<th style="min-width:170px;">รับทราบ</th>':'')+'</tr>';
   const c=_adjErpOutsideCounts(list),d=_adjErpOutsideDirCounts(list);
   const cnt=document.getElementById('adjErpOutsideCount');
   if(cnt)cnt.textContent=`${list.length} รายการ · ${ADJ_ERP_OUT_KIND_UI.dec.plain} ${d.all.dec} · ${ADJ_ERP_OUT_KIND_UI.inc.plain} ${d.all.inc}${c.acked?` · รับทราบแล้ว ${c.acked}`:''} · ปรับปรุง LOT สินค้า ${c.lot} · ปกติ ${c.ok}`;
@@ -9605,7 +9588,7 @@ function exportAdjErpOutsideExcel(){
   const list=_adjErpOutsideList();
   if(!list.length){toast(`ไม่มี${ADJ_ERP_OUT_TITLE} ให้ Export`,'warn');return;}
   const ackOn=_adjErpAckOn();
-  const header=['ประเภท','รหัสสินค้า','ชื่อสินค้า','ORDS (ลด)','IRPS (เพิ่ม)','ผลรวม','ใบใน ERP','สถานะในแอป','เหตุผล'].concat(ackOn?['รับทราบ','รับทราบโดย']:[]);
+  const header=['ประเภท','รหัสสินค้า','ชื่อสินค้า','ORDS (ลด)','IRPS (เพิ่ม)','ผลรวม','เลขที่เอกสาร','สถานะในแอป','เหตุผล'].concat(ackOn?['รับทราบ','รับทราบโดย']:[]);
   const aoa=[header].concat(list.map(x=>{
     const row=[_adjErpOutKindUi(x).plain,x.sku,x.name,x.ords,x.irps,x.net,
       x.docs.map(d=>`${d.no} ${_adjErpFmtAt(d.at,true)} ${d.type} ${d.qty} (${ADJ_ERP_ORIGIN_UI[d.origin]})`).join(', '),_adjErpStatusLabel(x.status),x.reason];
@@ -9666,7 +9649,7 @@ function _refreshAdjErpCard(){
 // เภสัชแนบเองได้ — ไม่ผ่าน openAdjFilePicker (การ์ด LOT/ราคาล็อกไว้ให้ Admin)
 function openAdjErpFilePicker(){
   if(!_adjErpEnabled())return;
-  if(_adjErpBusy){toast('กำลังตรวจไฟล์ ERP ก่อนหน้า — รอสักครู่','warn');return;}
+  if(_adjErpBusy){toast('กำลังตรวจไฟล์ Report ก่อนหน้า — รอสักครู่','warn');return;}
   const el=document.getElementById('adjErpFileInput');if(el)el.click();
 }
 // parseFile แบบ Promise — parseFile ไม่เรียก callback เมื่อนามสกุลไม่รองรับ/อ่านไฟล์ล้ม จึงต้องมีด่านนามสกุล + หมดเวลา (ไม่งั้นการ์ดค้าง "กำลังตรวจ")
@@ -9683,7 +9666,7 @@ async function handleAdjErpFiles(event){
   const files=[...((input&&input.files)||[])];
   if(input)try{input.value='';}catch(e){}   // เลือกไฟล์เดิมซ้ำได้ (onchange ยิงใหม่)
   if(!files.length||!_adjErpEnabled())return;
-  if(_adjErpBusy){toast('กำลังตรวจไฟล์ ERP ก่อนหน้า — รอสักครู่','warn');return;}
+  if(_adjErpBusy){toast('กำลังตรวจไฟล์ Report ก่อนหน้า — รอสักครู่','warn');return;}
   const branch=currentBranch,epoch=_countResetAt||'';
   _adjErpBusy=true;_refreshAdjErpCard();
   try{
@@ -9700,8 +9683,8 @@ async function handleAdjErpFiles(event){
     if(!res)return;
     const sum=ADJ_ERP_TYPES.filter(t=>parsed.some(p=>p.cover[t]))
       .map(t=>`${t} ${parsed.reduce((a,p)=>a+p.docs.filter(d=>d.type===t).length,0)} ใบ`).join(' · ');
-    if(res.saved)toast(`ตรวจกับ ERP แล้ว · ${sum} — บันทึกแล้ว ทุกเครื่องเห็นผลเดียวกัน`,'success',5000);
-    else toast(`ตรวจกับ ERP แล้ว · ${sum} — บันทึก Cloud ไม่ได้ (${_shortErr(res.fail)})`,'warn',9000);   // "เห็นเฉพาะเครื่องนี้" อยู่บนการ์ดตลอดแล้ว
+    if(res.saved)toast(`ตรวจกับ Report แล้ว · ${sum} — บันทึกแล้ว ทุกเครื่องเห็นผลเดียวกัน`,'success',5000);
+    else toast(`ตรวจกับ Report แล้ว · ${sum} — บันทึก Cloud ไม่ได้ (${_shortErr(res.fail)})`,'warn',9000);   // "เห็นเฉพาะเครื่องนี้" อยู่บนการ์ดตลอดแล้ว
   }finally{
     _adjErpBusy=false;
     _refreshAdjErpCard();renderAdjustDocTable();_applyStatAuditCardMode();
@@ -10053,7 +10036,7 @@ function _applyStatAuditCardMode(){
   val.classList.toggle('green',complete);val.classList.toggle('red',!complete);
   const notes=[];
   if(s.total&&!s.st)notes.push('ยังไม่อัป R02.102');
-  for(const t of s.uncovered)notes.push(`${t}: ยังไม่มีข้อมูล ERP`);
+  for(const t of s.uncovered)notes.push(`${t}: ยังไม่มีข้อมูลในระบบ`);
   if(s.issue)notes.push(`⚠️ ไม่ตรง ${s.issue}`);
   const sub=document.getElementById('statAuditSub');
   if(sub){sub.style.display=notes.length?'block':'none';put('statAuditSub',notes.join(' · '));}
@@ -10069,12 +10052,12 @@ function _applyStatAuditCardMode(){
     card.dataset.adjErpCard='1';
     card.title=['Stock Adj ที่เข้า ProMaxx แล้ว / ที่ต้องปรับทั้งหมดของรอบนี้ (ตรวจจาก R02.102 ที่แนบที่ 📦 ปรับปรุงสินค้า)',
       ADJ_ERP_TYPES.map(t=>`${t} เข้าแล้ว ${s.by[t].done}/${s.by[t].total}`).join(' · '),
-      s.issue?`ไม่ตรงกับ ERP ${s.issue} (บางส่วน/เกิน/ทิศตรงข้าม) — ดูที่ 📦 ตัวกรอง ⚠️ ไม่ตรง`:'',
-      s.settledDone?`ปรับเข้า ERP แล้วจนยอดระบบตรง ${s.settledDone}`:'',
+      s.issue?`ไม่ตรงกับระบบ ${s.issue} (บางส่วน/เกิน/ทิศตรงข้าม) — ดูที่ 📦 ตัวกรอง ⚠️ ไม่ตรง`:'',
+      s.settledDone?`ปรับเข้าระบบ แล้วจนยอดระบบตรง ${s.settledDone}`:'',
       s.exported?`รวมที่ส่งออกแล้ว (🗂️ ประวัติปรับปรุง) ${s.exported}`:'',
       s.stale?`รวม Stock Adj ที่ต้องรีเช็คใหม่ ${s.stale} (ไม่อยู่ในใบ 📦 · ใช้เลขตอนรีเช็ค)`:'',
       s.st?`${_adjErpRptName(s.st)} ${_adjFmtUpdated(s.st.updatedAt)||'อัปเดตแล้ว'}${s.st.localOnly?' · เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)':''}`
-        :'ยังไม่อัป R02.102 — เภสัชแนบที่ 📦 ปรับปรุงสินค้า → 🧾 ตรวจกับ ERP',
+        :'ยังไม่อัป R02.102 — เภสัชแนบที่ 📦 ปรับปรุงสินค้า → 🧾 ตรวจกับ ProMaxx',
     ].filter(Boolean).join('\n');
   }
 }
@@ -10216,7 +10199,7 @@ function renderAdjustDocTable(force){
   // แถวของแท็บหลังตัวกรอง ERP (ประตูเดียวกับ Export — ดู _adjustDocViewRows) · ไม่มีไฟล์ ERP = ทุกแถวของแท็บเหมือนเดิม
   const vr=_adjustDocViewRows(_adjDocFilter);
   const erpOn=vr.covered;
-  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th>'+(erpOn?'<th style="text-align:center;">ERP</th>':'')+'</tr>';
+  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">ราคา</th><th style="text-align:center;">LOT</th><th style="text-align:center;">EXP</th><th style="text-align:center;">รวมเงิน</th>'+(erpOn?'<th style="text-align:center;">Report</th>':'')+'</tr>';
   _renderAdjErpBar(vr);   // วาดก่อน early-return — ตัวกรองที่ไม่เหลือแถวต้องยังมีชิปให้กดกลับ
   const rows=vr.rows;
   const nEdit=rows.filter(r=>r.edited).length;
@@ -10679,10 +10662,10 @@ function renderAdjHistTable(){
     const undo=armed
       ?`<button type="button" data-no="${n}" onclick="event.stopPropagation();undoAdjHistEntry(this.dataset.no)" style="${btn}border:none;background:var(--red);color:#fff;">${erp?'ยืนยันลบ':'ยืนยันคืน'}</button> <button type="button" data-no="${n}" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:600;">ไม่</button>`
         +(erp
-          ?`<div style="font-size:0.66rem;font-weight:400;color:var(--text3);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ลบเฉพาะรายการในประวัตินี้ — ไม่กระทบใบใน ERP และตาราง 📦</div>`
-          :`<div style="font-size:0.66rem;font-weight:400;color:var(--red);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ถ้าไฟล์นี้นำเข้า ERP ไปแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ</div>`)
+          ?`<div style="font-size:0.66rem;font-weight:400;color:var(--text3);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">ลบเฉพาะรายการในประวัตินี้ — ไม่กระทบใบปรับปรุงสินค้าและตาราง 📦</div>`
+          :`<div style="font-size:0.66rem;font-weight:400;color:var(--red);margin-top:4px;white-space:normal;max-width:230px;margin-left:auto;">นำเข้าแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ</div>`)
       :(erp
-        ?`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ (ไม่กระทบใบใน ERP และตาราง 📦)" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">🗑 ลบ</button>`
+        ?`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ (ไม่กระทบใบปรับปรุงสินค้าและตาราง 📦)" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">🗑 ลบ</button>`
         :`<button type="button" data-no="${n}" title="ลบเอกสารนี้ออกจากประวัติ แล้วรายการกลับมาที่ตาราง 📦" onclick="event.stopPropagation();armAdjHistUndo(this.dataset.no)" style="${btn}border:1px solid var(--border);background:var(--surface2);color:var(--text2);">↩ คืนรายการ</button>`);
     const byCell=erp
       ?`<td title="${esc(`นำเข้า Report${e.impBy?' โดย '+e.impBy:''}${e.impAt?' · '+_adjHistFmtAt(e.impAt):''}${e.file?' · ไฟล์ '+e.file:''}`)}" style="white-space:nowrap;color:var(--text2);">📥 Report</td>`
@@ -10875,7 +10858,7 @@ function exportAdjustDocExcel(){
   const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ประตูเดียวกับ Export Text)
   if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
   // แท็บที่มีไฟล์ ERP แล้ว: เพิ่ม 3 คอลัมน์ท้าย (เหมือนคอลัมน์ ERP บนจอ) · ไม่มีไฟล์ = 9 คอลัมน์เดิม
-  const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'].concat(vr.covered?['ERP เข้าแล้ว','สถานะ ERP','เลขที่เอกสาร ERP']:[]);
+  const header=['ลำดับ','รหัสสินค้า','ชื่อสินค้า','หน่วย','จำนวน','ราคา','LOT','EXP','รวมเงิน'].concat(vr.covered?['อัปโหลด Report แล้ว','สถานะ','เลขที่เอกสาร']:[]);
   const aoa=[header];
   rows.forEach((r,i)=>{
     const selEntry=_adjSelectedEntry(r.sku);             // ประตูเดียวกับ Export Text

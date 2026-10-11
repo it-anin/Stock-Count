@@ -459,7 +459,7 @@ test('ป็อปอัพ 🗂️ ประวัติ: รายการเ
   // ↩ ขั้นที่ 1 (ยังไม่ลบ) → ไม่ → กลับ · ขั้นที่ 2 ยืนยัน → ลบเอกสาร แถวกลับตาราง (แท็บ ORDS) ใช้เลขเดิมได้
   const clickBtn = (no, text) => app.page.evaluate(({ no, text }) => { [...document.querySelectorAll(`#adjHistBody button[data-no="${no}"]`)].find((b) => b.textContent.trim() === text).click(); }, { no, text });
   await clickBtn('ORDSBY001', '↩ คืนรายการ');
-  expect(await app.page.evaluate(() => document.querySelector('#adjHistBody tr[data-no="ORDSBY001"]').textContent)).toContain('ถ้าไฟล์นี้นำเข้า ERP ไปแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ');
+  expect(await app.page.evaluate(() => document.querySelector('#adjHistBody tr[data-no="ORDSBY001"]').textContent)).toContain('นำเข้าแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ');
   expect((await store(app.page)).entries).toHaveLength(2);                                // ยังไม่ลบ
   await clickBtn('ORDSBY001', 'ไม่');
   expect(await app.page.evaluate(() => document.querySelector('#adjHistBody tr[data-no="ORDSBY001"]').textContent)).not.toContain('ปรับสต็อกซ้ำ');
@@ -540,7 +540,7 @@ test('ตอน login: ป้ายตัวเลขปุ่ม 📦 ไม่
   await closeApp(app);
 });
 
-test('Export Excel ไม่ถามเลขที่เอกสาร แต่ไม่เห็นแถวที่ย้ายไปประวัติ · การ์ด ERP ไม่รายงาน SKU ที่ส่งออกแล้วเป็น "มีใบใน ERP แต่ไม่อยู่ในแท็บนี้"', async ({ browser }) => {
+test('Export Excel ไม่ถามเลขที่เอกสาร แต่ไม่เห็นแถวที่ย้ายไปประวัติ', async ({ browser }) => {
   const app = await bootBare(browser);
   await seed(app.page, { nO: 25, nI: 0 });
   // ERP มีใบ ORDS ของ O001/O002 แล้ว (ผู้ใช้ส่งไฟล์ที่ Export ไปเข้า ProMaxx)
@@ -550,9 +550,7 @@ test('Export Excel ไม่ถามเลขที่เอกสาร แต
   }, EPOCH);
   await render(app.page);
   await exportWith(app.page, 'ORDSBY001');                                                // O001–O020 ถูกย้ายไปประวัติ
-  expect(await app.page.evaluate(() => _adjErpExtraSkus(_buildAdjustDocRows('ords'), 'ords'))).toEqual([]);   // ไม่ใช่ "หลุดจากแท็บ" — ส่งออกแล้วจึงอยู่ใน ERP เป็นปกติ
-  // ถ้าไม่มีประวัติ SKU เหล่านั้นจะถูกรายงานว่า "หลุดจากแท็บ" (ยืนยันว่าเทสนี้มองเห็นความต่างจริง)
-  expect((await app.page.evaluate(() => { const h = _adjHist; _adjHist = null; const r = _adjErpExtraSkus(_buildAdjustDocRows('ords').filter(() => false), 'ords').map((x) => x.sku); _adjHist = h; return r; })).sort()).toEqual(['O001', 'O002']);
+  // (เดิมตรวจ _adjErpExtraSkus — ข้อความ "มีใบใน ERP แต่ไม่อยู่ในแท็บนี้" ถอดแล้วพร้อมฟังก์ชัน · ผู้ใช้สั่ง 11 ต.ค. 2026)
 
   // Excel: ไม่เด้ง modal · ได้เฉพาะแถวที่เหลือ (O021–O025) · ไม่เขียนประวัติเพิ่ม
   const writes = await app.page.evaluate(() => window.__writes);

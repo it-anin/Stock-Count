@@ -452,7 +452,7 @@ test('🗑 ลบเอกสารที่นำเข้า: ยืนยั�
 
   await btn('IRPSBY001', '🗑 ลบ');
   expect(await cell('IRPSBY001')).toContain('ยืนยันลบ');
-  expect(await cell('IRPSBY001')).toContain('ลบเฉพาะรายการในประวัตินี้ — ไม่กระทบใบใน ERP และตาราง 📦');
+  expect(await cell('IRPSBY001')).toContain('ลบเฉพาะรายการในประวัตินี้ — ไม่กระทบใบปรับปรุงสินค้าและตาราง 📦');
   expect((await store(app.page)).entries).toHaveLength(2);                               // ขั้นแรกยังไม่ลบ
   await btn('IRPSBY001', 'ไม่');
   expect(await cell('IRPSBY001')).not.toContain('ยืนยันลบ');
@@ -467,7 +467,7 @@ test('🗑 ลบเอกสารที่นำเข้า: ยืนยั�
   // เอกสารที่ Export จากแอปยังเป็น ↩ → แถวกลับตาราง (ข้อความเดิม)
   await btn('ORDSAPP1', '↩ คืนรายการ');
   expect(await cell('ORDSAPP1')).toContain('ยืนยันคืน');
-  expect(await cell('ORDSAPP1')).toContain('ถ้าไฟล์นี้นำเข้า ERP ไปแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ');
+  expect(await cell('ORDSAPP1')).toContain('นำเข้าแล้ว การส่งซ้ำจะปรับสต็อกซ้ำ');
   await btn('ORDSAPP1', 'ยืนยันคืน');
   await app.page.waitForFunction(() => !_adjHistBusy);
   expect(await lastToast(app.page)).toBe('↩ คืนรายการของเอกสาร ORDSAPP1 กลับตารางแล้ว');

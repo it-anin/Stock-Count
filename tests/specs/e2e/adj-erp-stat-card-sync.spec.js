@@ -60,7 +60,7 @@ test.describe('การ์ด Stock Adj เข้าระบบ — ซิง�
     await waitForDoc(PROJECT_ID, 'stock_sessions/SRC_adjerp', (d) => d && d.countResetAt === A.epoch);
     for (const m of [A, B]) {
       await waitValue(m.page, '1 / 3');
-      expect(await card(m.page)).toMatchObject({ value: '1 / 3', sub: 'IRPS: ยังไม่มีข้อมูล ERP · ⚠️ ไม่ตรง 1' });
+      expect(await card(m.page)).toMatchObject({ value: '1 / 3', sub: 'IRPS: ยังไม่มีข้อมูลในระบบ · ⚠️ ไม่ตรง 1' });
     }
     expect(await B.page.evaluate(() => document.getElementById('adjustDocPopupOverlay').style.display)).not.toBe('flex');   // B ไม่ได้เปิดป็อปอัพ
 

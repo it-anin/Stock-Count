@@ -14,7 +14,7 @@
 //   9. การ์ด/ไฟล์: นามสกุลผิด → error ไม่ค้าง "กำลังตรวจ" · logout ล้าง
 //  10. รายงานเคลื่อนไหวสินค้า (CF_ 45 คอลัมน์ · 7 ต.ค. 2026 · ผู้ใช้สั่ง — ไม่มี FCANCEL · ไม่มีป้ายบนการ์ด · ไม่มีสวิตช์): ผลเท่า R16 ทุกฟิลด์ · เวลาจาก TRANDATE · ด่านสาขา/คลังชุดเดียวกัน
 //      · R16 ที่ขาด FCANCEL ยังถูกปฏิเสธ (ข้อยกเว้นเฉพาะรูปแบบนี้) · ★ แนบไฟล์เดียวที่การ์ด → สถานะต่อแถวเท่าแนบ R16.104+R16.103
-//  11. ชื่อ+คำอธิบายการ์ด (7 ต.ค. 2026 · ผู้ใช้สั่ง): ชื่อ "ตรวจกับ ERP · R02.102" · "R02.102 อัปเดต วันที่ … เวลา …" รูปเดียวกับการ์ด LOT/ราคา · ชื่อรายงานตามที่แนบ (cover[t].rpt) · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย
+//  11. ชื่อ+คำอธิบายการ์ด (7 ต.ค. 2026 · ผู้ใช้สั่ง): ชื่อ "ตรวจสอบ รายงาน R02.102" (เดิม "ตรวจกับ ERP · R02.102" · เปลี่ยน 11 ต.ค. 2026) · "R02.102 อัปเดต วันที่ … เวลา …" รูปเดียวกับการ์ด LOT/ราคา · ชื่อรายงานตามที่แนบ (cover[t].rpt) · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย
 //      · คำเตือน "เฉพาะเครื่องนี้"/หมายเหตุสิ่งที่ถูกตัดไม่หาย · ช่วงของไฟล์/ผู้แนบอยู่ใน tooltip
 // (ข้อมูลสังเคราะห์ทั้งหมด — ห้ามใช้ CSV จริง)
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
@@ -123,6 +123,8 @@ const read = (page) => page.evaluate(() => {
     bar: getComputedStyle(bar).display === 'none' ? null : {
       chips: [...bar.querySelectorAll('.adj-erp-chip')].map((b) => [b.dataset.erpFilter, Number(b.querySelector('b').textContent), b.classList.contains('active')]),
       extra: (bar.querySelector('#adjErpExtra') || {}).textContent || '',
+      label: (bar.querySelector('span') || {}).textContent || '',
+      text: bar.textContent,
     },
     card: getComputedStyle(document.getElementById('adjErpCard')).display === 'none' ? null : document.getElementById('adjErpInfo').textContent,
     tip: document.getElementById('adjErpCard').title,                      // tooltip การ์ด: ชื่อสาขา · ช่วงของไฟล์ · ผู้แนบ · วิธีแนบ
@@ -342,7 +344,7 @@ test('merge: ไฟล์ใหม่ทับเฉพาะช่วงขอ�
 test('★ สถานะต่อแถว + แสดงผล: เข้าแล้ว/บางส่วน/เกิน/ยังไม่เข้า/ทิศตรงข้าม/ไม่ส่ง · ขอบล่างรายแถว · คอลัมน์/ชิป/สรุปเฉพาะแท็บที่มีไฟล์', async ({ browser }) => {
   const app = await boot(browser);
   await seedScenario(app.page);
-  // ข้อความ "มีใบใน ERP แต่ไม่อยู่ในแท็บนี้" เป็นของเดิม = ทางถอยของ ADJ_ERP_LOT_AWARE (เปิดแล้วแทนด้วยปุ่ม "นอกใบ 📦" — ดู adj-erp-lot-aware.spec.js)
+  // ข้อความเดิม "มีใบใน ERP แต่ไม่อยู่ในแท็บนี้" (เคยเป็นทางถอยของ ADJ_ERP_LOT_AWARE) ถอดแล้ว — ผู้ใช้สั่ง 11 ต.ค. 2026 · ปิดสวิตช์ต้องไม่โผล่
   // สถานะต่อแถวที่เทสนี้ตรวจไม่มีเคสสลับ LOT (A05 สุทธิ −2 ≠ 2 = ทิศตรงข้ามทั้งเปิด/ปิดสวิตช์)
   await app.page.evaluate(() => { ADJ_ERP_LOT_AWARE = false; _adjDocFilter = 'ords'; renderAdjustDocTable(); _refreshAdjErpCard(); });
   const before = await read(app.page);
@@ -367,10 +369,12 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   expect(await stateOf(app.page, 'irps')).toEqual({ B01: null, B02: null });  // แท็บ IRPS ยังไม่มีไฟล์
   await app.page.evaluate(() => renderAdjustDocTable());
   const r1 = await read(app.page);
-  expect(r1.head[9]).toBe('ERP');
+  expect(r1.head[9]).toBe('Report');
   expect(r1.erp).toEqual(['✅ เข้าแล้ว', '⚠️ บางส่วน 1/2', '⚠️ เกิน 3/2', '⬜ ยังไม่เข้า', '⬜ ยังไม่เข้า', '⬜ ยังไม่เข้า', '— ไม่ส่ง', '⚠️ เกิน 3/0', '✅ เข้าแล้ว', '✅ เข้าแล้ว']);
   expect(r1.bar.chips).toEqual([['all', 10, true], ['none', 3, false], ['done', 3, false], ['issue', 3, false]]);
-  expect(r1.bar.extra).toContain('ไม่อยู่ในแท็บนี้ 1 SKU');                   // ZZZ
+  expect(r1.bar.extra).toBe('');                                               // ZZZ — ข้อความเดิมถอดแล้ว
+  expect(r1.bar.label).toBe('ตรวจสอบ Report');
+  expect(r1.bar.text).not.toContain('ไม่อยู่ในแท็บนี้');
   expect(r1.card).toMatch(/^R16\.104 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2} · IRPS: ยังไม่มีข้อมูล/);   // ชื่อรายงานตามที่แนบ + รูปเวลาเดียวกับการ์ด LOT/ราคา · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย
   expect(r1.card).toContain('ข้ามใบของคลังชากค้อ 1 บรรทัด');
   expect(r1.card).toContain('ใบยกเลิก 1 ใบ');
@@ -393,7 +397,8 @@ test('★ สถานะต่อแถว + แสดงผล: เข้า�
   await app.page.evaluate(() => setAdjDocFilter('irps', document.getElementById('adjBtnIrps')));
   const r2 = await read(app.page);
   expect(r2.erp).toEqual(['✅ เข้าแล้ว', '⬜ ยังไม่เข้า']);
-  expect(r2.bar.extra).toContain('มีใบ IRPS ใน ERP แต่ไม่อยู่ในแท็บนี้ 1 SKU');   // A05
+  expect(r2.bar.extra).toBe('');                                               // A05 — ข้อความเดิมถอดแล้ว
+  expect(r2.bar.text).not.toContain('ไม่อยู่ในแท็บนี้');
   expect(r2.card).toMatch(/^R16\.104 \+ R16\.103 อัปเดต วันที่ \d{2}\/\d{2}\/\d{4} เวลา \d{2}:\d{2}/);   // ครบทั้งสองชนิดจากสองรายงาน → ชื่อทั้งสอง · ไม่มี "ยังไม่มีข้อมูล"
   expect(r2.card).not.toContain('ยังไม่มีข้อมูล');
   await closeApp(app);
@@ -437,7 +442,7 @@ test('★ แนบรายงานเคลื่อนไหวสินค�
 test('การ์ด 🧾 คำอธิบาย: "<รายงาน> อัปเดต วันที่ … เวลา …" (รูปเดียวกับการ์ด LOT/ราคา) · ชื่อรายงานตามที่แนบ · ชนิดที่ไม่มีข้อมูลบอกต่อท้าย · คำเตือน/หมายเหตุไม่หาย · ช่วง/ผู้แนบอยู่ใน tooltip', async ({ browser }) => {
   const app = await boot(browser);
   // HTML เริ่มต้น (ก่อน JS ทับ) ต้องไม่ค้างข้อความ R16 เดิม — ชื่อการ์ด · คำอธิบาย · tooltip ปุ่ม 📥 ในประวัติ
-  expect(await app.page.evaluate(() => document.querySelector('#adjErpCard .upload-file-name').textContent)).toBe('ตรวจกับ ERP · R02.102');
+  expect(await app.page.evaluate(() => document.querySelector('#adjErpCard .upload-file-name').textContent)).toBe('ตรวจสอบ รายงาน R02.102');
   expect(await app.page.evaluate(() => document.getElementById('adjErpInfo').textContent)).toBe('แนบ R02.102 จาก ProMaxx เพื่อดูว่ารายการไหนทำเข้าระบบแล้ว');
   expect(await app.page.evaluate(() => document.getElementById('adjHistImportBtn').title)).toBe('นำเข้าใบ ORDS/IRPS ที่ออกใน ProMaxx แล้ว (R02.102 เป็น .CSV) เป็นประวัติ — ไม่กระทบรายการบนใบ 📦');
   await seedScenario(app.page);
@@ -510,7 +515,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(t1.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 1/3')).toBe(true);   // ไม่มีคำว่า "เฉพาะ" (ไม่ได้กรอง ERP)
   expect(t1.some((t) => t === 'warn|⚠️ 20 รายการในไฟล์มีใบใน ERP แล้ว (เข้าแล้ว 15 · บางส่วน 5) — ระวังส่งซ้ำ')).toBe(true);
   const sAll = await exportSheet(app.page, 'ORDS');
-  expect(sAll[0]).toEqual([...sheetBase[0], 'ERP เข้าแล้ว', 'สถานะ ERP', 'เลขที่เอกสาร ERP']);
+  expect(sAll[0]).toEqual([...sheetBase[0], 'อัปโหลด Report แล้ว', 'สถานะ', 'เลขที่เอกสาร']);
   expect(sAll.map((r) => r.slice(0, 9))).toEqual(sheetBase);
   expect(sAll[1].slice(9)).toEqual([2, 'เข้าแล้ว', 'ORDSBY001']);
   expect(sAll[16].slice(9)).toEqual([1, 'บางส่วน 1/2', 'ORDSBY016']);
@@ -544,7 +549,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(tNone2.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(want.slice(20));
   expect(tNone2.trim().split('\r\n')[0]).toBe(textAll.trim().split('\r\n')[40]);   // บรรทัดเดียวกันทุกไบต์ — เปลี่ยนแค่ "แถวไหนถูกส่ง"
   const t2 = await lastToasts(app.page, n0);
-  expect(t2.some((t) => t === 'success|Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 2/2 · เฉพาะ ⬜ ยังไม่เข้า ERP')).toBe(true);
+  expect(t2.some((t) => t === 'success|Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 2/2 · เฉพาะ ⬜ ยังไม่เข้า ProMaxx')).toBe(true);
   expect(t2.some((t) => t.includes('ระวังส่งซ้ำ'))).toBe(false);
   // หน้า 1 ของตัวกรอง = 20 แถวแรกของตัวกรอง (O021–O040) · ตัวกรองจัดหน้าเองหลังกรอง ไม่ใช่หน้าของแท็บ
   await app.page.evaluate(() => setAdjDocPage(1));
@@ -570,7 +575,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(await app.page.evaluate(() => [document.querySelector('#adjustDocBody td').colSpan, document.getElementById('adjustDocBody').textContent.trim()])).toEqual([10, 'ไม่มีรายการในตัวกรองนี้']);
   n0 = await toastCount(app.page);
   expect(await exportText(app.page)).toBeNull();
-  expect((await lastToasts(app.page, n0))[0]).toBe('warn|ไม่มีรายการให้ Export ตามแท็บที่เลือก · เฉพาะ ✅ เข้า ERP แล้ว');
+  expect((await lastToasts(app.page, n0))[0]).toBe('warn|ไม่มีรายการให้ Export ตามแท็บที่เลือก · เฉพาะ ✅ เข้า ProMaxx แล้ว');
   await closeApp(app);
 });
 
@@ -652,7 +657,7 @@ test('cloud: บันทึก/อ่าน {branch}_adjerp · ไฟล์ท�
     return { epoch: d.countResetAt, by: d.updatedBy, docs: JSON.parse(d.docs_json).map((x) => x.no).sort(), cover: Object.keys(JSON.parse(d.cover_json)), local: _adjErp.localOnly, name: d.branchName };
   });
   expect(saved).toEqual({ epoch: EPOCH, by: 'Pharm', docs: ['ORDSBY001', 'ORDSBY002', 'ORDSBY003', 'ORDSBY004', 'ORDSBY005', 'ORDSBY006'], cover: ['ORDS'], local: false, name: 'สาขาทดสอบ' });
-  expect(await app.page.evaluate(() => window.__toasts.some((t) => t.startsWith('success|ตรวจกับ ERP แล้ว · ORDS 6 ใบ — บันทึกแล้ว')))).toBe(true);
+  expect(await app.page.evaluate(() => window.__toasts.some((t) => t.startsWith('success|ตรวจกับ Report แล้ว · ORDS 6 ใบ — บันทึกแล้ว')))).toBe(true);
 
   // เครื่องอื่นแนบ R16.103 (state ในเครื่องว่าง) → transaction รวมกับของบน cloud ไม่ทับ ORDS
   await app.page.evaluate(() => { _adjErp = null; });
@@ -692,7 +697,7 @@ test('cloud: บันทึก/อ่าน {branch}_adjerp · ไฟล์ท�
   // บันทึกล้ม → ใช้ในเครื่องนี้ + toast เตือน + ป้าย "เฉพาะเครื่องนี้" · อ่าน cloud ไม่ทับผลในเครื่อง
   await app.page.evaluate(() => { window.__fail = 'unavailable'; _adjErp = null; });
   await upload(app.page, [{ name: 'r16104.csv', rows: FILE_O }]);
-  expect(await app.page.evaluate(() => [_adjErp.localOnly, window.__toasts.at(-1)])).toEqual([true, 'warn|ตรวจกับ ERP แล้ว · ORDS 6 ใบ — บันทึก Cloud ไม่ได้ (unavailable)']);
+  expect(await app.page.evaluate(() => [_adjErp.localOnly, window.__toasts.at(-1)])).toEqual([true, 'warn|ตรวจกับ Report แล้ว · ORDS 6 ใบ — บันทึก Cloud ไม่ได้ (unavailable)']);
   r = await read(app.page);
   expect(r.card).toContain('เห็นเฉพาะเครื่องนี้');
   expect(await app.page.evaluate(() => document.querySelector('#adjErpBadge span').textContent)).toBe('เฉพาะเครื่องนี้');
