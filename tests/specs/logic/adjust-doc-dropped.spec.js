@@ -68,7 +68,7 @@ test('รีเช็คแล้วยอดระบบขยับจนผ�
   expect(r.badge).toBe(1);                 // ปุ่มยังนับ = ความไม่ตรงที่เคยเงียบ
   expect(r.stale).toEqual(['GONE']);
   expect(r.settled).toEqual([]);           // ★ ไม่ใช่ "ไม่ต้องปรับแล้ว" — ของยังขาดอยู่จริง
-  expect(r.exportWarn).toContain('1 รายการไม่ได้อยู่ในไฟล์นี้');
+  expect(r.exportWarn).toContain('1 รายการไม่อยู่ในไฟล์');
   expect(r.exportWarn).toContain('ต้องรีเช็คใหม่');
   expect(r.hasBar).toBe(false);            // แถบเตือนในป็อปอัพถูกถอดออกแล้ว ห้ามโผล่กลับมา
   await closeApp(app);

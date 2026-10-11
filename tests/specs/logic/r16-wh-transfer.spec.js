@@ -93,7 +93,7 @@ test('WH — OTFI Col A=0 (คลังโอนออก) บวกกลับ
   expect(out.soldRaw).toEqual([100, 2]);     // อยู่ใน timeline ที่ใช้กรองตามเวลาสแกน
   expect(out.inbound).toBe(0);               // ถ้าได้ 100 = ยังหักเป็นรับเข้า (บั๊กเดิม)
   expect(out.otfiOut).toBe(1);
-  expect(out.toasts.join('|')).toContain('OTFI คลังโอนออก 1 แถว (Col A=0) บวกกลับ');
+  expect(out.toasts.join('|')).toContain('OTFI คลังโอนออก 1 แถว บวกกลับ');
 
   // สแกนก่อนเวลาใบโอน = ไม่กระทบ (900222/900024 วันที่ 7 ต.ค.) · หลังเวลาใบ = บวกกลับเต็มจำนวน
   expect(await app.page.evaluate(() => getSoldQtyBefore('S-1', '2026-10-07 12:00:00'))).toBe(2);
@@ -116,7 +116,7 @@ test('WH — OTFI Col A=1 (หน้าร้านโอนออก) ถูก
   expect(out.sold).toBe(3);                  // มีแต่ขายจากคลัง · OTFI หน้าร้านไม่ถูกบวกกลับ
   expect(out.rows).toBe(3);                  // แถวที่ข้ามยังอยู่ใน r16Data (ด่านวันที่/coverage ใช้)
   expect(out.skippedOtfi).toBe(2);
-  expect(out.toasts.join('|')).toContain('ข้ามหน้าร้านโอนออก 2 แถว (Col A=1)');
+  expect(out.toasts.join('|')).toContain('ข้ามหน้าร้านโอนออก 2 แถว');
   await closeApp(app);
 });
 
@@ -298,6 +298,6 @@ test('R16.103 — สาขาอื่น/สวิตช์ปิด นับ
   expect(out.sum).toBe(0);
   const toasts = out.toasts.join('|');
   expect(toasts).toContain('ข้ามรายการหน้าร้าน 1 แถว');
-  expect(toasts).not.toContain('ไม่สามารถจับคู่');
+  expect(toasts).not.toContain('จับคู่ไม่ได้');
   await closeApp(app);
 });

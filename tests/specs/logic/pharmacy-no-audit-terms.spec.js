@@ -126,7 +126,7 @@ test('★ โหมด idle · ผู้ช่วย · คู่มือ 2 ต
     const pe = state.scanData.get('PE0');
     return { got, sa: state.scanData.get('SA0').status, rq: state.scanData.get('SA0').recheckQty, pe: [pe.status, pe.countedQty, pe.recheckQty] };
   });
-  expect(toasts.got).toEqual(['SA0: Stock Adj — ยังไม่ได้เปิดรีเช็ค (กด ↺ สแกนใหม่ ที่ Stock Adj บน Desktop ก่อน)', 'ใช้รหัสผู้ช่วยนับสินค้า', 'PS0: Pass — ไม่ใช่รายการรอรีเช็ค']);
+  expect(toasts.got).toEqual(['SA0: Stock Adj — กด ↺ สแกนใหม่ ที่ Desktop ก่อน', 'ใช้รหัสผู้ช่วยนับสินค้า', 'PS0: Pass — ไม่ใช่รายการรอรีเช็ค']);
   expect([toasts.sa, toasts.rq]).toEqual(['stock_adjustment', undefined]); // เงื่อนไขปฏิเสธไม่เปลี่ยน
   expect(toasts.pe).toEqual(['pending', 0, undefined]); // pending ก็ไม่ถูกเขียนอะไร (ไม่นับ ไม่รีเช็ค)
   await closeApp(app);
@@ -140,15 +140,16 @@ test('PDA (≤600px + UA PDA): ป้ายรอรีเช็คแบบส�
   const r = await app.page.evaluate(() => ({
     pill: getScanRowStyle('audit').label,
     statusPill: getStatusPill('audit'),
-    r16: _toastMessageForDevice('R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (รายการรอรีเช็คจากวันก่อนเทียบตรงกับยอดระบบ)'),
-    r01: _toastMessageForDevice('R01.102: 10 รายการ · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (รายการรอรีเช็คเดิมยังอยู่)'),
-    r01Old: _toastMessageForDevice('R01.102: 10 รายการ · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)'),
+    // ข้อความ R16/R01 ไม่มีคำ Audit/รอรีเช็คแล้ว (ย่อ toast ต.ค. 2026) — ตรึงว่า PDA ยังย่อข้อความชุดปัจจุบันได้
+    r16: _toastMessageForDevice('R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้'),
+    r01: _toastMessageForDevice('R01.102: 10 รายการ · ล้าง R16 แล้ว อัปใหม่ก่อน Confirm'),
+    r01Wh: _toastMessageForDevice('R01.102: 10 รายการ · อัป R16.104/103 ใหม่ก่อน Confirm'),
   }));
   expect(r.pill).toBe('⚠️ รอรีเช็ค');
   expect(r.statusPill).toContain('⚠️ รอรีเช็ค');
   expect(r.r16).toBe('R16 อัปเดตแล้ว');
   expect(r.r01).toBe('R01: 10 รายการ — อัป R16 ก่อน Confirm');
-  expect(r.r01Old).toBe(r.r01); // ข้อความเดิม (สวิตช์ปิด) ยังย่อได้เหมือนเดิม
+  expect(r.r01Wh).toBe('R01: 10 รายการ — อัป R16 ใหม่ก่อน Confirm');
   await closeApp(app);
 });
 

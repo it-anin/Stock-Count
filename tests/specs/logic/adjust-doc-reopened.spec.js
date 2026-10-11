@@ -149,7 +149,7 @@ test('แถว ↺ แก้จำนวนไม่ได้ · Export ไม�
   });
   expect(out.text).toBe('N-SHORT\t3\t\t\t\t\t\t\t\t\r\n');
   expect(out.toasts.some((t) => t.startsWith('Export ORDS 1 รายการ (Text) สำเร็จ'))).toBe(true);
-  expect(out.toasts.find((t) => t.startsWith('⚠️'))).toBe('⚠️ 3 รายการไม่ได้อยู่ในไฟล์นี้ (รอรีเช็คหลังกด ↺ 3 — ยืนยันรีเช็คแล้วจะขึ้นใบ)');
+  expect(out.toasts.find((t) => t.startsWith('⚠️'))).toBe('⚠️ 3 รายการไม่อยู่ในไฟล์ (รอรีเช็คหลัง ↺ 3)');
   expect(await app.page.evaluate(() => window.__marked)).toEqual([]);
   await closeApp(app);
 });

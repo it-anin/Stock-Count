@@ -106,8 +106,8 @@ test('★ ไม่ขึ้นใบ: ค้างส่ง · ไม่มี�
   // toast ตอน Export ต้องบอกจำนวนที่ไม่ได้อยู่ในไฟล์ พร้อมเหตุผล
   await app.page.evaluate(() => _warnAdjustDocDropped());
   const t = await lastToast(app.page);
-  expect(t).toContain('2 รายการไม่ได้อยู่ในไฟล์นี้');
-  expect(t).toContain('รอรีเช็คที่ไม่มีเลขตอน Confirm 2');
+  expect(t).toContain('2 รายการไม่อยู่ในไฟล์');
+  expect(t).toContain('ไม่มีเลขตอน Confirm 2');
   await closeApp(app);
 });
 

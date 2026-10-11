@@ -1620,7 +1620,7 @@ async function _clearWhR16TimelineSnapshot(){
 function _ensureWhR16TimelineReady(){
   if(currentBranch!=='WH')return true;
   if(_whR16TimelineLoading){toast('กำลังโหลดรายละเอียด R16 จาก Cloud — กรุณารอสักครู่แล้วกด Confirm ใหม่','warn',4500);return false;}
-  if(!_whR16TimelineReady){toast('ข้อมูลรายละเอียด R16.104 จาก Cloud ยังไม่พร้อม — กรุณาอัปโหลด R16.104 ใหม่ที่เครื่องใดเครื่องหนึ่ง','warn',5000);return false;}
+  if(!_whR16TimelineReady){toast('R16.104 บน Cloud ยังไม่พร้อม — อัปโหลด R16.104 ใหม่ที่เครื่องใดก็ได้','warn',5000);return false;}
   if(state.r16_103Loaded&&!_whR16103TimelineReady){toast('ข้อมูลรายละเอียด R16.103 จาก Cloud ยังไม่พร้อม — กรุณารอสักครู่หรืออัปโหลดใหม่','warn',5000);return false;}
   return true;
 }
@@ -3314,13 +3314,13 @@ function _isForceCountColD(colD){return PM_COUNT_COL_D.includes((colD??'').toStr
 function loadProductMaster(event) {
   const file=event.target.files[0]; if(!file)return;
   parseFile(file,rows=>{
-    state.productMasterData=[]; let sk=0,priced=0,abc=0;
+    state.productMasterData=[]; let sk=0,abc=0;
     // Col D filter (ส.ค. 2026): ข้าม D / P เท่านั้น — REVIEW ไม่ถูกกรองแล้ว (รอบ 2) ให้ผลเหมือน A/B/C ทุกอย่าง
     // SKU ที่ถูกข้ามแต่ยังมีสต็อกใน R01 จะกลายเป็น DEL ใน rebuildMaps และหลุดจาก Progress ด้วย
     // (ตัวหาร Progress = PBM Col D ∈ A/B/C/REVIEW ∩ R01 — ดู _rebuildCountableSkus)
     // ⚠️ เก็บ `cat` เฉพาะแถว A/B/C/REVIEW เท่านั้น — {branch}_pm มีเพดาน 1 MiB เหมือน global_r05
     //    การเขียน cat:'' ให้ทุกแถวคือเพิ่ม byte ฟรีหลักหมื่นโดยไม่ได้ข้อมูลเพิ่ม
-    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const sku=(r[0]??'').toString().trim();const name=(r[1]??'').toString().trim();const colD=(r[3]??'').toString().trim().toUpperCase();if(!sku){sk++;continue;}if(colD==='D'||colD==='P'){sk++;continue;}const unitPrice=_parseProductMasterPrice(r[9]);if(unitPrice!==null)priced++;const isForceCount=_isForceCountColD(colD);if(isForceCount)abc++;state.productMasterData.push({sku,productName:name,unitPrice,...(isForceCount?{cat:colD}:{})});}
+    for(let i=1;i<rows.length;i++){const r=rows[i];if(!r||!r.length)continue;const sku=(r[0]??'').toString().trim();const name=(r[1]??'').toString().trim();const colD=(r[3]??'').toString().trim().toUpperCase();if(!sku){sk++;continue;}if(colD==='D'||colD==='P'){sk++;continue;}const unitPrice=_parseProductMasterPrice(r[9]);const isForceCount=_isForceCountColD(colD);if(isForceCount)abc++;state.productMasterData.push({sku,productName:name,unitPrice,...(isForceCount?{cat:colD}:{})});}
     state.productMasterMap.clear();
     state.productMasterData.forEach(r=>state.productMasterMap.set(r.sku,r.productName));
     document.getElementById('badgeProductMaster').textContent='Ready';
@@ -3328,7 +3328,8 @@ function loadProductMaster(event) {
     const _pmNow=new Date();_setPmTs(`${String(_pmNow.getHours()).padStart(2,'0')}:${String(_pmNow.getMinutes()).padStart(2,'0')} น. ${String(_pmNow.getDate()).padStart(2,'0')}/${String(_pmNow.getMonth()+1).padStart(2,'0')}/${_pmNow.getFullYear()}`);
     rebuildMaps();
     // A/B/C/REVIEW ต้องโชว์เสมอ — เป็น 0 คือสัญญาณว่าไฟล์ไม่มี Col D แล้วระบบจะ fallback ไปกติกา G≠0 เงียบๆ
-    toast(`Product Master (${currentBranch}): ${state.productMasterData.length} รายการ · A/B/C/REVIEW ${abc} · พบราคา ${priced}`+(sk?` (ข้าม ${sk})`:''),abc?'success':'warn');
+    // ไม่โชว์จำนวนราคาแล้ว — ราคาของ PBM (Col J) ไม่ใช่ตัวตัดสินกฎราคา (ใช้ R05.106 Col B)
+    toast(`Product Master (${currentBranch}): ${state.productMasterData.length} รายการ · A/B/C/REVIEW ${abc}`+(sk?` (ข้าม ${sk})`:''),abc?'success':'warn');
     saveSession(); syncProductMasterToFirestore();
   });
 }
@@ -3385,9 +3386,9 @@ function loadR01(event) {
       // R16 ทุกชุดผูกกับ r01Version — อัป R01 ใหม่ต้องรออัป R16.104/103 ชุดเดียวกันก่อน Confirm
       _clearWhR16Kind('104');_clearWhR16Kind('103');_clearWhR16TimelineSnapshot();
     }
-    let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'')+(nc?` · ไม่นับ ${nc} (หมวด 11. ไม่ใช่สินค้าคงคลัง)`:'')+(so?` · หมวด DELETE ${so} (นับเฉพาะที่ยังมียอด)`:'');
-    if(_isPharmacyBranch())r01Msg+=_pharmTxt(' · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (Audit เดิมรอเภสัชตรวจ)',' · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm (รายการรอรีเช็คเดิมยังอยู่)');
-    else if(currentBranch==='WH')r01Msg+=' · กรุณาอัปโหลด R16.104/103 ชุดใหม่ก่อน Confirm';
+    let r01Msg=`R01.102: ${state.r01Data.length} รายการ`+(sk?` (ข้าม ${sk})`:'')+(nc?` · หมวด 11. ไม่นับ ${nc}`:'')+(so?` · หมวด DELETE ${so}`:'');
+    if(_isPharmacyBranch())r01Msg+=' · ล้าง R16 แล้ว อัปใหม่ก่อน Confirm';
+    else if(currentBranch==='WH')r01Msg+=' · อัป R16.104/103 ใหม่ก่อน Confirm';
     toast(r01Msg,'success'); saveSession(); syncMasterToFirestore(false,true);
   });
 }
@@ -3522,23 +3523,23 @@ function loadR16(event) {
     const totalInbound=[...state.r16InboundMap.values()].reduce((a,b)=>a+b,0);
     if(matched>0){
       if(currentRole==='pharmacist'){
-        toast(_pharmAuditIdle(_legacyAuditCount())?'R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้':_pharmTxt('R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (Audit ค้างจากวันก่อนเทียบตรงกับยอดระบบ)','R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (รายการรอรีเช็คจากวันก่อนเทียบตรงกับยอดระบบ)'),'success');
+        toast('R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้','success');
       }else{
         toast('กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','success');
       }
       // WH: บอกจำนวนแถวขายหน้าร้านที่ข้าม — ไม่ให้แถวหายเงียบ (เหมือนบิลยกเลิก)
       if(nFrontStore>0)toast(`R16: ข้ามยอดขายหน้าร้าน ${nFrontStore} แถว (Col A=1) — ไม่กระทบสต็อกคลัง`,'info',5000);
       // WH: OTFI ตามทิศ Col A — บอกว่าบวกกลับ/ข้ามไปกี่แถว (ไม่ให้เปลี่ยนทิศแบบเงียบ)
-      if(nOtfiOut>0||nFrontOtfi>0)toast(`R16: OTFI คลังโอนออก ${nOtfiOut} แถว (Col A=0) บวกกลับ · ข้ามหน้าร้านโอนออก ${nFrontOtfi} แถว (Col A=1)`,'info',5000);
+      if(nOtfiOut>0||nFrontOtfi>0)toast(`R16: OTFI คลังโอนออก ${nOtfiOut} แถว บวกกลับ · ข้ามหน้าร้านโอนออก ${nFrontOtfi} แถว`,'info',5000);
       console.log(`[R16] match ${matched} SKU / ขาย ${totalSold} ชิ้น / รับเข้า ${totalInbound} ชิ้น / ไม่พบ ${missing} / SKU ไม่ตรง ${mismatch} / บิลยกเลิก ${nCancel} / ข้ามขายหน้าร้าน ${nFrontStore} / OTFI คลังออก ${nOtfiOut} / ข้าม OTFI หน้าร้าน ${nFrontOtfi}`);
     } else {
-      let msg=`R16.104: ไม่สามารถจับคู่ข้อมูลได้`;
+      let msg=`R16.104 จับคู่ไม่ได้`;
       if(state.r16Data.length>0){
         const r16s=state.r16Data[0]?.barcode||'';
         const r05s=[...state.barcodeMap.keys()][0]||'';
-        msg+=` — ⚠️ ตัวอย่าง R16:"${r16s}" vs R05:"${r05s}" (เปิด Console เพื่อดูรายละเอียด)`;
+        msg+=` — R16:"${r16s}" vs R05:"${r05s}" (ดู Console)`;
       } else {
-        msg+=` — ไม่มี row ที่ผ่าน filter ORCM/OCTM/OTFB/ORTS/OTFI`;
+        msg+=` — ไม่มีแถว ORCM/OCTM/OTFB/ORTS/OTFI`;
       }
       toast(msg,'warn');
     }
@@ -3566,7 +3567,9 @@ function loadR16(event) {
           _bd.textContent='⚠️ ตรวจสอบวันที่';
           _bd.parentElement.classList.add('upload-file-badge-warn');
           document.getElementById('r16MismatchDetail').textContent=`วันที่ R16: ${r16List}\nวันที่สแกน: ${scanList}`;
-          setTimeout(()=>toast(`⚠️ วันที่ R16 (${r16List}) ไม่ตรงกับวันที่สแกน (${scanList}) — กรุณาตรวจสอบไฟล์`,'warn',7000),400);
+          // toast ย่อเกิน 2 วันเป็นช่วง — รอบนับหลายสัปดาห์มีวันที่สแกนหลายสิบวัน (toast Desktop ไม่ตัดบรรทัด) · รายการเต็มอยู่ใน r16MismatchDetail
+          const span=a=>a.length<=2?a.map(fmt).join(', '):`${fmt(a[0])}–${fmt(a[a.length-1])} · ${a.length} วัน`;
+          setTimeout(()=>toast(`⚠️ วันที่ R16 (${span([...r16Dates].sort())}) ไม่ตรงกับวันที่สแกน (${span([...scanDates].sort())})`,'warn',7000),400);
         }
       }
     }
@@ -3596,7 +3599,7 @@ function loadR16(event) {
           _bd.parentElement.classList.add('upload-file-badge-warn');
           const _det=document.getElementById('r16MismatchDetail');
           if(_det)_det.textContent=`R16 มีข้อมูลถึง: ${_fmtTd(maxTd)}\nนับล่าสุด: ${_fmtTd(lastScan)}\nรายการที่นับหลังช่วงข้อมูล: ${lateN} รายการ`;
-          setTimeout(()=>toast(`⚠️ R16 มีข้อมูลถึง ${_fmtTd(maxTd)} แต่มีสินค้าที่นับหลังจากนั้น ${lateN} รายการ — ยอดขายช่วงหลังจะไม่ถูกบวกกลับ ทำให้ ${_pharmTxt('Audit','Stock Adj')} ขึ้นเกินจริง กรุณา export R16 ใหม่ให้ครอบถึงเวลานับล่าสุด`,'warn',9000),700);
+          setTimeout(()=>toast(`⚠️ R16 มีข้อมูลถึง ${_fmtTd(maxTd)} แต่มี ${lateN} รายการนับหลังจากนั้น — export R16 ใหม่ให้ครอบเวลานับ`,'warn',9000),700);
         }
       }
     }
@@ -3669,7 +3672,7 @@ function loadR16_103(event){
       toast(`R16.103: จับคู่ได้ ${matched-nFront103} SKU / ${total103} ชิ้น (รับเข้ายังไม่ขึ้นชั้น)`,'success');
       console.log(`[R16.103] match ${matched-nFront103} SKU / ${total103} ชิ้น / ไม่พบ ${missing} / ข้ามหน้าร้าน ${nFront103}`);
     }else{
-      toast(`R16.103: ไม่สามารถจับคู่ข้อมูลได้ — ตรวจสอบว่าไฟล์มี code IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN ใน Col C`,'warn');
+      toast('R16.103 จับคู่ไม่ได้ — Col C ต้องมี IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN','warn');
     }
     if(matched>0) await reEvaluateAuditItems();
     saveSession();
@@ -3794,7 +3797,7 @@ async function reEvaluateAuditItems(opts={}){
       catch(e){
         for(const{sku,before}of changedItems)state.scanData.set(sku,before);
         rebuildScanListMap(true);renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updatePharmacistAuditConfirmBtn();updateAuditVerifyCount();
-        toast(_pharmTxt('บันทึกสถานะ Audit กลางไม่สำเร็จ — ยกเลิกการปรับสถานะ กรุณาตรวจอินเทอร์เน็ตแล้วอัป R16 ใหม่','บันทึกสถานะรอรีเช็คกลางไม่สำเร็จ — ยกเลิกการปรับสถานะ กรุณาตรวจอินเทอร์เน็ตแล้วอัป R16 ใหม่'),'error',6000);
+        toast(_pharmTxt('บันทึกสถานะ Audit ไม่สำเร็จ — ยังไม่ปรับสถานะ ตรวจเน็ตแล้วอัป R16 ใหม่','บันทึกสถานะรอรีเช็คไม่สำเร็จ — ยังไม่ปรับสถานะ ตรวจเน็ตแล้วอัป R16 ใหม่'),'error',6000);
         console.warn('[R16 pharmacy audit marker]',e.message);return 0;
       }
     }
@@ -3897,7 +3900,7 @@ async function startNewCount(){
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
   // ลบเศษไม่ครบไม่กระทบการนับแล้ว (_writeScanningItem ถือเอกสารรอบอื่นเป็น "ไม่มี") แต่ต้องบอกให้รู้ ห้ามเงียบ
-  if(staleLeft)toast('เริ่มนับใหม่เรียบร้อย แต่ล้างข้อมูลรอบเก่าไม่ครบ — ไม่กระทบการนับ แจ้ง IT ให้รัน tools/cleanup-stale-round-items.js','warn',9000);
+  if(staleLeft){toast('เริ่มนับใหม่แล้ว แต่ล้างรอบเก่าไม่ครบ (ไม่กระทบการนับ) — แจ้ง IT','warn',9000);console.warn('[startNewCount] ล้างรอบเก่าไม่ครบ — ให้ IT รัน tools/cleanup-stale-round-items.js');}
   else toast(`เริ่มนับใหม่เรียบร้อย`,'success');
   }finally{
     _countResetInProgress=false;
@@ -5507,9 +5510,9 @@ async function _confirmWhCountItems(staffName=null,forceDateMismatch=false){
     if(!committed&&staged)committed=await _whRecoverCommittedOperation(staged,'count');
     if(!committed)await _whAbortPreparingOperation(staged);
     document.getElementById('dbStatus').textContent=committed?'ยืนยันแล้ว · รอ Sync':'Sync Error';console.warn('[WH count confirm operation]',e.code||'',e.message);
-    if(committed)toast('ยืนยันการนับบน Cloud สำเร็จแล้ว แต่การอัปเดตหน้าจอยังไม่ครบ — กรุณารอ Sync ห้ามกดยืนยันซ้ำ','warn',6500);
+    if(committed)toast('ยืนยันการนับสำเร็จ แต่หน้าจอยังอัปเดตไม่ครบ — รอ Sync ห้ามกดซ้ำ','warn',6500);
     else if(String(e.message||'').startsWith('WH_MASTER_VERSION_MISMATCH')){
-      _scheduleWhR16CloudReload();toast('R01/R16 บน Cloud มี version ใหม่หรือยังโหลดไม่ครบ — กรุณารอให้ขึ้น Ready แล้วกด Confirm ใหม่','warn',5500);
+      _scheduleWhR16CloudReload();toast('R01/R16 บน Cloud เปลี่ยนหรือยังโหลดไม่ครบ — รอ Ready แล้วกด Confirm ใหม่','warn',5500);
     }else if(!committed&&['WH_CONFIRM_DATA_CHANGED','BRANCH_CONFIRM_LOCKED'].includes(e.message))toast(e.message==='BRANCH_CONFIRM_LOCKED'?'มี Desktop เครื่องอื่นกำลัง Confirm อยู่':'ข้อมูลเปลี่ยนระหว่างยืนยัน — ยังไม่มีรายการถูกเปลี่ยน กรุณากดใหม่','warn',6000);
     else if(!committed)toast(`ยืนยันการนับไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน${e.code?` (${e.code})`:''}`,'error',5500);
   }finally{
@@ -5713,7 +5716,7 @@ function markBackorderItem(sku){
   _freezeRecheckBaseline(sku,sd);
   _markSkuDirty(sku);
   const e=scanListMap.get(sku);if(e)e.totalQty=0;
-  toast(`${sku}: มาร์คค้างส่งลูกค้าแล้ว — กด "ยืนยัน" บน Desktop เพื่อปิดงาน`,'info',4000);
+  toast(`${sku}: มาร์คค้างส่งแล้ว — ยืนยันที่ Desktop เพื่อปิดงาน`,'info',4000);
   scheduleSave();renderAuditVerifyTable();updatePharmacistAuditConfirmBtn();scheduleScanListRender();
 }
 
@@ -5735,7 +5738,7 @@ function processPharmacistAuditScan(){
     // ข้อความอย่างเดียว (ต.ค. 2026) — เงื่อนไขปฏิเสธไม่เปลี่ยน · Stock Adj ต้องกด ↺ ก่อนถึงจะสแกนรีเช็คได้ (ผู้ใช้เลือกไม่ให้สแกนเปิดเอง)
     // pending = ยังไม่มีใครนับ → เภสัชไม่ได้นับ ให้ไปใช้รหัสผู้ช่วย (6 ต.ค. 2026 · ผู้ใช้สั่ง · สถานะอื่นคงเดิม)
     toast(_pharmNoAuditTerms()
-      ?(sl==='stock_adjustment'?`${sku}: Stock Adj — ยังไม่ได้เปิดรีเช็ค (กด ↺ สแกนใหม่ ที่ Stock Adj บน Desktop ก่อน)`
+      ?(sl==='stock_adjustment'?`${sku}: Stock Adj — กด ↺ สแกนใหม่ ที่ Desktop ก่อน`
         :sl==='pending'?'ใช้รหัสผู้ช่วยนับสินค้า'
         :`${sku}: ${({scanning:'รอ Confirm',pass:'Pass',audit_check:'ตรวจแล้ว'})[sl]||sl} — ไม่ใช่รายการรอรีเช็ค`)
       :`${sku}: สถานะ "${sl}" — ไม่ใช่ Audit`,'warn');
@@ -6441,7 +6444,7 @@ function updatePharmacyRecheckQty(sku,v){
   const q=parseFloat(v);
   const prev=sd.recheckQty;
   if(isNaN(q)||q<0){
-    if(prev!=null){beepError();toast('ยอดรีเช็คต้องเป็น 0 หรือมากกว่า — ถ้าต้องการล้างค่าให้กดปุ่ม ✕ รีเซ็ตรีเช็ค','warn');}
+    if(prev!=null){beepError();toast('ยอดรีเช็คต้องเป็น 0 ขึ้นไป — ล้างค่าใช้ปุ่ม ✕','warn');}
     renderScanList(); // คืนตัวเลขเดิมในช่อง
     return;
   }
@@ -6930,19 +6933,18 @@ const _PDA_TOAST_SHORT=new Map([
   ['ไฟล์ไม่รองรับ กรุณาใช้ .csv หรือ .xlsx','รองรับเฉพาะ CSV/XLSX'],
   ['โหลด R01.102 และ R05.106 ก่อน แล้วค่อยโหลด R16.104','โหลด R01/R05 ก่อน R16.104'],
   ['โหลด R01.102 และ R05.106 ก่อน แล้วค่อยโหลด R16.103','โหลด R01/R05 ก่อน R16.103'],
-  ['R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (Audit ค้างจากวันก่อนเทียบตรงกับยอดระบบ)','R16 อัปเดตแล้ว'],
-  ['R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้ (รายการรอรีเช็คจากวันก่อนเทียบตรงกับยอดระบบ)','R16 อัปเดตแล้ว'],
+  ['R16 อัปเดตแล้ว — ใช้คำนวณรายการที่นับวันนี้','R16 อัปเดตแล้ว'],
   ['กดปุ่ม Confirm เพื่อตรวจสอบสินค้า','กด Confirm เพื่อตรวจสินค้า'],
   ['โหลดรายละเอียด R16 จาก Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','โหลด R16 ไม่สำเร็จ — Confirm ไม่ได้'],
   ['กำลังโหลดรายละเอียด R16 จาก Cloud — กรุณารอสักครู่แล้วกด Confirm ใหม่','กำลังโหลด R16 — รอแล้วกดใหม่'],
-  ['ข้อมูลรายละเอียด R16.104 จาก Cloud ยังไม่พร้อม — กรุณาอัปโหลด R16.104 ใหม่ที่เครื่องใดเครื่องหนึ่ง','R16.104 ยังไม่พร้อม — อัปโหลดใหม่'],
+  ['R16.104 บน Cloud ยังไม่พร้อม — อัปโหลด R16.104 ใหม่ที่เครื่องใดก็ได้','R16.104 ยังไม่พร้อม — อัปโหลดใหม่'],
   ['ข้อมูลรายละเอียด R16.103 จาก Cloud ยังไม่พร้อม — กรุณารอสักครู่หรืออัปโหลดใหม่','R16.103 ยังไม่พร้อม — รอหรืออัปโหลดใหม่'],
   ['อัปโหลดรายละเอียด R16.104 ขึ้น Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','อัปโหลด R16.104 ไม่สำเร็จ'],
   ['อัปโหลดรายละเอียด R16.103 ขึ้น Cloud ไม่สำเร็จ — ยังไม่สามารถ Confirm ได้','อัปโหลด R16.103 ไม่สำเร็จ'],
-  ['R16.103: ไม่สามารถจับคู่ข้อมูลได้ — ตรวจสอบว่าไฟล์มี code IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN ใน Col C','R16.103 จับคู่ไม่ได้ — ตรวจไฟล์'],
+  ['R16.103 จับคู่ไม่ได้ — Col C ต้องมี IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN','R16.103 จับคู่ไม่ได้ — ตรวจไฟล์'],
   ['ใช้ได้เฉพาะโหมด Administrator เท่านั้น','ใช้ได้เฉพาะ Administrator'],
   ['ออกจากโหมด Administrator — กำลัง sync ข้อมูลขึ้น Cloud...','ออก Admin — กำลัง Sync'],
-  ['R01/R16 บน Cloud มี version ใหม่หรือยังโหลดไม่ครบ — กรุณารอให้ขึ้น Ready แล้วกด Confirm ใหม่','R01/R16 ยังไม่พร้อม — รอแล้วกดใหม่'],
+  ['R01/R16 บน Cloud เปลี่ยนหรือยังโหลดไม่ครบ — รอ Ready แล้วกด Confirm ใหม่','R01/R16 ยังไม่พร้อม — รอแล้วกดใหม่'],
   ['ยืนยันการนับไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','ยืนยันไม่สำเร็จ — เช็กเน็ตแล้วลองใหม่'],
   ['ยืนยันรีเช็คไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่','ยืนยันรีเช็คไม่สำเร็จ — เช็กเน็ต'],
   ['ไม่สามารถสแกนได้ในช่วง 21:00 – 08:00 (ร้านปิด)','ร้านปิด 21:00–08:00'],
@@ -6960,15 +6962,15 @@ function _toastMessageForDevice(msg){
     .replace(/^Product Master \((\w+)\): (\d+) รายการ(.*)$/,'PM $1: $2 รายการ$3')
     .replace(/^R01\.102: /,'R01: ')
     .replace(/^R05\.106: /,'R05: ')
-    .replace(/ · ล้าง R16 เดิมแล้ว — อัพ R16 วันนี้ก่อน Confirm \((?:Audit เดิมรอเภสัชตรวจ|รายการรอรีเช็คเดิมยังอยู่)\)$/,' — อัป R16 ก่อน Confirm')
-    .replace(/ · กรุณาอัปโหลด R16\.104\/103 ชุดใหม่ก่อน Confirm$/,' — อัป R16 ใหม่ก่อน Confirm')
+    .replace(/ · ล้าง R16 แล้ว อัปใหม่ก่อน Confirm$/,' — อัป R16 ก่อน Confirm')
+    .replace(/ · อัป R16\.104\/103 ใหม่ก่อน Confirm$/,' — อัป R16 ใหม่ก่อน Confirm')
     .replace(/^R16 ใหม่: ปรับสถานะ (\d+) รายการ$/,'R16 ใหม่ — ปรับ $1 รายการ')
-    .replace(/^R16\.104: ไม่สามารถจับคู่ข้อมูลได้.*$/,'R16.104 จับคู่ไม่ได้ — ตรวจไฟล์')
+    .replace(/^R16\.104 จับคู่ไม่ได้ — .*$/,'R16.104 จับคู่ไม่ได้ — ตรวจไฟล์')
     .replace(/^⚠️ วันที่ R16 .*$/,'⚠️ วันที่ R16 ไม่ตรงวันสแกน')
     .replace(/^R16\.103: จับคู่ได้ (\d+) SKU \/ (.+) ชิ้น \(รับเข้ายังไม่ขึ้นชั้น\)$/,'R16.103: $1 SKU / $2 ชิ้น')
     .replace(/^ดึงข้อมูลจาก Cloud สำเร็จ — สแกนแล้ว (\d+) SKU$/,'Cloud: สแกนแล้ว $1 SKU')
     .replace(/^🔍 สแกน SKU: (.+) → ใช้ Barcode (.+) \(หน่วยเล็กสุด\)$/,'SKU $1 → $2')
-    .replace(/^⚠️ (.+) ไม่ตรง \(สแกน (.+) \+ R16 (.+) = (.+) \/ ระบบ (.+)\) → Stock Adjustment$/,'⚠️ $1 ไม่ตรง: $2+R16 $3=$4 / ระบบ $5')
+    .replace(/^⚠️ (.+) ไม่ตรง \(สแกน (.+) \+ R16 (.+) = (.+) \/ ระบบ (.+)\) → Stock Adj$/,'⚠️ $1 ไม่ตรง: $2+R16 $3=$4 / ระบบ $5')
     .replace(/^โหลด LOT\/EXP สำเร็จ · จับคู่ได้ (.+)$/,'LOT/EXP: $1')
     .replace(/^โหลดราคา R05\.105 สำเร็จ · (.+)$/,'ราคา: $1')
     .replace(/^บันทึก LOT\/ราคาขึ้น Cloud สำเร็จ \((\d+) SKU\) — เครื่องอื่นเปิดจะเห็นข้อมูลนี้$/,'บันทึก LOT/ราคาแล้ว ($1 SKU)')
@@ -6999,6 +7001,20 @@ function toast(msg,type='info',ms=2500){
 }
 // toast แบบมีปุ่ม action (เช่น "เรียกคืน") — กดปุ่มแล้วรัน action + ปิด toast
 function toastAction(msg,btnLabel,btnAction,type='info',ms=6000){const c=document.getElementById('toastContainer'),t=document.createElement('div'),s=document.createElement('span'),b=document.createElement('button');t.className=`toast toast-${type}`;s.textContent=_toastMessageForDevice(msg);b.textContent=String(btnLabel??'');b.style.cssText='margin-left:12px;padding:6px 14px;border-radius:8px;border:none;background:rgba(255,255,255,0.28);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;font-family:inherit;';b.addEventListener('click',()=>{if(typeof btnAction==='function')btnAction();t.remove();});t.appendChild(s);t.appendChild(b);c.appendChild(t);setTimeout(()=>{t.style.transition='opacity 0.35s,transform 0.35s';t.style.opacity='0';t.style.transform='scale(0.8)';setTimeout(()=>t.remove(),350);},ms);}
+
+// ข้อความ error ที่ต่อท้าย toast (ต.ค. 2026): toast บน Desktop ไม่ตัดบรรทัด (white-space:nowrap) — error ภาษาอังกฤษยาวๆ ล้นจอจนหัว-ท้ายถูกตัด
+// ตัดเมื่อเกิน max ตัวที่กินที่ (ไม่นับสระบน-ล่าง/วรรณยุกต์ไทย · ไม่ผ่ากลาง emoji · สระที่เกาะตัวสุดท้ายไปด้วย) — ข้อความไทยของเราเองแทบไม่ถูกตัด
+// เพดานเอกสาร 1 MiB ของ Firestore แปลเป็นไทยสั้นๆ · ข้อความเต็มให้ console.warn ที่จุดเรียก
+function _shortErr(e,max=60){
+  const s=String((e&&e.message)||e||'').replace(/^FirebaseError:\s*/,'').trim();
+  if(/exceeds the maximum allowed size|too large/i.test(s))return 'ข้อมูลเกินเพดาน 1 MiB';
+  const isMark=c=>/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/.test(c);
+  if([...s].filter(c=>!isMark(c)).length<=max)return s;
+  if(e&&typeof e.code==='string'&&e.code)return e.code;   // FirebaseError ยาว → รหัสสั้น (unavailable / permission-denied …)
+  let out='',n=0;
+  for(const c of s){if(!isMark(c)&&++n>max-1)break;out+=c;}
+  return out+'…';
+}
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeStockPopup();closeAuditVerifyPopup();closeHistoryStatsPopup();}});
 
@@ -7075,7 +7091,7 @@ async function syncMasterToFirestore(includeR05=true,includeR01=true){
     //   R05 → listener ดึงของเก่ากลับมาทับทันที ผู้ใช้เห็นแค่ "อัปเดตจากเครื่องอื่น"
     //   R01 → เครื่องที่อัปยังมีข้อมูลใน localStorage จึงนับต่อได้ทั้งรอบโดยไม่มีอาการ
     //         แต่เครื่องอื่นและ auto-r01 ไม่เห็นเลย (เจอจริง ก.ย. 2026: KKL_r01 หายทั้งรอบนับ)
-    toast(`อัปโหลด ${jobs[i].label} ขึ้น Cloud ไม่สำเร็จ (${msg}) — ข้อมูลยังไม่ถูกบันทึก กรุณาแจ้งผู้ดูแลระบบ`,'error',10000);
+    toast(`อัปโหลด ${jobs[i].label} ขึ้น Cloud ไม่สำเร็จ (${_shortErr(r.reason)}) — แจ้งผู้ดูแลระบบ`,'error',10000);
   });
 }
 
@@ -7334,7 +7350,7 @@ function _checkSessionBlobSize(json){
   if(bytes>SESSION_BLOB_WARN_BYTES&&Date.now()-_sessionBlobWarnedAt>600000){
     _sessionBlobWarnedAt=Date.now();
     const pct=Math.round(bytes*100/SESSION_BLOB_LIMIT_BYTES);
-    toast(`ข้อมูลรอบนับใกล้ขีดจำกัด Firestore (${Math.round(bytes/1024)} KB — ${pct}%) กรุณาแจ้งผู้ดูแลระบบ`,'warn',8000);
+    toast(`ข้อมูลรอบนับใกล้ขีดจำกัด (${Math.round(bytes/1024)} KB · ${pct}%) — แจ้งผู้ดูแลระบบ`,'warn',8000);
     console.warn('[session blob]',bytes,'bytes =',pct+'% ของขีดจำกัด');
   }
   return bytes;
@@ -7346,7 +7362,7 @@ function _reportSyncError(e,json){
   const bytes=json?_sessionBlobBytes(json):0;
   const tooBig=bytes>=SESSION_BLOB_LIMIT_BYTES||/too large|exceeds the maximum|INVALID_ARGUMENT/i.test(e?.message||'');
   if(tooBig){
-    toast(`บันทึกขึ้น Cloud ไม่สำเร็จ: ข้อมูลรอบนับเกินขีดจำกัด Firestore (${Math.round(bytes/1024)} KB) — ข้อมูลในเครื่องยังอยู่ครบ กรุณาแจ้งผู้ดูแลระบบทันที ห้ามล้างข้อมูล`,'error',15000);
+    toast(`บันทึก Cloud ไม่ได้ — ข้อมูลเกินขีดจำกัด (${Math.round(bytes/1024)} KB) · ห้ามล้างข้อมูล แจ้งผู้ดูแลทันที`,'error',15000);
     console.error('[session blob] เกินขีดจำกัด',bytes,'bytes —',e?.message);
   }else{
     console.warn('Firestore:',e?.message);
@@ -8079,7 +8095,7 @@ async function _confirmWhRecheckItems(staffName=null){
     if(!committed&&staged)committed=await _whRecoverCommittedOperation(staged,'recheck');
     if(!committed)await _whAbortPreparingOperation(staged);
     document.getElementById('dbStatus').textContent=committed?'ยืนยันแล้ว · รอ Sync':'Sync Error';console.warn('[WH recheck confirm operation]',e.code||'',e.message);
-    if(committed)toast('ยืนยันรีเช็คบน Cloud สำเร็จแล้ว แต่การอัปเดตหน้าจอยังไม่ครบ — กรุณารอ Sync ห้ามกดยืนยันซ้ำ','warn',6500);
+    if(committed)toast('ยืนยันรีเช็คสำเร็จ แต่หน้าจอยังอัปเดตไม่ครบ — รอ Sync ห้ามกดซ้ำ','warn',6500);
     else if(String(e.message||'').startsWith('WH_MASTER_VERSION_MISMATCH')||e.message==='WH_R01_MISSING')toast('R01/R16 บน Cloud เปลี่ยนหรือโหลดไม่ครบ — กรุณารอ Sync แล้วกดใหม่','warn',5500);
     else if(['WH_CONFIRM_DATA_CHANGED','BRANCH_CONFIRM_LOCKED'].includes(e.message))toast(e.message==='BRANCH_CONFIRM_LOCKED'?'มี Desktop เครื่องอื่นกำลัง Confirm อยู่':'ข้อมูลเปลี่ยนระหว่างยืนยัน — ยังไม่มีรายการถูกเปลี่ยน กรุณากดใหม่','warn',6000);
     else toast(`ยืนยันรีเช็คไม่สำเร็จ — ข้อมูลยังไม่ถูกเปลี่ยน${e.code?` (${e.code})`:''}`,'error',5500);
@@ -8166,7 +8182,7 @@ async function reopenPharmacyAudit(sku){
       recheckQty:null,recheckBy:'',recheckAt:'',recheckSystemQty:null,recheckR01Version:'',backorder:false,
       soldQty:0,inboundQty:0,r16103Qty:0,effectiveQty:Number(sd.countedQty||0),systemQty:Number(si.systemQty||0),
       r01Version:state.r01Version||'',r16Version:state.r16DetailVersion||'',r16_103Version:state.r16_103DetailVersion||''}]);
-  }catch(e){console.warn('[reopen audit]',e.message);beepError();toast('เปิดรีเช็คใหม่ไม่สำเร็จ: '+e.message,'error');return;}
+  }catch(e){console.warn('[reopen audit]',e.message);beepError();toast('เปิดรีเช็คใหม่ไม่สำเร็จ: '+_shortErr(e),'error');return;}
   sd.status='audit';sd.auditStatus='pending';sd.auditor='';sd.timestamp=countTs;
   delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;delete sd.recheckSystemQty;delete sd.recheckR01Version;delete sd.backorder;
   delete sd.effectiveQty;delete sd.pharmacyAuditConfirmedAt;
@@ -8208,8 +8224,8 @@ function confirmAuditVerifyItem(sku,silent=false,deferSync=false){
     sd.status='stock_adjustment';sd.auditStatus='stock_adjustment';result='stock_adjustment';
     if(!silent){
       const _liveSys=Number(si.systemQty??0);
-      const _note=_liveSys!==baseSys?` · ยอดระบบตอนนี้ ${_liveSys} (เทียบกับยอด ณ เวลาสแกน)`:'';
-      toast(`⚠️ ${sku} ไม่ตรง (สแกน ${pharmacistQty} + R16 ${soldQty + r16103Qty - inboundQty} = ${effectiveQty} / ระบบ ${baseSys})${_note} → Stock Adjustment`,'warn');
+      const _note=_liveSys!==baseSys?` · ตอนนี้ ${_liveSys}`:'';   // ระบบ = ยอด ณ เวลาสแกน · ตอนนี้ = ยอดสด
+      toast(`⚠️ ${sku} ไม่ตรง (สแกน ${pharmacistQty} + R16 ${soldQty + r16103Qty - inboundQty} = ${effectiveQty} / ระบบ ${baseSys}${_note}) → Stock Adj`,'warn');
     }
   }
   sd.auditor=currentUser;sd.timestamp=ts;sd.recheckQty=pharmacistQty;sd.soldQty=soldQty;sd.inboundQty=inboundQty;sd.r16103Qty=r16103Qty;sd.effectiveQty=effectiveQty;sd.recheckSystemQty=baseSys;
@@ -9301,7 +9317,8 @@ function _parseAdjErpRows(rows,branch,epochIso){
   const want=mv?ADJ_ERP_MOVE_COLS:Object.fromEntries(ADJ_ERP_REQUIRED_COLS.map(n=>[n,n]));
   const col={FCANCEL:-1};const missing=[];   // FCANCEL -1 = ไม่มีคอลัมน์ยกเลิก (เฉพาะรายงานเคลื่อนไหว)
   for(const[n,h] of Object.entries(want)){col[n]=hdr.indexOf(h);if(col[n]<0)missing.push(h);}
-  if(missing.length){res.error=`ไม่ใช่${mv?'รายงานเคลื่อนไหวสินค้า':'ไฟล์ R16'} จาก ProMaxx (ไม่พบคอลัมน์ ${missing.join(', ')})`;return res;}
+  // บอกชื่อคอลัมน์ที่ขาดไม่เกิน 2 ชื่อ (ไฟล์ผิดประเภททั้งไฟล์ขาดครบ 7 — ข้อความยาวจน toast ล้นจอ)
+  if(missing.length){res.error=`ไม่ใช่${mv?'รายงานเคลื่อนไหวสินค้า':'ไฟล์ R16'} จาก ProMaxx (ไม่พบคอลัมน์ ${missing.slice(0,2).join(', ')}${missing.length>2?` +${missing.length-2}`:''})`;return res;}
   const nameIdx=hdr.indexOf(mv?'CF_BNAME':'NAME');
   const cell=(r,i)=>(r[i]??'').toString().trim();
   const epochDay=_adjErpDayOf(epochIso);
@@ -9335,7 +9352,7 @@ function _parseAdjErpRows(rows,branch,epochIso){
   if(!bid){res.error='ไม่พบรหัสสาขา (SYSBRANCHID) ในไฟล์';return res;}
   if(branch==='SRC'&&bid!==ADJ_ERP_SRC_BRANCH_ID){res.error=`ไฟล์ไม่ใช่ของสาขา SRC (SYSBRANCHID ${bid}${who})`;return res;}
   if(branch!=='SRC'&&bid===ADJ_ERP_SRC_BRANCH_ID){res.error=`ไฟล์เป็นของสาขาชากค้อ (SYSBRANCHID 0${who}) ไม่ใช่ ${branch}`;return res;}
-  if(!win.ORDS&&!win.IRPS){res.error=stats.badDate?'อ่านวันที่ (TRANDATE) ในไฟล์ไม่ได้':'ไม่พบเอกสารในไฟล์ (TRANNO ต้องเป็นเลขที่เอกสาร เช่น ORDS…/IRPS…)';return res;}
+  if(!win.ORDS&&!win.IRPS){res.error=stats.badDate?'อ่านวันที่ (TRANDATE) ในไฟล์ไม่ได้':'ไม่พบเอกสาร ORDS/IRPS ในไฟล์ (TRANNO)';return res;}
   for(const no of cancelled)docs.delete(no);
   for(const t of ADJ_ERP_TYPES)if(win[t])res.cover[t]={fromDay:_adjErpDayKey(win[t].from),toAt:_adjErpAtKey(win[t].to)};
   res.docs=[...docs.values()];res.cancelled=[...cancelled];stats.cancelledDocs=cancelled.size;
@@ -9664,7 +9681,7 @@ async function handleAdjErpFiles(event){
     const parsed=[];
     for(const f of files){
       let rows;
-      try{rows=await _parseFileAsync(f);}catch(e){toast(`${f.name}: ${e&&e.message||e}`,'error',9000);continue;}
+      try{rows=await _parseFileAsync(f);}catch(e){console.warn('[adj file]',f.name,e&&e.message||e);toast(`${f.name}: ${_shortErr(e)}`,'error',9000);continue;}
       const p=_parseAdjErpRows(rows,branch,epoch);
       if(p.error){toast(`${f.name}: ${p.error}`,'error',9000);continue;}
       p.file=f.name;parsed.push(p);
@@ -9674,8 +9691,8 @@ async function handleAdjErpFiles(event){
     if(!res)return;
     const sum=ADJ_ERP_TYPES.filter(t=>parsed.some(p=>p.cover[t]))
       .map(t=>`${t} ${parsed.reduce((a,p)=>a+p.docs.filter(d=>d.type===t).length,0)} ใบ`).join(' · ');
-    if(res.saved)toast(`ตรวจกับ ERP แล้ว · ${sum} — บันทึกแล้ว เครื่องอื่นเปิดหน้านี้จะเห็นผลเดียวกัน`,'success',5000);
-    else toast(`ตรวจกับ ERP แล้ว · ${sum} — แต่บันทึกขึ้น Cloud ไม่สำเร็จ (${res.fail}) ผลนี้เห็นเฉพาะเครื่องนี้`,'warn',9000);
+    if(res.saved)toast(`ตรวจกับ ERP แล้ว · ${sum} — บันทึกแล้ว ทุกเครื่องเห็นผลเดียวกัน`,'success',5000);
+    else toast(`ตรวจกับ ERP แล้ว · ${sum} — บันทึก Cloud ไม่ได้ (${_shortErr(res.fail)})`,'warn',9000);   // "เห็นเฉพาะเครื่องนี้" อยู่บนการ์ดตลอดแล้ว
   }finally{
     _adjErpBusy=false;
     _refreshAdjErpCard();renderAdjustDocTable();_applyStatAuditCardMode();
@@ -9712,7 +9729,7 @@ async function _applyAdjErpUpload(parsedList,branch,epoch){
         const m=mergeAll(snap.exists?_adjErpFromDoc(snap.data(),epoch):null);
         const payload=_adjErpToDoc(m,epoch,meta.by);
         const kb=Math.ceil(_sessionBlobBytes(payload.docs_json)/1024);
-        if(kb>=ADJ_ERP_MAX_KB)throw new Error(`ข้อมูล ${kb} KB ใกล้เพดาน Firestore — Export R16 ช่วงสั้นลง`);
+        if(kb>=ADJ_ERP_MAX_KB)throw new Error(`${kb} KB ใกล้เพดาน — Export R16 ช่วงสั้นลง`);
         tx.set(ref,payload);
         txMerged=m;
       }),20000);
@@ -10056,7 +10073,7 @@ function _warnAdjErpDuplicate(rows,vr){
   const why=[];
   if(n.done)why.push(`เข้าแล้ว ${n.done}`);if(n.partial)why.push(`บางส่วน ${n.partial}`);
   if(n.over)why.push(`เกิน ${n.over}`);if(n.opposite)why.push(`ทิศตรงข้าม ${n.opposite}`);
-  toast(`⚠️ ${tot} รายการในไฟล์นี้มีใบใน ERP แล้ว (${why.join(' · ')}) — ตรวจก่อนนำเข้า ระวังส่งซ้ำ`,'warn',9000);
+  toast(`⚠️ ${tot} รายการในไฟล์มีใบใน ERP แล้ว (${why.join(' · ')}) — ระวังส่งซ้ำ`,'warn',9000);
 }
 // ── กติกาใบปรับปรุง (ก.ย. 2026) ───────────────────────────────────────────────
 // เป้าหมายของใบคือ "ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้" (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
@@ -10322,9 +10339,10 @@ function _adjTextExportPlan(){
   const {pgn,view}=_adjustDocPageView(vr.rows);
   const paged=ADJUST_DOC_EXPORT_TEXT_BY_PAGE&&pgn.pages>1;
   const all=paged?view:vr.rows;
-  const pageNote=paged?` · หน้า ${pgn.page}/${pgn.pages} (แถวที่ ${pgn.start+1}–${pgn.start+view.length} จาก ${vr.rows.length})`:'';
+  const pageNote=paged?` · หน้า ${pgn.page}/${pgn.pages} (แถวที่ ${pgn.start+1}–${pgn.start+view.length} จาก ${vr.rows.length})`:'';   // สรุปใน modal เลขที่เอกสาร
+  const pageTag=paged?` · หน้า ${pgn.page}/${pgn.pages}`:'';   // toast — สั้น (ช่วงแถวดูได้ที่ title ปุ่ม/modal)
   const rows=all.filter(r=>r.qty>0);   // แก้เป็น 0 = ไม่ส่งแถวนั้น (ยังเห็นบนจอ — ดู _adjEditNote)
-  return {dir:_adjDocFilter,vr,pgn,paged,all,pageNote,rows};
+  return {dir:_adjDocFilter,vr,pgn,paged,all,pageNote,pageTag,rows};
 }
 // ค่าของแถวเดียวในไฟล์ Text (ราคา/LOT/EXP) + บรรทัด — ไฟล์กับ 🗂️ ประวัติต้องเป็นตัวเลขชุดเดียวกัน (ห้ามคำนวณแยก)
 function _adjTextRow(r){
@@ -10346,10 +10364,10 @@ function _adjDownloadText(lines,fileName){
 // เส้นทางเดิม (ไม่มีเลขที่เอกสาร/ไม่ล้างตาราง) — ปุ่มเรียกเมื่อสวิตช์ ADJUST_DOC_HISTORY ปิด/ไม่มีสิทธิ์ · เทสเดิมเรียกตรงตัวนี้
 function exportAdjustDocText(){
   if(_adjExportBusy())return;
-  const {dir,vr,pgn,paged,all,pageNote,rows}=_adjTextExportPlan();
-  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+pageNote+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
+  const {dir,vr,pgn,paged,all,pageTag,rows}=_adjTextExportPlan();
+  if(!rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+pageTag+_adjErpFilterNote(vr)+_adjEditNote(all),'warn');return;}
   _adjDownloadText(rows.map(r=>_adjTextRow(r).line),`stockadj_${dir}_${_fileDateDMY()}${paged?'_p'+pgn.page:''}.txt`);   // _p<หน้า> กันไฟล์หลายหน้าชื่อซ้ำ (เบราว์เซอร์จะต่อ (1) (2) จนแยกไม่ออก)
-  toast(`Export ${dir.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${pageNote}${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
+  toast(`Export ${dir.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${pageTag}${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
   _warnAdjErpDuplicate(rows,vr);
 }
@@ -10515,7 +10533,7 @@ function onAdjExportTextClick(){
   const modal=document.getElementById('adjDocNoModal');
   if(modal&&modal.style.display==='flex')return;
   const plan=_adjTextExportPlan();
-  if(!plan.rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+plan.pageNote+_adjErpFilterNote(plan.vr)+_adjEditNote(plan.all),'warn');return;}
+  if(!plan.rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+plan.pageTag+_adjErpFilterNote(plan.vr)+_adjEditNote(plan.all),'warn');return;}
   openAdjDocNoModal(plan);
 }
 function openAdjDocNoModal(plan){
@@ -10571,7 +10589,7 @@ async function confirmAdjDocNo(){
     if(res.kind==='overlap'){
       closeAdjDocNoModal();_adjHistRefreshUi(true);
       const docs=[...new Set(res.conflict.hits.map(x=>x.no))];
-      toast(`⚠️ ${res.conflict.hits.length} รายการถูกส่งออกไปแล้วในเอกสาร ${docs.join(', ')} — ตารางอัปเดตแล้ว · ไม่ได้ดาวน์โหลด ตรวจแล้วกด Export Text ใหม่`,'warn',9000);
+      toast(`⚠️ ${res.conflict.hits.length} รายการถูกส่งออกไปแล้วในเอกสาร ${docs.join(', ')} — ไม่ได้ดาวน์โหลด ตรวจแล้ว Export ใหม่`,'warn',9000);
       return;
     }
     if(res.kind==='stale'){closeAdjDocNoModal();toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ไม่ได้ดาวน์โหลด ตรวจ 🗂️ ประวัติปรับปรุง','warn',9000);return;}
@@ -10582,7 +10600,8 @@ async function confirmAdjDocNo(){
   const safeNo=v.no.replace(/[^A-Z0-9_.\-]/g,'_');
   _adjDownloadText(items.map(x=>x.t.line),`stockadj_${plan.dir}_${safeNo}_${_fileDateDMY()}.txt`);   // ชื่อไฟล์ใช้เลขที่เอกสารแทน _p<หน้า> (หลังล้างตาราง หน้าเดิมจะซ้ำ _p1 ทุกครั้ง)
   _adjHistRefreshUi(true);   // แถวที่ย้ายแล้วหายจากตาราง · ป้ายตัวเลขปุ่ม 📦 และปุ่มประวัติอัปเดต
-  toast(`Export ${plan.dir.toUpperCase()} ${plan.rows.length} รายการ (Text) สำเร็จ · เลขที่เอกสาร ${v.no} → ย้ายไป 🗂️ ประวัติปรับปรุงแล้ว${plan.pageNote}${_adjErpFilterNote(plan.vr)}${_adjEditNote(plan.all)}`,'success');
+  // ไม่บอกหน้า — แถวที่ส่งออกย้ายไป 🗂️ แล้ว เลขหน้าเดิมไม่ตรงตารางอีก (หน้า/ช่วงแถวโชว์ใน modal ก่อนกดแล้ว)
+  toast(`Export ${plan.dir.toUpperCase()} ${plan.rows.length} รายการ → 🗂️ ${v.no}${_adjErpFilterNote(plan.vr)}${_adjEditNote(plan.all)}`,'success');
   _warnAdjustDocDropped();
   _warnAdjErpDuplicate(plan.rows,plan.vr);
 }
@@ -10619,7 +10638,7 @@ async function undoAdjHistEntry(no){
   try{res=await _adjHistRemove(no,branch,epoch);}finally{_adjHistBusy=false;}
   if(!res.ok){
     if(res.kind==='stale'){toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ตรวจ 🗂️ ประวัติปรับปรุงอีกครั้ง','warn',9000);return;}
-    toast(`${imported?'ลบ':'คืนรายการ'}ไม่สำเร็จ: ${res.error}`,'error',9000);renderAdjHistTable();return;
+    toast(`${imported?'ลบ':'คืนรายการ'}ไม่สำเร็จ: ${_shortErr(res.error)}`,'error',9000);renderAdjHistTable();return;
   }
   _adjHistExpanded.delete(no);
   _adjHistRefreshUi(true);
@@ -10761,7 +10780,7 @@ async function handleAdjHistImportFiles(event){
     const parsed=[];
     for(const f of files){
       let rows;
-      try{rows=await _parseFileAsync(f);}catch(e){toast(`${f.name}: ${e&&e.message||e}`,'error',9000);continue;}
+      try{rows=await _parseFileAsync(f);}catch(e){console.warn('[adj file]',f.name,e&&e.message||e);toast(`${f.name}: ${_shortErr(e)}`,'error',9000);continue;}
       const p=_parseAdjErpRows(rows,branch,epoch);
       if(p.error){toast(`${f.name}: ${p.error}`,'error',9000);continue;}
       p.file=f.name;parsed.push(p);
@@ -10812,7 +10831,7 @@ async function confirmAdjHistImport(){
   finally{_adjHistBusy=false;if(ok){ok.disabled=false;ok.textContent=_adjHistImportOkLabel(cur.plan);}}
   if(!res.ok){
     if(res.kind==='stale'){closeAdjHistImportModal();toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ตรวจ 🗂️ ประวัติปรับปรุง','warn',9000);return;}
-    toast(`นำเข้าประวัติขึ้น Cloud ไม่สำเร็จ (${res.error}) — ยังไม่ได้นำเข้า ลองใหม่`,'error',9000);   // modal ค้างไว้ให้กดซ้ำ
+    toast(`นำเข้าประวัติไม่สำเร็จ (${_shortErr(res.error)}) — ลองใหม่`,'error',9000);   // modal ค้างไว้ให้กดซ้ำ
     return;
   }
   closeAdjHistImportModal();
@@ -10828,9 +10847,9 @@ function _warnAdjustDocDropped(){
   const why=[];
   if(stale.length)why.push(`ต้องรีเช็คใหม่ ${stale.length}`);
   if(noSku.length)why.push(`ยังไม่โหลด R05.106 ${noSku.length}`);
-  if(noBasis.length)why.push(`รอรีเช็คที่ไม่มีเลขตอน Confirm ${noBasis.length}`);
-  if(reopened.length)why.push(`รอรีเช็คหลังกด ↺ ${reopened.length} — ยืนยันรีเช็คแล้วจะขึ้นใบ`);
-  toast(`⚠️ ${n} รายการไม่ได้อยู่ในไฟล์นี้ (${why.join(' · ')})`,'warn',9000);
+  if(noBasis.length)why.push(`ไม่มีเลขตอน Confirm ${noBasis.length}`);
+  if(reopened.length)why.push(`รอรีเช็คหลัง ↺ ${reopened.length}`);
+  toast(`⚠️ ${n} รายการไม่อยู่ในไฟล์ (${why.join(' · ')})`,'warn',9000);
 }
 // Export Excel — คอลัมน์เหมือนตารางในป็อปอัพทั้งหมด (ตามแท็บ ORDS/IRPS ที่เลือก)
 function exportAdjustDocExcel(){
@@ -10884,7 +10903,7 @@ async function saveAdjustDocToCloud(){
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
     toast(`บันทึก LOT ที่เลือก ${_lotSelected.size} รายการขึ้น Cloud สำเร็จ — เครื่องอื่นเปิดจะเห็นข้อมูลนี้`,'success');
-  }catch(e){console.warn('[adjlot save]',e.message);toast('บันทึกไม่สำเร็จ: '+e.message,'error');}
+  }catch(e){console.warn('[adjlot save]',e.message);toast('บันทึกไม่สำเร็จ: '+_shortErr(e),'error');}
 }
 // อ่าน {branch}_adjlot เฉย ๆ ไม่แตะ state — _refreshAdjMaster เป็นคนตัดสินว่าจะใช้ field ไหน
 // (เดิม loadAdjustDocFromCloud เขียนทับ map ทั้งหมดตรง ๆ ซึ่งจะทับข้อมูลสดจาก Supabase)
@@ -11257,15 +11276,15 @@ function exportStockAdjExcel(){
     const loc=state.locationMap.get(sku)||'';
     rows.push([loc,sku,bc,si.productName,unitName,sysQty,rv,diff,sd.scannedBy||'',_fmtDateDMY(sd.firstScanAt||sd.timestamp)]);
   }
-  const skipMsg=[skipZero?`${skipZero} รายการยอดระบบเปลี่ยนหลังรีเช็ค`:'',skipNoSku?`${skipNoSku} รายการไม่มีข้อมูลสินค้า`:''].filter(Boolean).join(' · ');
-  if(rows.length===1){toast(skipMsg?`ไม่มีรายการให้ Export — ข้าม ${skipMsg}`:'ไม่มีข้อมูล Stock Adjustment','warn',skipMsg?9000:undefined);return;}
+  const skipMsg=[skipZero?`ยอดระบบเปลี่ยน ${skipZero}`:'',skipNoSku?`ไม่มีข้อมูลสินค้า ${skipNoSku}`:''].filter(Boolean).join(' · ');
+  if(rows.length===1){toast(skipMsg?`ไม่มีรายการให้ Export (ข้าม: ${skipMsg})`:'ไม่มีข้อมูล Stock Adjustment','warn',skipMsg?9000:undefined);return;}
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=header.map((_,c)=>{let m=String(header[c]).length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'StockAdj');
   const dateStr=_fileDateDMY();
   XLSX.writeFile(wb,`stockadj_${currentBranch||'all'}_${dateStr}.xlsx`);
   toast(`Export Stock Adj ${rows.length-1} รายการ สำเร็จ`,'success');
-  if(skipMsg)toast(`⚠️ ไม่ได้อยู่ในไฟล์นี้: ${skipMsg}`,'warn',9000);
+  if(skipMsg)toast(`⚠️ ไม่อยู่ในไฟล์: ${skipMsg}`,'warn',9000);
 }
 
 function updateHistoryStatsCount(){
@@ -11446,7 +11465,7 @@ async function saveLocationToFirestore(){
     if(s){s.textContent='✓ บันทึกแล้ว';s.style.color='var(--green)';}
     toast('บันทึก Location แล้ว','success');
   }catch(e){
-    toast('บันทึกไม่สำเร็จ: '+e.message,'error');
+    console.warn('[location save]',e&&e.message);toast('บันทึกไม่สำเร็จ: '+_shortErr(e),'error');
   }finally{
     if(btn)btn.disabled=false;
   }

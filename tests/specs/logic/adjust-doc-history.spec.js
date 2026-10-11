@@ -150,7 +150,7 @@ test('Export Text → กรอกเลขที่เอกสาร → ไ�
   expect(st.entries[0].rows).toHaveLength(20);
   expect(st.entries[0].rows[0]).toEqual(['O001', 2, 2, null, '', '']);                  // [sku, qty, base, price, lot, exp] — ไม่มีราคา/LOT = null/ว่าง
   expect(st.entries[0].rows.map((r) => r[0])).toEqual(ids('O', 1, 20));
-  expect((await toasts(app.page)).some((t) => t.startsWith('Export ORDS 20 รายการ (Text) สำเร็จ · เลขที่เอกสาร ORDSBY001 → ย้ายไป 🗂️ ประวัติปรับปรุงแล้ว · หน้า 1/3'))).toBe(true);
+  expect((await toasts(app.page)).some((t) => t === 'Export ORDS 20 รายการ → 🗂️ ORDSBY001')).toBe(true);
   // ไม่แตะ scanData/items: ไม่มีการ mark SKU ใดขึ้น Cloud · สถานะยังเป็น Stock Adj
   expect(await app.page.evaluate(() => window.__marked)).toEqual([]);
   expect(await app.page.evaluate(() => state.scanData.get('O001').status)).toBe('stock_adjustment');
@@ -373,7 +373,7 @@ test('สองเครื่อง: เลขที่เอกสารซ้
   expect(await files(app.page)).toEqual([]);                                             // ไม่ดาวน์โหลด
   expect((await store(app.page)).entries.map((e) => e.no)).toEqual(['ORDSZZ001']);        // ไม่เขียนทับ/ไม่เพิ่ม
   expect((await read(app.page)).skus).toEqual(ids('O', 21, 40));                          // ตารางอัปเดตตาม cloud
-  expect((await toasts(app.page)).at(-1)).toBe('⚠️ 20 รายการถูกส่งออกไปแล้วในเอกสาร ORDSZZ001 — ตารางอัปเดตแล้ว · ไม่ได้ดาวน์โหลด ตรวจแล้วกด Export Text ใหม่');
+  expect((await toasts(app.page)).at(-1)).toBe('⚠️ 20 รายการถูกส่งออกไปแล้วในเอกสาร ORDSZZ001 — ไม่ได้ดาวน์โหลด ตรวจแล้ว Export ใหม่');
 
   // ส่งหน้าถัดไป (คนละแถวกับของอีกเครื่อง) → ผ่าน · รวมกับของที่มีอยู่ ไม่ทับ
   await exportWith(app.page, 'ORDSBY010');

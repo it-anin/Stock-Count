@@ -158,8 +158,8 @@ test('WH — บอกจำนวนแถวที่ข้าม (ไม่�
   expect(out.loaded).toBe(true);
   const toasts = out.toasts.join('|');
   expect(toasts).toContain('ข้ามยอดขายหน้าร้าน 2 แถว');
-  // matched นับแถวที่ข้ามด้วย — ไม่งั้นวันที่คลังไม่มียอดขายเลยจะโดนข้อความ "ไม่สามารถจับคู่ข้อมูลได้" ทั้งที่ไฟล์ถูกต้อง
-  expect(toasts).not.toContain('ไม่สามารถจับคู่');
+  // matched นับแถวที่ข้ามด้วย — ไม่งั้นวันที่คลังไม่มียอดขายเลยจะโดนข้อความ "R16.104 จับคู่ไม่ได้" ทั้งที่ไฟล์ถูกต้อง
+  expect(toasts).not.toContain('จับคู่ไม่ได้');
   await closeApp(app);
 });
 

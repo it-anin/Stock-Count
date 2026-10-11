@@ -301,7 +301,7 @@ test('ไฟล์ผิด: รายงานเคลื่อนไหวห
 
   await importFiles(app.page, files(['other.CSV', NOT_REPORT]));
   expect((await modal(app.page)).open).toBe(false);
-  expect(await lastToast(app.page)).toBe('other.CSV: ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANDATE, TRANNO, FCANCEL, SYSBRANCHID, BASEQUANTITY, ITEMID)');
+  expect(await lastToast(app.page)).toBe('other.CSV: ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANDATE +5)');
 
   await importFiles(app.page, files(['wrong.CSV', WRONG_BRANCH]));
   expect((await modal(app.page)).open).toBe(false);
@@ -371,7 +371,7 @@ test('★ atomic: cloud ล้ม/ไม่มี _db/ใหญ่เกิน�
 
   await app.page.evaluate(() => { window.__fail = 'unavailable'; });
   await confirmImport(app.page);
-  expect(await lastToast(app.page)).toBe('นำเข้าประวัติขึ้น Cloud ไม่สำเร็จ (unavailable) — ยังไม่ได้นำเข้า ลองใหม่');
+  expect(await lastToast(app.page)).toBe('นำเข้าประวัติไม่สำเร็จ (unavailable) — ลองใหม่');
   expect(await modal(app.page)).toMatchObject({ open: true, ok: '📥 นำเข้า 1 เอกสาร', okDisabled: false });
   expect(await store(app.page)).toBeNull();
   expect(await app.page.evaluate(() => _adjHist)).toBeNull();
@@ -379,7 +379,7 @@ test('★ atomic: cloud ล้ม/ไม่มี _db/ใหญ่เกิน�
 
   await app.page.evaluate(() => { window.__fail = null; window.__db = _db; _db = null; });
   await confirmImport(app.page);
-  expect(await lastToast(app.page)).toBe('นำเข้าประวัติขึ้น Cloud ไม่สำเร็จ (ไม่ได้เชื่อมต่อ Cloud) — ยังไม่ได้นำเข้า ลองใหม่');
+  expect(await lastToast(app.page)).toBe('นำเข้าประวัติไม่สำเร็จ (ไม่ได้เชื่อมต่อ Cloud) — ลองใหม่');
   await app.page.evaluate(() => { _db = window.__db; });
   await confirmImport(app.page);                                                         // กลับมาออนไลน์ → สำเร็จจาก modal เดิม
   expect((await modal(app.page)).open).toBe(false);
@@ -392,7 +392,7 @@ test('★ atomic: cloud ล้ม/ไม่มี _db/ใหญ่เกิน�
   }, EPOCH);
   await importFiles(app.page, files(['o.CSV', ORDS]));
   await confirmImport(app.page);
-  expect(await lastToast(app.page)).toMatch(/^นำเข้าประวัติขึ้น Cloud ไม่สำเร็จ \(ประวัติใหญ่ \d+ KB ใกล้เพดาน Firestore — นำเข้าช่วงวันที่สั้นลง\) — ยังไม่ได้นำเข้า ลองใหม่$/);
+  expect(await lastToast(app.page)).toMatch(/^นำเข้าประวัติไม่สำเร็จ \(ประวัติใหญ่ \d+ KB ใกล้เพดาน Firestore — นำเข้าช่วงวันที่สั้นลง\) — ลองใหม่$/);   // คำแนะนำในวงเล็บต้องไม่ถูก _shortErr ตัด
   expect((await store(app.page)).entries.map((e) => e.no)).toEqual(['BIG']);
   await app.page.evaluate(() => closeAdjHistImportModal());
 

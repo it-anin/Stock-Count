@@ -285,7 +285,7 @@ test('รายงานเคลื่อนไหวสินค้า (CF_ 45
   expect(g.multi).toContain('หลายสาขา');
   expect(g.noQty).toBe('ไม่ใช่รายงานเคลื่อนไหวสินค้า จาก ProMaxx (ไม่พบคอลัมน์ CF_TDBASEQUANTITY)');
   expect(g.hybrid).toContain('ไม่ใช่รายงานเคลื่อนไหวสินค้า');
-  expect(g.plain).toBe('ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANDATE, TRANNO, FCANCEL, SYSBRANCHID, BASEQUANTITY, ITEMID)');   // ข้อความเดิมของ R16 ไม่เปลี่ยน
+  expect(g.plain).toBe('ไม่ใช่ไฟล์ R16 จาก ProMaxx (ไม่พบคอลัมน์ SYSWAREHOUSEID, TRANDATE +5)');   // ข้อความของ R16 ไม่ถูกรายงานเคลื่อนไหวแย่ง · ชื่อคอลัมน์ไม่เกิน 2 (ต.ค. 2026 — toast ไม่ล้นจอ)
   expect(g.whole0).toEqual(['', 0, 2]);                                              // SRC: export คลังมาทั้งไฟล์ = ไม่มีใบเข้า + นับว่าข้ามเพราะคลังอื่น (ไม่ปนเป็นของหน้าร้าน)
   await closeApp(app);
 });
@@ -507,8 +507,8 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   let n0 = await toastCount(app.page);
   expect(await exportText(app.page)).toBe(textBase);
   const t1 = await lastToasts(app.page, n0);
-  expect(t1.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 1/3 (แถวที่ 1–20 จาก 45)')).toBe(true);   // ไม่มีคำว่า "เฉพาะ" (ไม่ได้กรอง ERP)
-  expect(t1.some((t) => t === 'warn|⚠️ 20 รายการในไฟล์นี้มีใบใน ERP แล้ว (เข้าแล้ว 15 · บางส่วน 5) — ตรวจก่อนนำเข้า ระวังส่งซ้ำ')).toBe(true);
+  expect(t1.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 1/3')).toBe(true);   // ไม่มีคำว่า "เฉพาะ" (ไม่ได้กรอง ERP)
+  expect(t1.some((t) => t === 'warn|⚠️ 20 รายการในไฟล์มีใบใน ERP แล้ว (เข้าแล้ว 15 · บางส่วน 5) — ระวังส่งซ้ำ')).toBe(true);
   const sAll = await exportSheet(app.page, 'ORDS');
   expect(sAll[0]).toEqual([...sheetBase[0], 'ERP เข้าแล้ว', 'สถานะ ERP', 'เลขที่เอกสาร ERP']);
   expect(sAll.map((r) => r.slice(0, 9))).toEqual(sheetBase);
@@ -523,7 +523,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(tAll2.trim().split('\r\n')).toHaveLength(20);
   expect(tAll2.trim().split('\r\n')[0]).toBe(textAll.trim().split('\r\n')[20]);
   const tAll2Toasts = await lastToasts(app.page, n0);
-  expect(tAll2Toasts.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 2/3 (แถวที่ 21–40 จาก 45)')).toBe(true);
+  expect(tAll2Toasts.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 2/3')).toBe(true);
   expect(tAll2Toasts.some((t) => t.includes('ระวังส่งซ้ำ'))).toBe(false);
 
   // ไปหน้า 2 ของ "ทั้งหมด" แล้วเลือก "ยังไม่เข้า" → กลับหน้า 1 · 25 แถว 2 หน้า · ลำดับต่อเนื่อง · ยอด "25 รายการ (จากทั้งหมด 45)"
@@ -544,7 +544,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(tNone2.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(want.slice(20));
   expect(tNone2.trim().split('\r\n')[0]).toBe(textAll.trim().split('\r\n')[40]);   // บรรทัดเดียวกันทุกไบต์ — เปลี่ยนแค่ "แถวไหนถูกส่ง"
   const t2 = await lastToasts(app.page, n0);
-  expect(t2.some((t) => t === 'success|Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 2/2 (แถวที่ 21–25 จาก 25) · เฉพาะ ⬜ ยังไม่เข้า ERP')).toBe(true);
+  expect(t2.some((t) => t === 'success|Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 2/2 · เฉพาะ ⬜ ยังไม่เข้า ERP')).toBe(true);
   expect(t2.some((t) => t.includes('ระวังส่งซ้ำ'))).toBe(false);
   // หน้า 1 ของตัวกรอง = 20 แถวแรกของตัวกรอง (O021–O040) · ตัวกรองจัดหน้าเองหลังกรอง ไม่ใช่หน้าของแท็บ
   await app.page.evaluate(() => setAdjDocPage(1));
@@ -560,7 +560,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   n0 = await toastCount(app.page);
   const tIssue = await exportText(app.page);
   expect(tIssue.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(['O016', 'O017', 'O018', 'O019', 'O020']);
-  expect((await lastToasts(app.page, n0)).some((t) => t.startsWith('warn|⚠️ 5 รายการในไฟล์นี้มีใบใน ERP แล้ว (บางส่วน 5)'))).toBe(true);
+  expect((await lastToasts(app.page, n0)).some((t) => t.startsWith('warn|⚠️ 5 รายการในไฟล์มีใบใน ERP แล้ว (บางส่วน 5)'))).toBe(true);
 
   // ตัวกรองไม่เหลือแถว → ชิปยังอยู่ให้กดกลับ · ข้อความชัด · colspan 10 · Export ไม่ออกไฟล์
   await app.page.evaluate(() => { for (let i = 1; i <= 20; i++) state.scanData.delete('O' + String(i).padStart(3, '0')); setAdjErpFilter('done'); });
@@ -692,7 +692,7 @@ test('cloud: บันทึก/อ่าน {branch}_adjerp · ไฟล์ท�
   // บันทึกล้ม → ใช้ในเครื่องนี้ + toast เตือน + ป้าย "เฉพาะเครื่องนี้" · อ่าน cloud ไม่ทับผลในเครื่อง
   await app.page.evaluate(() => { window.__fail = 'unavailable'; _adjErp = null; });
   await upload(app.page, [{ name: 'r16104.csv', rows: FILE_O }]);
-  expect(await app.page.evaluate(() => [_adjErp.localOnly, window.__toasts.at(-1)])).toEqual([true, 'warn|ตรวจกับ ERP แล้ว · ORDS 6 ใบ — แต่บันทึกขึ้น Cloud ไม่สำเร็จ (unavailable) ผลนี้เห็นเฉพาะเครื่องนี้']);
+  expect(await app.page.evaluate(() => [_adjErp.localOnly, window.__toasts.at(-1)])).toEqual([true, 'warn|ตรวจกับ ERP แล้ว · ORDS 6 ใบ — บันทึก Cloud ไม่ได้ (unavailable)']);
   r = await read(app.page);
   expect(r.card).toContain('เห็นเฉพาะเครื่องนี้');
   expect(await app.page.evaluate(() => document.querySelector('#adjErpBadge span').textContent)).toBe('เฉพาะเครื่องนี้');
@@ -705,7 +705,7 @@ test('cloud: บันทึก/อ่าน {branch}_adjerp · ไฟล์ท�
   for (let i = 0; i < 12000; i++) big.push(line({ date: '22/9/2026 10:00', no: 'ORDSBYX' + String(i).padStart(6, '0'), sku: 'S' + i, qty: 1 }));
   await upload(app.page, [{ name: 'big.csv', rows: sheet(big) }]);
   expect(await app.page.evaluate(() => [!!window.__store['stock_sessions/SRC_adjerp'], _adjErp.localOnly, Object.keys(_adjErp.docs).length])).toEqual([false, true, 12000]);
-  expect(await app.page.evaluate(() => window.__toasts.at(-1))).toContain('ใกล้เพดาน Firestore — Export R16 ช่วงสั้นลง');
+  expect(await app.page.evaluate(() => window.__toasts.at(-1))).toContain('ใกล้เพดาน — Export R16 ช่วงสั้นลง');
 
   // logout (role หาย) → ล้างผลในเครื่อง
   await app.page.evaluate(() => { currentRole = ''; updateAdjustDocPanel(); });

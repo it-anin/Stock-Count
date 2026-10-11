@@ -212,14 +212,14 @@ test('★ Export Text ขณะอยู่หน้า 2 = เฉพาะ 20 �
   const text = await exportText(app.page);
   expect(sendLines(text)).toEqual(range('O', 21, 40).map((s) => [s, '2']));   // ★ ไม่ใช่ 45
   expect(await lastFile(app.page)).toMatch(FILE_RE('_p2'));
-  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 2/3 (แถวที่ 21–40 จาก 45)');
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 2/3');
 
   // หน้าสุดท้าย (5 แถว) · หน้าแรก
   await gotoPage(app.page, 3);
   expect((await exportBtn(app.page)).title).toContain('แถวที่ 41–45 จาก 45');   // หน้าสุดท้ายไม่เต็ม 20 → ช่วงต้องไม่เลยยอดรวม
   expect(sendLines(await exportText(app.page))).toEqual(range('O', 41, 45).map((s) => [s, '2']));
   expect(await lastFile(app.page)).toMatch(FILE_RE('_p3'));
-  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 3/3 (แถวที่ 41–45 จาก 45)');
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 3/3');
   await gotoPage(app.page, 1);
   expect(sendLines(await exportText(app.page))).toEqual(range('O', 1, 20).map((s) => [s, '2']));
   expect(await lastFile(app.page)).toMatch(FILE_RE('_p1'));
@@ -235,7 +235,7 @@ test('★ Export Text ขณะอยู่หน้า 2 = เฉพาะ 20 �
   expect((await exportBtn(app.page)).text).toBe('⬇️ Export Text · หน้า 2/2');
   expect(sendLines(await exportText(app.page))).toEqual(range('I', 21, 25).map((s) => [s, '3']));
   expect(await lastFile(app.page)).toMatch(/^stockadj_irps_\d{2}-\d{2}-\d{4}_p2\.txt$/);
-  expect(await lastToast(app.page, 'Export IRPS')).toBe('Export IRPS 5 รายการ (Text) สำเร็จ · หน้า 2/2 (แถวที่ 21–25 จาก 25)');
+  expect(await lastToast(app.page, 'Export IRPS')).toBe('Export IRPS 5 รายการ (Text) สำเร็จ · หน้า 2/2');
 
   // ปุ่มนับ / ชุด SKU ที่ขอ LOT-ราคา ไม่ผูกกับหน้า
   expect(await app.page.evaluate(() => [_countAdjustDocItems(), _adjustDocSkuSet().size])).toEqual([70, 70]);
@@ -272,12 +272,12 @@ test('★ แถวแก้เป็น 0 / แก้จำนวน: ข้า
   await gotoPage(app.page, 2);
   const t2 = await exportText(app.page);
   expect(sendLines(t2)).toEqual(range('O', 21, 40).filter((s) => s !== 'O025').map((s) => [s, '2']));   // O025 ยังเห็นบนจอ แต่ไม่ลงไฟล์ → 19 บรรทัด
-  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 19 รายการ (Text) สำเร็จ · หน้า 2/3 (แถวที่ 21–40 จาก 45) · ข้าม 1 (แก้เป็น 0)');   // ไม่นับ O043 ที่อยู่หน้า 3
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 19 รายการ (Text) สำเร็จ · หน้า 2/3 · ข้าม 1 (แก้เป็น 0)');   // ไม่นับ O043 ที่อยู่หน้า 3
 
   await gotoPage(app.page, 3);
   const t3 = await exportText(app.page);
   expect(sendLines(t3)).toEqual([['O041', '2'], ['O042', '2'], ['O043', '1'], ['O044', '2'], ['O045', '2']]);   // ค่าที่แก้ลงไฟล์
-  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 3/3 (แถวที่ 41–45 จาก 45) · แก้จำนวน 1');   // ไม่นับ O025 ที่อยู่หน้า 2
+  expect(await lastToast(app.page, 'Export ORDS')).toBe('Export ORDS 5 รายการ (Text) สำเร็จ · หน้า 3/3 · แก้จำนวน 1');   // ไม่นับ O025 ที่อยู่หน้า 2
 
   // ทั้งหน้า 2 แก้เป็น 0 → ไม่มีอะไรให้ส่ง: ไม่ออกไฟล์ · toast บอกหน้า · หน้าอื่นยังออกไฟล์ได้
   await app.page.evaluate(() => { for (let i = 21; i <= 40; i++) if (i !== 25) setAdjDocQty('O' + String(i).padStart(3, '0'), '0'); });
@@ -285,7 +285,7 @@ test('★ แถวแก้เป็น 0 / แก้จำนวน: ข้า
   const nFiles = await app.page.evaluate(() => window.__downloads.length);
   expect(await exportText(app.page)).toBeNull();
   expect(await app.page.evaluate(() => window.__downloads.length)).toBe(nFiles);
-  expect(await lastToast(app.page, 'ไม่มีรายการให้ Export')).toBe('ไม่มีรายการให้ Export ตามแท็บที่เลือก · หน้า 2/3 (แถวที่ 21–40 จาก 45) · ข้าม 20 (แก้เป็น 0)');
+  expect(await lastToast(app.page, 'ไม่มีรายการให้ Export')).toBe('ไม่มีรายการให้ Export ตามแท็บที่เลือก · หน้า 2/3 · ข้าม 20 (แก้เป็น 0)');
   await gotoPage(app.page, 1);
   expect(sendLines(await exportText(app.page))).toEqual(range('O', 1, 20).map((s) => [s, '2']));
   await closeApp(app);
