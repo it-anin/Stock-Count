@@ -115,7 +115,7 @@ test('★ รายการนอกใบ: ปรับยอดนอกใ�
     ['outside', 'NOROUND', -1, 'ไม่อยู่ในรอบนับนี้ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
     ['outside', 'P-FIRST', 1, 'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม'],          // Pass ตั้งแต่นับ + ขาเดียว (ข้อความใหม่ 12 ต.ค. 2026)
     ['outside', 'PEND', -1, 'ยังไม่ได้นับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
-    ['outside', 'PR-AFTER', -1, 'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
+    ['outside', 'PR-AFTER', -1, 'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม'],          // รีเช็คแล้ว Pass ก่อนออกใบ + ขาเดียว (ข้อความใหม่ 12 ต.ค. 2026)
     ['outside', 'ZERO', -2, 'แก้จำนวนในใบ 📦 เป็น 0 (ไม่ส่ง) · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
     ['lotswap', 'SET-SWAP', 0, 'ORDS (LOT เดิม) + IRPS (LOT ใหม่) เท่ากัน — ยอดรวมไม่เปลี่ยน'],
     ['lotswap', 'SWAP', 0, 'ORDS (LOT เดิม) + IRPS (LOT ใหม่) เท่ากัน — ยอดรวมไม่เปลี่ยน'],
@@ -129,19 +129,22 @@ test('★ รายการนอกใบ: ปรับยอดนอกใ�
   await closeApp(app);
 });
 
-test('★ เหตุผล: Pass ตั้งแต่นับ + ปรับปรุง LOT ขาเดียว → "สินค้านับ Pass มีเอกสารปรับปรุงลด/เพิ่มสินค้าเพิ่ม" (12 ต.ค. 2026) · ไม่เท่ากัน/ออกจากแอป/เหตุผลอื่น = ข้อความเดิม', async ({ browser }) => {
+test('★ เหตุผล: Pass ตั้งแต่นับ / รีเช็คแล้ว Pass ก่อนออกใบ + ปรับปรุง LOT ขาเดียว → "สินค้านับ Pass มีเอกสารปรับปรุงลด/เพิ่มสินค้าเพิ่ม" (12 ต.ค. 2026) · ไม่เท่ากัน/ออกจากแอป/เหตุผลอื่น = ข้อความเดิม', async ({ browser }) => {
   const app = await bootBare(browser);
   await app.page.evaluate(() => { _refreshAdjMaster = async () => {}; });
   await seed(app.page);
   // P-ORDS = ORDS ขาเดียว · P-UNEVEN = ORDS 3 + IRPS 1 (ไม่เท่ากัน) · P-APPO = ORDS ที่ Export จากแอป (ORDSBY009 ใน 🗂️) — ทั้งสามเป็น Pass ตั้งแต่นับ
+  // PR-IRPS = รีเช็คแล้ว Pass (23/8) แล้วมี IRPS ขาเดียว 24/9
   const O2 = sheet([...FILE_O.slice(1), line({ date: '24/9/2026 14:43', no: 'ORDSBY001', sku: 'P-ORDS', qty: 1 }), line({ date: '24/9/2026 14:43', no: 'ORDSBY001', sku: 'P-UNEVEN', qty: 3 }),
     line({ date: '24/9/2026 15:00', no: 'ORDSBY009', sku: 'P-APPO', qty: 1 })]);
-  const I2 = sheet([...FILE_I.slice(1), line({ date: '24/9/2026 13:33', no: 'IRPSBY001', sku: 'P-UNEVEN', qty: 1 })]);
+  const I2 = sheet([...FILE_I.slice(1), line({ date: '24/9/2026 13:33', no: 'IRPSBY001', sku: 'P-UNEVEN', qty: 1 }), line({ date: '24/9/2026 13:33', no: 'IRPSBY001', sku: 'PR-IRPS', qty: 1 })]);
   const r = await app.page.evaluate(({ O2, I2, EPOCH, SCAN }) => {
     const pass = { status: 'pass', auditStatus: 'approved', initialStatus: 'pass', auditor: '', countedQty: 4, timestamp: SCAN, firstScanAt: SCAN, scannedBy: 'Asst' };
-    for (const sku of ['P-ORDS', 'P-UNEVEN', 'P-APPO']) {
+    const sds = { 'P-ORDS': pass, 'P-UNEVEN': pass, 'P-APPO': pass,
+      'PR-IRPS': { ...pass, initialStatus: 'audit', auditor: 'Pharm', countedQty: 5, recheckQty: 4, recheckSystemQty: 4, recheckAt: '2026-08-23T04:57:18.978Z' } };
+    for (const [sku, sd] of Object.entries(sds)) {
       state.skuMap.set(sku, { sku, productName: 'สินค้า ' + sku, unitPrice: 20, systemQty: 4, negSys: false, barcodes: [], isDel: false });
-      state.scanData.set(sku, { ...pass });
+      state.scanData.set(sku, { ...sd });
     }
     _adjHistApply('SRC', EPOCH, [{ no: 'ORDSBY009', dir: 'ords', at: '2026-09-24T08:00:00.000Z', by: 'Pharm', rows: [['P-APPO', 1, 1, null, '', '']] }], 'Pharm', '');
     __erp([O2, I2]);
@@ -157,8 +160,10 @@ test('★ เหตุผล: Pass ตั้งแต่นับ + ปรับ
     'P-FIRST': 'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม',
     'P-UNEVEN': 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่เท่ากัน (ORDS 3 · IRPS 1)',
     'P-APPO': 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ',                                          // ออกจากแอป = ไม่ใช่ปรับปรุง LOT ไม่มีคำบอกขา
+    'PR-AFTER': 'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม',                                // รีเช็คแล้ว Pass ก่อนออกใบ + ORDS ขาเดียว
+    'PR-IRPS': 'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม',                              // รีเช็คแล้ว Pass ก่อนออกใบ + IRPS ขาเดียว
     PEND: 'ยังไม่ได้นับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)',                                // เหตุผลอื่นยังเป็นข้อความเดิม
-    'PR-AFTER': 'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)',
+    NOROUND: 'ไม่อยู่ในรอบนับนี้ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)',
   });
   expect([r.cell, r.xl]).toEqual(['สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม', 'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม']);   // ตาราง + Excel ใช้ข้อความเดียวกัน
   await closeApp(app);

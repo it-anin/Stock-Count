@@ -9896,7 +9896,7 @@ function _adjErpLotHint(docs){
   if(!i)return 'ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)';
   return `ปรับปรุง LOT ไม่เท่ากัน (ORDS ${o} · IRPS ${i})`;
 }
-// Pass ตั้งแต่นับ + ปรับปรุง LOT ขาเดียว → ข้อความเดียว (ผู้ใช้สั่ง 12 ต.ค. 2026 · เดิม "Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ …)")
+// Pass ตั้งแต่นับ / รีเช็คแล้ว Pass ก่อนออกใบ + ปรับปรุง LOT ขาเดียว → ข้อความเดียว (ผู้ใช้สั่ง 12 ต.ค. 2026 · เดิม "<เหตุผล> — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ …)")
 //   เหตุผลอื่น · ไม่เท่ากัน · บรรทัดที่ออกจากแอป = ข้อความเดิม
 const ADJ_ERP_OUT_PASS_ONE_LEG={ORDS:'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม',IRPS:'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม'};
 function _adjErpLotOneLeg(docs){const {n,o,i}=_adjErpLotLegs(docs);return n&&(!o!==!i)?(o?'ORDS':'IRPS'):'';}
@@ -9920,7 +9920,7 @@ function _adjErpOutsideList(){
     else if(n.reason==='passRecheck'&&_adjErpDocsBefore(docs,sd.recheckAt)){kind='ok';reason='ปรับก่อนรีเช็ค แล้วรีเช็คตรง';}
     else{
       kind='outside';
-      const leg=n.reason==='passFirst'?_adjErpLotOneLeg(docs):'';
+      const leg=(n.reason==='passFirst'||n.reason==='passRecheck')?_adjErpLotOneLeg(docs):'';
       if(leg)reason=ADJ_ERP_OUT_PASS_ONE_LEG[leg];
       else{
         reason=ADJ_ERP_OUT_REASON[n.reason]||(String(n.reason||'').startsWith('status:')?`สถานะ ${n.reason.slice(7)}`:'แอปไม่ได้สั่งปรับ');
