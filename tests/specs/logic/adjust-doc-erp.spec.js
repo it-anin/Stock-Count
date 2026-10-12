@@ -513,7 +513,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   expect(await exportText(app.page)).toBe(textBase);
   const t1 = await lastToasts(app.page, n0);
   expect(t1.some((t) => t === 'success|Export ORDS 20 รายการ (Text) สำเร็จ · หน้า 1/3')).toBe(true);   // ไม่มีคำว่า "เฉพาะ" (ไม่ได้กรอง ERP)
-  expect(t1.some((t) => t === 'warn|⚠️ 20 รายการในไฟล์มีใบใน ERP แล้ว (เข้าแล้ว 15 · บางส่วน 5) — ระวังส่งซ้ำ')).toBe(true);
+  expect(t1.some((t) => t === 'warn|⚠️ 20 รายการในไฟล์มีเอกสารปรับปรุงสินค้าแล้ว (เข้าแล้ว 15 · บางส่วน 5) — ระวังส่งซ้ำ')).toBe(true);
   const sAll = await exportSheet(app.page, 'ORDS');
   expect(sAll[0]).toEqual([...sheetBase[0], 'อัปโหลด Report แล้ว', 'สถานะ', 'เลขที่เอกสาร']);
   expect(sAll.map((r) => r.slice(0, 9))).toEqual(sheetBase);
@@ -565,7 +565,7 @@ test('★ ตัวกรอง + แบ่งหน้า + Export: กรอ�
   n0 = await toastCount(app.page);
   const tIssue = await exportText(app.page);
   expect(tIssue.trim().split('\r\n').map((l) => l.split('\t')[0])).toEqual(['O016', 'O017', 'O018', 'O019', 'O020']);
-  expect((await lastToasts(app.page, n0)).some((t) => t.startsWith('warn|⚠️ 5 รายการในไฟล์มีใบใน ERP แล้ว (บางส่วน 5)'))).toBe(true);
+  expect((await lastToasts(app.page, n0)).some((t) => t.startsWith('warn|⚠️ 5 รายการในไฟล์มีเอกสารปรับปรุงสินค้าแล้ว (บางส่วน 5)'))).toBe(true);
 
   // ตัวกรองไม่เหลือแถว → ชิปยังอยู่ให้กดกลับ · ข้อความชัด · colspan 10 · Export ไม่ออกไฟล์
   await app.page.evaluate(() => { for (let i = 1; i <= 20; i++) state.scanData.delete('O' + String(i).padStart(3, '0')); setAdjErpFilter('done'); });
