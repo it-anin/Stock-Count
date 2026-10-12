@@ -9882,16 +9882,24 @@ function _adjErpAppLineKeys(){
   for(const e of _adjHistEntries())if(e.src!=='erp')for(const r of e.rows)set.add(String(e.no).toUpperCase()+'|'+r[0]);
   return set;
 }
-// ปรับปรุง LOT ที่ไม่ครบคู่ — บอกขาที่หาย/ไม่เท่ากัน (ดูเฉพาะบรรทัดที่ไม่ได้ออกจากแอป)
-function _adjErpLotHint(docs){
+// ขาปรับปรุง LOT (เฉพาะบรรทัดที่ไม่ได้ออกจากแอป): จำนวนบรรทัด + ยอด ORDS/IRPS
+function _adjErpLotLegs(docs){
   let o=0,i=0,n=0;
   for(const d of docs)if(d.origin==='lot'){n++;if(d.type==='ORDS')o+=d.qty;else i+=d.qty;}
-  o=_adjErpRound(o);i=_adjErpRound(i);
+  return {n,o:_adjErpRound(o),i:_adjErpRound(i)};
+}
+// ปรับปรุง LOT ที่ไม่ครบคู่ — บอกขาที่หาย/ไม่เท่ากัน (ดูเฉพาะบรรทัดที่ไม่ได้ออกจากแอป)
+function _adjErpLotHint(docs){
+  const {n,o,i}=_adjErpLotLegs(docs);
   if(!n||o===i)return '';
   if(!o)return 'ปรับปรุง LOT ไม่ครบคู่ (มีแต่ IRPS)';
   if(!i)return 'ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)';
   return `ปรับปรุง LOT ไม่เท่ากัน (ORDS ${o} · IRPS ${i})`;
 }
+// Pass ตั้งแต่นับ + ปรับปรุง LOT ขาเดียว → ข้อความเดียว (ผู้ใช้สั่ง 12 ต.ค. 2026 · เดิม "Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ …)")
+//   เหตุผลอื่น · ไม่เท่ากัน · บรรทัดที่ออกจากแอป = ข้อความเดิม
+const ADJ_ERP_OUT_PASS_ONE_LEG={ORDS:'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม',IRPS:'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม'};
+function _adjErpLotOneLeg(docs){const {n,o,i}=_adjErpLotLegs(docs);return n&&(!o!==!i)?(o?'ORDS':'IRPS'):'';}
 function _adjErpOutsideList(){
   const st=_adjErpCurrent();
   if(!ADJ_ERP_LOT_AWARE||!st)return [];
@@ -9911,8 +9919,13 @@ function _adjErpOutsideList(){
     else if(n.reason==='reopened'||n.reason==='noBasis'){kind='ok';reason='รอรีเช็ค — แอปยังไม่สรุป';}
     else if(n.reason==='passRecheck'&&_adjErpDocsBefore(docs,sd.recheckAt)){kind='ok';reason='ปรับก่อนรีเช็ค แล้วรีเช็คตรง';}
     else{
-      kind='outside';reason=ADJ_ERP_OUT_REASON[n.reason]||(String(n.reason||'').startsWith('status:')?`สถานะ ${n.reason.slice(7)}`:'แอปไม่ได้สั่งปรับ');
-      const hint=_adjErpLotHint(docs);if(hint)reason+=' · '+hint;
+      kind='outside';
+      const leg=n.reason==='passFirst'?_adjErpLotOneLeg(docs):'';
+      if(leg)reason=ADJ_ERP_OUT_PASS_ONE_LEG[leg];
+      else{
+        reason=ADJ_ERP_OUT_REASON[n.reason]||(String(n.reason||'').startsWith('status:')?`สถานะ ${n.reason.slice(7)}`:'แอปไม่ได้สั่งปรับ');
+        const hint=_adjErpLotHint(docs);if(hint)reason+=' · '+hint;
+      }
     }
     let ords=0,irps=0;for(const x of docs){if(x.type==='ORDS')ords+=x.qty;else irps+=x.qty;}
     out.push({sku,name:state.skuMap.get(sku)?.productName||'',docs,ords:_adjErpRound(ords),irps:_adjErpRound(irps),net,kind,reason,status:sd?sd.status:'',

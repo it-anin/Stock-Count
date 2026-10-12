@@ -113,7 +113,7 @@ test('★ รายการนอกใบ: ปรับยอดนอกใ�
     // ทุกบรรทัดในเทสนี้ไม่ได้ Export จากแอป = ปรับปรุง LOT สินค้า (นอกแอป) → ขาเดียวบอกว่าไม่ครบคู่ (ดูที่มาแบบ "ออกจากแอป" ใน adj-erp-outside-ack.spec.js)
     ['outside', 'BACK', 1, 'ค้างส่ง — เภสัชตัดสินว่าไม่ต้องปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ IRPS)'],
     ['outside', 'NOROUND', -1, 'ไม่อยู่ในรอบนับนี้ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
-    ['outside', 'P-FIRST', 1, 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ IRPS)'],
+    ['outside', 'P-FIRST', 1, 'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม'],          // Pass ตั้งแต่นับ + ขาเดียว (ข้อความใหม่ 12 ต.ค. 2026)
     ['outside', 'PEND', -1, 'ยังไม่ได้นับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
     ['outside', 'PR-AFTER', -1, 'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
     ['outside', 'ZERO', -2, 'แก้จำนวนในใบ 📦 เป็น 0 (ไม่ส่ง) · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)'],
@@ -126,6 +126,41 @@ test('★ รายการนอกใบ: ปรับยอดนอกใ�
   const row = await app.page.evaluate(() => _adjErpOutsideList().find((x) => x.sku === 'SWAP'));
   expect(row).toMatchObject({ ords: 2, irps: 2, net: 0, status: 'pass', name: 'สินค้า SWAP' });
   expect(row.docs.map((d) => d.no).sort()).toEqual(['IRPSBY001', 'ORDSBY001']);
+  await closeApp(app);
+});
+
+test('★ เหตุผล: Pass ตั้งแต่นับ + ปรับปรุง LOT ขาเดียว → "สินค้านับ Pass มีเอกสารปรับปรุงลด/เพิ่มสินค้าเพิ่ม" (12 ต.ค. 2026) · ไม่เท่ากัน/ออกจากแอป/เหตุผลอื่น = ข้อความเดิม', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await app.page.evaluate(() => { _refreshAdjMaster = async () => {}; });
+  await seed(app.page);
+  // P-ORDS = ORDS ขาเดียว · P-UNEVEN = ORDS 3 + IRPS 1 (ไม่เท่ากัน) · P-APPO = ORDS ที่ Export จากแอป (ORDSBY009 ใน 🗂️) — ทั้งสามเป็น Pass ตั้งแต่นับ
+  const O2 = sheet([...FILE_O.slice(1), line({ date: '24/9/2026 14:43', no: 'ORDSBY001', sku: 'P-ORDS', qty: 1 }), line({ date: '24/9/2026 14:43', no: 'ORDSBY001', sku: 'P-UNEVEN', qty: 3 }),
+    line({ date: '24/9/2026 15:00', no: 'ORDSBY009', sku: 'P-APPO', qty: 1 })]);
+  const I2 = sheet([...FILE_I.slice(1), line({ date: '24/9/2026 13:33', no: 'IRPSBY001', sku: 'P-UNEVEN', qty: 1 })]);
+  const r = await app.page.evaluate(({ O2, I2, EPOCH, SCAN }) => {
+    const pass = { status: 'pass', auditStatus: 'approved', initialStatus: 'pass', auditor: '', countedQty: 4, timestamp: SCAN, firstScanAt: SCAN, scannedBy: 'Asst' };
+    for (const sku of ['P-ORDS', 'P-UNEVEN', 'P-APPO']) {
+      state.skuMap.set(sku, { sku, productName: 'สินค้า ' + sku, unitPrice: 20, systemQty: 4, negSys: false, barcodes: [], isDel: false });
+      state.scanData.set(sku, { ...pass });
+    }
+    _adjHistApply('SRC', EPOCH, [{ no: 'ORDSBY009', dir: 'ords', at: '2026-09-24T08:00:00.000Z', by: 'Pharm', rows: [['P-APPO', 1, 1, null, '', '']] }], 'Pharm', '');
+    __erp([O2, I2]);
+    const why = Object.fromEntries(_adjErpOutsideList().map((x) => [x.sku, x.reason]));
+    openAdjErpOutsidePopup();
+    const cell = document.querySelector('#adjErpOutsideBody tr[data-sku="P-ORDS"]').children[6].textContent;
+    let xl = null; const orig = XLSX.writeFile; XLSX.writeFile = (wb) => { xl = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }); };
+    try { exportAdjErpOutsideExcel(); } finally { XLSX.writeFile = orig; }
+    return { why, cell, xl: xl.find((row) => row[1] === 'P-ORDS')[8] };
+  }, { O2, I2, EPOCH, SCAN });
+  expect(r.why).toMatchObject({
+    'P-ORDS': 'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม',
+    'P-FIRST': 'สินค้านับ Pass มีเอกสารปรับปรุงเพิ่มสินค้าเพิ่ม',
+    'P-UNEVEN': 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่เท่ากัน (ORDS 3 · IRPS 1)',
+    'P-APPO': 'Pass ตั้งแต่นับ — แอปไม่ได้สั่งปรับ',                                          // ออกจากแอป = ไม่ใช่ปรับปรุง LOT ไม่มีคำบอกขา
+    PEND: 'ยังไม่ได้นับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)',                                // เหตุผลอื่นยังเป็นข้อความเดิม
+    'PR-AFTER': 'รีเช็คแล้ว Pass ก่อนออกใบ — แอปไม่ได้สั่งปรับ · ปรับปรุง LOT ไม่ครบคู่ (มีแต่ ORDS)',
+  });
+  expect([r.cell, r.xl]).toEqual(['สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม', 'สินค้านับ Pass มีเอกสารปรับปรุงลดสินค้าเพิ่ม']);   // ตาราง + Excel ใช้ข้อความเดียวกัน
   await closeApp(app);
 });
 
