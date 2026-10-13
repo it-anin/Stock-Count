@@ -38,6 +38,11 @@ auto-adj/auto_adj.log
 auto-adj/auto_adj.log.1
 auto-adj/__pycache__/
 
+# auto-r16: log เฉพาะเครื่อง (ตัวบอทไม่ใช้ .env/service key — เขียน Firestore ด้วย API key สาธารณะชุดเดียวกับบอทตัวอื่น)
+auto-r16/auto_r16.log
+auto-r16/auto_r16.log.1
+auto-r16/__pycache__/
+
 # automated tests (tests/.gitignore คุมรายละเอียดอีกชั้น)
 tests/node_modules/
 tests/vendor/

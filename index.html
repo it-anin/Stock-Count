@@ -1583,6 +1583,59 @@ async function _clearWhR16CloudTimelines(){
   for(let i=0;i<docs.length;i++){const kind=i?'103':'104';if(docs[i].exists){const meta=docs[i].data()||{};await _deleteWhR16Generation(kind,meta.generation,Number(meta.chunkCount||0));}}
   await Promise.all([getWhR16MetaRef('104').delete(),getWhR16MetaRef('103').delete()]);
 }
+// ── R16.104 timeline ของสาขายา บน Cloud (ต.ค. 2026 · PHARMACY_R16_CLOUD_TIMELINE) ───────────────────────────────
+// เขียนโดยบอท auto-r16 เท่านั้น (เว็บไม่ publish) · รูปแบบเดียวกับ WH: meta `{branch}_r16_104_meta` + chunks `{branch}_r16_104_{generation}_{index}`
+// แถวละ [sku, ขายรวม, รับเข้ารวม, rawขาย[{soldQty,tranDate}], rawรับเข้า[{qty,tranDate}]] → _applyWhR16Rows('104') ใช้ร่วมกับ WH ได้ตรงๆ (ฟังก์ชันบริสุทธิ์)
+// ลำดับเขียนของบอท: chunks → meta → master `{branch}_r01` (r16Loaded/r16UploadedAt/r16DetailVersion)
+//   ⇒ master ประกาศเวอร์ชันไหน = chunks ของเวอร์ชันนั้นพร้อมแล้ว · บอทเขียนค้างครึ่งทาง (master ไม่เปลี่ยน) = ไม่มีผลกับใคร
+// ⛔ ห้ามเรียก reEvaluateAuditItems() (กันทุก Desktop พลิกสถานะพร้อมกัน — ตรงกับ _loadWhR16CloudTimelines) · ห้ามเรียก syncR16MetaToFirestore() (บอทเขียน meta แล้ว)
+// ⛔ ห้ามเรียก saveSession() จากเส้นทาง listener (กัน sync loop — กติกาเดียวกับ _applyR01BaselineUpdate) · ห้าม apply บางส่วน: ล้มระหว่างโหลด = คงสถานะเดิมทั้งก้อน
+function getBranchR16MetaRef(branch=currentBranch){return _db.collection('stock_sessions').doc(`${branch}_r16_104_meta`);}
+function getBranchR16ChunkRef(branch,generation,index){return _db.collection('stock_sessions').doc(`${branch}_r16_104_${generation}_${String(index).padStart(4,'0')}`);}
+async function _downloadBranchR16Rows(branch,meta){
+  const count=Number(meta?.chunkCount||0);if(!Number.isInteger(count)||count<0)throw new Error('R16 meta chunkCount ไม่ถูกต้อง');
+  const rows=[];
+  for(let i=0;i<count;i+=10){
+    const docs=await Promise.all(Array.from({length:Math.min(10,count-i)},(_,j)=>getBranchR16ChunkRef(branch,meta.generation,i+j).get()));
+    for(const doc of docs){if(!doc.exists)throw new Error(`R16 chunk หาย: ${doc.ref.id}`);const d=doc.data()||{};if(d.version!==meta.version||d.generation!==meta.generation)throw new Error(`R16 chunk version ไม่ตรง: ${doc.ref.id}`);const parsed=JSON.parse(d.data_json||'[]');if(!Array.isArray(parsed))throw new Error(`R16 chunk format ไม่ถูกต้อง: ${doc.ref.id}`);for(const row of parsed)rows.push(row);}
+  }
+  return rows;
+}
+let _pharmR16LoadToken=0,_pharmR16ReloadTimer=null,_pharmR16AppliedVersion='',_pharmR16BusyRetries=0;
+function _schedulePharmacyR16Reload(masterVersion,delayMs=250){
+  clearTimeout(_pharmR16ReloadTimer);
+  _pharmR16ReloadTimer=setTimeout(()=>_loadPharmacyR16Timeline({fromListener:true,masterVersion}).catch(e=>console.warn('[pharmacy R16 cloud]',e.message)),delayMs);
+}
+// masterVersion = เวอร์ชันที่ master `{branch}_r01` ประกาศ (listener ส่งมา · เส้นทาง login ใช้ state.r16DetailVersion ที่ _applyR16MetaFromDoc ตั้งจาก master แล้ว)
+// คืน true เมื่อ apply จริง · ด่านไม่ผ่านทุกกรณี = ไม่แตะ state เลย
+async function _loadPharmacyR16Timeline({fromListener=false,masterVersion=''}={}){
+  if(!PHARMACY_R16_CLOUD_TIMELINE||!_db||!currentBranch||!_isPharmacyBranch()||_isPdaApp()||_adminMode)return false;
+  // กำลัง Confirm = ห้ามสลับ timeline กลางงาน (แบตช์แรกกับแบตช์หลังจะคำนวณคนละชุด) — ลองใหม่ทีหลัง · Confirm เองจะ abort อยู่แล้วถ้า master เปลี่ยนระหว่างทาง
+  if(_branchConfirming){if(fromListener&&_pharmR16BusyRetries++<12)_schedulePharmacyR16Reload(masterVersion,5000);return false;}
+  _pharmR16BusyRetries=0;
+  const branch=currentBranch,token=++_pharmR16LoadToken;
+  const doc=await getBranchR16MetaRef(branch).get();
+  if(token!==_pharmR16LoadToken||branch!==currentBranch||!doc.exists)return false;
+  const meta=doc.data()||{};
+  if(meta.ready!==true||meta.kind!=='104'||!meta.version||!meta.generation)return false;
+  if((meta.countResetAt||'')!==(_countResetAt||''))return false;    // เศษรอบนับเก่า
+  if((meta.r01Version||'')!==(state.r01Version||''))return false;    // R01 เปลี่ยนแล้ว — ยอดระบบใหม่รวมยอดขายของ timeline นี้ไปแล้ว บวกซ้ำ = ผิด
+  const want=masterVersion||state.r16DetailVersion||'';
+  if(!want||meta.version!==want)return false;                         // ต้องเป็นรุ่นเดียวกับที่ master ประกาศ (อัปมือรุ่นอื่น = ไม่ยุ่ง)
+  const localV=state.r16DetailVersion||'';
+  if(state.r16Loaded&&localV===meta.version&&(state.r16RawMap.size||_pharmR16AppliedVersion===meta.version))return false; // โหลดรุ่นนี้แล้ว
+  if(state.r16RawMap.size&&localV&&localV>meta.version)return false;  // อัปมือที่ใหม่กว่า — ไม่ทับ
+  const rows=await _downloadBranchR16Rows(branch,meta);
+  // ระหว่างโหลดสถานะเปลี่ยน (สลับสาขา · R01 ใหม่ · รอบนับใหม่ · เริ่ม Confirm · มีรอบโหลดใหม่แซง) = ทิ้งผล
+  if(token!==_pharmR16LoadToken||branch!==currentBranch||_branchConfirming||(state.r01Version||'')!==(meta.r01Version||'')||(_countResetAt||'')!==(meta.countResetAt||''))return false;
+  _applyWhR16Rows('104',rows);
+  state.r16Data=[];state.r16Loaded=true;state.r16DateMismatch=false;state.r16DetailVersion=meta.version;_pharmR16AppliedVersion=meta.version;
+  const badge=document.getElementById('badgeR16');if(badge){badge.textContent='Ready';badge.parentElement?.classList.remove('upload-file-badge-warn');}
+  _setR16Ts(meta.uploadedAtText||'');
+  updateConfirmBtn();
+  if(fromListener)toast('R16 อัปเดตจาก Cloud แล้ว','info');else saveSession();
+  return true;
+}
 async function _saveWhR16TimelineSnapshot(){
   if(currentBranch!=='WH')return;
   const db=await _openWhR16Cache();
@@ -1647,6 +1700,13 @@ let WH_R16_SKIP_FRONT_STORE=true;
 //    เคส SKU 101378 (7 ต.ค.): ระบบ 250 · นับ 150 · คลังส่งออก 100 → เดิม 150−100 → audit → ใบปรับปรุง −100 ซ้ำกับที่ ERP ตัดไปแล้ว · ที่ถูก 150+100=250 pass
 //    เช็คเฉพาะ '0' ตรงๆ (fail-open: ว่าง/ค่าอื่น = หักเหมือนเดิม) · false = หักเหมือนก่อนแก้ (rollback) · OTFB/ORTS ไม่เปลี่ยน · ดู CLAUDE.md §WH OTFI ตามทิศ Col A
 let WH_R16_OTFI_OUT=true;
+// PHARMACY_R16_CLOUD_TIMELINE (ต.ค. 2026 · ผู้ใช้สั่ง — บอท auto-r16 อัป R16.104 ให้ SRC/KKL/SSS ทุกวัน 21:00)
+//   สาขายาไม่เคยมี raw timeline (r16RawMap) บน Cloud — อยู่ในหน่วยความจำของ Desktop ที่อัปไฟล์เองเท่านั้น · เครื่องที่ได้ R16 ผ่าน session sync มีแค่ยอดรวมต่อ SKU
+//   → getSoldQtyBefore บวกยอดขายทั้งวันโดยไม่กรองเวลาสแกน = Stock Adj ปลอมลง ERP · และ state.r16Loaded ไม่ได้มาจาก master ⇒ บอทเขียน Firestore อย่างเดียวไม่ปลดล็อก Confirm
+//   เปิดสวิตช์: Desktop สาขายา (ไม่ใช่ PDA) โหลด timeline ที่บอทเขียนไว้ ({branch}_r16_104_meta + chunks รูปแบบเดียวกับ WH) เข้า r16RawMap เอง
+//   ตอน login และเมื่อ master {branch}_r01 ประกาศ r16DetailVersion ใหม่ — ดู _loadPharmacyR16Timeline · false = ตัวอ่านไม่ทำอะไร (เท่าก่อนแก้ทุกจุด)
+//   ⛔ อัปมือผ่านการ์ด R16.104 ยังเป็น local timeline เหมือนเดิม (เว็บไม่ publish ขึ้น Cloud) · rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบได้
+let PHARMACY_R16_CLOUD_TIMELINE=true;
 const R16_103_PREFIXES=['IRNC','IRVC','IRNM','ICSM','ITFB','ITFW','IPOS','IRCN']; // WH: รับเข้าที่ยังไม่ขึ้นชั้น → บวกกลับเข้า countedQty
 function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
 let currentUser='';
@@ -2132,6 +2192,9 @@ function startWhMasterListeners(){
         _adoptedMasterBaselineAt=mb;
         _applyR01BaselineUpdate(mb,data).catch(e=>console.warn('[R01 master baseline]',e.message));
       }
+      // R16.104 timeline จากบอท auto-r16 (PHARMACY_R16_CLOUD_TIMELINE): บอทเขียน master เป็นขั้นสุดท้าย → เห็นเวอร์ชันใหม่ = chunks พร้อมแล้ว
+      // Desktop ที่เปิดค้างตอน 21:00 จึงได้ timeline เองโดยไม่ต้อง F5 · เวอร์ชันเท่าที่ถือ/ที่ master ไม่ได้ประกาศ R16 = ไม่ทำอะไร (ไม่อ่าน Cloud เลย)
+      if(PHARMACY_R16_CLOUD_TIMELINE&&data.r16Loaded===true&&data.r16DetailVersion&&data.r16DetailVersion!==(state.r16DetailVersion||'')&&!_isPdaApp())_schedulePharmacyR16Reload(data.r16DetailVersion);
     },e=>console.warn('[R01 meta listener]',e.message));
     return;
   }
@@ -3137,6 +3200,9 @@ async function initAfterLogin(){
     await restoreFromFirestore(currentBranch==='WH'&&currentRole==='supervisor');
     // session_data_json อาจถูกเครื่องเก่าเขียนทับทั้งก้อน — marker แยกคือ worklist/ผล Audit ที่ authoritative
     if(_isPharmacyBranch())await _loadPharmacyAuditMarkerState();
+    // R16.104 timeline จากบอท auto-r16 (สาขายา Desktop) — master/R01 ถูก restore แล้ว (restoreFromFirestore → restoreMasterFromFirestore → _applyR16MetaFromDoc)
+    // ล้ม = ไม่กระทบ login (เหมือนไม่มีบอท: อัปมือที่การ์ด R16.104 ตามเดิม)
+    if(_isPharmacyBranch()){try{await _loadPharmacyR16Timeline();}catch(e){console.warn('[pharmacy R16 cloud]',e.message);}}
     if(currentBranch==='WH'){if(currentRole==='supervisor')await _loadWhR16CloudTimelines();await _loadWhWorkflowCloudState();}
     // รีเซ็ตของค้างข้ามวัน → ดันขึ้น cloud เป็น authoritative ก่อนเริ่ม listener (กัน listener ดึงของค้างกลับมา resurrect)
     const _staleReset=resetStaleScanningItems();

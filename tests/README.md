@@ -60,6 +60,9 @@ $env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8791'; npm run e2e:attach   # แล้�
 | `lib/fixtures.js` | catalog สังเคราะห์ 20 SKU + ตัวสร้าง CSV (**ห้ามใส่ข้อมูลจริง**) |
 | `lib/movement-report.js` | fixture สังเคราะห์ของ "รายงานเคลื่อนไหวสินค้ารายเอกสาร" (หัว `CF_…` 45 คอลัมน์ · ไม่มี `FCANCEL`) — `msheet(specs)` สร้างจาก spec เดียวกับ `line()` ของ R16 · `fromR16(...sheets)` แปลงชีต R16 เป็นรายงานนี้ (ตัดบรรทัดยกเลิก) · ใช้กับการ์ด 🧾 + 📥 นำเข้าประวัติ (**ห้ามใส่ข้อมูลจริง**) |
 | `lib/supabase-fake.js` | PostgREST จำลองสำหรับตาราง `adj_*` (ป็อปอัพปรับปรุงสินค้า) ด้วย `page.route` — ตอบจาก fixture สังเคราะห์ ไม่ออกนอกเครื่อง · รองรับ `gen=eq.` `sku=in.()` `limit/offset` · สั่งให้ล้ม (`fail`) หรือกั้นคำตอบไว้ (`gate`) ได้ · ตัวกรองที่ไม่รู้จัก = throw |
+| `lib/python.js` | เรียก **Python 3** จากเทส (`runPython(body, payload)` · `-I -B -X utf8`) — ใช้กับบอท `auto-r16` · **ไม่มี Python = เทสล้มพร้อมข้อความ ไม่ skip เงียบ** (ตั้ง `PYTHON=<path>` ถ้าไม่ได้อยู่ใน PATH) · `AUTO_R16_MODULE=<path>` ชี้ไปสำเนาที่ใส่บั๊กจงใจ (mutation testing) |
+| `lib/r16-104-fixture.js` | fixture สังเคราะห์ของ `R16104.CSV` (หัว 40 คอลัมน์ตรงไฟล์จริง · `row()`/`branchRow()`/`csvText()` · catalog ที่มีของแปลก: PBM∪R01 ซ้อนกัน · barcode ตัวพิมพ์เล็ก/ใหญ่ · ซ้ำ ตัวท้ายชนะ · SKU กำพร้า · SKU ภาษาไทย) |
+| `lib/r16-bot-harness.js` | รัน `main()` **จริง**ของบอท `auto-r16` กับ Firestore จำลองในหน่วยความจำ (จดทุกการเรียก get/patch/delete) — ใช้ทั้งเทส flow ของบอทและเทสตัวอ่านฝั่งแอป |
 | `lib/seed.js` / `lib/emulator.js` | seed master docs / items · `clearAll`, `waitForDoc` |
 | `specs/logic/**` | เทสสูตรและ merge — ไม่ใช้ emulator |
 | `specs/e2e/**` | เทสเต็ม flow ผ่าน emulator |
@@ -77,6 +80,12 @@ $env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8791'; npm run e2e:attach   # แล้�
 **WH workflow v2:** Confirm-All 577 SKU, Confirm แยกพนักงาน, Count/Recheck committed operation,
 atomic reader overlay, recovery หลัง commit, Dashboard precedence, candidate/master race abort, branch lock,
 canonical hash และ rules ป้องกัน stale PDA/legacy final map
+
+**R16.104 timeline ของสาขายา (บอท `auto-r16` · ต.ค. 2026):**
+- `auto-r16-parity.spec.js` — บอท (Python) ต้องผลิต **chunk เดียวกับ `loadR16()` ฝั่งเว็บทุกไบต์**: กติกาต่อสาขา (SRC ข้าม OTFI/OTFB ของคลัง · KKL/SSS ไม่มี carve-out) · fuzz 3 สาขา × 3 seed · หลาย chunk (16,000 SKU) · ขอบ chunk หลายเป้า (ใช้ซอร์สจริงของ `_chunkWhR16Rows`) · `Number()`/`trim()`/`parseTranDate()` ของ JS เทียบ Python · opt-in ไฟล์จริง: `R16104_REAL_FILE=<path> npm run test:logic -- auto-r16-parity`
+- `auto-r16-flow.spec.js` — ลำดับ chunks → meta → master · ด่านทุกข้อ (ไม่ผ่าน = ไม่เขียน) · ล้มกลางทาง = เก็บกวาด + คืน meta เดิม · รันซ้ำไม่เขียน · ลบรุ่นเก่าหลังประกาศ · flag แปลกปลอม exit 2 (ไม่มี network เลย)
+- `pharmacy-r16-cloud-timeline.spec.js` (logic) — ตัวอ่าน `_loadPharmacyR16Timeline()` + hook ของ master listener: apply กรองตามเวลาสแกนจริง · ด่านทุกข้อไม่แตะ state · ล้ม/ถูกแซงระหว่างโหลดไม่ apply บางส่วน · ของที่บอทผลิตจริงถูกอ่านได้
+- `pharmacy-r16-cloud-timeline.spec.js` (e2e) — เส้นทางจริง login + listener + Confirm: ★ ขายก่อนสแกน 3 / หลังสแกน 4 → ต้อง `pass` (ยอดรวมเดิมให้ `stock_adjustment` 14≠10 — มีเทส "ทางเก่า" พิสูจน์) · PDA ไม่โหลด · R01 ใหม่ล้าง timeline เมื่อวาน
 
 ## สิ่งที่เทสแทนไม่ได้ (ยังต้องทดสอบมือ)
 

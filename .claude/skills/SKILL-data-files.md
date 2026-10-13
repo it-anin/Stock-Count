@@ -212,6 +212,8 @@ logic: `isOutbound = (!isWhBranch && (match(OUTBOUND) && colA==='1' || isSrcOtfb
 
 **Upload date sync (cross-device):** `loadR16()` เขียน `r16UploadedAt`+`r16Loaded` ลง master doc `${branch}_r01` ผ่าน `syncR16MetaToFirestore()` (merge, ไม่ใช่ session doc) — อ่านกลับทุก login ผ่าน `_applyR16MetaFromDoc()` ใน `restoreMasterFromFirestore()` เหมือน pattern ของ R01 ดู Known Pitfalls ด้านล่าง
 
+**R16.104 timeline ของสาขายาบน Cloud (บอท `auto-r16` · 13 ต.ค. 2026):** `R16104.CSV` ของ BOTR16104 = เอกสารจ่าย "วันนี้วันเดียว" ของ 3 สาขาในไฟล์เดียว (`SYSBRANCHID` 0=ชากค้อ SRC+WH ปน Col A · 4=เก้ากิโล KKL · 5=ศรีราชา SSS · ชื่อสาขาใน `NAME` idx 31) — **`loadR16` ไม่กรองสาขาเอง** บอทจึงแยกแถวตาม `SYSBRANCHID` แล้วพอร์ต `loadR16` (กติกา non-WH) เป็น `build_timeline()` ใน `auto-r16/auto_r16_import.py` → เขียน `{branch}_r16_104_meta` + chunks `{branch}_r16_104_{gen}_{idx}` (รูปแบบเดียวกับ `WH_r16_104_*` · `_whR16Rows`/`_chunkWhR16Rows`) + ประกาศ 3 field ที่ master · Desktop สาขายา (ไม่ PDA) โหลดผ่าน `_loadPharmacyR16Timeline()` (สวิตช์ `PHARMACY_R16_CLOUD_TIMELINE`) · กติกา/ข้อห้าม/ทางถอยอยู่ CLAUDE.md §R16.104 timeline ของสาขายาบน Cloud · ด่านของบอท/ติดตั้ง/Task อยู่ `auto-r16/README.md` · parity เทียบ `loadR16` ทุกไบต์: `tests/specs/logic/auto-r16-parity.spec.js`
+
 ### R16.103 (WH only) — Document Types
 
 | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
@@ -472,7 +474,7 @@ Strip เฉพาะ: `retries`, `scans`
 - **สาเหตุ:** audit/pass เป็น **derived state คิด local ต่อเครื่อง** ผ่าน `reEvaluateAuditItems()` จาก `r16SalesMap` ของเครื่องนั้น — แต่ที่ sync ข้ามเครื่องคือ **แค่ป้ายวันที่** (`_applyR16MetaFromDoc` เขียน badge + `_setR16Ts` เท่านั้น ไม่โหลดยอด ไม่ re-evaluate). ⚠️ **วันที่บน badge ไม่ได้แปลว่าเครื่องนั้นคิด audit ด้วย R16 นั้นแล้ว**
 - **ทำไมค้าง:** (1) guard `!state.r16Loaded` ใน `restoreFromFirestore` บล็อกไม่ให้เครื่องที่ `r16Loaded=true` รับ R16 ใหม่ (2) listener `_applyCloudScanData` ไม่แตะ R16 เลย (3) merge เป็น **one-way** — cloud audit ดัน local เป็น audit ได้ แต่ cloud pass/pending ไม่เคยดึง local audit กลับ (+ guard `5f8649d` กัน local audit ทับ cloud pass) → เครื่องที่คิด audit เกินไว้ไม่มีทางกลับ
 - **แก้ (ขอบเขต "ข้อ 2" เท่านั้น):** ใน `restoreFromFirestore` early-return path **เฉพาะสาขายา (`_isPharmacyBranch`)** → refresh `r16SalesMap`/`r16InboundMap` จาก cloud แม้ `r16Loaded` แล้ว + เรียก `reEvaluateAuditItems({silent:true})` (ข้าม item ที่มี `auditor` → ไม่ revert งาน verify) — เครื่องแก้เองตอน **login/reload** (deploy ครั้งถัดไป PWA reload → หายรอบแรก)
-- **ข้อจำกัดที่ยังเหลือ:** (1) **ไม่ live** — ถ้าอัป R16 ใหม่กลางวันตอนเภสัชเปิดจอค้าง จอนั้นหายต่อเมื่อ reload (2) ใช้ **ยอดรวม** ไม่กรอง TRANDATE เพราะ `r16RawMap` ไม่ sync (in-memory) → เครื่องที่รับ R16 ผ่าน sync คิดจากยอดขายรวม ส่วนเครื่องที่อัปไฟล์เองกรองเวลา (ถ้าต้องเป๊ะทุกเครื่องต้อง sync `r16RawMap` ผ่าน master doc — "ข้อ 3")
+- **ข้อจำกัดที่ยังเหลือ:** (1) **ไม่ live** — ถ้าอัป R16 ใหม่กลางวันตอนเภสัชเปิดจอค้าง จอนั้นหายต่อเมื่อ reload (2) ใช้ **ยอดรวม** ไม่กรอง TRANDATE เพราะ `r16RawMap` ไม่ sync (in-memory) → เครื่องที่รับ R16 ผ่าน sync คิดจากยอดขายรวม ส่วนเครื่องที่อัปไฟล์เองกรองเวลา (ถ้าต้องเป๊ะทุกเครื่องต้อง sync `r16RawMap` ผ่าน master doc — "ข้อ 3" · **ส่งมอบบางส่วนแล้ว 13 ต.ค. 2026 สำหรับ R16.104 ที่บอท `auto-r16` อัปให้: Desktop สาขายาโหลด timeline จาก Cloud เอง — ดู §R16.104 timeline ของสาขายาบน Cloud ด้านบน · อัปมือที่การ์ดยังเป็น local เหมือนเดิม**)
 - **WH ไม่แตะ** — gate `_isPharmacyBranch()` ทั้งหมด flow ยืนยัน/รีเช็ค WH เหมือนเดิม
 
 ---
