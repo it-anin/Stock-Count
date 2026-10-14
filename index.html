@@ -119,6 +119,14 @@
     .adj-hist-btn { display:inline-flex; align-items:center; gap:7px; padding:6px 12px; border-radius:8px; border:1px solid rgba(106,60,181,0.35); background:rgba(155,93,229,0.08); color:#6a3cb5; cursor:pointer; font-family:inherit; font-size:0.78rem; font-weight:700; white-space:nowrap; line-height:1.15; }
     .adj-hist-btn:hover { background:rgba(155,93,229,0.16); }
     .adj-hist-btn .adj-hist-pill { font-family:'Inter',sans-serif; font-size:0.68rem; font-weight:700; background:#6a3cb5; color:#fff; padding:1px 8px; border-radius:6px; }
+    /* ✅ Stock Validate (14 ต.ค. 2026 · สาขายา) — ชิปตัวกรองของป็อปอัพตัวเอง · ⛔ ห้ามใช้ .adj-erp-chip (ชิปของ 📦 ถูกวนอ่าน/ล้าง active ตามคลาสนั้น) */
+    .sv-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
+    .sv-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
+    .sv-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
+    .sv-sub { display:block; font-size:0.64rem; font-weight:400; color:var(--text3); margin-top:2px; white-space:nowrap; }
+    #stockValidateCard .ptable thead th, #stockValidateCard .ptable tbody td { padding:8px 10px; }
+    #stockValidateCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
+    #stockValidateCard .stock-popup-footer > div:last-child { margin-left:auto; }
     .btn-export-popup { padding:7px 16px; border-radius:7px; border:1px solid rgba(26,158,92,0.3); background:rgba(26,158,92,0.08); color:var(--green); cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600; transition:background 0.15s; }
     .btn-export-popup:hover { background:rgba(26,158,92,0.16); }
     .upload-guide-popover { display:none; position:absolute; top:0; left:calc(100% + 20px); width:460px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,0.12); z-index:100; padding:24px; animation:popIn 0.2s ease-out; }
@@ -618,6 +626,11 @@
       <div class="panel-card" id="adjustDocPanel" style="padding:14px;display:none;">
         <h3 style="margin-bottom:12px;">ปรับปรุงสต็อก</h3>
         <button class="stock-list-btn" onclick="openAdjustDocPopup()" style="background:linear-gradient(135deg,#9b5de5,#6a3cb5);box-shadow:0 2px 8px rgba(106,60,181,0.25);"><span>📦 ปรับปรุงสินค้า</span><span class="scount" id="adjustDocCount" style="background:rgba(255,255,255,0.25);">0</span></button>
+      </div>
+      <!-- ✅ Stock Validate (14 ต.ค. 2026 · สาขายา SRC/KKL/SSS · เภสัช Desktop) — ซ่อนจนกว่า _refreshStockValidate จะเปิด · badge = จำนวน "ไม่ตรง" -->
+      <div class="panel-card" id="stockValidatePanel" style="padding:14px;display:none;">
+        <h3 style="margin-bottom:12px;">Stock Validate</h3>
+        <button class="stock-list-btn" onclick="openStockValidatePopup()" style="background:linear-gradient(135deg,#1a9e5c,#0b7a43);box-shadow:0 2px 8px rgba(26,158,92,0.25);"><span>✅ Stock Validate</span><span class="scount" id="stockValidateCount" style="background:rgba(255,255,255,0.25);">—</span></button>
       </div>
     </div>
 
@@ -1128,6 +1141,43 @@
       <div style="display:flex;gap:8px;">
         <button onclick="exportAdjErpOutsideExcel()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">📊 Export Excel</button>
         <button onclick="closeAdjErpOutsidePopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ Stock Validate (14 ต.ค. 2026 · สาขายา) — SKU ที่ status Stock Adj: ยอดที่ควรปรับ (ตัวเลขตอนตัดสิน) เทียบกับใบ ORDS/IRPS ทั้งรายงานที่แนบที่การ์ด 🧾 ของ 📦 · อ่านอย่างเดียว · เปิดจากการ์ดแผงซ้าย -->
+<div class="stock-popup-overlay" id="stockValidateOverlay" style="display:none" onclick="handleStockValidateOverlayClick(event)">
+  <div class="stock-popup" id="stockValidateCard" style="max-width:1240px;">
+    <div class="stock-popup-header">
+      <h2>✅ Stock Validate</h2>
+      <button class="stock-popup-close" onclick="closeStockValidatePopup()">✕</button>
+    </div>
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.6;">
+      <div id="svInfo" style="font-weight:600;color:var(--text2);">ยังไม่แนบ R02.102</div>
+      Stock ในระบบ / นับจริง = ตัวเลขตอนตัดสินเป็น Stock Adj (ไม่ขยับตาม R01 รายวัน) · Stock ที่ควรปรับ = นับจริง − ระบบ · ORDS / IRPS = ทุกใบของสินค้านั้นในรายงานที่แนบ (ตั้งแต่วันเริ่มรอบนับ) · ผล Diff = ORDS + IRPS
+    </div>
+    <div id="svBar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:8px;flex-wrap:wrap;"></div>
+    <div class="stock-popup-body" style="user-select:text;">
+      <table class="ptable">
+        <thead id="svThead"></thead>
+        <tbody id="svBody"><tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
+      </table>
+    </div>
+    <div class="stock-popup-footer">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;">
+        <span class="popup-row-count" id="svRowCount">0 รายการ</span>
+        <div class="pg-bar" id="svPager" style="display:none;">
+          <button class="pg-btn" data-pg="first" onclick="setStockValidatePage(1)" title="หน้าแรก">«</button>
+          <button class="pg-btn" data-pg="prev" onclick="setStockValidatePage(_svPage-1)">‹ ก่อนหน้า</button>
+          <span class="pg-info" data-pg="info"></span>
+          <button class="pg-btn" data-pg="next" onclick="setStockValidatePage(_svPage+1)">ถัดไป ›</button>
+          <button class="pg-btn" data-pg="last" onclick="setStockValidatePage(Infinity)" title="หน้าสุดท้าย">»</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="exportStockValidateExcel()" title="Export ทุกรายการของตัวกรองนี้ (ไม่ใช่เฉพาะหน้าที่เห็น)" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;white-space:nowrap;">📊 Export Excel</button>
+        <button onclick="closeStockValidatePopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
     </div>
   </div>
@@ -4415,7 +4465,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // PDA: refocus scan input เมื่อกลับจาก background
   // skip ถ้า login modal ยังเปิดอยู่ (PIN / branch / employee) — กัน focus ถูก steal จาก pinInput
   function _loginModalOpen(){
-    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjErpOutsideOverlay','adjDocNoModal','adjHistImportModal','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
+    const ids=['pinModal','branchModal','employeeModal','r16MismatchModal','scanGapModal','zeroSysModal','noStockModal','stockPopupOverlay','historyStatsPopupOverlay','auditVerifyPopupOverlay','adjustDocPopupOverlay','adjHistPopupOverlay','adjErpOutsideOverlay','adjDocNoModal','adjHistImportModal','stockValidateOverlay','dashboardPopupOverlay','locationPopupOverlay','loginLogPopupOverlay'];
     return ids.some(id=>document.getElementById(id)?.style.display==='flex');
   }
   document.addEventListener('visibilitychange',()=>{
@@ -9848,6 +9898,7 @@ function startAdjErpListener(){
 //   เข้าแล้ว = done ของ _adjErpEval (ตัวเดียวกับคอลัมน์ ERP ในใบ) · บางส่วน/เกิน/ทิศตรงข้าม = ไม่ตรง (issue) · ทิศที่ไฟล์ยังไม่ครอบ/ยังไม่อัป = ยังไม่เข้า
 // ยอดที่ต้องปรับของ SKU หนึ่งตามกติกาการ์ด — ตัวจัดกลุ่มเดียวที่ทั้งการ์ด (_adjErpCardStats) และรายการนอกใบ (_adjErpOutsideList) ใช้ ⛔ ห้ามเขียนกติกาซ้ำที่อื่น
 //   {inY,dir,qty,base,stale} = อยู่ใน Y · {settled} = ผลต่าง 0 แล้ว · {reason} = ไม่อยู่ใน Y (รหัสใน ADJ_ERP_OUT_REASON · reopened · noBasis · status:*)
+//   ev = {sys,cnt,diff} ตัวเลขที่ใช้ (ผลต่างลงนาม ก่อนค่าที่เภสัชแก้) — มีใน inY/settled/zeroEdit · ✅ Stock Validate อ่านตัวนี้ (ผู้เรียกเดิมไม่อ่าน)
 function _adjErpItemNeed(sku,sd){
   if(!sd)return{reason:'notInRound'};
   if(!_isAdjustDocItem(sd)){
@@ -9867,12 +9918,12 @@ function _adjErpItemNeed(sku,sd){
     ev={sys,cnt,diff:cnt-sys};stale=true;
   }
   if(!Number.isFinite(ev.diff))return{reason:'noBasis'};
-  if(ev.diff===0)return{settled:true};
+  if(ev.diff===0)return{settled:true,ev};
   const dir=ev.diff<0?'ords':'irps';
   const ov=_adjQtyOverride(sd,ev.diff);
   const qty=ov!==null?ov:Math.abs(ev.diff);
-  if(!(qty>0))return{reason:'zeroEdit'};   // แก้เป็น 0 = ไม่ส่ง
-  return{inY:true,dir,qty,base:Math.abs(ev.diff),stale};
+  if(!(qty>0))return{reason:'zeroEdit',ev};   // แก้เป็น 0 = ไม่ส่ง
+  return{inY:true,dir,qty,base:Math.abs(ev.diff),stale,ev};
 }
 // สุทธิของใบ (IRPS บวก · ORDS ลบ) — 0 = มีแต่ย้าย LOT ยอดรวมไม่เปลี่ยน
 function _adjErpNet(docs){let n=0;for(const x of docs)n+=x.type==='IRPS'?x.qty:-x.qty;return _adjErpRound(n);}
@@ -9911,6 +9962,196 @@ function _adjErpCardStats(){
     for(const sku of settled)if(_adjErpSettledByErp(idx,sku))settledDone++;
   }
   return {st,done:done+settledDone,total:total+settledDone,issue,by,uncovered,stale,exported,settledDone};
+}
+// ── ✅ Stock Validate (14 ต.ค. 2026 · ผู้ใช้สั่ง · สาขายา SRC/KKL/SSS) — อ่านอย่างเดียว ไม่เขียนอะไร ──
+// การ์ดแผงซ้ายใต้ 📦 → ตาราง SKU ที่ status stock_adjustment: ยอดที่ควรปรับ เทียบกับใบ ORDS/IRPS ในรายงานที่แนบที่การ์ด 🧾
+//   Col 1/2 = ตัวเลขตอนตัดสินเป็น Stock Adj (ผู้ใช้เลือก) จาก _adjErpItemNeed(...).ev — ชุดเดียวกับใบ 📦/การ์ดสถิติ ⛔ ห้ามคำนวณซ้ำที่นี่
+//     Stock Adj ตรง = ยอดระบบ / ยอดนับ (+R16) ตอน Confirm · รีเช็คเดิม = ตอนรีเช็ค (รวม stale ที่ใบตัดออก) · ไม่มีค่าแช่ (🚫 ไม่มีของ) = R01 ล่าสุด
+//   Col 3 = นับ − ระบบ (ขาด = ลบ → ORDS · เกิน = บวก → IRPS · ผู้ใช้เลือก) · Col 4 = −ORDS · Col 5 = +IRPS · Col 6 = Col 4 + Col 5 (_adjErpNet)
+//   Col 4/5 "ทั้งเดือน" = ทุกใบของสินค้านั้นในรายงานที่แนบของรอบนี้ — ไม่ใช้ขอบล่างรายแถว _adjErpLowDay แบบคอลัมน์ Report ใน 📦 (parser ตัดใบก่อนวันเริ่มรอบอยู่แล้ว)
+//   Col 7 = Col 3 === Col 6 → ตรง · ข้อยกเว้นเดียว: แถว R01 ล่าสุด ที่ผลต่าง 0 แต่มีใบสุทธิ ≠ 0 = ปรับแล้ว R01 วันถัดไปตามทัน → ตรง (กติกาเดียวกับ _adjErpSettledByErp) · ⛔ ห้ามใช้กับแถวค่าแช่
+//   เฉพาะ stock_adjustment (ไม่รวมรอรีเช็ค · ผู้ใช้เลือก) · สิทธิ์เหมือน 📦 (_adjErpEnabled) + ไม่ใช่ PDA
+//   รีเฟรช: _refreshStockValidate ถูกเรียกบรรทัดแรกของ _applyStatAuditCardMode (hub ที่ถูกเรียกทุกจุดที่ผล ERP/รายการ Stock Adj เปลี่ยน · login/logout)
+// STOCK_VALIDATE=false = ไม่มีการ์ด/ป็อปอัพ ที่เหลือเท่าเดิมทุกจุด (ทางถอย — เทสสลับได้)
+let STOCK_VALIDATE=true;
+let STOCK_VALIDATE_PAGE_SIZE=20;   // ไม่ใช่เลขบวก = ไม่แบ่งหน้า (ดู _paginate)
+let _svFilter='all';   // 'all' | 'mismatch' | 'match'
+let _svPage=1;
+const SV_SRC_UI={confirm:'ตอน Confirm',recheck:'ตอนรีเช็ค',live:'R01 ล่าสุด'};
+const SV_STATE_UI={match:{text:'ตรง',color:'var(--green)'},mismatch:{text:'ไม่ตรง',color:'var(--red)'},na:{text:'—',color:'var(--text3)'}};
+const SV_FILTER_LABEL={mismatch:'ไม่ตรง',match:'ตรง'};
+function _stockValidateEnabled(){return STOCK_VALIDATE&&_adjErpEnabled()&&!_isPdaApp();}
+function _svSigned(v){return v>0?'+'+v:String(v);}   // 0 → "0" · ลบ → "-3" · บวก → "+2"
+function _svColor(v){return v>0?'var(--green)':v<0?'var(--red)':'var(--text3)';}
+// แถวของตาราง (ฟังก์ชันบริสุทธิ์ ไม่แตะ state) → {st,rows,counts:{mismatch,match},skipped:{noSku,noBasis}} · เรียง ไม่ตรง → ตรง → ไม่มีรายงาน แล้วตาม SKU
+function _stockValidateRows(){
+  const st=_adjErpCurrent();
+  const idx=st?_adjErpIndex(st):null;
+  const rows=[];const counts={mismatch:0,match:0};const skipped={noSku:0,noBasis:0};
+  for(const[sku,sd] of state.scanData.entries()){
+    if(!sd||sd.status!=='stock_adjustment')continue;
+    const n=_adjErpItemNeed(sku,sd);
+    if(!n.ev){if(n.reason==='noSku')skipped.noSku++;else skipped.noBasis++;continue;}   // ไม่ขึ้นตาราง แต่นับโชว์ท้ายตาราง (ห้ามหายเงียบ)
+    const sys=_adjErpRound(n.ev.sys),cnt=_adjErpRound(n.ev.cnt),diff=_adjErpRound(n.ev.diff);
+    const src=_isDirectAdjItem(sd)?'confirm':Number.isFinite(Number(sd.recheckSystemQty))?'recheck':'live';   // ต้องตรงกับที่มาของ ev (_adjustDocDiff / stale fallback)
+    const raw=Number(sd.rawCountedQty!==undefined?sd.rawCountedQty:sd.countedQty)||0;
+    const docs=idx?(idx.get(sku)||[]):[];
+    let ords=0,irps=0;for(const x of docs){if(x.type==='ORDS')ords+=x.qty;else if(x.type==='IRPS')irps+=x.qty;}
+    ords=_adjErpRound(ords);irps=_adjErpRound(irps);
+    const net=_adjErpNet(docs);
+    let state_='na',caughtUp=false;
+    if(st){
+      if(diff===net)state_='match';
+      else if(src==='live'&&diff===0&&net!==0){state_='match';caughtUp=true;}
+      else state_='mismatch';
+      counts[state_]++;
+    }
+    const ov=_adjQtyOverride(sd,n.ev.diff);   // จำนวนที่เภสัชแก้ในใบ 📦 (null = ไม่ได้แก้ / ผลต่างเปลี่ยนแล้ว)
+    const ovMatch=ov!==null&&_adjErpRound(Math.abs(net))===ov&&(ov===0||Math.sign(net)===Math.sign(diff));
+    rows.push({sku,name:state.skuMap.get(sku)?.productName||'',sys,cnt,diff,src,raw,comp:src==='confirm'?_adjErpRound(cnt-raw):0,
+      sold:Number(sd.soldQty)||0,inbound:Number(sd.inboundQty)||0,r16103:Number(sd.r16103Qty)||0,
+      docs,ords,irps,net,state:state_,caughtUp,ov,ovMatch});
+  }
+  const rank={mismatch:0,match:1,na:2};
+  rows.sort((a,b)=>rank[a.state]-rank[b.state]||(a.sku<b.sku?-1:a.sku>b.sku?1:0));
+  return {st,rows,counts,skipped};
+}
+function _svViewRows(res){return res.st&&_svFilter!=='all'?res.rows.filter(r=>r.state===_svFilter):res.rows;}
+function _svDocsTitle(docs,type){const a=docs.filter(x=>x.type===type);return a.length?a.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):`ไม่มีใบ ${type} ของสินค้านี้ในรายงาน`;}
+function _svDocCell(r,st,type){
+  if(!st)return '<td style="text-align:center;color:var(--text3);">—</td>';
+  if(!st.cover[type])return `<td style="text-align:center;color:var(--text3);" title="${type}: ยังไม่มีข้อมูลในรายงานที่แนบ">—</td>`;
+  const v=type==='ORDS'?(r.ords?-r.ords:0):r.irps;
+  // ย่อยบอกจำนวนใบ (เลขที่ใบ 18 ตัวในช่องทำตารางล้นที่หน้าต่าง 960px) — เลขที่ใบ/วันที่/จำนวนอยู่ใน tooltip + คอลัมน์เลขที่เอกสารของ Excel
+  const n=r.docs.filter(x=>x.type===type).length;
+  const sub=n?`<span class="sv-sub">${n} ใบ</span>`:'';
+  return `<td style="text-align:center;" title="${_adjErpEsc(_svDocsTitle(r.docs,type))}"><span style="font-weight:700;color:${_svColor(v)};">${_svSigned(v)}</span>${sub}</td>`;
+}
+function _svInfoHtml(st){
+  if(!st)return '<span style="color:var(--red);">ยังไม่แนบ R02.102</span> — แนบที่ 📦 ปรับปรุงสินค้า → 🧾 ตรวจสอบ รายงาน R02.102';
+  const parts=[`${_adjErpEsc(_adjErpRptName(st))} ${_adjErpEsc(_adjFmtUpdated(st.updatedAt)||'อัปเดตแล้ว')}`];
+  for(const t of ADJ_ERP_TYPES)parts.push(st.cover[t]?`${t} ถึง ${_adjErpEsc(_adjErpFmtAt(st.cover[t].toAt,true))}`:`<span style="color:var(--red);">${t}: ยังไม่มีข้อมูล</span>`);
+  if(st.localOnly)parts.push('<span style="color:var(--red);">⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)</span>');
+  return parts.join(' · ');
+}
+// ข้อความย่อยของแต่ละช่อง — ตารางกับ Excel (คอลัมน์หมายเหตุ) ใช้ตัวเดียวกัน
+function _svCntNote(r){return r.src==='confirm'&&r.comp?`นับ ${r.raw} · R16 ${_svSigned(r.comp)}`:'';}
+function _svOvNote(r){return r.ov!==null?`ใบ 📦 แก้เป็น ${r.ov}${r.ov===0?' (ไม่ส่ง)':''}`:'';}
+// ช่องผลตรวจ: คนละบรรทัด (บรรทัดเดียวยาวจนตารางล้นที่หน้าต่าง 960px)
+function _svResultNotes(r){
+  if(r.caughtUp)return ['R01 ล่าสุดรวมใบแล้ว'];
+  if(r.state!=='mismatch')return [];
+  return [`ต่าง ${_svSigned(_adjErpRound(r.diff-r.net))}`].concat(r.ovMatch?['ตรงกับจำนวนที่แก้ในใบ 📦']:[]);
+}
+function _svNotes(r){
+  return [_svCntNote(r),r.src==='live'?'ไม่ได้แช่ยอดระบบตอนตัดสิน — ใช้ R01 ล่าสุด':'',_svOvNote(r),..._svResultNotes(r)].filter(Boolean);
+}
+function _renderStockValidateBadge(res){
+  const c=document.getElementById('stockValidateCount');if(!c)return;
+  const mm=res.counts.mismatch;
+  const text=res.st?String(mm):'—';
+  if(c.textContent!==text)c.textContent=text;
+  c.style.background=res.st&&mm>0?'rgba(217,48,37,0.9)':'rgba(255,255,255,0.25)';
+  const btn=c.closest('button');
+  if(btn)btn.title=res.st?`ไม่ตรง ${mm} · ตรง ${res.counts.match} · Stock Adj ทั้งหมด ${res.rows.length} รายการ`:'ยังไม่แนบ R02.102 — แนบที่ 📦 ปรับปรุงสินค้า → 🧾';
+}
+function renderStockValidateTable(pre){
+  const body=document.getElementById('svBody');if(!body)return;
+  const res=pre||_stockValidateRows();
+  const st=res.st;
+  if(!st)_svFilter='all';   // ไม่มีรายงาน = ไม่มีผลตรวจให้กรอง
+  const info=document.getElementById('svInfo');if(info)info.innerHTML=_svInfoHtml(st);
+  const bar=document.getElementById('svBar');
+  if(bar){
+    if(!st){bar.style.display='none';bar.innerHTML='';}
+    else{
+      const chip=(k,label,cnt)=>`<button type="button" class="sv-chip${_svFilter===k?' active':''}" data-sv-filter="${k}" onclick="setStockValidateFilter('${k}')">${label} <b>${cnt}</b></button>`;
+      bar.innerHTML='<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ผลตรวจ</span>'
+        +chip('all','ทั้งหมด',res.rows.length)+chip('mismatch','❌ ไม่ตรง',res.counts.mismatch)+chip('match','✅ ตรง',res.counts.match);
+      bar.style.display='flex';
+    }
+  }
+  const thead=document.getElementById('svThead');
+  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">Stock ในระบบ<br>(R01.102)</th><th style="text-align:center;">Stock<br>นับจริง</th><th style="text-align:center;">Stock<br>ที่ควรปรับ</th><th style="text-align:center;">ORDS</th><th style="text-align:center;">IRPS</th><th style="text-align:center;">ผล Diff<br>(ORDS + IRPS)</th><th style="text-align:center;">ผลตรวจ</th></tr>';
+  const rows=_svViewRows(res);
+  const sk=[res.skipped.noSku?`ไม่มีข้อมูลสินค้า (R05) ${res.skipped.noSku}`:'',res.skipped.noBasis?`ข้อมูลไม่ครบ ${res.skipped.noBasis}`:''].filter(Boolean).join(' · ');
+  const rc=document.getElementById('svRowCount');
+  if(rc)rc.textContent=(st&&_svFilter!=='all'?`${rows.length} รายการ (จากทั้งหมด ${res.rows.length})`
+    :`${res.rows.length} รายการ`+(st?` · ไม่ตรง ${res.counts.mismatch} · ตรง ${res.counts.match}`:''))+(sk?` · ไม่แสดง: ${sk}`:'');
+  const pgn=_paginate(rows.length,STOCK_VALIDATE_PAGE_SIZE,_svPage);_svPage=pgn.page;
+  const view=rows.slice(pgn.start,pgn.start+pgn.size);
+  _renderPagerUi('svPager',pgn,view.length);
+  if(!rows.length){body.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">${res.rows.length?'ไม่มีรายการในตัวกรองนี้':'ไม่มีสินค้าที่ Stock Adjustment'}</td></tr>`;return;}
+  body.innerHTML=view.map((r,i)=>{
+    const sysTitle=r.src==='live'?'ระบบไม่ได้แช่ยอดระบบตอนตัดสิน (เช่น 🚫 ไม่มีของ) — ใช้ R01 ล่าสุด':`R01.102 ${SV_SRC_UI[r.src]} (ไม่ขยับตาม R01 รายวัน)`;
+    const cntTitle=r.src==='confirm'&&r.comp?`ยอดนับที่ชดเชยการเคลื่อนไหวระหว่างนับ (R16) ให้เทียบกับ R01 ตอน Confirm\nนับจริง ${r.raw}\nขายก่อนสแกน +${r.sold}\nR16.103 +${r.r16103}\nรับเข้าก่อนสแกน −${r.inbound}`:'';
+    const cn=_svCntNote(r),on=_svOvNote(r),res7=_svResultNotes(r).map((t)=>`<span class="sv-sub">${_adjErpEsc(t)}</span>`).join('');
+    const cntSub=cn?`<span class="sv-sub">${_adjErpEsc(cn)}</span>`:'';
+    const diffSub=on?`<span class="sv-sub">${_adjErpEsc(on)}</span>`:'';
+    const ui=SV_STATE_UI[r.state];
+    const netCell=st?`<td style="text-align:center;font-weight:700;color:${_svColor(r.net)};">${_svSigned(r.net)}</td>`:'<td style="text-align:center;color:var(--text3);">—</td>';
+    return `<tr data-sku="${_adjErpEsc(r.sku)}" data-sv-state="${r.state}">`
+      +`<td style="color:var(--text3);font-size:0.75rem;">${pgn.start+i+1}</td>`
+      +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${_adjErpEsc(r.sku)}</td>`
+      +`<td class="ptd-name" style="min-width:130px;">${_adjErpEsc(r.name)}</td>`
+      +`<td style="text-align:center;" title="${_adjErpEsc(sysTitle)}"><span style="font-weight:700;">${r.sys}</span><span class="sv-sub"${r.src==='live'?' style="color:var(--yellow);font-weight:700;"':''}>${SV_SRC_UI[r.src]}</span></td>`
+      +`<td style="text-align:center;"${cntTitle?` title="${_adjErpEsc(cntTitle)}"`:''}><span style="font-weight:700;">${r.cnt}</span>${cntSub}</td>`
+      +`<td style="text-align:center;"><span style="font-weight:700;color:${_svColor(r.diff)};">${_svSigned(r.diff)}</span>${diffSub}</td>`
+      +_svDocCell(r,st,'ORDS')+_svDocCell(r,st,'IRPS')
+      +netCell
+      +`<td style="text-align:center;white-space:nowrap;"${!st?' title="ยังไม่แนบ R02.102"':''}><span style="font-weight:700;color:${ui.color};">${ui.text}</span>${res7}</td>`
+      +'</tr>';
+  }).join('');
+}
+// เรียกจาก _applyStatAuditCardMode (hub) — โชว์/ซ่อนการ์ด + badge + วาดใหม่ถ้าป็อปอัพเปิดอยู่ (คงหน้าเดิม) · หมดสิทธิ์ = ปิดป็อปอัพด้วย
+function _refreshStockValidate(){
+  const on=_stockValidateEnabled();
+  const p=document.getElementById('stockValidatePanel');
+  if(p){const d=on?'':'none';if(p.style.display!==d)p.style.display=d;}
+  const ov=document.getElementById('stockValidateOverlay');
+  const open=!!ov&&ov.style.display==='flex';
+  if(!on){if(open)ov.style.display='none';return;}
+  const res=_stockValidateRows();
+  _renderStockValidateBadge(res);
+  if(open)renderStockValidateTable(res);
+}
+function openStockValidatePopup(){
+  if(!_stockValidateEnabled())return;
+  _svFilter='all';_svPage=1;
+  const res=_stockValidateRows();
+  renderStockValidateTable(res);_renderStockValidateBadge(res);
+  _openModal('stockValidateOverlay','stockValidateCard');
+  const b=document.querySelector('#stockValidateCard .stock-popup-body');if(b)b.scrollTop=0;
+  _loadAdjErpFromCloud();   // ผลที่แนบล่าสุด (ไม่รอ · มาแล้ว hub วาดใหม่เอง) — จำเป็นเมื่อไม่มี listener (PHARMACY_ADJ_ERP_CARD ปิด)
+}
+function closeStockValidatePopup(){_closeModal('stockValidateOverlay','stockValidateCard',()=>{const el=document.getElementById('scanInput');if(el)el.focus();});}
+function handleStockValidateOverlayClick(e){if(e.target===document.getElementById('stockValidateOverlay'))closeStockValidatePopup();}
+function setStockValidateFilter(f){
+  _svFilter=SV_FILTER_LABEL[f]?f:'all';_svPage=1;
+  renderStockValidateTable();
+  const b=document.querySelector('#stockValidateCard .stock-popup-body');if(b)b.scrollTop=0;
+}
+// ผู้ใช้กดเปลี่ยนหน้า — วาดทันทีแล้วเลื่อนขึ้นบนสุด · p อาจเป็น Infinity (หน้าสุดท้าย — _paginate clamp ให้)
+function setStockValidatePage(p){
+  _svPage=p;renderStockValidateTable();
+  const b=document.querySelector('#stockValidateCard .stock-popup-body');if(b)b.scrollTop=0;
+}
+// Export ทุกแถวของตัวกรองที่เลือก (ไม่ใช่เฉพาะหน้าที่เห็น) · ตัวเลขเป็น number · ช่องที่ไม่มีข้อมูลเว้นว่าง
+function exportStockValidateExcel(){
+  if(!_stockValidateEnabled())return;
+  const res=_stockValidateRows();const st=res.st;
+  const rows=_svViewRows(res);
+  if(!rows.length){toast('ไม่มีรายการให้ Export','warn');return;}
+  const header=['รหัสสินค้า','ชื่อสินค้า','Stock ในระบบ (R01.102)','ยอดระบบ ณ','Stock นับจริง','Stock ที่ควรปรับ','ORDS','IRPS','ผล Diff (ORDS + IRPS)','ผลตรวจ','เลขที่เอกสาร','หมายเหตุ'];
+  const aoa=[header].concat(rows.map(r=>[r.sku,r.name,r.sys,SV_SRC_UI[r.src],r.cnt,r.diff,
+    st&&st.cover.ORDS?(r.ords?-r.ords:0):'',st&&st.cover.IRPS?r.irps:'',st?r.net:'',st?SV_STATE_UI[r.state].text:'',
+    r.docs.map(d=>`${d.no} ${_adjErpFmtAt(d.at,true)} ${d.type} ${d.qty}`).join(', '),_svNotes(r).join(' · ')]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=header.map((_,c)=>{let w=String(header[c]).length;aoa.slice(1).forEach(row=>{const v=row[c]==null?'':String(row[c]);if(v.length>w)w=v.length;});return{wch:Math.min(w+2,60)};});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Stock Validate');
+  XLSX.writeFile(wb,`stock_validate_${currentBranch||'all'}_${_fileDateDMY()}.xlsx`);
+  toast(`Export Stock Validate ${rows.length} รายการ (Excel) สำเร็จ${st&&_svFilter!=='all'?` · เฉพาะ${SV_FILTER_LABEL[_svFilter]}`:''}`,'success');
 }
 // ── ใบใน ERP นอกใบ 📦 (ADJ_ERP_LOT_AWARE) — ใบ ORDS/IRPS ของสินค้าที่ไม่อยู่ใน Y (แอปไม่ได้สั่งปรับ/ยังไม่สรุป) ตั้งแต่วันที่นับสินค้านั้น ──
 //   lotswap = "ปรับปรุง LOT สินค้า" ครบคู่ (ORDS ออกจาก LOT เดิม + IRPS เข้า LOT ใหม่ เท่ากัน · สุทธิ 0 · ยอดรวมไม่เปลี่ยน — คำของผู้ใช้ 11 ต.ค. 2026)
@@ -10100,6 +10341,7 @@ const ADJ_ERP_CARD_LABEL='Stock Adj เข้าระบบ';
 // การ์ดใบที่ 4 ของแถบสถิติ — สาขายา + สวิตช์เปิด = "Stock Adj เข้าระบบ" X / Y · อื่นๆ = การ์ดเดิม (ค่าถูกเขียนโดย updateStats/applyAuditTerminology แล้ว)
 // เรียกท้าย updateStats + applyAuditTerminology (ไม่งั้นป้ายถูกทับกลับเป็น "รอรีเช็ค") + ทุกจุดที่ผล ERP/จำนวนในใบเปลี่ยน · สแกนล้วนไม่เปลี่ยนตัวเลขนี้ (ไม่แตะเส้นทางเบา)
 function _applyStatAuditCardMode(){
+  _refreshStockValidate();   // ✅ Stock Validate ใช้ข้อมูลชุดเดียวกัน (ผล ERP + รายการ Stock Adj) — จุดเรียกชุดเดียวกัน · ต้องอยู่ก่อน early-return ทุกตัว
   const val=document.getElementById('statFail');if(!val)return;
   const card=val.closest('.stat-card');
   if(!_adjErpCardOn()){
