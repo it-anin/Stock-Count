@@ -125,6 +125,61 @@ test('มีแถวที่ไม่ใช่วันนี้ปนมา (
   const bad2 = run({ csv: F.csvText([...rows, garbage]) }).runs[0];
   expect(bad2.code).toBe(4);
   expect(bad2.log).toContain('อ่านไม่ได้');
+  expect(bad2.log, 'log ต้องแสดงค่าจริงที่อ่านไม่ได้ (ไม่ต้องไปเปิดไฟล์)').toContain("ตัวอย่าง: 'garbage'");
+});
+
+// เครื่องที่ export ต่างกันให้วันที่ต่างกัน — BIGYAMAINPC ให้ `14-Oct-26 09:17:17` (เดือนอังกฤษ) ซึ่ง parseTranDate() ของแอปอ่านไม่ได้
+// ⇒ บอทต้องแปลงเป็น dd/mm/yyyy ก่อนเก็บลง timeline · ผลที่ได้ต้องเท่ากับไฟล์รูปแบบ dd/mm/yyyy ทุกตัวเลข
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function toMonFormat(r) {
+  const m = /^(\d+)\/(\d+)\/(\d{4})( .*)?$/.exec(r[1]);
+  const out = r.slice();
+  out[1] = `${m[1]}-${MON[Number(m[2]) - 1]}-${m[3].slice(2)}${m[4] || ''}`;
+  return out;
+}
+
+test('TRANDATE รูปแบบ dd-Mon-yy (BIGYAMAINPC) → ผ่านด่าน · แปลงเป็น dd/mm/yyyy ใน timeline · ตัวเลขเท่าไฟล์ dd/mm/yyyy', () => {
+  const plain = BRANCHES.flatMap((b) => csvRows(b));
+  const mon = plain.map(toMonFormat);
+  expect(mon[0][1]).toMatch(/^\d{1,2}-[A-Z][a-z]{2}-\d{2} \d\d:\d\d:\d\d$/);   // fixture ต้องเป็นรูปแบบที่ตั้งใจจริง
+  const a = run({ csv: F.csvText(plain) });
+  const b = run({ csv: F.csvText(mon) });
+  expect(b.runs[0].code, b.runs[0].log).toBe(0);
+  expect(b.runs[0].log).not.toContain('อ่านไม่ได้');
+  const t = new Date(Date.now() + 7 * 3600 * 1000);
+  const want = `${t.getUTCDate()}/${String(t.getUTCMonth() + 1).padStart(2, '0')}/${t.getUTCFullYear()} 14:20:05`;
+  for (const br of BRANCHES) {
+    const metaA = a.store[`${br}_r16_104_meta`], metaB = b.store[`${br}_r16_104_meta`];
+    const rowsA = JSON.parse(a.store[`${br}_r16_104_${metaA.generation}_0000`].data_json);
+    const rowsB = JSON.parse(b.store[`${br}_r16_104_${metaB.generation}_0000`].data_json);
+    expect(rowsB.map((x) => [x[0], x[1], x[2]]), `${br}: ยอดต่อ SKU`).toEqual(rowsA.map((x) => [x[0], x[1], x[2]]));
+    expect(rowsB.find((x) => x[0] === 'S-02')[3][0].tranDate, `${br}: tranDate ที่เก็บ`).toBe(want);
+    expect(metaB.uploadedAtText.split(' · ')[1], `${br}: ช่วงเวลาที่ไฟล์ครอบ`).toBe(metaA.uploadedAtText.split(' · ')[1]);
+  }
+});
+
+test('TRANDATE dd-Mon-yy ที่ส่วนเวลาผิดรูป/ชื่อเดือนผิด → exit 4 ไม่เขียนอะไร (fail-closed)', () => {
+  const rows = BRANCHES.flatMap((b) => csvRows(b)).map(toMonFormat);
+  const t = new Date(Date.now() + 7 * 3600 * 1000);
+  const day = `${t.getUTCDate()}-${MON[t.getUTCMonth()]}-${String(t.getUTCFullYear()).slice(2)}`;
+  for (const bad of [`${day} garbage`, `${day}x`, `${day.replace(/-[A-Z][a-z]{2}-/, '-Foo-')} 09:00:00`]) {
+    const r = run({ csv: F.csvText([...rows, F.branchRow('SRC', { at: bad, barcode: 'B-09', sku: 'S-09' })]) }).runs[0];
+    expect(r.code, bad).toBe(4);
+    expect(patches(r), bad).toEqual([]);
+    expect(r.log).toContain('อ่านไม่ได้');
+    expect(r.log, `ตัวอย่างค่าจริง: ${bad}`).toContain(`ตัวอย่าง: ${JSON.stringify(bad).replace(/^"|"$/g, "'")}`);
+  }
+});
+
+test('log ของ "TRANDATE อ่านไม่ได้" แสดงตัวอย่างค่าจริงไม่เกิน 3 แบบ ไม่ซ้ำ', () => {
+  const rows = BRANCHES.flatMap((b) => csvRows(b));
+  const weird = ['W1', 'W2', 'W2', 'W3', 'W4', 'W5'].map((w, i) => F.branchRow('SRC', { at: w, barcode: 'B-0' + (i % 9 + 1), sku: 'S-0' + (i % 9 + 1) }));
+  const r = run({ csv: F.csvText([...rows, ...weird]) }).runs[0];
+  expect(r.code).toBe(4);
+  const line = r.log.split(/\r?\n/).find((l) => l.includes('อ่านไม่ได้')) || '';
+  expect(line).toContain("ตัวอย่าง: 'W1', 'W2', 'W3'");
+  expect(line).not.toContain('W4');
+  expect(line).toContain('6 แถว');
 });
 
 test('ไฟล์มีแต่หัวตาราง → exit 4', () => {

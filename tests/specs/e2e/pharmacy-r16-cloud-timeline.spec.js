@@ -7,8 +7,10 @@
 const { test, expect, closeApp, requireEmulator } = require('../../lib/hooks');
 const { bootFreshCount, bootJoinCount, armR16, PROJECT_ID } = require('../../lib/scenario');
 const { adminDb, setDoc, getDoc, waitForDoc } = require('../../lib/emulator');
+const { run: runBot, baseDocs: botDocs } = require('../../lib/r16-bot-harness');
+const F = require('../../lib/r16-104-fixture');
 
-const TEXT = '21:00 น. 13/10/2026 · ข้อมูล 13/10 08:02–13/10 20:58';
+const TEXT ='21:00 น. 13/10/2026 · ข้อมูล 13/10 08:02–13/10 20:58';
 
 // เวลาแบบ "d/m/yyyy HH:mm:ss" ตามนาฬิกาของหน้าเว็บ (ไม่ใช่ของ Node) — getSoldQtyBefore เทียบกับเวลาสแกนของหน้าเว็บเอง
 const tdate = (page, offsetMs) => page.evaluate((o) => {
@@ -75,6 +77,55 @@ test.describe('timeline R16 สาขายาจาก Cloud (บอท auto-r1
     expect(norm.soldQty, 'ชดเชยเฉพาะที่ขายก่อนเวลาสแกน').toBe(3);
     expect(norm.directAdj).toBeUndefined();
     expect(await getDoc(PROJECT_ID, 'stock_sessions/SRC_confirm_lock')).toBeNull();
+
+    await closeApp(pda);
+    await closeApp(desk);
+  });
+
+  test('★ ไฟล์จากเครื่อง BIGYAMAINPC (วันที่ dd-Mon-yy) → ผ่านบอทจริง → Desktop ได้ timeline → Confirm กรองตามเวลาสแกนถูก', async ({ browser }) => {
+    // 14 ต.ค. 2026: เครื่องนั้น export TRANDATE เป็น "14-Oct-26 09:17:17" ซึ่ง parseTranDate() ของแอปอ่านไม่ได้ (→ null → ข้ามแถว → ไม่ชดเชยยอดขาย
+    // → Stock Adj ปลอม) · บอทต้องแปลงเป็น dd/mm/yyyy ก่อนเก็บ — เทสนี้พิสูจน์ปลายทาง (ผล Confirm) ไม่ใช่แค่หน้าตาสตริง
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const desk = await bootFreshCount(browser, { role: 'pharmacist', user: 'Pharm', mode: 'desktop' });
+    const pda = await bootJoinCount(browser, { role: 'assistant', user: 'PDA-A', mode: 'pda', expectEpoch: desk.epoch });
+    await pdaScansSeven(pda);
+
+    // เวลาตามนาฬิกาของหน้าเว็บ (ตัวเดียวกับที่ Confirm เทียบ) ในรูปแบบที่เครื่องนั้นให้
+    const monDate = (offsetMs) => desk.page.evaluate(({ o, MON }) => {
+      const d = new Date(Date.now() + o); const p = (n) => String(n).padStart(2, '0');
+      return `${p(d.getDate())}-${MON[d.getMonth()]}-${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }, { o: offsetMs, MON });
+    const before = await monDate(-2 * 3600_000), after = await monDate(2 * 3600_000);
+    expect(before, 'รูปแบบที่ตั้งใจทดสอบ').toMatch(/^\d\d-[A-Z][a-z]{2}-\d\d \d\d:\d\d:\d\d$/);
+
+    const bot = runBot({
+      // --force: เวลา ±2 ชม. อาจข้ามวัน (ด่าน "ไฟล์ต้องเป็นของวันนี้" ไม่ใช่สิ่งที่เทสนี้ตรวจ — มีเทสของมันใน auto-r16-flow)
+      args: ['--force', '--branch', 'SRC'],
+      csv: F.csvText([
+        F.branchRow('SRC', { at: before, barcode: 'B-NORM', sku: 'S-NORM', qty: '3.0000', tranNo: 'ORCMBY001261000001' }),
+        F.branchRow('SRC', { at: after, barcode: 'B-NORM', sku: 'S-NORM', qty: '4.0000', tranNo: 'ORCMBY001261000002' }),
+      ]),
+      docs: botDocs({
+        global_r05: { data_json: JSON.stringify([['B-NORM', 'S-NORM', 'EA', 1, 10]]), format: 'r05a1' },
+        SRC_r01: { data_json: JSON.stringify([{ colE: 'S-NORM', systemQty: 10, productName: 'norm' }]) },
+      }),
+    });
+    const r = bot.runs[0];
+    expect(r.code, r.log).toBe(0);
+    const generation = bot.store.SRC_r16_104_meta.generation;
+    const rows = JSON.parse(bot.store[`SRC_r16_104_${generation}_0000`].data_json);
+    expect(rows.map((x) => [x[0], x[1], x[2]])).toEqual([['S-NORM', 7, 0]]);
+    expect(rows[0][3].map((x) => x.tranDate).every((s) => /^\d\d\/\d\d\/\d{4} \d\d:\d\d:\d\d$/.test(s)), 'บอทแปลงเป็น dd/mm/yyyy แล้ว').toBe(true);
+
+    const version = new Date(Date.now() + 60_000).toISOString();
+    await botPublish(desk.page, { version, rows });
+    await desk.page.waitForFunction((v) => state.r16Loaded === true && state.r16DetailVersion === v && state.r16RawMap.size > 0,
+      version, { timeout: 20000, polling: 100 });
+    await desk.page.evaluate(() => validateAndProcess());
+    const norm = await waitForDoc(PROJECT_ID, 'stock_sessions/SRC/items/S-NORM', (d) => d && d.status === 'pass', { timeout: 25000 });
+    expect(norm.countedQty).toBe(7);
+    expect(norm.soldQty, 'ชดเชยเฉพาะที่ขายก่อนเวลาสแกน (ไม่ใช่ 0 = แอปอ่านวันที่ไม่ออก · ไม่ใช่ 7 = ไม่กรองเวลา)').toBe(3);
+    expect(norm.directAdj).toBeUndefined();
 
     await closeApp(pda);
     await closeApp(desk);

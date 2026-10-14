@@ -259,6 +259,49 @@ print(json.dumps(out))
   await closeApp(app);
 });
 
+// รูปแบบ dd-Mon-yy (เครื่อง export ของ BIGYAMAINPC) ที่แอปอ่านไม่ได้ → บอทแปลงก่อนเก็บ · รูปแบบอื่นต้องไม่ถูกแตะ
+test('normalize_tran_date: รูปแบบที่แอปอ่านได้ไม่ถูกแตะ · dd-Mon-yy แปลงแล้วแอปอ่านค่าเดียวกับที่บอทอ่าน', async ({ browser }) => {
+  const app = await bootBare(browser);
+  const same = ['13/10/2026 08:02:37', '13/10/2026 8:02', '13/10/2026', '7/10/2026 9:02 AM', '13-10-26 8:07', '13-10-2026 8:38:50 AM',
+    '2026-10-13 08:02:37', '2026-10-13T08:02:37', '', 'garbage', ' 13/10/2026 09:00 '];
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const mon = ['14-Oct-26 09:17:17', '14-oct-26 9:17', '5-JAN-2026 1:05:09 pm', '31-Dec-25 23:59:59', '1-Feb-26 12:15 AM', '14-Oct-26', '29-Feb-28 10:00',
+    ...MON.map((m, i) => `${i + 1}-${m}-26 10:00:00`)];                                 // ครบ 12 เดือน — กันตารางเดือนสลับ/ตก
+  const jsParse = (ss) => app.page.evaluate((xs) => xs.map((s) => {
+    const d = parseTranDate(s);
+    return d ? [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()] : null;
+  }), ss);
+  const py = runPython(`
+out = []
+for s in p['same'] + p['mon']:
+    n = m.normalize_tran_date(s)
+    d = m.parse_tran_date(n)
+    out.append([n, None if d is None else [d.year, d.month, d.day, d.hour, d.minute, d.second]])
+print(json.dumps(out))
+`, { same, mon });
+  // 1) ที่แอปอ่านได้อยู่แล้ว: ผ่านเท่านั้น (trim) และผลอ่านตรงแอป
+  const jsSame = await jsParse(same);
+  same.forEach((s, i) => { expect(py[i][0], JSON.stringify(s)).toBe(s.trim()); expect(py[i][1], JSON.stringify(s)).toEqual(jsSame[i]); });
+  // 2) dd-Mon-yy: ไม่ใช่ null · สตริงที่แปลงแล้ว **แอปอ่านได้ค่าเดียวกับบอท** (นี่คือสิ่งที่ Confirm ใช้จริง)
+  const norm = py.slice(same.length);
+  const jsNorm = await jsParse(norm.map((x) => x[0]));
+  norm.forEach(([n, d], i) => { expect(d, mon[i]).not.toBeNull(); expect(jsNorm[i], `${mon[i]} → ${n}`).toEqual(d); });
+  expect(norm[0]).toEqual(['14/10/2026 09:17:17', [2026, 10, 14, 9, 17, 17]]);
+  expect(norm[1]).toEqual(['14/10/2026 9:17', [2026, 10, 14, 9, 17, 0]]);
+  expect(norm[2]).toEqual(['5/01/2026 1:05:09 pm', [2026, 1, 5, 13, 5, 9]]);
+  expect(norm[3]).toEqual(['31/12/2025 23:59:59', [2025, 12, 31, 23, 59, 59]]);
+  expect(norm[4]).toEqual(['1/02/2026 12:15 AM', [2026, 2, 1, 0, 15, 0]]);
+  expect(norm[5]).toEqual(['14/10/2026', [2026, 10, 14, 23, 59, 59]]);
+  MON.forEach((m, i) => expect(norm[7 + i][1], `เดือน ${m}`).toEqual([2026, i + 1, i + 1, 10, 0, 0]));
+  // 3) ส่วนเวลา/เดือนผิดรูป = ไม่แปลง (→ อ่านไม่ได้ → ตกด่าน)
+  const bad = ['14-Oct-26x', '14-Foo-26 09:00', '14-Oct-26 garbage', '14-Oct-26 99', '14-Oct-6 09:00', '14-October-26'];
+  const pyBad = runPython(`print(json.dumps([[m.normalize_tran_date(s), m.parse_tran_date(m.normalize_tran_date(s)) is None] for s in p['bad']]))`, { bad });
+  pyBad.forEach(([n, isNone], i) => { expect(n, bad[i]).toBe(bad[i]); expect(isNone, bad[i]).toBe(true); });
+  // 4) canary ฝั่งแอป: ถ้าวันหนึ่งแอปอ่าน dd-Mon-yy ได้เอง ให้ทบทวนว่ายังต้องแปลงอยู่ไหม (ตอนนี้ต้องเป็น null)
+  expect((await jsParse(['14-Oct-26 09:17:17']))[0]).toBeNull();
+  await closeApp(app);
+});
+
 // ── ไฟล์จริง (opt-in) ────────────────────────────────────────────────────────
 const REAL = process.env.R16104_REAL_FILE;
 test('ไฟล์จริง R16104.CSV (opt-in: R16104_REAL_FILE) — แยกตามสาขาแล้วตรงเว็บทุกไบต์', async ({ browser }) => {

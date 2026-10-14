@@ -245,6 +245,30 @@ def parse_tran_date(value):
         return None
 
 
+_MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
+_RE_MON_DATE = re.compile(r"^([0-9]{1,2})-([A-Za-z]{3})-([0-9]{2}|[0-9]{4})(?=[" + _JS_WS + r"]|$)")
+_RE_MON_TIME = re.compile(r"^(?:[" + _JS_WS + r"]+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?[" + _JS_WS + r"]*(?:AM|PM)?)?[" + _JS_WS + r"]*$", re.I)
+
+
+def normalize_tran_date(value):
+    """TRANDATE → สตริงที่ parseTranDate() ของแอปอ่านได้
+
+    เครื่องที่ export ต่างกันให้รูปแบบวันที่ต่างกัน — BIGYAMAINPC ให้ `14-Oct-26 09:17:17` (ชื่อเดือนอังกฤษ) ซึ่งแอปอ่านไม่ได้
+    (dmyMatch รับเลขเดือนเท่านั้น · ISO fallback ล้ม) ⇒ แปลงเป็น `14/10/2026 09:17:17` ก่อนเก็บลง timeline
+    รูปแบบอื่นทั้งหมด = คืนค่าเดิมหลัง trim (เท่าแอปเป๊ะ) · ส่วนเวลาที่เหลือผิดรูป = คืนค่าเดิม → parse_tran_date ได้ None → ตกด่าน (fail-closed)
+    """
+    s = js_trim(value or "")
+    m = _RE_MON_DATE.match(s)
+    if not m:
+        return s
+    mon = _MONTHS.get(m.group(2).lower())
+    rest = s[m.end():]
+    if not mon or not _RE_MON_TIME.match(rest):
+        return s
+    yr = m.group(3) if len(m.group(3)) == 4 else "20" + m.group(3)
+    return f"{m.group(1)}/{mon:02d}/{yr}{rest.rstrip()}"
+
+
 # ------------------------------------------------------------
 #  อ่าน CSV
 # ------------------------------------------------------------
@@ -329,18 +353,23 @@ def file_date_problems(rows, today):
     ไฟล์หลายวัน/ไฟล์เก่า = ยอดขายเมื่อวานซ้ำกับ R01 ของวันนี้ที่รวมไปแล้ว (บวกซ้ำ = Confirm ผิด)
     """
     td_idx = tran_date_col(rows[0]) if rows else -1
-    other, unreadable = {}, 0
+    other, unreadable, unreadable_samples = {}, 0, []
     for r in rows[1:]:
         if not r or js_trim(col(r, COL_CANCEL)) == "1":
             continue
-        d = parse_tran_date(js_trim(col(r, td_idx))) if td_idx >= 0 else None
+        d = parse_tran_date(normalize_tran_date(col(r, td_idx))) if td_idx >= 0 else None
         if d is None:
             unreadable += 1
+            raw = js_trim(col(r, td_idx)) if td_idx >= 0 else ""
+            if len(unreadable_samples) < 3 and raw not in unreadable_samples:
+                unreadable_samples.append(raw)
         elif d.date() != today:
             other[d.date().isoformat()] = other.get(d.date().isoformat(), 0) + 1
     problems = []
     if unreadable:
-        problems.append(f"TRANDATE อ่านไม่ได้ {unreadable} แถว (รูปแบบวันที่เปลี่ยน?)")
+        # แสดงค่าจริงที่อ่านไม่ได้ — รูปแบบวันที่ต่างกันตามเครื่องที่ export (เจอจริง 14 ต.ค. 2026: 14-Oct-26) ดูจาก log ได้เลยไม่ต้องไปเปิดไฟล์
+        shown = ", ".join(repr(s[:40]) for s in unreadable_samples)
+        problems.append(f"TRANDATE อ่านไม่ได้ {unreadable} แถว (รูปแบบวันที่เปลี่ยน?) · ตัวอย่าง: {shown}")
     if other:
         sample = ", ".join(f"{k}×{v}" for k, v in sorted(other.items())[:5])
         problems.append(f"มีแถวที่ไม่ใช่วันนี้ ({today.isoformat()}): {sample}")
@@ -436,7 +465,7 @@ def build_timeline(rows, branch, sku_set, barcode_map):
             continue
         n = _js_number(raw_qty)
         sold = n if (_finite(n) and n > 0) else 0.0
-        tran_date = js_trim(col(r, td_idx)) if td_idx >= 0 else ""
+        tran_date = normalize_tran_date(col(r, td_idx)) if td_idx >= 0 else ""
         kept.append((barcode, sold, sku_r16, tran_date, is_inbound))
     stats["kept"] = len(kept)
 
