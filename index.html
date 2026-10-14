@@ -1759,6 +1759,48 @@ let WH_R16_OTFI_OUT=true;
 let PHARMACY_R16_CLOUD_TIMELINE=true;
 const R16_103_PREFIXES=['IRNC','IRVC','IRNM','ICSM','ITFB','ITFW','IPOS','IRCN']; // WH: รับเข้าที่ยังไม่ขึ้นชั้น → บวกกลับเข้า countedQty
 function _matchR16Prefix(colC,list){for(let i=0;i<list.length;i++){if(colC.startsWith(list[i]))return true;}return false;}
+// R16_UNREADABLE_DATE_GUARD (14 ต.ค. 2026 · ผู้ใช้สั่ง "ด่านกันเงียบ" — ให้พนักงานสาขาอัป R16.104 ด้วยมือเองได้อย่างปลอดภัยเมื่อบอทล้ม)
+//   TRANDATE ที่ parseTranDate() คืน null → getSoldQtyBefore/getInboundQtyBefore ข้ามแถว = ไม่ชดเชยยอดขาย/รับเข้าก่อนเวลาสแกน ทั้งที่หน้าจอขึ้น Ready ปกติ
+//   → ของที่นับถูกกลายเป็น Stock Adj ปลอมลง ERP (สาขายาไม่มีขั้น Audit แล้วตั้งแต่ 29 ก.ย.) · เคสจริง: เครื่อง BIGYAMAINPC export "14-Oct-26 09:17:17"
+//   เปิดสวิตช์: loadR16() "ปฏิเสธไฟล์" ที่สัดส่วนแถววันที่อ่านไม่ออก > R16_UNREADABLE_DATE_MAX_RATIO ก่อนล้าง state — R16 เดิมคงอยู่ · ไม่ sync/publish อะไร · ไม่มีปุ่มข้าม
+//   (ไม่ใช่ r16DateMismatch: นั่นเป็นหน้าต่างเตือนที่กด "ยืนยันต่อ" ข้ามได้) · ต่ำกว่าเกณฑ์แต่ > 0 = โหลดตามปกติ + toast เตือน
+//   นับเฉพาะแถวประเภทที่ใช้จริง (ORCM/OCTM/OTFB/ORTS/OTFI) ที่ไม่ใช่บิลยกเลิก และ "มีค่าวันที่" — ช่องว่างไม่นับ (ดีไซน์เดิม: ไม่มี TRANDATE → ไม่ชดเชย) · ไม่มีคอลัมน์ TRANDATE = ไม่ตรวจ (พฤติกรรมเดิม)
+//   false = เท่าก่อนแก้ทุกจุด (rollback) · let เพื่อให้เทสสลับได้ · ไม่แตะ parseTranDate (ต้องตรงกับบอท auto-r16 ทุกกรณี — ดู CLAUDE.md §ด่านวันที่อ่านไม่ออก)
+let R16_UNREADABLE_DATE_GUARD=true;
+let R16_UNREADABLE_DATE_MAX_RATIO=0.05;
+// สถิติวันที่อ่านไม่ออกของไฟล์ที่เพิ่ง parse (rows = แถวดิบรวมหัวตาราง) — อ่านอย่างเดียว ไม่แตะ state
+function _r16UnreadableDateStats(rows){
+  const out={withDate:0,bad:0,samples:[]};
+  if(!rows||!rows.length)return out;
+  const hdr=rows[0];let col=-1;
+  for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){col=c;break;}}
+  if(col<0)return out;
+  const used=[...R16_SALES_PREFIXES,...R16_INBOUND_PREFIXES,...R16_OUTBOUND_PREFIXES];
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i];if(!r||!r.length)continue;
+    if((r[9]??'').toString().trim()==='1')continue;                                 // บิลยกเลิก (loadR16 ข้ามอยู่แล้ว)
+    if(!_matchR16Prefix((r[2]??'').toString().trim().toUpperCase(),used))continue;   // ประเภทที่ไม่ได้ใช้ชดเชย
+    const t=(r[col]??'').toString().trim();if(!t)continue;                           // ไม่มีค่าวันที่ = ไม่นับ
+    out.withDate++;
+    if(!parseTranDate(t)){out.bad++;if(out.samples.length<3&&!out.samples.includes(t))out.samples.push(t);}
+  }
+  return out;
+}
+// true = ปฏิเสธไฟล์ (แจ้งแล้ว) · false = โหลดต่อได้ (อาจมี toast เตือนเมื่อวันที่อ่านไม่ออกเล็กน้อย)
+function _r16RejectUnreadableDates(rows){
+  if(!R16_UNREADABLE_DATE_GUARD)return false;
+  const st=_r16UnreadableDateStats(rows);
+  if(!st.bad)return false;
+  // toast โชว์ตัวอย่างเดียว (Desktop ไม่ตัดบรรทัด — 3 ตัวอย่างยาวเกินหน้าต่างครึ่งจอ 960px) · ครบ ≤ 3 แบบอยู่ใน console
+  const s0=st.samples[0]||'';const shown=`'${s0.length>20?s0.slice(0,20)+'…':s0}'`;
+  console.warn('[R16] วันที่อ่านไม่ออก',st);
+  if(st.bad/st.withDate>R16_UNREADABLE_DATE_MAX_RATIO){
+    toast(`⚠️ R16 ไม่ถูกโหลด — วันที่อ่านไม่ออก ${st.bad}/${st.withDate} แถว (เช่น ${shown}) · export ใหม่เป็น dd/mm/yyyy`,'error',9000);
+    return true;
+  }
+  toast(`R16: วันที่อ่านไม่ออก ${st.bad} แถว (เช่น ${shown}) — ยอดขายแถวนั้นไม่ถูกชดเชย`,'warn',7000);
+  return false;
+}
 let currentUser='';
 let currentRole='';
 function updateBranchDisplay(){
@@ -3532,6 +3574,8 @@ function loadR16(event) {
   const file=event.target.files[0]; if(!file)return;
   if(!state.barcodeMap.size){toast('โหลด R01.102 และ R05.106 ก่อน แล้วค่อยโหลด R16.104','warn');return;}
   parseFile(file,async rows=>{
+    // ด่านวันที่อ่านไม่ออก (ต.ค. 2026 · R16_UNREADABLE_DATE_GUARD) — ต้องอยู่ก่อนล้าง state: ไฟล์ที่ถูกปฏิเสธไม่แตะ R16 เดิม ไม่ sync ไม่ publish
+    if(_r16RejectUnreadableDates(rows))return;
     state.r16Data=[];state.r16SalesMap.clear();state.r16RawMap.clear();state.r16InboundMap.clear();state.r16InboundRawMap.clear();
     // Auto-detect TRANDATE column from header row
     let tranDateColIdx=-1;

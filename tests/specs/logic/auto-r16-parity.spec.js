@@ -33,7 +33,9 @@ async function seed(page, branch, { pm, r01, r05 }) {
 
 // อัปผ่านการ์ด R16.104 จริง แล้วเก็บ timeline ที่ _publishWhR16Timeline จะเขียน (ฟังก์ชันบริสุทธิ์ ไม่ต้องมี Firestore)
 async function jsUpload(page, csv) {
-  await page.evaluate(() => { state.r16DetailVersion = 'BEFORE'; });
+  // parity เทียบ "การสร้าง timeline" กับบอท ไม่ใช่ด่านวันที่: fuzz ตั้งใจใส่วันที่ขยะ ('garbage') ราว 10% ของแถว ซึ่งด่าน R16_UNREADABLE_DATE_GUARD
+  // (เกณฑ์ 5%) ปฏิเสธทั้งไฟล์ — ตั้งใจ · ด่านมีเทสของตัวเองที่ r16-unreadable-date-guard.spec.js
+  await page.evaluate(() => { R16_UNREADABLE_DATE_GUARD = false; state.r16DetailVersion = 'BEFORE'; });
   await page.setInputFiles('#fileR16', { name: 'R16104.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
   await page.waitForFunction(() => state.r16DetailVersion !== 'BEFORE', null, { polling: 50, timeout: 90_000 });
   return page.evaluate(() => { const rows = _whR16Rows('104'); return { rows, chunks: _chunkWhR16Rows(rows) }; });

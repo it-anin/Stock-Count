@@ -82,6 +82,7 @@ atomic reader overlay, recovery หลัง commit, Dashboard precedence, candi
 canonical hash และ rules ป้องกัน stale PDA/legacy final map
 
 **R16.104 timeline ของสาขายา (บอท `auto-r16` · ต.ค. 2026):**
+- `r16-unreadable-date-guard.spec.js` (logic) + `r16-unreadable-date-guard.spec.js` (e2e) — ด่านวันที่ R16 อ่านไม่ออก (14 ต.ค. 2026): ไฟล์ `dd-Mon-yy` ถูกปฏิเสธ · R16 เดิมคงอยู่ · เกณฑ์ 5% · ช่องว่าง/ยกเลิก/ประเภทอื่นไม่นับ · สวิตช์ปิด = เดิม · WH ไม่ publish · toast ≤ 960px · e2e: พนักงานโดนปฏิเสธแล้วอัปไฟล์ปกติ → Confirm `pass` (`auto-r16-parity` ปิดสวิตช์ในตัวอัป เพราะ fuzz ใส่วันที่ขยะ ~10% ตั้งใจ)
 - `auto-r16-parity.spec.js` — บอท (Python) ต้องผลิต **chunk เดียวกับ `loadR16()` ฝั่งเว็บทุกไบต์**: กติกาต่อสาขา (SRC ข้าม OTFI/OTFB ของคลัง · KKL/SSS ไม่มี carve-out) · fuzz 3 สาขา × 3 seed · หลาย chunk (16,000 SKU) · ขอบ chunk หลายเป้า (ใช้ซอร์สจริงของ `_chunkWhR16Rows`) · `Number()`/`trim()`/`parseTranDate()` ของ JS เทียบ Python · opt-in ไฟล์จริง: `R16104_REAL_FILE=<path> npm run test:logic -- auto-r16-parity`
 - `auto-r16-flow.spec.js` — ลำดับ chunks → meta → master · ด่านทุกข้อ (ไม่ผ่าน = ไม่เขียน) · ล้มกลางทาง = เก็บกวาด + คืน meta เดิม · รันซ้ำไม่เขียน · ลบรุ่นเก่าหลังประกาศ · flag แปลกปลอม exit 2 (ไม่มี network เลย)
 - `pharmacy-r16-cloud-timeline.spec.js` (logic) — ตัวอ่าน `_loadPharmacyR16Timeline()` + hook ของ master listener: apply กรองตามเวลาสแกนจริง · ด่านทุกข้อไม่แตะ state · ล้ม/ถูกแซงระหว่างโหลดไม่ apply บางส่วน · ของที่บอทผลิตจริงถูกอ่านได้

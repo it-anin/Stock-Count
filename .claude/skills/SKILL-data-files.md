@@ -237,6 +237,7 @@ logic: `isOutbound = (!isWhBranch && (match(OUTBOUND) && colA==='1' || isSrcOtfb
 - `TRANDATE <= scanTimestamp` → include (ขายก่อน/ระหว่างนับ)
 - `TRANDATE > scanTimestamp` → exclude
 - TRANDATE ว่าง/parse ไม่ได้ → exclude (conservative)
+- ⚠️ **ด่านวันที่อ่านไม่ออก (14 ต.ค. 2026 · `R16_UNREADABLE_DATE_GUARD`)**: `loadR16()` ปฏิเสธทั้งไฟล์ (ก่อนล้าง state · R16 เดิมคงอยู่) เมื่อแถวประเภทที่ใช้ชดเชยที่ "มีค่าวันที่" อ่านไม่ออก > 5% — เพราะกติกา "parse ไม่ได้ → exclude" ข้างบนทำให้ยอดขายก่อนเวลาสแกนไม่ถูกชดเชยโดยหน้าจอขึ้น Ready ปกติ (เคส `14-Oct-26 09:17:17` จาก BIGYAMAINPC) · ช่องว่าง/บิลยกเลิก/ประเภทอื่นไม่นับ · ไม่ใช่ `r16DateMismatch` (นั่นเป็นหน้าต่างเตือนที่กดข้ามได้) · ดู CLAUDE.md §🛡️ ด่านวันที่ R16 อ่านไม่ออก
 
 ⚠️ **โค้ดกรองแค่ขอบบน ไม่มีขอบล่าง — ช่วงเริ่มต้นถูกกำหนดโดย "ตัวไฟล์" ล้วนๆ** (เหมือนกันทั้ง `getInboundQtyBefore` / `getR16103QtyBefore`)
 ไฟล์ที่อัปต้องครอบ **[เวลาที่ export R01.102 ที่ใช้อยู่ → เวลานับล่าสุด]** เท่านั้น
