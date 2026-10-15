@@ -65,7 +65,8 @@ async function bootFreshCount(browser, opts = {}) {
     try { await startNewCount(); } finally { window.prompt = orig; }
   });
 
-  // Masters must be seeded AFTER startNewCount (it deletes {branch}_r01).
+  // Masters must be seeded AFTER startNewCount (it deletes {branch}_r01 — except WH since 15 Oct 2026: WH keeps the bot's R01
+  // and only clears its R16 meta fields; a fresh emulator has no WH_r01 yet, so seeding afterwards is still correct).
   await seedMasters(projectId, { branch, pmCatCoded, ...(r01Version ? { r01Version } : {}) });
   await restoreMastersUntilReady(app);
 

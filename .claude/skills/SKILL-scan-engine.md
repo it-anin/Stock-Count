@@ -442,6 +442,7 @@ Shared function ใช้โดย `pullFromCloud()` และ `startScanSession
 ```js
 await db.doc(getSessionId()+'_r01').delete(); // หลัง syncToFirestore(true)
 ```
+⚠️ **ยกเว้น WH (15 ต.ค. 2026 · `WH_KEEP_R01_ON_NEW_COUNT`):** ไม่ลบ `WH_r01` — เปลี่ยนเป็น `update()` เคลียร์เฉพาะ field R16 (`r16Loaded/UploadedAt/DetailVersion` + `r16_103*` — ชุดเดียวกับที่บอทเขียนทุกเช้า) แล้วคง R01 ไว้ทั้ง Cloud และในเครื่อง · เครื่องที่รับ epoch ใหม่ต้องไม่ล้าง R01 ด้วย → **5 จุดรับ epoch ใหม่เรียก `_resetLocalR01OnNewEpoch()` ไม่ใช่ `_resetLocalR01ToEmpty()`** (`_applyCloudSessionMeta` · `syncToFirestore` v1 · `_syncSessionMetaToFirestore` · `_applyCloudScanData` v1 · `restoreFromFirestore`) · ⛔ listener ที่เจอ doc R01 ถูกลบจริงยังเรียก `_resetLocalR01ToEmpty()` ตรงๆ · รายละเอียด/ข้อห้าม/ทางถอย: CLAUDE.md §WH เริ่มนับใหม่ไม่ล้าง R01
 
 **เศษรอบเก่าหลังเริ่มนับใหม่ (schema v2 · SRC ก.ย. 2026):**
 - `startNewCount()` เขียน epoch ใหม่ก่อน แล้วค่อยลบของรอบเก่า — เดิมลบแค่ `_prevEpoch` แบบ best-effort ไม่มีแถบความคืบหน้า **รีเฟรช/ปิดหน้าระหว่างนั้น = เศษรอบเก่าค้าง** (SRC 22 ก.ย.)

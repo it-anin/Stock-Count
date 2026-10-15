@@ -445,7 +445,7 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 Strip เฉพาะ: `retries`, `scans`
 
 ⚠️ **ไม่มี history snapshot** — Export Excel ก่อนกด "เริ่มนับใหม่"
-⚠️ `startNewCount()` ลบ `${branch}_r01` (ล้าง `r16UploadedAt`/`r16Loaded` อัตโนมัติ) **+ `${branch}_adjlot`** (LOT/ราคารอบเก่า) + ล้าง `_lotMap`/`_lotSelected`/`_priceMap` local — ไม่ลบ `global_r05` (shared ทุกสาขา)
+⚠️ `startNewCount()` ลบ `${branch}_r01` (ล้าง `r16UploadedAt`/`r16Loaded` อัตโนมัติ) **+ `${branch}_adjlot`** (LOT/ราคารอบเก่า) + ล้าง `_lotMap`/`_lotSelected`/`_priceMap` local — ไม่ลบ `global_r05` (shared ทุกสาขา) · **ยกเว้น WH (15 ต.ค. 2026): ไม่ลบ `WH_r01`** — คง R01 ของบอทไว้ เคลียร์เฉพาะ field R16 ของ doc นั้น (ดู CLAUDE.md §WH เริ่มนับใหม่ไม่ล้าง R01)
 ⚠️ `clearAllData()` (admin PIN) ก็**ไม่ลบ** `global_r05` และ `${branch}_pm` — ล้างแค่ local state, resync กลับจาก cloud ตอน reload
 ⚠️ `global_pm` เดิมเป็น **legacy read-only** ไม่มีโค้ดอ่าน/เขียนแล้ว **ห้ามลบบน cloud** (เส้นชีวิตของ rollback) และ **ห้ามใส่ fallback กลับไปอ่าน** — สาขาที่ยังไม่อัป PBM ต้องเห็น badge "ยังไม่โหลด"
 ⚠️ ลำดับ: `syncToFirestore(true)` → `rebuildMaps()` (scanData ว่างก่อน)
