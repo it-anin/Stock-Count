@@ -126,6 +126,7 @@
     .sv-sub { display:block; font-size:0.64rem; font-weight:400; color:var(--text3); margin-top:2px; white-space:nowrap; }
     #stockValidateCard .ptable thead th, #stockValidateCard .ptable tbody td { padding:8px 10px; }
     #stockValidateCard .ptable tbody td { vertical-align:top; }   /* ช่องที่มีข้อความย่อยใต้ตัวเลขทำให้แถวสูงขึ้น — ชิดบนเพื่อให้ตัวเลขทุกช่องอยู่บรรทัดเดียวกัน */
+    #stockValidateCard { height:calc(100vh - 80px); }   /* ความสูงคงที่ — เปลี่ยนหน้า/ตัวกรอง/แถวมีข้อความย่อยหรือไม่ การ์ดต้องไม่ยืดหด (ฟุตเตอร์+ปุ่มเปลี่ยนหน้าอยู่ที่เดิม) */
     #stockValidateCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
     #stockValidateCard .stock-popup-footer > div:last-child { margin-left:auto; }
     .btn-export-popup { padding:7px 16px; border-radius:7px; border:1px solid rgba(26,158,92,0.3); background:rgba(26,158,92,0.08); color:var(--green); cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600; transition:background 0.15s; }

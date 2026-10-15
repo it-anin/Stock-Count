@@ -327,6 +327,34 @@ test('คลิกในป็อปอัพไม่ดึงโฟกัส�
   await closeApp(app);
 });
 
+test('การ์ดขนาดเท่ากันทุกหน้า — เปลี่ยนหน้า/ตัวกรอง/จำนวนแถวไม่ทำให้การ์ดยืดหด · ฟุตเตอร์อยู่ที่เดิม', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await seed(app.page, { pages: 25 });   // 39 แถว = หน้า 1 มี 20 แถว · หน้า 2 มี 19 แถว
+  await app.page.evaluate(() => openStockValidatePopup());
+  // รออนิเมชันเปิดการ์ด (branchSlideUp: เลื่อน+ย่อ ช่วง 0.35 วิแรก) จบก่อนวัด — ระหว่างนั้น transform ทำให้ทั้งขนาดและ offsetTop เพี้ยน
+  const box = async () => {
+    // เฉพาะอนิเมชันของการ์ดเอง — ทั้งหน้ามีอนิเมชันวนไม่จบ (document.getAnimations() ไม่เคยว่าง)
+    await app.page.waitForFunction(() => document.getElementById('stockValidateCard').getAnimations().length === 0, null, { polling: 50 });
+    return app.page.evaluate(() => {
+      const c = document.getElementById('stockValidateCard'), cr = c.getBoundingClientRect(), fr = c.querySelector('.stock-popup-footer').getBoundingClientRect();
+      return { w: Math.round(cr.width), h: Math.round(cr.height), footerTop: Math.round(fr.top - cr.top), vh: window.innerHeight };
+    });
+  };
+  const p1 = await box();
+  expect(p1.h, JSON.stringify(p1)).toBe(p1.vh - 80);
+  await app.page.click('#svPager [data-pg="next"]');                         // หน้า 2 (19 แถว)
+  expect(await box()).toEqual(p1);                                           // ขนาด + ตำแหน่งฟุตเตอร์เท่าหน้า 1 ทุกค่า
+  // ตัวกรองเหลือ 8 แถว (ไม่มี pager → ฟุตเตอร์เหลือบรรทัดเดียว จึงเทียบเฉพาะขนาดการ์ด)
+  const size = ({ w, h }) => ({ w, h });
+  await app.page.click('#svBar [data-sv-filter="match"]');
+  expect(await app.page.evaluate(() => document.querySelectorAll('#svBody tr[data-sku]').length)).toBe(8);
+  expect(size(await box())).toEqual(size(p1));
+  await app.page.evaluate(() => { _svFilter = 'all'; _svPage = 1; renderStockValidateTable(); });
+  await app.page.evaluate(() => { _adjErp = null; _applyStatAuditCardMode(); });   // ไม่มีรายงาน = ไม่มีแถบตัวกรอง/ชิป
+  expect(size(await box())).toEqual(size(p1));
+  await closeApp(app);
+});
+
 test('ตารางไม่ล้นที่หน้าต่าง 960px (แบ่งครึ่งจอคู่ ProMaxx) — หมายเหตุยาวขึ้นบรรทัดใหม่', async ({ browser }) => {
   const app = await bootBare(browser);
   await app.page.setViewportSize({ width: 960, height: 900 });
