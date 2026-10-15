@@ -59,7 +59,7 @@
        ชั้นบน = แบรนด์ + สถานะระบบ (Synced/Cloud/Product Master) · ชั้นล่าง = ตัวตน (สาขา/ผู้ใช้) + ปุ่มคำสั่ง
        ⚠️ CSS ล้วน — DOM เดิมไม่ถูกย้าย: กฎ PDA/จอแคบด้านล่างผูกกับโครงสร้างนี้ (.header>div:last-child>div:nth-child(…))
           จึงใช้ display:contents + grid · ≤820px ไม่ถูกแตะเลย (PDA/จอแคบต้องเหมือนเดิมทุกพิกเซล)
-       ⚠️ สีปุ่ม Administrator ถูก JS (applyAdminUI) ตั้ง inline ตามสถานะ ON/OFF — ห้าม !important ทับสีปุ่มนั้น */
+       ⚠️ สีปุ่ม Administrator ถูก JS (applyAdminUI) ตั้ง inline ตามสถานะ ON/OFF — ห้าม !important ทับสีขณะ ON (ดูบล็อก "ปุ่มนูนเบฟเวล" ด้านล่าง) */
     @media screen and (min-width:821px){
       .header { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; align-items:center; column-gap:12px; padding:14px 22px 0; overflow:hidden; }
       .header-title, .header-right { display:contents!important; }
@@ -73,8 +73,33 @@
       .header-bar > .btn { flex:none; }   /* .btn มี flex:1 — แถบเต็มความกว้างแล้ว ปุ่ม "ล้างข้อมูลทั้งหมด" (ไม่มี flex:none inline) จะยืดจนสุด */
       .header-who { align-items:center; gap:8px!important; margin-right:auto; }
       #branchLabel { font-size:0.72rem!important; padding:6px 14px!important; }
-      #btnLocation { color:#12794a!important; }
-      #btnNewCount { color:#8a5200!important; border-color:rgba(224,140,0,0.55)!important; }
+    }
+    /* ── Header ปุ่มนูนเบฟเวลนุ่มโทนสี (Desktop ≥821px · ต.ค. 2026 · ผู้ใช้เลือกแบบ 01 จาก header-bevel-mockups) ──
+       สูตรเดียวกับ .stat-card · ปุ่มคำสั่งทุกปุ่มในแถบล่างใช้สีเดียวกับ Dashboard (น้ำเงิน)
+       ⚠️ สีของปุ่มที่ inline style ตั้งไว้ต้องใช้ !important ทับ — ยกเว้น Administrator ขณะ ON (.admin-on · applyAdminUI สลับคลาสนี้)
+          ที่ต้องคง สีเหลืองอำพันตาม JS เพราะเป็น "สถานะ" ไม่ใช่แค่ตกแต่ง — ใส่ได้แค่ background-image ซ้อนประกาย
+       ⚠️ ปุ่ม "ล้างข้อมูลทั้งหมด" (อันตราย · เห็นเฉพาะ Admin Mode) คงสีแดง · เฉดน้ำเงิน/ประกายใช้ background-image เพื่อไม่ทับสีฐานที่ JS ตั้ง (สาขา/บทบาท) */
+    @media screen and (min-width:821px){
+      .header { background:linear-gradient(180deg,#fff 0%,#f5f8fc 100%); border-color:#d3deec;
+        box-shadow:inset 0 1px 0 #fff,0 1px 0 #c3d1e3,0 8px 18px -6px rgba(0,60,120,0.2); }
+      .header-bar { background:linear-gradient(180deg,#f9fbfd,#f0f4f9); }
+      .header-bar > .btn:not(#btnClearAll):not(.admin-on) { color:var(--accent)!important; border-color:#b6d3ec!important;
+        background:linear-gradient(180deg,#fff,#e1eff9)!important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.95),0 1px 0 #a9c9e4,0 3px 6px -2px rgba(0,60,120,0.22); }
+      #btnAdmin.admin-on { background-image:linear-gradient(180deg,rgba(255,255,255,0.9),rgba(255,255,255,0.1))!important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.95),0 1px 0 #e7c88c,0 3px 6px -2px rgba(224,140,0,0.3); }
+      #btnClearAll { background:linear-gradient(180deg,#fff,#fdecea); border-color:#efb9b5;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.95),0 1px 0 #e6a29d,0 3px 6px -2px rgba(217,48,37,0.22); }
+      .header-bar > .btn:hover { transform:translateY(-1px); }
+      .header-bar > .btn:active { transform:translateY(1px); box-shadow:inset 0 1px 2px rgba(0,60,120,0.2); }
+      #btnBranchChange, .header-title .db-status button { background-image:linear-gradient(180deg,#fff,#f1f5fa)!important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.95),0 1px 0 #c3d1e3,0 3px 6px -2px rgba(0,60,120,0.22); }
+      #branchLabel { background-image:linear-gradient(180deg,rgba(255,255,255,0.24),rgba(255,255,255,0) 65%)!important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),0 1px 0 rgba(0,30,70,0.45),0 3px 6px -2px rgba(0,60,120,0.4); }
+      #userLabel { background-image:linear-gradient(180deg,rgba(255,255,255,0.85),rgba(255,255,255,0) 80%)!important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.95),0 1px 0 rgba(0,60,120,0.18),0 3px 6px -2px rgba(0,60,120,0.2); }
+      #pmStatusBadge { background-image:linear-gradient(180deg,#fff,rgba(236,233,253,0.5))!important;
+        box-shadow:inset 0 1px 0 #fff,0 1px 0 #cdc6f0; }
     }
     .stats-bar { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:5px; margin-bottom:5px; }
     .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px; box-shadow:var(--card-shadow); }
@@ -7298,6 +7323,7 @@ function applyAdminUI(){
   const pmSection=document.getElementById('pmUploadSection');
   const clearBtn=document.getElementById('btnClearAll');
   const loginLogBtn=document.getElementById('btnLoginLog');
+  btn.classList.toggle('admin-on',!!_adminMode);   // CSS Header (≥821px) ใช้คลาสนี้แยกสถานะ ON ออกจากสีน้ำเงินของปุ่มคำสั่ง
   if(_adminMode){
     btn.textContent='🔓 Administrator ON';
     btn.style.borderColor='rgba(224,140,0,0.5)';btn.style.color='var(--yellow)';btn.style.background='rgba(224,140,0,0.12)';
