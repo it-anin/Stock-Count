@@ -1519,6 +1519,11 @@ let _branchConfirmToken = '';
 let _branchConfirming = false;
 let _branchScanPaused = false;
 let _branchLockToastAt = 0;
+// ปิดช่องสแกนระหว่างหน้าโหลดหลังใส่ PIN (ต.ค. 2026 · ผู้ใช้อนุมัติแผนตามกฎ 1) — _loginLoaderActive = หน้าโหลด #loginLoader แสดงอยู่
+// (ตั้ง/ปล่อยใน _loginLoaderShow/_loginLoaderHide · ปล่อยใน finally ของ initAfterLogin เสมอ) · ข้อมูลยังไม่ครบ (catalog/R01/R05/session) สแกนตอนนี้เคยผ่านถึง handleBarcode
+// แล้วกลายเป็น Unknown ลับหลังหน้าโหลด · ด่านอยู่ใน _blockScanForBranchConfirm (ด่านกลางของทุกทางสแกน) · LOGIN_SCAN_BLOCK=false = ไม่บล็อก (พฤติกรรมเดิม · ทางถอยระดับ 1)
+let _loginLoaderActive = false;
+let LOGIN_SCAN_BLOCK = true;
 let _pharmacyAuditMarkerUnsubscribe = null;
 let _pharmacyAuditMarkerData = {};
 const BRANCH_CONFIRM_LOCK_MS = 5*60*1000;
@@ -2044,6 +2049,11 @@ function _setBranchScanPaused(active,data=null){
   updateConfirmBtn();
 }
 function _blockScanForBranchConfirm(showMessage=true){
+  // หน้าโหลดหลังใส่ PIN เปิดอยู่ = ข้อมูลยังไม่ครบ → ทิ้งสแกน + เตือน (ไม่เก็บเข้าคิว — ผู้ใช้สแกนใหม่หลังโหลดเสร็จ) · ตรวจก่อน Confirm lock
+  if(LOGIN_SCAN_BLOCK&&_loginLoaderActive){
+    if(showMessage&&Date.now()-_branchLockToastAt>2000){_branchLockToastAt=Date.now();beepWarn();toast('ยังโหลดไม่เสร็จ — รอสักครู่แล้วสแกนใหม่','warn',3000);}
+    return true;
+  }
   if(!_branchScanPaused&&!_isBranchConfirmLockActive())return false;
   if(showMessage&&Date.now()-_branchLockToastAt>2000){_branchLockToastAt=Date.now();beepWarn();toast('กำลัง Confirm ที่ Desktop — รอสักครู่','warn',3000);}
   return true;
@@ -3402,9 +3412,10 @@ function _loginLoaderStep(i){
 }
 function _loginLoaderShow(){
   const el=document.getElementById('loginLoader');if(!el)return;
-  el.classList.add('show');_loginLoaderStep(0);
+  el.classList.add('show');_loginLoaderActive=true;_loginLoaderStep(0);
 }
 function _loginLoaderHide(){
+  _loginLoaderActive=false;   // ปล่อยด่านสแกนก่อนเสมอ (ไม่ขึ้นกับว่ามี element หรือไม่) — ถูกเรียกใน finally ของ initAfterLogin
   const el=document.getElementById('loginLoader');if(el)el.classList.remove('show');
 }
 async function initAfterLogin(){
