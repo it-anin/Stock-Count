@@ -55,6 +55,27 @@
     .header-icon { width:40px; height:40px; background:linear-gradient(135deg,var(--accent),var(--accent2)); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:18px; }
     .header h1 { font-size:1.3rem; font-weight:700; color:var(--accent); letter-spacing:1px; }
     .header-sub { font-size:0.75rem; color:var(--text2); }
+    /* ── Header สองชั้น (Desktop ≥821px · ต.ค. 2026 · ผู้ใช้เลือกแบบ 02 จาก header-mockups) ──
+       ชั้นบน = แบรนด์ + สถานะระบบ (Synced/Cloud/Product Master) · ชั้นล่าง = ตัวตน (สาขา/ผู้ใช้) + ปุ่มคำสั่ง
+       ⚠️ CSS ล้วน — DOM เดิมไม่ถูกย้าย: กฎ PDA/จอแคบด้านล่างผูกกับโครงสร้างนี้ (.header>div:last-child>div:nth-child(…))
+          จึงใช้ display:contents + grid · ≤820px ไม่ถูกแตะเลย (PDA/จอแคบต้องเหมือนเดิมทุกพิกเซล)
+       ⚠️ สีปุ่ม Administrator ถูก JS (applyAdminUI) ตั้ง inline ตามสถานะ ON/OFF — ห้าม !important ทับสีปุ่มนั้น */
+    @media screen and (min-width:821px){
+      .header { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; align-items:center; column-gap:12px; padding:14px 22px 0; overflow:hidden; }
+      .header-title, .header-right { display:contents!important; }
+      .header-icon { grid-row:1; grid-column:1; }
+      .header-text { grid-row:1; grid-column:2; min-width:0; }
+      .header-text h1, .header-text .header-sub { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .header-title .db-status { grid-row:1; grid-column:3; gap:10px; }
+      .header-title .db-status button { margin-left:0!important; }
+      #pmStatusBadge { grid-row:1; grid-column:4; font-size:0.68rem!important; padding:3px 11px!important; }
+      .header-bar { grid-row:2; grid-column:1/-1; flex-wrap:wrap; gap:8px!important; margin:14px -22px 0; padding:10px 22px; background:var(--surface2); border-top:1px solid var(--border); }
+      .header-bar > .btn { flex:none; }   /* .btn มี flex:1 — แถบเต็มความกว้างแล้ว ปุ่ม "ล้างข้อมูลทั้งหมด" (ไม่มี flex:none inline) จะยืดจนสุด */
+      .header-who { align-items:center; gap:8px!important; margin-right:auto; }
+      #branchLabel { font-size:0.72rem!important; padding:6px 14px!important; }
+      #btnLocation { color:#12794a!important; }
+      #btnNewCount { color:#8a5200!important; border-color:rgba(224,140,0,0.55)!important; }
+    }
     .stats-bar { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:5px; margin-bottom:5px; }
     .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px; box-shadow:var(--card-shadow); }
     .stat-label { font-size:0.7rem; color:var(--text2); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
@@ -463,7 +484,7 @@
   <div class="header">
     <div class="header-title">
       <div class="header-icon"><img src="icon.png" style="width:100%;height:100%;object-fit:contain;border-radius:6px;"></div>
-      <div>
+      <div class="header-text">
         <h1>STOCK COUNTING SYSTEM</h1>
         <div class="header-sub">ระบบนับสต็อคสินค้า | Stock Counting System</div>
       </div>
@@ -475,9 +496,9 @@
         <button id="btnPdaSettings" onclick="if(typeof Android!=='undefined')Android.openSettings()" style="display:none;border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:2px 8px;border-radius:6px;font-size:0.68rem;cursor:pointer;margin-left:4px;" title="ตั้งค่า Scanner">⚙</button>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <div style="display:flex;/* align-items:center; */gap: 0px;">
+    <div class="header-right" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">
+      <div class="header-bar" style="display:flex;align-items:center;gap:16px;">
+        <div class="header-who" style="display:flex;/* align-items:center; */gap: 0px;">
           <span id="branchLabel" style="background:var(--accent);color:#fff;padding:5px 14px;border-radius:8px;font-size:0.6rem;font-weight:700;letter-spacing:1px;">—</span>
           <button id="btnBranchChange" onclick="requestBranchChange()" style="border:1px solid var(--border);background:var(--surface2);color:var(--text2);padding:3px 8px;border-radius:6px;font-size:0.72rem;cursor:pointer;">Branch</button>
           <button id="userLabel" type="button" onclick="openUserLabelSelector()" title="แตะเพื่อเปลี่ยนชื่อ" style="display:none;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;font-size:0.68rem;font-weight:700;border:none;"></button>
@@ -486,7 +507,7 @@
         <button class="btn" id="btnLocation" style="display:none;padding:6px 12px;font-size:0.75rem;border-color:rgba(26,158,92,0.35);color:var(--green);background:rgba(26,158,92,0.08);flex:none;width:auto;" onclick="openLocationPopup()">📍 Location</button>
         <button class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(0,114,198,0.35);color:var(--accent);background:rgba(0,114,198,0.08);flex:none;width:auto;" onclick="openDashboardPopup()">📊 Dashboard</button>
         <button class="btn" id="btnAdmin" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(107,63,160,0.35);color:var(--purple);background:rgba(107,63,160,0.08);flex:none;width:auto;" onclick="toggleAdmin()">🔒 Administrator</button>
-        <button class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(250,168,0,0.4);color:#e09000;background:rgba(250,168,0,0.08);flex:none;width:auto;" onclick="startNewCount()">🔄 เริ่มนับใหม่</button>
+        <button class="btn" id="btnNewCount" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(250,168,0,0.4);color:#e09000;background:rgba(250,168,0,0.08);flex:none;width:auto;" onclick="startNewCount()">🔄 เริ่มนับใหม่</button>
         <button id="btnClearAll" class="btn btn-clear" style="padding:6px 12px;font-size:0.75rem;border-color:var(--red);color:var(--red);display:none;" onclick="clearAllData()">🗑️ ล้างข้อมูลทั้งหมด</button>
         <button id="btnLoginLog" class="btn" style="padding:6px 12px;font-size:0.75rem;border-color:rgba(107,63,160,0.35);color:var(--purple);background:rgba(107,63,160,0.08);flex:none;width:auto;display:none;" onclick="openLoginLogPopup()">🧾 Login Log</button>
       </div>
