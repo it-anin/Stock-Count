@@ -306,69 +306,33 @@
     .sl-barcode::after { content:''; position:absolute; left:0; top:0; width:100%; height:3px; background:var(--accent); box-shadow:0 0 8px 2px rgba(0,114,198,0.6); animation:slScan 1.4s ease-in-out infinite; will-change:transform; transform:translateZ(0); backface-visibility:hidden; }
     @keyframes slScan { 0%{transform:translate3d(0,2px,0);} 50%{transform:translate3d(0,40px,0);} 100%{transform:translate3d(0,2px,0);} }
     .sl-loading-text { font-size:0.82rem; color:var(--text3); letter-spacing:0.5px; }
-    /* โหลดทั้งหน้าหลังใส่ PIN — Skeleton โครงหน้าจริง + แสงวิ่ง + ป้ายขั้นตอน (ต.ค. 2026 · สวิตช์ LOGIN_SKELETON_LOADER)
-       z-index 9990 = ใต้ toast (9999) และ modal ทุกตัว (≥10000) · ใช้ transform/opacity เท่านั้น (PDA) · โครงตามหน้าจริงที่ 3 ช่วง: >820 / ≤820 / ≤600 */
-    #loginSkeleton { display:none; position:fixed; inset:0; z-index:9990; background:var(--bg); overflow:hidden; }
-    #loginSkeleton.show { display:block; }
-    #loginSkeleton .ls-wrap { max-width:1400px; margin:0 auto; padding:16px; height:100%; display:flex; flex-direction:column; gap:5px; }
-    #loginSkeleton .ls-sk { display:block; background:#e1e8f1; border-radius:8px; }
-    #loginSkeleton .ls-hd { flex:none; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 22px 0; overflow:hidden; }
-    #loginSkeleton .ls-r1 { display:flex; align-items:center; gap:12px; }
-    #loginSkeleton .ls-r1 .ls-sk:nth-child(1) { width:40px; height:40px; }
-    #loginSkeleton .ls-r1 .ls-sk:nth-child(2) { width:230px; height:18px; margin-right:auto; }
-    #loginSkeleton .ls-r1 .ls-sk:nth-child(3) { width:120px; height:20px; }
-    #loginSkeleton .ls-r2 { display:flex; align-items:center; gap:8px; margin:14px -22px 0; padding:10px 22px; background:var(--surface2); border-top:1px solid var(--border); }
-    #loginSkeleton .ls-r2 .ls-sk { width:96px; height:28px; border-radius:8px; }
-    #loginSkeleton .ls-r2 .ls-sk:nth-child(1) { width:70px; margin-right:auto; }
-    #loginSkeleton .ls-stats { flex:none; display:grid; grid-template-columns:repeat(6,1fr); gap:5px; }
-    #loginSkeleton .ls-stats>div { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
-    #loginSkeleton .ls-stats .ls-sk:nth-child(1) { height:10px; width:55%; }
-    #loginSkeleton .ls-stats .ls-sk:nth-child(2) { height:22px; width:70%; }
-    #loginSkeleton .ls-main { flex:1; min-height:0; display:grid; grid-template-columns:245px 1fr; gap:5px; }
-    #loginSkeleton .ls-left { display:flex; flex-direction:column; gap:5px; min-height:0; overflow:hidden; }
-    #loginSkeleton .ls-left>div { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px; }
-    #loginSkeleton .ls-left>div:first-child { height:190px; display:flex; flex-direction:column; gap:8px; }
-    #loginSkeleton .ls-left>div:first-child .ls-sk { height:34px; }
-    #loginSkeleton .ls-left>div:first-child .ls-sk:first-child { height:14px; width:45%; }
-    #loginSkeleton .ls-left>div:not(:first-child) { height:42px; padding:9px 12px; }
-    #loginSkeleton .ls-left>div:not(:first-child) .ls-sk { height:100%; }
-    #loginSkeleton .ls-center { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; overflow:hidden; min-width:0; }
-    #loginSkeleton .ls-center .ls-sk { flex:none; height:28px; }
-    #loginSkeleton .ls-center .ls-sk:nth-child(1) { height:14px; width:90px; margin-bottom:2px; }
-    #loginSkeleton .ls-center .ls-sk:nth-child(2) { height:40px; }
-    #loginSkeleton .ls-center .ls-sk:nth-child(3) { height:22px; background:#d3deec; margin-top:4px; }
-    #loginSkeleton .ls-sweep { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
-    #loginSkeleton .ls-sweep::after { content:''; position:absolute; top:0; bottom:0; left:0; width:38%; background:linear-gradient(100deg,transparent,rgba(255,255,255,0.75),transparent); animation:lsSweep 1.5s ease-in-out infinite; will-change:transform; }
-    @keyframes lsSweep { from{transform:translateX(-100%);} to{transform:translateX(280%);} }
-    #loginSkeleton .ls-chip { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:inline-flex; align-items:center; gap:10px; max-width:calc(100vw - 24px); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:9px 18px; box-shadow:0 8px 24px -8px rgba(0,60,120,0.35); font-size:0.85rem; color:var(--text2); white-space:nowrap; }
-    #loginSkeleton .ls-dots { display:inline-flex; gap:5px; }
-    #loginSkeleton .ls-dots i { width:6px; height:6px; border-radius:50%; background:var(--accent); opacity:0.25; animation:lsDot 1s ease-in-out infinite; }
-    #loginSkeleton .ls-dots i:nth-child(2) { animation-delay:0.15s; }
-    #loginSkeleton .ls-dots i:nth-child(3) { animation-delay:0.3s; }
-    @keyframes lsDot { 0%,100%{opacity:0.25;transform:scale(0.8);} 40%{opacity:1;transform:scale(1.2);} }
-    @media screen and (max-width:820px){
-      #loginSkeleton .ls-wrap { padding:4px 5px; gap:3px; }
-      #loginSkeleton .ls-hd { padding:5px 8px 0; border-radius:8px; }
-      #loginSkeleton .ls-r1 .ls-sk:nth-child(1) { width:26px; height:26px; }
-      #loginSkeleton .ls-r1 .ls-sk:nth-child(2) { width:160px; height:12px; }
-      #loginSkeleton .ls-r2 { margin:6px -8px 0; padding:6px 8px; }
-      #loginSkeleton .ls-r2 .ls-sk { width:60px; height:20px; }
-      #loginSkeleton .ls-stats { gap:3px; }
-      #loginSkeleton .ls-stats>div { padding:6px 8px; gap:6px; border-radius:7px; }
-      #loginSkeleton .ls-main { grid-template-columns:175px 1fr; gap:4px; }
-    }
+    /* โหลดทั้งหน้าหลังใส่ PIN — วงแหวนหมุนรอบโลโก้ + เช็กลิสต์ขั้นตอน (ต.ค. 2026 · ผู้ใช้เลือกแบบที่ 3 แทน Skeleton · สวิตช์ LOGIN_LOADER)
+       พื้นทึบเต็มจอ · z-index 9990 = ใต้ toast (9999) และ modal ทุกตัว (≥10000) · ใช้ transform เท่านั้น (วงแหวน + ตัวหมุนของขั้นปัจจุบัน) · ≤600px จัดแนวตั้ง
+       วงแหวนยังหมุนบน PDA โหมดประหยัดแบต (body.pda-power-save) โดยตั้งใจ — เป็นสัญญาณว่า "ไม่ได้ค้าง" ไม่ใช่ลูกเล่น (ชิ้นเดียว 132px เป็น compositor layer) */
+    #loginLoader { display:none; position:fixed; inset:0; z-index:9990; background:var(--bg); align-items:center; justify-content:center; overflow:hidden; }
+    #loginLoader.show { display:flex; }
+    #loginLoader .ll-box { display:flex; align-items:center; justify-content:center; gap:36px; padding:20px; }
+    #loginLoader .ll-ring { position:relative; width:132px; height:132px; flex:none; }
+    #loginLoader .ll-ring svg { position:absolute; left:0; top:0; width:100%; height:100%; animation:llSpin 1.2s linear infinite; will-change:transform; }
+    #loginLoader .ll-ring img { position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px; border-radius:12px; }
+    @keyframes llSpin { to{transform:rotate(360deg);} }
+    #loginLoader .ll-ck { list-style:none; margin:0; padding:0; min-width:200px; text-align:left; display:flex; flex-direction:column; gap:12px; }   /* min-width: ขั้นปัจจุบันเป็นตัวหนา กว้างขึ้นเล็กน้อย — ล็อกไว้ไม่ให้วงแหวน/กล่องขยับเมื่อเปลี่ยนขั้น */
+    #loginLoader .ll-ck li { display:flex; align-items:center; gap:10px; font-size:0.92rem; color:var(--text3); white-space:nowrap; transition:color 0.25s; }
+    #loginLoader .ll-ck .c { width:22px; height:22px; border-radius:50%; border:2px solid var(--border); display:grid; place-items:center; font-size:0.7rem; color:#fff; flex:none; transition:background 0.25s,border-color 0.25s; }
+    #loginLoader .ll-ck li.done { color:var(--text2); }
+    #loginLoader .ll-ck li.done .c { background:var(--green); border-color:var(--green); }
+    #loginLoader .ll-ck li.done .c::before { content:'✓'; }
+    #loginLoader .ll-ck li.cur { color:var(--text); font-weight:600; }
+    #loginLoader .ll-ck li.cur .c { border-color:var(--accent); border-top-color:transparent; animation:llSpin 0.8s linear infinite; }
+    #loginLoader .ll-sr { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
     @media(max-width:600px){
-      #loginSkeleton .ls-hd { padding:4px 8px; }
-      #loginSkeleton .ls-r2 { display:none; }
-      #loginSkeleton .ls-r1 .ls-sk:nth-child(3) { width:70px; height:16px; }
-      #loginSkeleton .ls-stats { grid-template-columns:1fr 1fr; }
-      #loginSkeleton .ls-stats>div:nth-child(n+5) { display:none; }
-      #loginSkeleton .ls-main { grid-template-columns:1fr; gap:0; }
-      #loginSkeleton .ls-left { display:none; }
-      #loginSkeleton .ls-chip { font-size:0.8rem; padding:8px 14px; }
+      #loginLoader .ll-box { flex-direction:column; gap:22px; }
+      #loginLoader .ll-ring { width:112px; height:112px; }
+      #loginLoader .ll-ring img { width:48px; height:48px; margin:-24px 0 0 -24px; }
+      #loginLoader .ll-ck { gap:10px; }
+      #loginLoader .ll-ck li { font-size:0.88rem; }
     }
-    body.pda-power-save #loginSkeleton .ls-sweep::after { animation:none; display:none; }   /* PDA ประหยัดแบต: ตัดแสงวิ่งชิ้นใหญ่ ปล่อยแค่จุด 3 จุดของป้าย (ชิ้นเล็ก) */
-    @media (prefers-reduced-motion:reduce){ #loginSkeleton .ls-sweep::after, #loginSkeleton .ls-dots i { animation:none!important; } #loginSkeleton .ls-dots i { opacity:0.7; } }
+    @media (prefers-reduced-motion:reduce){ #loginLoader .ll-ring svg, #loginLoader .ll-ck li.cur .c { animation:none!important; } }
     .btn-remove-row { width:20px; height:20px; border-radius:6px; border:1px solid rgba(217,48,37,0.35); background:rgba(217,48,37,0.08); color:var(--red); cursor:pointer; font-size:0.6rem; font-weight:700; display:flex; align-items:center; justify-content:center; transition:background 0.15s,border-color 0.15s; margin:auto; padding:0; }
     .btn-remove-row:hover { background:rgba(217,48,37,0.18); border-color:rgba(217,48,37,0.6); }
     .btn-audit-inline:disabled { opacity:0.5; cursor:not-allowed; background:var(--surface3); border-color:var(--border); color:var(--text3); }
@@ -571,25 +535,19 @@
 <body>
 
 <div class="toast-container" id="toastContainer"></div>
-<!-- โหลดทั้งหน้าหลังใส่ PIN (Skeleton) — เปิด/ปิดโดย initAfterLogin ผ่าน _loginSkeletonShow/_loginSkeletonStep/_loginSkeletonHide เท่านั้น · สวิตช์ LOGIN_SKELETON_LOADER
-     โครงตามหน้าจริง: header 2 ชั้น · การ์ดสถิติ 6 ใบ · แผงซ้าย + SCAN/RESULT (PDA ≤600px ตัดเหลือหัวแถวเดียว + การ์ด 4 ใบ + ลิสต์) — แก้โครงหน้าหลักแล้วต้องไล่ดูโครงนี้ด้วย -->
-<div id="loginSkeleton">
-  <div class="ls-wrap" aria-hidden="true">
-    <div class="ls-hd">
-      <div class="ls-r1"><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i></div>
-      <div class="ls-r2"><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i></div>
-    </div>
-    <div class="ls-stats">
-      <div><i class="ls-sk"></i><i class="ls-sk"></i></div><div><i class="ls-sk"></i><i class="ls-sk"></i></div><div><i class="ls-sk"></i><i class="ls-sk"></i></div>
-      <div><i class="ls-sk"></i><i class="ls-sk"></i></div><div><i class="ls-sk"></i><i class="ls-sk"></i></div><div><i class="ls-sk"></i><i class="ls-sk"></i></div>
-    </div>
-    <div class="ls-main">
-      <div class="ls-left"><div><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i></div><div><i class="ls-sk"></i></div><div><i class="ls-sk"></i></div><div><i class="ls-sk"></i></div><div><i class="ls-sk"></i></div></div>
-      <div class="ls-center"><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i><i class="ls-sk"></i></div>
-    </div>
+<!-- โหลดทั้งหน้าหลังใส่ PIN (วงแหวน + เช็กลิสต์ขั้นตอน) — เปิด/ปิดโดย initAfterLogin ผ่าน _loginLoaderShow/_loginLoaderStep/_loginLoaderHide เท่านั้น · สวิตช์ LOGIN_LOADER
+     4 ขั้นตรงกับจุด await จริงของ initAfterLogin (ลำดับ/ข้อความแก้ที่นี่ที่เดียว — ป้ายอ่านออกเสียง .ll-sr อ่านจากข้อความในรายการ) · พื้นทึบ ไม่เห็นหน้าหลังระหว่างโหลด -->
+<div id="loginLoader" data-step="0">
+  <div class="ll-box">
+    <div class="ll-ring" aria-hidden="true"><svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="58" fill="none" stroke="#dce4ef" stroke-width="6"/><circle cx="66" cy="66" r="58" fill="none" stroke="#0072c6" stroke-width="6" stroke-linecap="round" stroke-dasharray="110 260"/></svg><img src="icon.png" alt=""></div>
+    <ul class="ll-ck" aria-hidden="true">
+      <li class="todo"><span class="c"></span>อ่านข้อมูลในเครื่อง</li>
+      <li class="todo"><span class="c"></span>โหลดข้อมูลจาก Cloud</li>
+      <li class="todo"><span class="c"></span>ตรวจสอบสถานะการนับ</li>
+      <li class="todo"><span class="c"></span>เตรียมหน้าจอ</li>
+    </ul>
   </div>
-  <div class="ls-sweep"></div>
-  <div class="ls-chip" role="status" aria-live="polite"><span class="ls-dots"><i></i><i></i><i></i></span><span class="ls-st">เตรียมข้อมูล…</span></div>
+  <span class="ll-sr" role="status" aria-live="polite"></span>
 </div>
 
 
@@ -1580,7 +1538,7 @@ let _adoptedMasterBaselineAt = '';
 // ⚠️ debounce เฉพาะ "การแสดง toast" เท่านั้น — ห้ามเอาไปกั้น _clearR16ForNewBaseline หรือการตั้ง _r01BaselineAt
 //    (ของสองอย่างนั้นต้องทำงานทุกรอบเหมือนเดิม ไม่งั้น R16/audit freeze เพี้ยน)
 let _lastR01BaselineToastAt = 0;
-// toast "กำลังโหลดข้อมูล.." ตอน R01 baseline เปลี่ยน — ปิดแล้ว (ผู้ใช้สั่ง 15 ต.ค. 2026: แทรกขึ้นมาระหว่างล็อกอินที่มี Skeleton แจ้งสถานะอยู่แล้ว)
+// toast "กำลังโหลดข้อมูล.." ตอน R01 baseline เปลี่ยน — ปิดแล้ว (ผู้ใช้สั่ง 15 ต.ค. 2026: แทรกขึ้นมาระหว่างล็อกอินที่มีหน้าโหลดเต็มจอแจ้งสถานะอยู่แล้ว)
 // ปิดเฉพาะตัว toast: baseline/ล้าง R16/อัป badge ทำงานทุกรอบเหมือนเดิม · true = กลับมาขึ้น (debounce เดิม)
 let R01_BASELINE_TOAST = false;
 const R01_BASELINE_TOAST_GAP_MS = 10000; // ครอบลำดับ session→master ตอน boot โดยไม่กลบเหตุการณ์ที่ห่างกันจริง
@@ -3431,27 +3389,31 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden||!currentUser)return;
   if(runStaleGuard()>0)syncToFirestore();
 });
-// โหลดทั้งหน้าหลังใส่ PIN (Skeleton · ต.ค. 2026 · ผู้ใช้เลือกแบบที่ 4) — overlay ทึบคลุมทั้งจอตั้งแต่เริ่ม initAfterLogin จนจบ (ปิดใน finally แม้ error)
-// แสดงผลล้วน: ไม่แตะ state/sync/listener/สแกน · false = ไม่มี overlay + loader RESULT เดิมกลับมาทุกอย่าง (ทางถอยระดับ 1 — ดู CLAUDE.md §🦴)
-let LOGIN_SKELETON_LOADER=true;
-function _loginSkeletonStep(txt){
-  const el=document.getElementById('loginSkeleton');if(!el)return;
-  const t=el.querySelector('.ls-st');if(t&&txt)t.textContent=txt;
+// โหลดทั้งหน้าหลังใส่ PIN (วงแหวน + เช็กลิสต์ขั้นตอน · ต.ค. 2026 · ผู้ใช้เลือกแบบที่ 3 แทน Skeleton ของคอมมิต 1d5a737) — overlay ทึบคลุมทั้งจอตั้งแต่เริ่ม initAfterLogin จนจบ (ปิดใน finally แม้ error)
+// แสดงผลล้วน: ไม่แตะ state/sync/listener/สแกน · false = ไม่มี overlay + loader RESULT เดิมกลับมาทุกอย่าง (ทางถอยระดับ 1 — ดู CLAUDE.md §🔄)
+// ขั้น 0-3 = อ่านข้อมูลในเครื่อง → โหลดข้อมูลจาก Cloud (await restoreFromFirestore) → ตรวจสอบสถานะการนับ (marker/R16/WH state) → เตรียมหน้าจอ (ตั้ง listener + render)
+let LOGIN_LOADER=true;
+function _loginLoaderStep(i){
+  const el=document.getElementById('loginLoader');if(!el)return;
+  const items=[...el.querySelectorAll('.ll-ck li')];
+  el.dataset.step=String(i);
+  items.forEach((li,k)=>{li.className=k<i?'done':(k===i?'cur':'todo');});
+  const sr=el.querySelector('.ll-sr');if(sr&&items[i])sr.textContent='กำลัง'+items[i].textContent;
 }
-function _loginSkeletonShow(txt){
-  const el=document.getElementById('loginSkeleton');if(!el)return;
-  _loginSkeletonStep(txt);el.classList.add('show');
+function _loginLoaderShow(){
+  const el=document.getElementById('loginLoader');if(!el)return;
+  el.classList.add('show');_loginLoaderStep(0);
 }
-function _loginSkeletonHide(){
-  const el=document.getElementById('loginSkeleton');if(el)el.classList.remove('show');
+function _loginLoaderHide(){
+  const el=document.getElementById('loginLoader');if(el)el.classList.remove('show');
 }
 async function initAfterLogin(){
   _resetWhSupervisorFilter();
-  const _skelOn=LOGIN_SKELETON_LOADER;
+  const _loaderOn=LOGIN_LOADER;
   const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
   // เภสัช Desktop: โหลดสินค้า Audit จาก cloud ใช้เวลา → แสดง loader ด้วย (ไม่ใช่ startEmpty — ไม่ clear scan list)
-  // Skeleton เต็มหน้าเปิดอยู่ = loader เฉพาะ RESULT ซ้ำซ้อน (อยู่ใต้ overlay + แอนิเมชั่นวิ่งเปล่า) → ไม่แสดง
-  const _showLoader=!_skelOn&&(_startEmpty||(currentRole==='pharmacist'&&window.innerWidth>600));
+  // หน้าโหลดเต็มจอเปิดอยู่ = loader เฉพาะ RESULT ซ้ำซ้อน (อยู่ใต้ overlay + แอนิเมชั่นวิ่งเปล่า) → ไม่แสดง
+  const _showLoader=!_loaderOn&&(_startEmpty||(currentRole==='pharmacist'&&window.innerWidth>600));
   const _slLoading=document.getElementById('scanListLoading');
   // visual mask: แสดง Loading คลุม RESULT ระหว่าง login เพื่อไม่ให้รายการเก่า flash / ระหว่างรอโหลด audit
   // ไม่แตะ logic การ render/sync — แค่ overlay บนการแสดงผลชั่วคราว
@@ -3461,14 +3423,15 @@ async function initAfterLogin(){
     _slLoading.classList.add('show');
   }
   try{
-    if(_skelOn)_loginSkeletonShow('อ่านข้อมูลในเครื่อง…');
+    if(_loaderOn)_loginLoaderShow();
     loadSession();
     // stale audit ที่ค้างใน localStorage (persist ไว้ก่อน R01 baseline ใหม่) — ล้างทันทีหลัง loadSession
     // ไม่งั้นเครื่องนี้แสดง audit เก่าใน worklist ตลอดแม้ cloud ถูก scrub สะอาดแล้ว
     if(_isPharmacyBranch())scrubStaleLocalAudits();
     updateBranchDisplay();
-    if(_skelOn)_loginSkeletonStep('โหลดข้อมูลจาก Cloud…');
+    if(_loaderOn)_loginLoaderStep(1);
     await restoreFromFirestore(currentBranch==='WH'&&currentRole==='supervisor');
+    if(_loaderOn)_loginLoaderStep(2);
     // session_data_json อาจถูกเครื่องเก่าเขียนทับทั้งก้อน — marker แยกคือ worklist/ผล Audit ที่ authoritative
     if(_isPharmacyBranch())await _loadPharmacyAuditMarkerState();
     // R16.104 timeline จากบอท auto-r16 (สาขายา Desktop) — master/R01 ถูก restore แล้ว (restoreFromFirestore → restoreMasterFromFirestore → _applyR16MetaFromDoc)
@@ -3478,7 +3441,7 @@ async function initAfterLogin(){
     // รีเซ็ตของค้างข้ามวัน → ดันขึ้น cloud เป็น authoritative ก่อนเริ่ม listener (กัน listener ดึงของค้างกลับมา resurrect)
     const _staleReset=resetStaleScanningItems();
     if(_staleReset>0){saveSession();await syncToFirestore();toast(`♻️ รีเซ็ตของค้างข้ามวัน ${_staleReset} รายการ — กรุณานับใหม่`,'info',4000);}
-    if(_skelOn)_loginSkeletonStep('เตรียมหน้าจอ…');
+    if(_loaderOn)_loginLoaderStep(3);
     startProductMasterListener();
     startR05Listener();
     startWhMasterListeners();
@@ -3510,7 +3473,7 @@ async function initAfterLogin(){
   }finally{
     // ปิด Loading overlay เสมอ แม้ login error กลางทาง (กันจอค้าง Loading)
     if(_showLoader&&_slLoading)_slLoading.classList.remove('show');
-    _loginSkeletonHide();   // ปิดเสมอ แม้สวิตช์ถูกสลับกลางทาง (ไม่ผูกกับ _skelOn)
+    _loginLoaderHide();   // ปิดเสมอ แม้สวิตช์ถูกสลับกลางทาง (ไม่ผูกกับ _loaderOn)
   }
 }
 function updateUserDisplay(){
