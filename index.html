@@ -1750,6 +1750,16 @@ let WH_R16_SKIP_FRONT_STORE=true;
 //    เคส SKU 101378 (7 ต.ค.): ระบบ 250 · นับ 150 · คลังส่งออก 100 → เดิม 150−100 → audit → ใบปรับปรุง −100 ซ้ำกับที่ ERP ตัดไปแล้ว · ที่ถูก 150+100=250 pass
 //    เช็คเฉพาะ '0' ตรงๆ (fail-open: ว่าง/ค่าอื่น = หักเหมือนเดิม) · false = หักเหมือนก่อนแก้ (rollback) · OTFB/ORTS ไม่เปลี่ยน · ดู CLAUDE.md §WH OTFI ตามทิศ Col A
 let WH_R16_OTFI_OUT=true;
+// ⚠️ WH R16.103 (14 ต.ค. 2026 · ผู้ใช้สั่งตรวจกับไฟล์จริง): สูตรเดิมบวกกลับทุกแถวด้วยสมมติฐาน "อยู่ใน systemQty (R01) แต่พนักงานไม่ได้นับ" — ข้อมูล ต.ค. ไม่รองรับ → ติด audit ปลอม
+//    (ในรอบ 7–14 ต.ค. มี 7 รายการที่ r16103Qty>0 ติด audit ทั้งหมด เช่น 200674: นับ 60 = ระบบ 60 + IPOS 320 → 380) ข้อแก้แยกสองสวิตช์ ปิดทีละตัวได้
+// (1) WH_R16_103_SKIP_NO_STOCK: แถวที่ FSTOCKMAIN=0 (เช่น IPOS ทุกแถว 774/774 ในไฟล์ 14 วัน) = เอกสารที่ไม่ตัด stock หลัก → ไม่มีทางอยู่ใน R01 → ไม่บวกกลับ
+//     ข้ามเฉพาะค่าที่ "ไม่ว่าง + เป็นตัวเลข = 0" (fail-open: ไม่มีคอลัมน์/ว่าง/ค่าอื่น = บวกกลับเหมือนเดิม) · ตัดตอนโหลดไฟล์ — chunk บน Cloud/IndexedDB ไม่มี FSTOCKMAIN จึง "ต้องอัป R16.103 ใหม่หลัง deploy"
+let WH_R16_103_SKIP_NO_STOCK=true;
+// (2) WH_R16_103_BEFORE_R01_ONLY: บวกกลับเฉพาะเอกสารที่ TRANDATE ≤ เวลา R01 (state.r01Version) — เอกสารที่ลงหลัง R01 ไม่อยู่ใน systemQty จึงไม่มีอะไรให้บวกกลับ (ไฟล์รายวันทุกแถวลงหลัง R01 07:31)
+//     r01Version ไม่ใช่เวลา ISO (ว่าง/'R01-TEST-1') = fail-open เท่าเดิม · ไม่ต้องอัป R16.103 ใหม่ · ดู CLAUDE.md §WH R16.103 ไม่บวกกลับใบที่ไม่อยู่ใน R01
+//     ⛔ ห้ามอัป R16.103 ข้ามวัน: ใบก่อน R01 อยู่ใน R01 + ขึ้นชั้นแล้ว (นับ = ระบบ) ยังถูกบวกซ้ำ → audit ปลอม (ข้อมูล 6–7 ต.ค.: 136 บรรทัด)
+//     false (ทั้งสองตัว) = เหมือนก่อนแก้ (rollback) · let เพื่อให้เทสสลับเทียบได้
+let WH_R16_103_BEFORE_R01_ONLY=true;
 // PHARMACY_R16_CLOUD_TIMELINE (ต.ค. 2026 · ผู้ใช้สั่ง — บอท auto-r16 อัป R16.104 ให้ SRC/KKL/SSS ทุกวัน 21:00)
 //   สาขายาไม่เคยมี raw timeline (r16RawMap) บน Cloud — อยู่ในหน่วยความจำของ Desktop ที่อัปไฟล์เองเท่านั้น · เครื่องที่ได้ R16 ผ่าน session sync มีแค่ยอดรวมต่อ SKU
 //   → getSoldQtyBefore บวกยอดขายทั้งวันโดยไม่กรองเวลาสแกน = Stock Adj ปลอมลง ERP · และ state.r16Loaded ไม่ได้มาจาก master ⇒ บอทเขียน Firestore อย่างเดียวไม่ปลดล็อก Confirm
@@ -3781,10 +3791,10 @@ function loadR16_103(event){
   if(!state.barcodeMap.size){toast('โหลด R01.102 และ R05.106 ก่อน แล้วค่อยโหลด R16.103','warn');return;}
   parseFile(file,async rows=>{
     state.r16_103Map.clear();state.r16_103RawMap.clear();
-    let tranDateColIdx=-1;
-    if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){if((hdr[c]??'').toString().trim().toUpperCase()==='TRANDATE'){tranDateColIdx=c;break;}}
-    console.log('[R16.103] TRANDATE col index:',tranDateColIdx);}
-    const data103=[];let sk=0,matched=0,missing=0,nFront103=0;
+    let tranDateColIdx=-1,stockMainColIdx=-1;   // FSTOCKMAIN หาตามชื่อหัวคอลัมน์เท่านั้น (ไม่มี fallback ตำแหน่ง) · ไม่พบ = -1 = ไม่ข้ามอะไร (fail-open)
+    if(rows.length>0){const hdr=rows[0];for(let c=0;c<hdr.length;c++){const h=(hdr[c]??'').toString().trim().toUpperCase();if(h==='TRANDATE'&&tranDateColIdx<0)tranDateColIdx=c;else if(h==='FSTOCKMAIN'&&stockMainColIdx<0)stockMainColIdx=c;}
+    console.log('[R16.103] TRANDATE col index:',tranDateColIdx,'· FSTOCKMAIN col index:',stockMainColIdx);}
+    const data103=[];let sk=0,matched=0,missing=0,nFront103=0,nNoStock103=0;
     for(let i=1;i<rows.length;i++){
       const r=rows[i];if(!r||!r.length)continue;
       const colC=(r[2]??'').toString().trim().toUpperCase();
@@ -3792,13 +3802,17 @@ function loadR16_103(event){
       // WH: แถว Col A=1 (Front Store เช่น ITFW หน้าร้านรับโอน) ไม่ใช่ของที่ "ยังไม่ขึ้นชั้น" ของคลัง → ไม่บวกกลับ (เช็คเฉพาะ '1' ตรงๆ = fail-open · ไม่มี date/coverage ในลูปนี้ แต่ธงแทนการตัดทิ้งเพื่อให้ matched นับเท่าเดิม)
       const colA103=(r[0]??'').toString().trim();
       const skipWh=WH_R16_SKIP_FRONT_STORE&&currentBranch==='WH'&&colA103==='1';
+      // WH: FSTOCKMAIN=0 = เอกสารที่ไม่ตัด stock หลัก (เช่น IPOS) → ไม่มีทางอยู่ใน R01 → ไม่บวกกลับ (ธงแทนการตัดทิ้ง เหมือน skipWh)
+      // เช็คเฉพาะ "ไม่ว่าง + เป็นตัวเลข = 0" (fail-open) — ⛔ ห้ามเขียนเป็น +fsm===0 ตรงๆ: Number('')===0 จะข้ามทุกแถวที่ไม่มีค่า
+      const fsm103=stockMainColIdx>=0?(r[stockMainColIdx]??'').toString().replace(/,|\s/g,'').trim():'';
+      const skipNoStock=WH_R16_103_SKIP_NO_STOCK&&currentBranch==='WH'&&fsm103!==''&&isFinite(+fsm103)&&+fsm103===0;
       const barcode=(r[14]??'').toString().trim();
       const rawBaseQty=(r[17]??'').toString().replace(/,|\s/g,'').trim();
       const skuR16=(r[23]??'').toString().trim();
       if(!barcode||rawBaseQty===''){sk++;continue;}
       const qty=isFinite(+rawBaseQty)&&+rawBaseQty>0?+rawBaseQty:0;
       const tranDate=tranDateColIdx>=0?(r[tranDateColIdx]??'').toString().trim():'';
-      data103.push({barcode,qty,skuR16,tranDate,skipWh});
+      data103.push({barcode,qty,skuR16,tranDate,skipWh,skipNoStock});
     }
     function normalizeBarcode(b){return b.replace(/[​-‍﻿]/g,'').replace(/\s+/g,' ').trim();}
     data103.forEach(row=>{
@@ -3807,6 +3821,7 @@ function loadR16_103(event){
       if(!sku&&row.skuR16&&state.skuMap.has(row.skuR16))sku=row.skuR16;
       if(!sku||!state.skuMap.has(sku)){missing++;return;}
       if(row.skipWh){nFront103++;matched++;return;}   // WH แถวหน้าร้าน: นับ matched เท่าเดิม แต่ไม่เข้า map
+      if(row.skipNoStock){nNoStock103++;matched++;return;}   // WH FSTOCKMAIN=0 (เช่น IPOS): นับ matched เท่าเดิม แต่ไม่เข้า map
       state.r16_103Map.set(sku,(state.r16_103Map.get(sku)||0)+row.qty);
       const rawArr=state.r16_103RawMap.get(sku)||[];rawArr.push({qty:row.qty,tranDate:row.tranDate||''});state.r16_103RawMap.set(sku,rawArr);
       matched++;
@@ -3829,8 +3844,9 @@ function loadR16_103(event){
     if(matched>0){
       // WH: บอกจำนวนแถวหน้าร้านที่ข้าม (ไม่ให้หายเงียบ) · ตัวเลข "จับคู่ได้" ไม่รวมแถวที่ข้าม — ไม่มีแถวข้าม = ข้อความเดิมเป๊ะ
       if(nFront103>0)toast(`R16.103: ข้ามรายการหน้าร้าน ${nFront103} แถว (Col A=1) — ไม่กระทบสต็อกคลัง`,'info',5000);
-      toast(`R16.103: จับคู่ได้ ${matched-nFront103} SKU / ${total103} ชิ้น (รับเข้ายังไม่ขึ้นชั้น)`,'success');
-      console.log(`[R16.103] match ${matched-nFront103} SKU / ${total103} ชิ้น / ไม่พบ ${missing} / ข้ามหน้าร้าน ${nFront103}`);
+      if(nNoStock103>0)toast(`R16.103: ข้ามใบที่ไม่ตัดสต็อก ${nNoStock103} แถว (FSTOCKMAIN=0)`,'info',5000);   // ห้ามหายเงียบ — ไฟล์ที่มีแต่ IPOS จะเหลือ "จับคู่ได้ 0"
+      toast(`R16.103: จับคู่ได้ ${matched-nFront103-nNoStock103} SKU / ${total103} ชิ้น (รับเข้ายังไม่ขึ้นชั้น)`,'success');
+      console.log(`[R16.103] match ${matched-nFront103-nNoStock103} SKU / ${total103} ชิ้น / ไม่พบ ${missing} / ข้ามหน้าร้าน ${nFront103} / ข้ามไม่ตัดสต็อก ${nNoStock103}`);
     }else{
       toast('R16.103 จับคู่ไม่ได้ — Col C ต้องมี IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN','warn');
     }
@@ -6117,16 +6133,26 @@ function getInboundQtyBefore(sku,scanTimestamp){
   },0);
 }
 
+// เวลาของ R01 ที่ใช้อยู่ (ms) — state.r01Version คือเวลาอัป R01 แบบ ISO (บอท/เว็บ) · ไม่ใช่เวลา ISO (ว่าง/'R01-TEST-1') → null = fail-open
+// ⚠️ ต้องเช็ครูปแบบ ISO ก่อน Date.parse: parser เดิมของ Chrome ยอมรับข้อความมั่ว ('R01-TEST-1' อาจกลายเป็นวันที่) · เป็นเวลาอัป ไม่ใช่เวลา export (บอทอัปหลัง export ไม่กี่นาที)
+function _r01SnapshotMs(){
+  const v=String(state.r01Version||'');
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v))return null;
+  const t=Date.parse(v);return isFinite(t)?t:null;
+}
 function getR16103QtyBefore(sku,scanTimestamp){
   // R16.103: สินค้ารับเข้าคลังแต่ยังไม่ขึ้นชั้น → อยู่ใน systemQty แต่พนักงานไม่ได้นับ → ต้องบวกกลับ
+  // (14 ต.ค. 2026) บวกกลับได้เฉพาะเอกสารที่อยู่ใน systemQty จริง = TRANDATE ≤ เวลา R01 — ที่ลงหลัง R01 ไม่อยู่ใน R01 (ดู WH_R16_103_BEFORE_R01_ONLY)
   if(!state.r16_103RawMap.size||!scanTimestamp)return state.r16_103Map.get(sku)||0;
   const rows=state.r16_103RawMap.get(sku);
   if(!rows)return 0;
   const scanDate=new Date(scanTimestamp.replace(' ','T'));
+  const r01Ms=(WH_R16_103_BEFORE_R01_ONLY&&currentBranch==='WH')?_r01SnapshotMs():null;
   return rows.reduce((sum,row)=>{
     if(!row.tranDate)return sum; // ไม่มี TRANDATE → ไม่บวก (conservative)
     const td=parseTranDate(row.tranDate);
     if(!td)return sum;
+    if(r01Ms!==null&&td.getTime()>r01Ms)return sum; // ลงหลังเวลา R01 → ไม่อยู่ใน systemQty → ไม่มีอะไรให้บวกกลับ
     return td<=scanDate?sum+row.qty:sum;
   },0);
 }
@@ -7048,7 +7074,9 @@ function guideHtml(isWh){
   +(isWh?'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
     +'<strong style="color:var(--orange);display:block;margin-bottom:5px;">3. R16.103 — รับเข้าที่ยังไม่ขึ้นชั้น (เฉพาะ WH)</strong>'
     +'<ul style="padding-left:16px;margin:0;">'
-      +'<li>IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN → <strong style="color:var(--green);">บวกกลับ</strong> (อยู่ในระบบแต่ยังไม่ได้นับ)'+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— ข้ามแถว Col A=1 (หน้าร้าน)</span>':'')+'</li>'
+      +'<li>'+(WH_R16_103_SKIP_NO_STOCK?'IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IRCN':'IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IPOS/IRCN')+' → <strong style="color:var(--green);">บวกกลับ</strong> (อยู่ในระบบแต่ยังไม่ได้นับ)'+(WH_R16_103_BEFORE_R01_ONLY?' <span style="color:var(--text3);font-size:0.92em;">— <strong>เฉพาะเอกสารที่ลงก่อนเวลา R01</strong> (ที่ลงหลัง R01 ไม่อยู่ใน R01 จึงไม่บวก)</span>':'')+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— ข้ามแถว Col A=1 (หน้าร้าน)</span>':'')+'</li>'
+      +(WH_R16_103_SKIP_NO_STOCK?'<li style="margin-top:3px;"><strong style="color:var(--text3);">ข้าม:</strong> IPOS และแถวที่คอลัมน์ FSTOCKMAIN = 0 (ไม่ตัดสต็อกหลัก ไม่อยู่ใน R01)</li>':'')
+      +(WH_R16_103_BEFORE_R01_ONLY?'<li style="margin-top:3px;color:var(--red);">⚠️ อัพเฉพาะของวันนี้ — ห้ามอัพข้ามวัน (ใบก่อน R01 อยู่ใน R01 และขึ้นชั้นแล้ว จะถูกบวกซ้ำ)</li>':'')
       +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R · ปุ่มแสดงเฉพาะ Desktop WH</li>'
     +'</ul>'
   +'</div>':'')
