@@ -1580,6 +1580,9 @@ let _adoptedMasterBaselineAt = '';
 // ⚠️ debounce เฉพาะ "การแสดง toast" เท่านั้น — ห้ามเอาไปกั้น _clearR16ForNewBaseline หรือการตั้ง _r01BaselineAt
 //    (ของสองอย่างนั้นต้องทำงานทุกรอบเหมือนเดิม ไม่งั้น R16/audit freeze เพี้ยน)
 let _lastR01BaselineToastAt = 0;
+// toast "กำลังโหลดข้อมูล.." ตอน R01 baseline เปลี่ยน — ปิดแล้ว (ผู้ใช้สั่ง 15 ต.ค. 2026: แทรกขึ้นมาระหว่างล็อกอินที่มี Skeleton แจ้งสถานะอยู่แล้ว)
+// ปิดเฉพาะตัว toast: baseline/ล้าง R16/อัป badge ทำงานทุกรอบเหมือนเดิม · true = กลับมาขึ้น (debounce เดิม)
+let R01_BASELINE_TOAST = false;
 const R01_BASELINE_TOAST_GAP_MS = 10000; // ครอบลำดับ session→master ตอน boot โดยไม่กลบเหตุการณ์ที่ห่างกันจริง
 function _isPharmacyBranch(){return currentBranch==='SRC'||currentBranch==='KKL'||currentBranch==='SSS';}
 function initFirebase(){if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);_db=firebase.firestore();}
@@ -4096,7 +4099,7 @@ async function _applyR01BaselineUpdate(baselineAt,docData=null){
   // ข้อความสั้นตามที่ผู้ใช้ขอ (ก.ย. 2026 — เดิมอธิบายยาวว่า R16 ถูกล้างและต้องอัปใหม่ก่อน Confirm)
   // ที่ตัดได้เพราะสถานะยังบอกผู้ใช้อยู่ 2 จุด: badge R16 เปลี่ยนเป็น "ยังไม่โหลด" และปุ่ม Confirm ถูก disable
   // (updateConfirmBtn ใช้ state.r16Loaded) แล้วถ้ากดยังไงก็ติด toast "กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน"
-  if(Date.now()-_lastR01BaselineToastAt>R01_BASELINE_TOAST_GAP_MS)
+  if(R01_BASELINE_TOAST&&Date.now()-_lastR01BaselineToastAt>R01_BASELINE_TOAST_GAP_MS)
     toast('กำลังโหลดข้อมูล..','info');
   _lastR01BaselineToastAt=Date.now();
   return 1;
