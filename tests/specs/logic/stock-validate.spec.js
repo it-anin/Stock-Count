@@ -167,7 +167,7 @@ test('★ ORDS/IRPS ทั้งรายงาน: รวมใบก่อน�
   expect(await app.page.evaluate(() => { const r = _buildAdjustDocRows('ords').find((x) => x.sku === 'D-EARLY'); return _adjErpEval([r], 'ords').get('D-EARLY').state; })).toBe('none');
   await app.page.evaluate(() => openStockValidatePopup());
   const d = Object.fromEntries((await domRows(app.page)).map((x) => [x.sku, x]));
-  expect([d['D-PART'].ords, d['D-PART'].ordsColor, d['D-PART'].ordsSub, d['D-PART'].irps, d['D-PART'].irpsColor, d['D-PART'].net]).toEqual(['-3', 'var(--red)', '2 ใบ', '0', 'var(--text3)', '-3']);
+  expect([d['D-PART'].ords, d['D-PART'].ordsColor, d['D-PART'].ordsSub, d['D-PART'].irps, d['D-PART'].irpsColor, d['D-PART'].net]).toEqual(['-3', 'var(--red)', '2 เอกสาร', '0', 'var(--text3)', '-3']);
   expect(d['D-PART'].ordsTitle).toBe('ORDSBY001 · 24/09/2026 14:43 · ORDS 2\nORDSBY002 · 24/09/2026 14:43 · ORDS 1');
   expect([d['D-IRPS'].irps, d['D-IRPS'].irpsColor, d['D-IRPS'].ords, d['D-IRPS'].net, d['D-IRPS'].netColor]).toEqual(['+2', 'var(--green)', '0', '+2', 'var(--green)']);
   expect(d['D-NONE'].ordsTitle).toBe('ไม่มีใบ ORDS ของสินค้านี้ในรายงาน');

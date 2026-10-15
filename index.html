@@ -125,6 +125,7 @@
     .sv-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
     .sv-sub { display:block; font-size:0.64rem; font-weight:400; color:var(--text3); margin-top:2px; white-space:nowrap; }
     #stockValidateCard .ptable thead th, #stockValidateCard .ptable tbody td { padding:8px 10px; }
+    #stockValidateCard .ptable tbody td { vertical-align:top; }   /* ช่องที่มีข้อความย่อยใต้ตัวเลขทำให้แถวสูงขึ้น — ชิดบนเพื่อให้ตัวเลขทุกช่องอยู่บรรทัดเดียวกัน */
     #stockValidateCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
     #stockValidateCard .stock-popup-footer > div:last-child { margin-left:auto; }
     .btn-export-popup { padding:7px 16px; border-radius:7px; border:1px solid rgba(26,158,92,0.3); background:rgba(26,158,92,0.08); color:var(--green); cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600; transition:background 0.15s; }
@@ -10127,7 +10128,7 @@ function _svDocCell(r,st,type){
   const v=type==='ORDS'?(r.ords?-r.ords:0):r.irps;
   // ย่อยบอกจำนวนใบ (เลขที่ใบ 18 ตัวในช่องทำตารางล้นที่หน้าต่าง 960px) — เลขที่ใบ/วันที่/จำนวนอยู่ใน tooltip + คอลัมน์เลขที่เอกสารของ Excel
   const n=r.docs.filter(x=>x.type===type).length;
-  const sub=n?`<span class="sv-sub">${n} ใบ</span>`:'';
+  const sub=n?`<span class="sv-sub">${n} เอกสาร</span>`:'';
   return `<td style="text-align:center;" title="${_adjErpEsc(_svDocsTitle(r.docs,type))}"><span style="font-weight:700;color:${_svColor(v)};">${_svSigned(v)}</span>${sub}</td>`;
 }
 function _svInfoHtml(st){
