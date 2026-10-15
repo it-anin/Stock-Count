@@ -10176,7 +10176,7 @@ function renderStockValidateTable(pre){
     }
   }
   const thead=document.getElementById('svThead');
-  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">Stock ในระบบ<br>(R01.102)</th><th style="text-align:center;">Stock<br>นับจริง</th><th style="text-align:center;">Stock<br>ที่ควรปรับ</th><th style="text-align:center;">ORDS</th><th style="text-align:center;">IRPS</th><th style="text-align:center;">ผล Diff<br>(ORDS + IRPS)</th><th style="text-align:center;">ผลตรวจ</th></tr>';
+  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">Stock ในระบบ<br>(R01.102)</th><th style="text-align:center;">Stock<br>นับจริง</th><th style="text-align:center;">Stock<br>ที่ควรปรับ</th><th style="text-align:center;">เอกสาร<br>ORDS</th><th style="text-align:center;">เอกสาร<br>IRPS</th><th style="text-align:center;">ผล Diff เอกสาร<br>(ORDS + IRPS)</th><th style="text-align:center;">ผลตรวจกับเอกสาร</th></tr>';
   const rows=_svViewRows(res);
   const sk=[res.skipped.noSku?`ไม่มีข้อมูลสินค้า (R05) ${res.skipped.noSku}`:'',res.skipped.noBasis?`ข้อมูลไม่ครบ ${res.skipped.noBasis}`:''].filter(Boolean).join(' · ');
   const rc=document.getElementById('svRowCount');
