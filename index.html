@@ -10131,10 +10131,20 @@ function _svDocCell(r,st,type){
   const sub=n?`<span class="sv-sub">${n} เอกสาร</span>`:'';
   return `<td style="text-align:center;" title="${_adjErpEsc(_svDocsTitle(r.docs,type))}"><span style="font-weight:700;color:${_svColor(v)};">${_svSigned(v)}</span>${sub}</td>`;
 }
+// ช่วงที่รายงานครอบ: วันแรก–เวลาสุดท้ายของเอกสาร (เดือนเดียวกัน → "1-30/09/2026 20:56" · วันเดียว → "24/09/2026 14:43")
+function _svCoverRange(c){
+  const f=/^(\d{4})-(\d{2})-(\d{2})/.exec(c.fromDay||''),t=/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}:\d{2}))?/.exec(c.toAt||'');
+  if(!t)return String(c.toAt||'');
+  const tm=t[4]?' '+t[4]:'',to=`${t[3]}/${t[2]}/${t[1]}${tm}`;
+  if(!f||(f[1]===t[1]&&f[2]===t[2]&&f[3]===t[3]))return to;
+  if(f[1]===t[1]&&f[2]===t[2])return `${+f[3]}-${to}`;
+  if(f[1]===t[1])return `${f[3]}/${f[2]}-${to}`;
+  return `${f[3]}/${f[2]}/${f[1]}-${to}`;
+}
 function _svInfoHtml(st){
   if(!st)return '<span style="color:var(--red);">ยังไม่แนบ R02.102</span> — แนบที่ 📦 ปรับปรุงสินค้า → 🧾 ตรวจสอบ รายงาน R02.102';
-  const parts=[`${_adjErpEsc(_adjErpRptName(st))} ${_adjErpEsc(_adjFmtUpdated(st.updatedAt)||'อัปเดตแล้ว')}`];
-  for(const t of ADJ_ERP_TYPES)parts.push(st.cover[t]?`${t} ถึง ${_adjErpEsc(_adjErpFmtAt(st.cover[t].toAt,true))}`:`<span style="color:var(--red);">${t}: ยังไม่มีข้อมูล</span>`);
+  const parts=[];
+  for(const t of ADJ_ERP_TYPES)parts.push(st.cover[t]?`${t} ${_adjErpEsc(_svCoverRange(st.cover[t]))}`:`<span style="color:var(--red);">${t}: ยังไม่มีข้อมูล</span>`);
   if(st.localOnly)parts.push('<span style="color:var(--red);">⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)</span>');
   return parts.join(' · ');
 }

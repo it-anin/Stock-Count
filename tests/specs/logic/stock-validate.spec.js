@@ -204,8 +204,15 @@ test('ไม่มีรายงาน = "—" + แถบบอกให้แ
   await app.page.evaluate(([o]) => { __erp([o]); _applyStatAuditCardMode(); }, [FILE_O]);
   d = Object.fromEntries((await domRows(app.page)).map((x) => [x.sku, x]));
   expect([d['D-IRPS'].irps, d['D-IRPS'].irpsTitle, d['D-IRPS'].net, d['D-IRPS'].res, d['D-ORDS'].res]).toEqual(['—', 'IRPS: ยังไม่มีข้อมูลในรายงานที่แนบ', '0', 'ไม่ตรง', 'ตรง']);
-  const upd = await app.page.evaluate(() => _adjFmtUpdated('2026-10-10T03:00:00.000Z'));   // เวลาตามเขตเวลาเครื่อง
-  expect(await app.page.textContent('#svInfo')).toBe(`R16.104 ${upd} · ORDS ถึง 24/09/2026 14:43 · IRPS: ยังไม่มีข้อมูล`);
+  // แถบช่วงที่รายงานครอบ: "ORDS <ช่วง> · IRPS <ช่วง>" (ไม่มีชื่อรายงาน/เวลาอัปเดต/คำว่า "ถึง") — วันเดียว = วันนั้นวันเดียว
+  expect(await app.page.textContent('#svInfo')).toBe('ORDS 24/09/2026 14:43 · IRPS: ยังไม่มีข้อมูล');
+  expect(await app.page.evaluate(() => [
+    _svCoverRange({ fromDay: '2026-09-01', toAt: '2026-09-30 20:56' }),     // เดือนเดียวกัน → 1-30/09/2026 20:56
+    _svCoverRange({ fromDay: '2026-09-24', toAt: '2026-09-24 14:43' }),     // วันเดียว
+    _svCoverRange({ fromDay: '2026-08-05', toAt: '2026-09-30 16:57' }),     // ข้ามเดือน
+    _svCoverRange({ fromDay: '2025-12-20', toAt: '2026-01-03 09:00' }),     // ข้ามปี
+    _svCoverRange({ toAt: '2026-09-30 16:57' }),                            // ไม่มีวันเริ่ม = เหลือแค่ปลายช่วง
+  ])).toEqual(['1-30/09/2026 20:56', '24/09/2026 14:43', '05/08-30/09/2026 16:57', '20/12/2025-03/01/2026 09:00', '30/09/2026 16:57']);
   await app.page.evaluate(([o, i]) => { __erp([o, i], { localOnly: true }); _applyStatAuditCardMode(); }, [FILE_O, FILE_I]);
   expect(await app.page.textContent('#svInfo')).toContain('⚠️ เห็นเฉพาะเครื่องนี้ (บันทึกขึ้น Cloud ไม่สำเร็จ)');
   await closeApp(app);
