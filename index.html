@@ -333,6 +333,12 @@
       #loginLoader .ll-ck li { font-size:0.88rem; }
     }
     @media (prefers-reduced-motion:reduce){ #loginLoader .ll-ring svg, #loginLoader .ll-ck li.cur .c { animation:none!important; } }
+    /* PDA จริง (UA StockCountPDA → body.pda-power-save) ไม่มีวงแหวนหมุนรอบโลโก้ (ผู้ใช้สั่ง 16 ต.ค. 2026) — เหลือโลโก้นิ่ง + เช็กลิสต์
+       วัดแล้ว (CPU 6× · 5,400 SKU) แอนิเมชั่นของหน้าโหลดกิน ~0.3 วิ (~10%) ของ initAfterLogin · svg display:none = ไม่มีทั้งภาพและแอนิเมชั่น
+       ตัวหมุนเล็กข้างขั้นปัจจุบันยังอยู่ (เป็นสัญญาณว่าไม่ค้าง) · Desktop และหน้าจอแคบที่ไม่ใช่แอป PDA ยังมีวงแหวนเหมือนเดิม */
+    body.pda-power-save #loginLoader .ll-ring { width:56px; height:56px; }
+    body.pda-power-save #loginLoader .ll-ring svg { display:none; }
+    body.pda-power-save #loginLoader .ll-ring img { position:static; width:56px; height:56px; margin:0; }
     .btn-remove-row { width:20px; height:20px; border-radius:6px; border:1px solid rgba(217,48,37,0.35); background:rgba(217,48,37,0.08); color:var(--red); cursor:pointer; font-size:0.6rem; font-weight:700; display:flex; align-items:center; justify-content:center; transition:background 0.15s,border-color 0.15s; margin:auto; padding:0; }
     .btn-remove-row:hover { background:rgba(217,48,37,0.18); border-color:rgba(217,48,37,0.6); }
     .btn-audit-inline:disabled { opacity:0.5; cursor:not-allowed; background:var(--surface3); border-color:var(--border); color:var(--text3); }

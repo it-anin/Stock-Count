@@ -8,6 +8,7 @@
 //   2. ★ ระหว่างโหลดคลุมทั้งจอจริง + ขั้นเดินตามจุด await จริง (ทุก role/สาขา/อุปกรณ์) + ปิดเมื่อจบ · loader RESULT เดิมไม่ซ้ำซ้อน
 //   3. ★ error กลางทางต้องปิด (ห้ามจอค้าง) · สวิตช์ปิด = เดิมทุกอย่าง
 //   4. ★ toast ยังอยู่เหนือ overlay · เลย์เอาต์ Desktop (แถว) / PDA (แนวตั้ง) ไม่ล้น/ไม่ขยับระหว่างขั้น · แอนิเมชั่น/reduced-motion
+//      16 ต.ค. 2026 (ผู้ใช้สั่ง): แอป PDA (body.pda-power-save) ไม่มีวงแหวนรอบโลโก้ — เหลือโลโก้นิ่ง + เช็กลิสต์ · Desktop/หน้าจอแคบที่ไม่ใช่แอป PDA ยังมีวงแหวน
 // ขั้นตอนจริงของ initAfterLogin จำลองด้วย stub ที่บันทึกสถานะของ overlay ณ จุดที่ถูกเรียก (ไม่ใช่เดาจากเวลา)
 const { test, expect, newAppContext, waitForAppReady, bootBare, closeApp } = require('../../lib/hooks');
 
@@ -250,6 +251,8 @@ const layout = (page) => page.evaluate(async () => {
     box: [box.left, box.top, box.right, box.bottom],
     noXScroll: doc.scrollWidth <= doc.clientWidth && doc.scrollHeight <= doc.clientHeight,
     ringAnim: cs('.ll-ring svg').animationName,
+    svgDisplay: cs('.ll-ring svg').display, imgPos: cs('.ll-ring img').position, imgW: g('.ll-ring img').width, imgH: g('.ll-ring img').height,   // ขนาดที่เรนเดอร์จริง (ซ่อน = 0)
+    isPdaClass: document.body.classList.contains('pda-power-save'),
     curAnim: cs('li.cur .c').animationName,
     doneBg: cs('li.done .c').backgroundColor, doneMark: cs('li.done .c', '::before').content,
     curBorderTop: cs('li.cur .c').borderTopColor, todoAnim: cs('li.todo .c').animationName,
@@ -257,7 +260,14 @@ const layout = (page) => page.evaluate(async () => {
   };
 });
 
-test('โครงตามอุปกรณ์: Desktop = วงแหวนซ้าย/รายการขวา · PDA = วงแหวนบน/รายการล่าง · อยู่กลางจอ ไม่ล้น ไม่ขยับระหว่างขั้น', async ({ browser }) => {
+// หน้าจอแคบที่ไม่ใช่แอป PDA (เบราว์เซอร์บนมือถือ/หน้าต่างแคบ): ไม่มีคลาส pda-power-save → ต้องยังมีวงแหวน (กติกา "ไม่มีวงแหวน" ผูกกับแอป PDA จริงเท่านั้น)
+async function bootNarrowNonPda(browser) {
+  const app = await bootBare(browser);
+  await app.page.setViewportSize({ width: 390, height: 700 });
+  return app;
+}
+
+test('โครงตามอุปกรณ์: Desktop = วงแหวนซ้าย/รายการขวา · แอป PDA = โลโก้นิ่งบน/รายการล่าง (ไม่มีวงแหวน) · อยู่กลางจอ ไม่ล้น ไม่ขยับระหว่างขั้น', async ({ browser }) => {
   const d = await bootBare(browser);
   const rd = await layout(d.page);
   // Desktop: แนวนอน — วงแหวนอยู่ซ้ายรายการ และกึ่งกลางแนวตั้งตรงกัน
@@ -269,16 +279,17 @@ test('โครงตามอุปกรณ์: Desktop = วงแหวน�
   expect(Math.abs((rd.box[0] + rd.box[2]) / 2 - rd.vw / 2)).toBeLessThan(2);
   expect(Math.abs((rd.box[1] + rd.box[3]) / 2 - rd.vh / 2)).toBeLessThan(2);
   expect(rd.noXScroll).toBe(true);
-  expect(rd).toMatchObject({ ringAnim: 'llSpin', curAnim: 'llSpin', doneBg: 'rgb(26, 158, 92)', doneMark: '"✓"', todoAnim: 'none' });
+  expect(rd).toMatchObject({ isPdaClass: false, svgDisplay: 'block', ringAnim: 'llSpin', curAnim: 'llSpin', doneBg: 'rgb(26, 158, 92)', doneMark: '"✓"', todoAnim: 'none' });
   expect(rd.curBorderTop).toBe('rgba(0, 0, 0, 0)');   // ตัวหมุนของขั้นปัจจุบัน = วงกลมเว้นช่อง (ไม่ใช่วงกลมเต็ม)
   await closeApp(d);
 
   const p = await bootPda(browser);
   const rp = await layout(p.page);
-  // PDA: แนวตั้ง — วงแหวนอยู่เหนือรายการ และกึ่งกลางแนวนอนตรงกัน
-  expect(rp.ring[3], 'วงแหวนต้องอยู่เหนือรายการ').toBeLessThanOrEqual(rp.ck[1] + 0.5);
+  // แอป PDA (UA StockCountPDA → body.pda-power-save): ไม่มีวงแหวน — เหลือโลโก้นิ่ง 56px · แนวตั้ง: โลโก้อยู่เหนือรายการ และกึ่งกลางแนวนอนตรงกัน
+  expect(rp, 'ต้องเป็นแอป PDA จริง (ไม่ใช่ผ่านเพราะ setup ผิด)').toMatchObject({ isPdaClass: true, svgDisplay: 'none', imgPos: 'static', imgW: 56, imgH: 56 });   // โลโก้ต้องยังเห็นอยู่ (นิ่ง 56px)
+  expect(rp.ring[4], 'กล่องโลโก้ = ขนาดโลโก้ (ไม่เหลือที่ว่างของวงแหวน)').toBe(56);
+  expect(rp.ring[3], 'โลโก้ต้องอยู่เหนือรายการ').toBeLessThanOrEqual(rp.ck[1] + 0.5);
   expect(Math.abs((rp.ring[0] + rp.ring[2]) / 2 - (rp.ck[0] + rp.ck[2]) / 2)).toBeLessThan(2);
-  expect(rp.ring[4]).toBe(112);
   expect(rp.steps.every((s) => JSON.stringify(s) === JSON.stringify(rp.steps[0])), `ตำแหน่งต้องเท่ากันทุกขั้น: ${JSON.stringify(rp.steps)}`).toBe(true);
   expect(rp.box[0]).toBeGreaterThanOrEqual(0);
   expect(rp.box[2]).toBeLessThanOrEqual(rp.vw);
@@ -289,16 +300,33 @@ test('โครงตามอุปกรณ์: Desktop = วงแหวน�
   await closeApp(p);
 });
 
-test('แอนิเมชั่น: วงแหวนหมุนต่อเนื่องแม้ PDA โหมดประหยัดแบต (สัญญาณว่าไม่ค้าง) · reduced-motion หยุดทั้งหมด', async ({ browser }) => {
+test('หน้าจอแคบที่ไม่ใช่แอป PDA (390px · ไม่มีคลาส PDA): ยังมีวงแหวนหมุนเหมือนเดิม · แนวตั้ง', async ({ browser }) => {
+  const n = await bootNarrowNonPda(browser);
+  const rn = await layout(n.page);
+  expect(rn).toMatchObject({ isPdaClass: false, svgDisplay: 'block', ringAnim: 'llSpin', curAnim: 'llSpin' });
+  expect(rn.ring[4]).toBe(112);                      // ขนาดวงแหวนช่วง ≤600px เดิม
+  expect(rn.ring[3]).toBeLessThanOrEqual(rn.ck[1] + 0.5);
+  expect(rn.noXScroll).toBe(true);
+  await closeApp(n);
+});
+
+test('แอนิเมชั่น: Desktop วงแหวนหมุน · แอป PDA ไม่มีวงแหวน (ตัวหมุนเล็กของขั้นปัจจุบันยังหมุน = สัญญาณว่าไม่ค้าง) · reduced-motion หยุดทั้งหมด', async ({ browser }) => {
+  const d = await bootBare(browser);
+  expect(await d.page.evaluate(() => document.body.classList.contains('pda-power-save'))).toBe(false);
+  const ds = await layout(d.page);
+  expect([ds.svgDisplay, ds.ringAnim, ds.curAnim]).toEqual(['block', 'llSpin', 'llSpin']);
+  await d.page.emulateMedia({ reducedMotion: 'reduce' });
+  const dr = await layout(d.page);
+  expect([dr.ringAnim, dr.curAnim], 'Desktop reduced-motion: ไม่มีอะไรหมุน').toEqual(['none', 'none']);
+  expect(dr.doneBg).toBe('rgb(26, 158, 92)');       // ความคืบหน้ายังอ่านได้จากรายการ
+  await closeApp(d);
+
   const p = await bootPda(browser);
-  // PDA จริง (UA StockCountPDA → body.pda-power-save): ตัดสินใจไว้ว่าวงแหวนยังหมุน — ชิ้นเดียวเป็น compositor layer และเป็นตัวบอกว่าแอปไม่ค้าง
-  await p.page.evaluate(() => document.body.classList.add('pda-power-save'));
   const ps = await layout(p.page);
-  expect([ps.ringAnim, ps.curAnim]).toEqual(['llSpin', 'llSpin']);
-  // เคารพ reduced-motion: ไม่มีอะไรหมุน — ความคืบหน้ายังอ่านได้จากรายการ (done/cur/todo) เหมือนเดิม
+  // PDA: วงแหวน display:none (ไม่ได้เรนเดอร์ = ไม่มีทั้งภาพและแอนิเมชั่น) · ตัวหมุนเล็กข้างขั้นปัจจุบันยังหมุน
+  expect([ps.isPdaClass, ps.svgDisplay, ps.curAnim]).toEqual([true, 'none', 'llSpin']);
   await p.page.emulateMedia({ reducedMotion: 'reduce' });
-  const rm = await layout(p.page);
-  expect([rm.ringAnim, rm.curAnim]).toEqual(['none', 'none']);
-  expect(rm.doneBg).toBe('rgb(26, 158, 92)');
+  const pr = await layout(p.page);
+  expect([pr.svgDisplay, pr.curAnim], 'PDA reduced-motion: ตัวหมุนเล็กหยุดด้วย').toEqual(['none', 'none']);
   await closeApp(p);
 });
