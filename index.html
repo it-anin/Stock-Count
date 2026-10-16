@@ -10489,7 +10489,7 @@ function renderStockValidateTable(pre){
       +`<td style="color:var(--text3);font-size:0.75rem;">${pgn.start+i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${_adjErpEsc(r.sku)}</td>`
       +`<td class="ptd-name" style="min-width:130px;">${_adjErpEsc(r.name)}</td>`
-      +`<td style="text-align:center;" title="${_adjErpEsc(sysTitle)}"><span style="font-weight:700;">${r.sys===null?'—':r.sys}</span><span class="sv-sub"${r.src==='live'?' style="color:var(--yellow);font-weight:700;"':''}>${SV_SRC_UI[r.src]}</span></td>`
+      +`<td style="text-align:center;" title="${_adjErpEsc(sysTitle)}"><span style="font-weight:700;">${r.sys===null?'—':r.sys}</span></td>`
       +(r.extra?`<td style="text-align:center;color:var(--text3);" title="แอปไม่มีผลนับ Stock Adj ของสินค้านี้ให้เทียบ">—</td><td style="text-align:center;color:var(--text3);">—</td>`
         :`<td style="text-align:center;"${cntTitle?` title="${_adjErpEsc(cntTitle)}"`:''}><span style="font-weight:700;">${r.cnt}</span>${cntSub}</td>`
         +`<td style="text-align:center;"><span style="font-weight:700;color:${_svColor(r.diff)};">${_svSigned(r.diff)}</span>${diffSub}</td>`)
