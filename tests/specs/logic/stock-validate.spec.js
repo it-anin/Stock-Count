@@ -408,7 +408,7 @@ async function seedExtras(page, opts = {}) {
     // X-NONE: ไม่มีทั้ง skuMap และ scanData = ไม่อยู่ในรอบนับ · NOSKU = Stock Adj ที่ไม่มีข้อมูลสินค้า (อยู่ใน skipped ไม่ซ้ำเป็นแถวนอกแอป)
   });
 }
-test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไม่ใช่ Stock Adj ขึ้นตารางตามจำนวนใบจริง · ที่ควรปรับ/ยอดนับ "—" · ป้าย + สถานะในแอป · ไม่ซ้ำ/ไม่หลุด', async ({ browser }) => {
+test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไม่ใช่ Stock Adj ขึ้นตารางตามจำนวนใบจริง · ที่ควรปรับ/ยอดนับ "—" · ป้าย "มีปรับเอกสาร" + นับจริง · ไม่ซ้ำ/ไม่หลุด', async ({ browser }) => {
   const app = await bootBare(browser);
   await seedExtras(app.page);
   const r = await svRows(app.page);
@@ -434,12 +434,12 @@ test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไ�
   await app.page.evaluate(() => setStockValidateFilter('outside'));
   const d = await view();
   expect(Object.keys(d).sort()).toEqual(['AUD', 'PASS', 'X-LOT', 'X-MIX', 'X-NONE', 'X-PEND']);
-  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', sys: '7', sysSub: '', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'ปรับนอกแอป', resColor: 'var(--yellow)', resSub: 'สถานะในแอป: ยังไม่ได้นับ' });
-  expect(d['PASS']).toMatchObject({ ords: '-1', ordsColor: 'var(--red)', irps: '0', net: '-1', res: 'ปรับนอกแอป', resSub: 'สถานะในแอป: Pass' });
-  expect(d['AUD'].resSub).toBe('สถานะในแอป: รอรีเช็ค');
-  expect(d['X-LOT']).toMatchObject({ ords: '-1', irps: '+1', net: '0', res: 'ปรับปรุง LOT', resSub: 'สถานะในแอป: Pass' });
-  expect(d['X-MIX']).toMatchObject({ ords: '-2', irps: '+1', net: '-1', res: 'ปรับนอกแอป' });
-  expect(d['X-NONE']).toMatchObject({ name: '', sys: '—', irps: '+1', res: 'ปรับนอกแอป', resSub: 'สถานะในแอป: ไม่อยู่ในรอบนับ' });
+  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', sys: '7', sysSub: '', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'มีปรับเอกสาร', resColor: 'var(--yellow)', resSub: 'นับจริง: ยังไม่ได้นับ' });
+  expect(d['PASS']).toMatchObject({ ords: '-1', ordsColor: 'var(--red)', irps: '0', net: '-1', res: 'มีปรับเอกสาร', resSub: 'นับจริง: Pass' });
+  expect(d['AUD'].resSub).toBe('นับจริง: รอรีเช็ค');
+  expect(d['X-LOT']).toMatchObject({ ords: '-1', irps: '+1', net: '0', res: 'ปรับปรุง LOT', resSub: 'นับจริง: Pass' });
+  expect(d['X-MIX']).toMatchObject({ ords: '-2', irps: '+1', net: '-1', res: 'มีปรับเอกสาร' });
+  expect(d['X-NONE']).toMatchObject({ name: '', sys: '—', irps: '+1', res: 'มีปรับเอกสาร', resSub: 'นับจริง: ไม่อยู่ในรอบนับ' });
   expect(d['X-PEND'].irpsTitle).toContain('IRPSBY009');                   // เลขที่ใบ/จำนวนยังอยู่ใน tooltip
   // ชิป: มีเฉพาะเมื่อมีแถวนอกแอป · "ตรง/ไม่ตรง" ไม่มีแถวนอกแอปปน · badge = ไม่ตรงของ Stock Adj เท่าเดิม แต่ tooltip บอกจำนวนนอกแอป
   expect(await app.page.evaluate(() => [...document.querySelectorAll('#svBar .sv-chip')].map((b) => b.textContent))).toEqual(['ทั้งหมด 20', '❌ ไม่ตรง 6', '✅ ตรง 8', '⚠️ นอกแอป 6']);
@@ -449,7 +449,7 @@ test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไ�
   expect(Object.keys(await view()).sort()).toEqual([...MISMATCH].sort());
   expect(await app.page.evaluate(() => [document.getElementById('stockValidateCount').textContent, document.getElementById('stockValidateCount').closest('button').title]))
     .toEqual(['6', 'ไม่ตรง 6 · ตรง 8 · Stock Adj ทั้งหมด 14 รายการ · นอกแอป 6']);
-  // Export: ทุกแถวนอกแอปมี ORDS/IRPS ตามใบ · ช่องที่ไม่มีค่าเว้นว่าง (ไม่ใช่ 0/null) · หมายเหตุ = สถานะในแอป
+  // Export: ทุกแถวนอกแอปมี ORDS/IRPS ตามใบ · ช่องที่ไม่มีค่าเว้นว่าง (ไม่ใช่ 0/null) · หมายเหตุ = "นับจริง: <สถานะ>"
   await app.page.evaluate(() => setStockValidateFilter('outside'));
   const xl = await app.page.evaluate(() => {
     let got = null; const orig = XLSX.writeFile;
@@ -458,7 +458,7 @@ test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไ�
     return got;
   });
   expect(xl.length - 1).toBe(6);
-  expect(xl.find((x) => x[0] === 'X-PEND')).toEqual(['X-PEND', 'ยารอนับ', 7, 'R01 ล่าสุด', '', '', 0, 2, 2, 'ปรับนอกแอป', 'IRPSBY009 24/09/2026 13:33 IRPS 2', 'สถานะในแอป: ยังไม่ได้นับ']);
+  expect(xl.find((x) => x[0] === 'X-PEND')).toEqual(['X-PEND', 'ยารอนับ', 7, 'R01 ล่าสุด', '', '', 0, 2, 2, 'มีปรับเอกสาร', 'IRPSBY009 24/09/2026 13:33 IRPS 2', 'นับจริง: ยังไม่ได้นับ']);
   expect(xl.find((x) => x[0] === 'X-NONE').slice(0, 9)).toEqual(['X-NONE', '', '', 'R01 ล่าสุด', '', '', 0, 1, 1]);
   await closeApp(app);
 });

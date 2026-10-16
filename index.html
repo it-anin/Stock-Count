@@ -10306,14 +10306,14 @@ function _adjErpCardStats(){
 let STOCK_VALIDATE=true;
 let STOCK_VALIDATE_PAGE_SIZE=20;   // ไม่ใช่เลขบวก = ไม่แบ่งหน้า (ดู _paginate)
 // 16 ต.ค. 2026 · ผู้ใช้สั่ง: SKU ที่อยู่ในใบ ORDS/IRPS ของรายงานที่แนบ แต่แอปไม่ได้เป็น Stock Adj (Pass · ยังไม่ได้นับ · รอรีเช็ค · ถูก ↺ ไป · ไม่อยู่ในรอบ) ก็ขึ้นตารางด้วย
-//   = แถว "นอกแอป": ORDS/IRPS ตามใบจริง · ที่ควรปรับ/ยอดนับ "—" (แอปไม่มีผลนับให้เทียบ) · ป้ายผล "ปรับนอกแอป" (ใบสองทิศสุทธิ 0 = "ปรับปรุง LOT") + สถานะในแอปใต้ป้าย
+//   = แถว "นอกแอป": ORDS/IRPS ตามใบจริง · ที่ควรปรับ/ยอดนับ "—" (แอปไม่มีผลนับให้เทียบ) · ป้ายผล "มีปรับเอกสาร" (ใบสองทิศสุทธิ 0 = "ปรับปรุง LOT") + "นับจริง: <สถานะในแอป>" ใต้ป้าย (ผู้ใช้สั่งเปลี่ยนคำ 16 ต.ค. 2026 — เดิม "ปรับนอกแอป" / "สถานะในแอป:")
 //   ไม่นับรวมใน badge (badge = จำนวน "ไม่ตรง" ของ Stock Adj เท่าเดิม) · false = เฉพาะ Stock Adj เหมือนก่อนแก้ทุกจุด (เทสสลับได้)
 let STOCK_VALIDATE_ERP_EXTRAS=true;
 let _svFilter='all';   // 'all' | 'mismatch' | 'match' | 'outside'
 let _svPage=1;
 const SV_SRC_UI={confirm:'ตอน Confirm',recheck:'ตอนรีเช็ค',live:'R01 ล่าสุด'};
 const SV_STATE_UI={match:{text:'ตรง',color:'var(--green)'},mismatch:{text:'ไม่ตรง',color:'var(--red)'},na:{text:'—',color:'var(--text3)'},
-  outside:{text:'ปรับนอกแอป',color:'var(--yellow)'},lot:{text:'ปรับปรุง LOT',color:'var(--text2)'}};
+  outside:{text:'มีปรับเอกสาร',color:'var(--yellow)'},lot:{text:'ปรับปรุง LOT',color:'var(--text2)'}};
 const SV_FILTER_LABEL={mismatch:'ไม่ตรง',match:'ตรง',outside:'นอกแอป'};
 // สถานะของ SKU ในแอป (แถวนอกแอป) — คำเดียวกับที่ผู้ใช้เห็นที่อื่น: audit ของสาขายา = รอรีเช็ค
 function _svAppStatus(sd){
@@ -10429,7 +10429,7 @@ function _svCntNote(r){return r.src==='confirm'&&r.comp?`นับ ${r.raw} · R
 function _svOvNote(r){return r.ov!==null?`ใบ 📦 แก้เป็น ${r.ov}${r.ov===0?' (ไม่ส่ง)':''}`:'';}
 // ช่องผลตรวจ: คนละบรรทัด (บรรทัดเดียวยาวจนตารางล้นที่หน้าต่าง 960px)
 function _svResultNotes(r){
-  if(r.extra)return [`สถานะในแอป: ${r.appSt}`];
+  if(r.extra)return [`นับจริง: ${r.appSt}`];
   if(r.caughtUp)return ['R01 ล่าสุดรวมใบแล้ว'];
   if(r.state!=='mismatch')return [];
   return [`ต่าง ${_svSigned(_adjErpRound(r.diff-r.net))}`].concat(r.ovMatch?['ตรงกับจำนวนที่แก้ในใบ 📦']:[]);
