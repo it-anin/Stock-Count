@@ -10305,11 +10305,25 @@ function _adjErpCardStats(){
 // STOCK_VALIDATE=false = ไม่มีการ์ด/ป็อปอัพ ที่เหลือเท่าเดิมทุกจุด (ทางถอย — เทสสลับได้)
 let STOCK_VALIDATE=true;
 let STOCK_VALIDATE_PAGE_SIZE=20;   // ไม่ใช่เลขบวก = ไม่แบ่งหน้า (ดู _paginate)
-let _svFilter='all';   // 'all' | 'mismatch' | 'match'
+// 16 ต.ค. 2026 · ผู้ใช้สั่ง: SKU ที่อยู่ในใบ ORDS/IRPS ของรายงานที่แนบ แต่แอปไม่ได้เป็น Stock Adj (Pass · ยังไม่ได้นับ · รอรีเช็ค · ถูก ↺ ไป · ไม่อยู่ในรอบ) ก็ขึ้นตารางด้วย
+//   = แถว "นอกแอป": ORDS/IRPS ตามใบจริง · ที่ควรปรับ/ยอดนับ "—" (แอปไม่มีผลนับให้เทียบ) · ป้ายผล "ปรับนอกแอป" (ใบสองทิศสุทธิ 0 = "ปรับปรุง LOT") + สถานะในแอปใต้ป้าย
+//   ไม่นับรวมใน badge (badge = จำนวน "ไม่ตรง" ของ Stock Adj เท่าเดิม) · false = เฉพาะ Stock Adj เหมือนก่อนแก้ทุกจุด (เทสสลับได้)
+let STOCK_VALIDATE_ERP_EXTRAS=true;
+let _svFilter='all';   // 'all' | 'mismatch' | 'match' | 'outside'
 let _svPage=1;
 const SV_SRC_UI={confirm:'ตอน Confirm',recheck:'ตอนรีเช็ค',live:'R01 ล่าสุด'};
-const SV_STATE_UI={match:{text:'ตรง',color:'var(--green)'},mismatch:{text:'ไม่ตรง',color:'var(--red)'},na:{text:'—',color:'var(--text3)'}};
-const SV_FILTER_LABEL={mismatch:'ไม่ตรง',match:'ตรง'};
+const SV_STATE_UI={match:{text:'ตรง',color:'var(--green)'},mismatch:{text:'ไม่ตรง',color:'var(--red)'},na:{text:'—',color:'var(--text3)'},
+  outside:{text:'ปรับนอกแอป',color:'var(--yellow)'},lot:{text:'ปรับปรุง LOT',color:'var(--text2)'}};
+const SV_FILTER_LABEL={mismatch:'ไม่ตรง',match:'ตรง',outside:'นอกแอป'};
+// สถานะของ SKU ในแอป (แถวนอกแอป) — คำเดียวกับที่ผู้ใช้เห็นที่อื่น: audit ของสาขายา = รอรีเช็ค
+function _svAppStatus(sd){
+  if(!sd)return 'ไม่อยู่ในรอบนับ';
+  if(sd.status==='pending')return 'ยังไม่ได้นับ';
+  if(sd.status==='scanning')return 'นับแล้ว · รอ Confirm';
+  if(sd.status==='pass')return 'Pass';
+  if(sd.status==='audit')return sd.backorder?'ค้างส่ง':'รอรีเช็ค';
+  return String(sd.status||'—');
+}
 function _stockValidateEnabled(){return STOCK_VALIDATE&&_adjErpEnabled()&&!_isPdaApp();}
 function _svSigned(v){return v>0?'+'+v:String(v);}   // 0 → "0" · ลบ → "-3" · บวก → "+2"
 function _svColor(v){return v>0?'var(--green)':v<0?'var(--red)':'var(--text3)';}
@@ -10342,11 +10356,28 @@ function _stockValidateRows(){
       sold:Number(sd.soldQty)||0,inbound:Number(sd.inboundQty)||0,r16103:Number(sd.r16103Qty)||0,
       docs,ords,irps,net,state:state_,caughtUp,ov,ovMatch});
   }
-  const rank={mismatch:0,match:1,na:2};
+  // แถวนอกแอป: SKU ที่มีใบ ORDS/IRPS ในรายงานที่แนบ แต่ไม่ใช่ Stock Adj ในแอป (Stock Adj ทุกตัว — ทั้งที่ขึ้นตารางและที่นับไว้ใน skipped — ไม่ซ้ำที่นี่)
+  let extra=0;
+  if(STOCK_VALIDATE_ERP_EXTRAS&&idx){
+    for(const[sku,docs] of idx.entries()){
+      const sd=state.scanData.get(sku);
+      if(sd&&sd.status==='stock_adjustment')continue;
+      let ords=0,irps=0;for(const x of docs){if(x.type==='ORDS')ords+=x.qty;else if(x.type==='IRPS')irps+=x.qty;}
+      ords=_adjErpRound(ords);irps=_adjErpRound(irps);
+      const net=_adjErpNet(docs);
+      rows.push({sku,name:state.skuMap.get(sku)?.productName||'',sys:_rawSystemQty(sku),cnt:null,diff:null,src:'live',raw:0,comp:0,sold:0,inbound:0,r16103:0,
+        docs,ords,irps,net,state:(ords>0&&irps>0&&net===0)?'lot':'outside',caughtUp:false,ov:null,ovMatch:false,extra:true,appSt:_svAppStatus(sd)});
+      extra++;
+    }
+  }
+  const rank={mismatch:0,match:1,outside:2,lot:3,na:4};
   rows.sort((a,b)=>rank[a.state]-rank[b.state]||(a.sku<b.sku?-1:a.sku>b.sku?1:0));
-  return {st,rows,counts,skipped};
+  return {st,rows,counts,skipped,extra};
 }
-function _svViewRows(res){return res.st&&_svFilter!=='all'?res.rows.filter(r=>r.state===_svFilter):res.rows;}
+function _svViewRows(res){
+  if(!res.st||_svFilter==='all')return res.rows;
+  return res.rows.filter(r=>_svFilter==='outside'?!!r.extra:r.state===_svFilter);
+}
 function _svDocsTitle(docs,type){const a=docs.filter(x=>x.type===type);return a.length?a.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):`ไม่มีใบ ${type} ของสินค้านี้ในรายงาน`;}
 function _svDocCell(r,st,type){
   if(!st)return '<td style="text-align:center;color:var(--text3);">—</td>';
@@ -10398,11 +10429,13 @@ function _svCntNote(r){return r.src==='confirm'&&r.comp?`นับ ${r.raw} · R
 function _svOvNote(r){return r.ov!==null?`ใบ 📦 แก้เป็น ${r.ov}${r.ov===0?' (ไม่ส่ง)':''}`:'';}
 // ช่องผลตรวจ: คนละบรรทัด (บรรทัดเดียวยาวจนตารางล้นที่หน้าต่าง 960px)
 function _svResultNotes(r){
+  if(r.extra)return [`สถานะในแอป: ${r.appSt}`];
   if(r.caughtUp)return ['R01 ล่าสุดรวมใบแล้ว'];
   if(r.state!=='mismatch')return [];
   return [`ต่าง ${_svSigned(_adjErpRound(r.diff-r.net))}`].concat(r.ovMatch?['ตรงกับจำนวนที่แก้ในใบ 📦']:[]);
 }
 function _svNotes(r){
+  if(r.extra)return _svResultNotes(r);
   return [_svCntNote(r),r.src==='live'?'ไม่ได้แช่ยอดระบบตอนตัดสิน — ใช้ R01 ล่าสุด':'',_svOvNote(r),..._svResultNotes(r)].filter(Boolean);
 }
 function _renderStockValidateBadge(res){
@@ -10412,13 +10445,13 @@ function _renderStockValidateBadge(res){
   if(c.textContent!==text)c.textContent=text;
   c.style.background=res.st&&mm>0?'rgba(217,48,37,0.9)':'rgba(255,255,255,0.25)';
   const btn=c.closest('button');
-  if(btn)btn.title=res.st?`ไม่ตรง ${mm} · ตรง ${res.counts.match} · Stock Adj ทั้งหมด ${res.rows.length} รายการ`:'ยังไม่แนบ R02.102 — แนบที่ 📦 ปรับปรุงสินค้า → 🧾';
+  if(btn)btn.title=res.st?`ไม่ตรง ${mm} · ตรง ${res.counts.match} · Stock Adj ทั้งหมด ${res.rows.length-(res.extra||0)} รายการ`+(res.extra?` · นอกแอป ${res.extra}`:''):'ยังไม่แนบ R02.102 — แนบที่ 📦 ปรับปรุงสินค้า → 🧾';
 }
 function renderStockValidateTable(pre){
   const body=document.getElementById('svBody');if(!body)return;
   const res=pre||_stockValidateRows();
   const st=res.st;
-  if(!st)_svFilter='all';   // ไม่มีรายงาน = ไม่มีผลตรวจให้กรอง
+  if(!st||(_svFilter==='outside'&&!res.extra))_svFilter='all';   // ไม่มีรายงาน = ไม่มีผลตรวจให้กรอง · แถวนอกแอปหมดแล้ว = ไม่ให้ค้างตัวกรองที่ไม่มีชิปให้กด
   const info=document.getElementById('svInfo');if(info)info.innerHTML=_svInfoHtml(st);
   const mon=document.getElementById('svMonth');
   if(mon){const mt=_svCoverMonthText(st);mon.style.display=mt?'':'none';mon.textContent=mt?`เอกสารปรับปรุงเดือน ${mt} (ตามเดือนในเอกสาร)`:'';}
@@ -10428,7 +10461,8 @@ function renderStockValidateTable(pre){
     else{
       const chip=(k,label,cnt)=>`<button type="button" class="sv-chip${_svFilter===k?' active':''}" data-sv-filter="${k}" onclick="setStockValidateFilter('${k}')">${label} <b>${cnt}</b></button>`;
       bar.innerHTML='<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ผลตรวจ</span>'
-        +chip('all','ทั้งหมด',res.rows.length)+chip('mismatch','❌ ไม่ตรง',res.counts.mismatch)+chip('match','✅ ตรง',res.counts.match);
+        +chip('all','ทั้งหมด',res.rows.length)+chip('mismatch','❌ ไม่ตรง',res.counts.mismatch)+chip('match','✅ ตรง',res.counts.match)
+        +(res.extra?chip('outside','⚠️ นอกแอป',res.extra):'');
       bar.style.display='flex';
     }
   }
@@ -10438,13 +10472,13 @@ function renderStockValidateTable(pre){
   const sk=[res.skipped.noSku?`ไม่มีข้อมูลสินค้า (R05) ${res.skipped.noSku}`:'',res.skipped.noBasis?`ข้อมูลไม่ครบ ${res.skipped.noBasis}`:''].filter(Boolean).join(' · ');
   const rc=document.getElementById('svRowCount');
   if(rc)rc.textContent=(st&&_svFilter!=='all'?`${rows.length} รายการ (จากทั้งหมด ${res.rows.length})`
-    :`${res.rows.length} รายการ`+(st?` · ไม่ตรง ${res.counts.mismatch} · ตรง ${res.counts.match}`:''))+(sk?` · ไม่แสดง: ${sk}`:'');
+    :`${res.rows.length} รายการ`+(st?` · ไม่ตรง ${res.counts.mismatch} · ตรง ${res.counts.match}`+(res.extra?` · นอกแอป ${res.extra}`:''):''))+(sk?` · ไม่แสดง: ${sk}`:'');
   const pgn=_paginate(rows.length,STOCK_VALIDATE_PAGE_SIZE,_svPage);_svPage=pgn.page;
   const view=rows.slice(pgn.start,pgn.start+pgn.size);
   _renderPagerUi('svPager',pgn,view.length);
   if(!rows.length){body.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">${res.rows.length?'ไม่มีรายการในตัวกรองนี้':'ไม่มีสินค้าที่ Stock Adjustment'}</td></tr>`;return;}
   body.innerHTML=view.map((r,i)=>{
-    const sysTitle=r.src==='live'?'ระบบไม่ได้แช่ยอดระบบตอนตัดสิน (เช่น 🚫 ไม่มีของ) — ใช้ R01 ล่าสุด':`R01.102 ${SV_SRC_UI[r.src]} (ไม่ขยับตาม R01 รายวัน)`;
+    const sysTitle=r.extra?'R01.102 ล่าสุด — สินค้านี้ไม่ได้เป็น Stock Adj ในแอป (ไม่มียอดตอนตัดสิน)':r.src==='live'?'ระบบไม่ได้แช่ยอดระบบตอนตัดสิน (เช่น 🚫 ไม่มีของ) — ใช้ R01 ล่าสุด':`R01.102 ${SV_SRC_UI[r.src]} (ไม่ขยับตาม R01 รายวัน)`;
     const cntTitle=r.src==='confirm'&&r.comp?`ยอดนับที่ชดเชยการเคลื่อนไหวระหว่างนับ (R16) ให้เทียบกับ R01 ตอน Confirm\nนับจริง ${r.raw}\nขายก่อนสแกน +${r.sold}\nR16.103 +${r.r16103}\nรับเข้าก่อนสแกน −${r.inbound}`:'';
     const cn=_svCntNote(r),on=_svOvNote(r),res7=_svResultNotes(r).map((t)=>`<span class="sv-sub">${_adjErpEsc(t)}</span>`).join('');
     const cntSub=cn?`<span class="sv-sub">${_adjErpEsc(cn)}</span>`:'';
@@ -10455,9 +10489,10 @@ function renderStockValidateTable(pre){
       +`<td style="color:var(--text3);font-size:0.75rem;">${pgn.start+i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${_adjErpEsc(r.sku)}</td>`
       +`<td class="ptd-name" style="min-width:130px;">${_adjErpEsc(r.name)}</td>`
-      +`<td style="text-align:center;" title="${_adjErpEsc(sysTitle)}"><span style="font-weight:700;">${r.sys}</span><span class="sv-sub"${r.src==='live'?' style="color:var(--yellow);font-weight:700;"':''}>${SV_SRC_UI[r.src]}</span></td>`
-      +`<td style="text-align:center;"${cntTitle?` title="${_adjErpEsc(cntTitle)}"`:''}><span style="font-weight:700;">${r.cnt}</span>${cntSub}</td>`
-      +`<td style="text-align:center;"><span style="font-weight:700;color:${_svColor(r.diff)};">${_svSigned(r.diff)}</span>${diffSub}</td>`
+      +`<td style="text-align:center;" title="${_adjErpEsc(sysTitle)}"><span style="font-weight:700;">${r.sys===null?'—':r.sys}</span><span class="sv-sub"${r.src==='live'?' style="color:var(--yellow);font-weight:700;"':''}>${SV_SRC_UI[r.src]}</span></td>`
+      +(r.extra?`<td style="text-align:center;color:var(--text3);" title="แอปไม่มีผลนับ Stock Adj ของสินค้านี้ให้เทียบ">—</td><td style="text-align:center;color:var(--text3);">—</td>`
+        :`<td style="text-align:center;"${cntTitle?` title="${_adjErpEsc(cntTitle)}"`:''}><span style="font-weight:700;">${r.cnt}</span>${cntSub}</td>`
+        +`<td style="text-align:center;"><span style="font-weight:700;color:${_svColor(r.diff)};">${_svSigned(r.diff)}</span>${diffSub}</td>`)
       +_svDocCell(r,st,'ORDS')+_svDocCell(r,st,'IRPS')
       +netCell
       +`<td style="text-align:center;white-space:nowrap;"${!st?' title="ยังไม่แนบ R02.102"':''}><span style="font-weight:700;color:${ui.color};">${ui.text}</span>${res7}</td>`
@@ -10504,7 +10539,7 @@ function exportStockValidateExcel(){
   const rows=_svViewRows(res);
   if(!rows.length){toast('ไม่มีรายการให้ Export','warn');return;}
   const header=['รหัสสินค้า','ชื่อสินค้า','Stock ในระบบ (R01.102)','ยอดระบบ ณ','Stock นับจริง','Stock ที่ควรปรับ','ORDS','IRPS','ผล Diff (ORDS + IRPS)','ผลตรวจ','เลขที่เอกสาร','หมายเหตุ'];
-  const aoa=[header].concat(rows.map(r=>[r.sku,r.name,r.sys,SV_SRC_UI[r.src],r.cnt,r.diff,
+  const aoa=[header].concat(rows.map(r=>[r.sku,r.name,r.sys===null?'':r.sys,SV_SRC_UI[r.src],r.cnt===null?'':r.cnt,r.diff===null?'':r.diff,
     st&&st.cover.ORDS?(r.ords?-r.ords:0):'',st&&st.cover.IRPS?r.irps:'',st?r.net:'',st?SV_STATE_UI[r.state].text:'',
     r.docs.map(d=>`${d.no} ${_adjErpFmtAt(d.at,true)} ${d.type} ${d.qty}`).join(', '),_svNotes(r).join(' · ')]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);

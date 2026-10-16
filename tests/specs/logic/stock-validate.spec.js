@@ -41,9 +41,9 @@ const FILE_I2 = sheet([line({ date: '25/9/2026 09:00', no: 'IRPSBY002', sku: 'D-
 const MISMATCH = ['D-EDIT', 'D-NONE', 'D-PART', 'NS-LIVE', 'R-FRESH', 'R-FROZEN0'];
 const MATCH = ['D-COMP', 'D-EARLY', 'D-IRPS', 'D-LOT', 'D-ORDS', 'D-XSS', 'NS-CAUGHT', 'R-OLD'];
 
-async function seed(page, { role = 'pharmacist', branch = 'SRC', files = [FILE_O, FILE_I], pages = 0 } = {}) {
-  await page.evaluate(({ role, branch, EPOCH, SCAN, files, pages }) => {
-    STOCK_VALIDATE = true; STOCK_VALIDATE_PAGE_SIZE = 20; ADJUST_DOC_ERP_CHECK = true; PHARMACY_ADJ_ERP_CARD = true; ADJ_ERP_LOT_AWARE = true;
+async function seed(page, { role = 'pharmacist', branch = 'SRC', files = [FILE_O, FILE_I], pages = 0, extras = false } = {}) {
+  await page.evaluate(({ role, branch, EPOCH, SCAN, files, pages, extras }) => {
+    STOCK_VALIDATE = true; STOCK_VALIDATE_PAGE_SIZE = 20; STOCK_VALIDATE_ERP_EXTRAS = extras;   // เทสเดิมตรึงพฤติกรรม "เฉพาะ Stock Adj" (= ทางถอย) · แถวนอกแอปมีเทสของตัวเองท้ายไฟล์ ADJUST_DOC_ERP_CHECK = true; PHARMACY_ADJ_ERP_CARD = true; ADJ_ERP_LOT_AWARE = true;
     ADJUST_DOC_QTY_EDIT = true; PHARMACY_AUDIT_IN_ADJUST_DOC = true; ADJUST_DOC_SKIP_REOPENED = true; ADJUST_DOC_HISTORY = true;
     currentBranch = branch; currentRole = role; currentUser = 'Pharm'; _countResetAt = EPOCH;
     _db = null; _adjErp = null; _adjErpBusy = false; _adjErpFilter = 'all'; _adjHist = null; _svFilter = 'all'; _svPage = 1;
@@ -85,7 +85,7 @@ async function seed(page, { role = 'pharmacist', branch = 'SRC', files = [FILE_O
       _adjErp = { ...m, branch, epoch: EPOCH, updatedBy: 'Pharm', updatedAt: '2026-10-10T03:00:00.000Z', localOnly: false, ...extra };
     };
     if (files.length) __erp(files);
-  }, { role, branch, EPOCH, SCAN, files, pages });
+  }, { role, branch, EPOCH, SCAN, files, pages, extras });
 }
 const svRows = (page) => page.evaluate(() => _stockValidateRows());
 // แถวบนจอ: sku → ข้อความ/สีของทุกช่อง
@@ -102,10 +102,10 @@ const domRows = (page) => page.evaluate(() => [...document.querySelectorAll('#sv
 
 test('ค่าเริ่มต้นที่ส่งมอบ: STOCK_VALIDATE เปิด · หน้าละ 20 · การ์ดอยู่ใต้ 📦 ซ่อนจนล็อกอิน · มีป็อปอัพใน DOM', async ({ browser }) => {
   const app = await bootBare(browser);
-  expect(await app.page.evaluate(() => [typeof STOCK_VALIDATE, STOCK_VALIDATE, STOCK_VALIDATE_PAGE_SIZE,
+  expect(await app.page.evaluate(() => [typeof STOCK_VALIDATE, STOCK_VALIDATE, STOCK_VALIDATE_PAGE_SIZE, STOCK_VALIDATE_ERP_EXTRAS,
     document.getElementById('adjustDocPanel').nextElementSibling?.id, document.getElementById('stockValidatePanel').style.display,
     !!document.getElementById('stockValidateOverlay'), !!document.getElementById('svBody'), !!document.getElementById('svPager')]))
-    .toEqual(['boolean', true, 20, 'stockValidatePanel', 'none', true, true, true]);
+    .toEqual(['boolean', true, 20, true, 'stockValidatePanel', 'none', true, true, true]);
   await closeApp(app);
 });
 
@@ -385,5 +385,101 @@ test('ตารางไม่ล้นที่หน้าต่าง 960px (
   expect(await app.page.evaluate(() => document.querySelector('#svBody tr[data-sku="D-PART"]').children[6].title)).toContain('ORDSBY006260900002');
   const m = await app.page.evaluate(() => { const b = document.querySelector('#stockValidateCard .stock-popup-body'); return { body: b.clientWidth, table: b.querySelector('table').scrollWidth }; });
   expect(m.table, JSON.stringify(m)).toBeLessThanOrEqual(m.body);
+  await closeApp(app);
+});
+
+// ── แถว "นอกแอป" (16 ต.ค. 2026 · ผู้ใช้สั่ง): SKU ที่อยู่ในใบ ORDS/IRPS ของรายงานที่แนบ แต่แอปไม่ได้เป็น Stock Adj ──
+// ⚠️ ไฟล์ที่แนบทีหลังเป็น "ความจริงเฉพาะช่วงของมัน" (_mergeAdjErp) — ใบเพิ่มของ SKU นอกแอปต้องอยู่ในไฟล์ชุดเดียวกับใบเดิม ไม่งั้นลบใบเดิมของช่วงเดียวกันทิ้ง
+const FILE_OX = sheet([...FILE_O.slice(1), O('ORDSBY009', 'X-LOT', 1), O('ORDSBY009', 'X-MIX', 2)]);
+const FILE_IX = sheet([...FILE_I.slice(1), I('IRPSBY009', 'X-PEND', 2), I('IRPSBY009', 'X-NONE', 1), I('IRPSBY009', 'X-LOT', 1), I('IRPSBY009', 'X-MIX', 1), I('IRPSBY009', 'NOSKU', 1)]);
+async function seedExtras(page, opts = {}) {
+  await seed(page, { extras: true, files: [FILE_OX, FILE_IX], ...opts });
+  await page.evaluate(() => {
+    const base = { auditor: '', countedQty: 0, timestamp: '2026-08-10 16:00:00', firstScanAt: '2026-08-10 16:00:00', scannedBy: 'Asst' };
+    state.skuMap.set('X-PEND', { sku: 'X-PEND', productName: 'ยารอนับ', unitPrice: 20, systemQty: 7, negSys: false, barcodes: [], isDel: false });
+    state.scanData.set('X-PEND', { ...base, status: 'pending', auditStatus: 'pending' });
+    state.skuMap.set('X-LOT', { sku: 'X-LOT', productName: 'ยาสลับ LOT', unitPrice: 20, systemQty: 3, negSys: false, barcodes: [], isDel: false });
+    state.scanData.set('X-LOT', { ...base, status: 'pass', auditStatus: 'approved', initialStatus: 'pass', countedQty: 3 });
+    state.skuMap.set('X-MIX', { sku: 'X-MIX', productName: 'ยาใบสองทิศไม่เท่ากัน', unitPrice: 20, systemQty: 9, negSys: false, barcodes: [], isDel: false });
+    state.scanData.set('X-MIX', { ...base, status: 'pass', auditStatus: 'approved', initialStatus: 'pass', countedQty: 9 });
+    for (const [k, v] of state.skuMap) _r01RawQty.set(k, v.systemQty);   // _rawSystemQty อ่านจาก R01 ดิบ (r01Data) — เทสไม่มี R01 จึงใส่ตรงๆ
+    // X-NONE: ไม่มีทั้ง skuMap และ scanData = ไม่อยู่ในรอบนับ · NOSKU = Stock Adj ที่ไม่มีข้อมูลสินค้า (อยู่ใน skipped ไม่ซ้ำเป็นแถวนอกแอป)
+  });
+}
+test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไม่ใช่ Stock Adj ขึ้นตารางตามจำนวนใบจริง · ที่ควรปรับ/ยอดนับ "—" · ป้าย + สถานะในแอป · ไม่ซ้ำ/ไม่หลุด', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await seedExtras(app.page);
+  const r = await svRows(app.page);
+  const ex = r.rows.filter((x) => x.extra);
+  expect(ex.map((x) => [x.sku, x.state, x.appSt, x.ords, x.irps, x.net, x.sys, x.cnt, x.diff]).sort((a, b) => (a[0] < b[0] ? -1 : 1))).toEqual([
+    ['AUD', 'outside', 'รอรีเช็ค', 1, 0, -1, 4, null, null],
+    ['PASS', 'outside', 'Pass', 1, 0, -1, 4, null, null],
+    ['X-LOT', 'lot', 'Pass', 1, 1, 0, 3, null, null],            // ORDS 1 + IRPS 1 สุทธิ 0 = ปรับปรุง LOT
+    ['X-MIX', 'outside', 'Pass', 2, 1, -1, 9, null, null],       // สองทิศแต่สุทธิ −1 = ยอดเปลี่ยนจริง ไม่ใช่ปรับปรุง LOT
+    ['X-NONE', 'outside', 'ไม่อยู่ในรอบนับ', 0, 1, 1, null, null, null],
+    ['X-PEND', 'outside', 'ยังไม่ได้นับ', 0, 2, 2, 7, null, null],
+  ]);
+  expect(r.extra).toBe(6);
+  expect(r.counts).toEqual({ mismatch: 6, match: 8 });                    // Stock Adj เท่าเดิมทุกตัว
+  expect(r.rows.filter((x) => !x.extra).map((x) => x.sku).sort()).toEqual([...MISMATCH, ...MATCH].sort());
+  expect(r.rows.some((x) => x.sku === 'NOSKU')).toBe(false);              // Stock Adj ที่ไม่มีข้อมูลสินค้า = อยู่ใน skipped ไม่ใช่แถวนอกแอป
+  expect(r.skipped).toEqual({ noSku: 1, noBasis: 0 });
+  // เรียง: ไม่ตรง → ตรง → นอกแอป → ปรับปรุง LOT
+  expect(r.rows.map((x) => x.state).filter((v, i, a) => a.indexOf(v) === i)).toEqual(['mismatch', 'match', 'outside', 'lot']);
+  await app.page.evaluate(() => { _applyStatAuditCardMode(); openStockValidatePopup(); });
+  expect(await app.page.textContent('#svRowCount')).toBe('20 รายการ · ไม่ตรง 6 · ตรง 8 · นอกแอป 6 · ไม่แสดง: ไม่มีข้อมูลสินค้า (R05) 1');
+  const view = async () => Object.fromEntries((await domRows(app.page)).map((x) => [x.sku, x]));
+  await app.page.evaluate(() => setStockValidateFilter('outside'));
+  const d = await view();
+  expect(Object.keys(d).sort()).toEqual(['AUD', 'PASS', 'X-LOT', 'X-MIX', 'X-NONE', 'X-PEND']);
+  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', sys: '7', sysSub: 'R01 ล่าสุด', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'ปรับนอกแอป', resColor: 'var(--yellow)', resSub: 'สถานะในแอป: ยังไม่ได้นับ' });
+  expect(d['PASS']).toMatchObject({ ords: '-1', ordsColor: 'var(--red)', irps: '0', net: '-1', res: 'ปรับนอกแอป', resSub: 'สถานะในแอป: Pass' });
+  expect(d['AUD'].resSub).toBe('สถานะในแอป: รอรีเช็ค');
+  expect(d['X-LOT']).toMatchObject({ ords: '-1', irps: '+1', net: '0', res: 'ปรับปรุง LOT', resSub: 'สถานะในแอป: Pass' });
+  expect(d['X-MIX']).toMatchObject({ ords: '-2', irps: '+1', net: '-1', res: 'ปรับนอกแอป' });
+  expect(d['X-NONE']).toMatchObject({ name: '', sys: '—', irps: '+1', res: 'ปรับนอกแอป', resSub: 'สถานะในแอป: ไม่อยู่ในรอบนับ' });
+  expect(d['X-PEND'].irpsTitle).toContain('IRPSBY009');                   // เลขที่ใบ/จำนวนยังอยู่ใน tooltip
+  // ชิป: มีเฉพาะเมื่อมีแถวนอกแอป · "ตรง/ไม่ตรง" ไม่มีแถวนอกแอปปน · badge = ไม่ตรงของ Stock Adj เท่าเดิม แต่ tooltip บอกจำนวนนอกแอป
+  expect(await app.page.evaluate(() => [...document.querySelectorAll('#svBar .sv-chip')].map((b) => b.textContent))).toEqual(['ทั้งหมด 20', '❌ ไม่ตรง 6', '✅ ตรง 8', '⚠️ นอกแอป 6']);
+  await app.page.evaluate(() => setStockValidateFilter('match'));
+  expect(Object.keys(await view()).sort()).toEqual([...MATCH].sort());
+  await app.page.evaluate(() => setStockValidateFilter('mismatch'));
+  expect(Object.keys(await view()).sort()).toEqual([...MISMATCH].sort());
+  expect(await app.page.evaluate(() => [document.getElementById('stockValidateCount').textContent, document.getElementById('stockValidateCount').closest('button').title]))
+    .toEqual(['6', 'ไม่ตรง 6 · ตรง 8 · Stock Adj ทั้งหมด 14 รายการ · นอกแอป 6']);
+  // Export: ทุกแถวนอกแอปมี ORDS/IRPS ตามใบ · ช่องที่ไม่มีค่าเว้นว่าง (ไม่ใช่ 0/null) · หมายเหตุ = สถานะในแอป
+  await app.page.evaluate(() => setStockValidateFilter('outside'));
+  const xl = await app.page.evaluate(() => {
+    let got = null; const orig = XLSX.writeFile;
+    XLSX.writeFile = (wb) => { got = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' }); };
+    try { exportStockValidateExcel(); } finally { XLSX.writeFile = orig; }
+    return got;
+  });
+  expect(xl.length - 1).toBe(6);
+  expect(xl.find((x) => x[0] === 'X-PEND')).toEqual(['X-PEND', 'ยารอนับ', 7, 'R01 ล่าสุด', '', '', 0, 2, 2, 'ปรับนอกแอป', 'IRPSBY009 24/09/2026 13:33 IRPS 2', 'สถานะในแอป: ยังไม่ได้นับ']);
+  expect(xl.find((x) => x[0] === 'X-NONE').slice(0, 9)).toEqual(['X-NONE', '', '', 'R01 ล่าสุด', '', '', 0, 1, 1]);
+  await closeApp(app);
+});
+
+test('แถวนอกแอป: ปิดสวิตช์ = เฉพาะ Stock Adj เหมือนเดิมทุกตัวอักษร · ไม่มีใบนอกแอป = ไม่มีชิป · ตัวกรองนอกแอปค้างแล้วแถวหมด = กลับ "ทั้งหมด" · ไม่มีรายงาน = ไม่มีแถว', async ({ browser }) => {
+  const app = await bootBare(browser);
+  // สวิตช์ปิด (ค่าที่เทสเดิมใช้) — ใบ PASS/AUD/X-* อยู่ในรายงานแต่ต้องไม่ขึ้น
+  await seedExtras(app.page);
+  await app.page.evaluate(() => { STOCK_VALIDATE_ERP_EXTRAS = false; _applyStatAuditCardMode(); openStockValidatePopup(); });
+  let r = await svRows(app.page);
+  expect([r.extra, r.rows.length, r.rows.some((x) => x.extra)]).toEqual([0, 14, false]);
+  expect(await app.page.evaluate(() => [document.getElementById('svRowCount').textContent, [...document.querySelectorAll('#svBar .sv-chip')].map((b) => b.textContent),
+    document.getElementById('stockValidateCount').closest('button').title]))
+    .toEqual(['14 รายการ · ไม่ตรง 6 · ตรง 8 · ไม่แสดง: ไม่มีข้อมูลสินค้า (R05) 1', ['ทั้งหมด 14', '❌ ไม่ตรง 6', '✅ ตรง 8'], 'ไม่ตรง 6 · ตรง 8 · Stock Adj ทั้งหมด 14 รายการ']);
+  // เปิดสวิตช์ + ตัวกรองนอกแอปค้าง แล้วใบนอกแอปหมดไป (รายงานใหม่มีแต่ SKU ที่เป็น Stock Adj) → ไม่ค้างตัวกรองที่ไม่มีชิปให้กด
+  await app.page.evaluate(() => { STOCK_VALIDATE_ERP_EXTRAS = true; setStockValidateFilter('outside'); });
+  expect(await app.page.evaluate(() => [_svFilter, document.querySelectorAll('#svBody tr[data-sku]').length])).toEqual(['outside', 6]);
+  await app.page.evaluate(([o]) => { _adjErp = null; __erp([o]); _applyStatAuditCardMode(); }, [sheet([O('ORDSBY001', 'D-ORDS', 2)])]);
+  expect(await app.page.evaluate(() => [_svFilter, document.querySelectorAll('#svBody tr[data-sku]').length, document.querySelectorAll('#svBar [data-sv-filter="outside"]').length]))
+    .toEqual(['all', 14, 0]);
+  // ไม่มีรายงานที่แนบ = ไม่มีแถวนอกแอป (ไม่มีใบให้อ่าน) · ตารางเป็น Stock Adj ล้วนเหมือนเดิม
+  await app.page.evaluate(() => { _adjErp = null; _applyStatAuditCardMode(); });
+  r = await svRows(app.page);
+  expect([r.st, r.extra, r.rows.length]).toEqual([null, 0, 14]);
   await closeApp(app);
 });
