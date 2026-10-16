@@ -6,6 +6,7 @@
 //      ผู้ช่วยสแกน SKU นั้นใหม่ไปแล้ว → ข้าม ไม่ทับยอดใหม่
 //   C. ด่านชั้นใน: รอบนับของหน้า ≠ Cloud · SKU กำลังเขียนอยู่ · เขียนล้ม (นับ failed) · มีคนสร้างเอกสารแทรกหลังวางแผน → transaction ไม่ทับ
 //   D. Cloud ไม่ใช่ schema v2 → หยุดก่อนวางแผน
+//   E. ไม่มีผล PITR: ประกอบ item จากแถว stock_audit_log + ยอดระบบที่คำนวณย้อนจากผลต่างใน ERP → กู้ได้ · ไม่เข้าใบ 📦 (ฐานไม่สด) · marker กลับมา
 // logic ล้วน (ตัวแปลงค่า · ตัวอ่านไฟล์ · รายงาน) อยู่ที่ specs/logic/restore-item-from-pitr.spec.js
 const fs = require('fs');
 const path = require('path');
@@ -218,6 +219,50 @@ test.describe('tools/restore-item-from-pitr.js', () => {
     expect(cloud).toMatchObject({ status: 'scanning', countedQty: 2, rev: 1 });
     expect(cloud.recheckQty).toBeUndefined();                  // ไม่มีอะไรจากไฟล์ย้อนหลังปนเข้ามา
     await closeApp(desk2); await closeApp(pda); await closeApp(desk);
+  });
+
+  test('E. ★ ไม่มีผล PITR: ประกอบ item จากแถวใน stock_audit_log (ไม่มี systemQty/effectiveQty) → กู้ได้ · เป็น Stock Adj · ไม่เข้าใบ 📦 (ฐานไม่สด) · login ใหม่ marker กลับมา', async ({ browser }) => {
+    const desk = await bootFreshCount(browser, { role: 'pharmacist', user: 'Pharm', mode: 'desktop' });
+    await armR16(desk.page);
+    await loadTool(desk.page);
+    const live = await desk.page.evaluate(() => state.skuMap.get('S-F05').systemQty);
+    // ค่าจริงจาก log ของ SKU (นับ 53 · รีเช็ค 19 · ผู้นับ/ผู้รีเช็ค · เวลา) + ยอดระบบตอนรีเช็คที่คำนวณย้อนจากผลต่างใน ERP (ORDS −1 ⇒ 19+1 = 20)
+    const sysAtRecheck = 19 + 1;                         // รีเช็ค 19 ผลต่าง −1 ⇒ ระบบตอนรีเช็ค 20
+    expect(sysAtRecheck).not.toBe(live);                 // ต้องต่างจากยอดสด = ฐานไม่สด → ห้ามเด้งเข้าใบ
+    // เวลาในรูปแบบที่แอปเก็บ (เวลาท้องถิ่น 'YYYY-MM-DD HH:mm:ss') — ต้องอยู่หลังรอบนับของเทส ไม่งั้นแอปถือว่า item ไม่ใช่ของรอบนี้ (ของจริงรอบ 5 ส.ค. · นับ 11 ส.ค. อยู่ในรอบ)
+    const local = (min) => { const d = new Date(Date.now() + min * 60000), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+    const build = ({ sku, branch, epoch, sysAtRecheck, first, last }) => {   // เหมือนโค้ดที่ส่งให้ผู้ใช้วางใน Console ทุกบรรทัด (ต่างแค่ค่าตัวเลข)
+      const F = (o) => { const f = {}; for (const [k, v] of Object.entries(o)) f[k] = typeof v === 'number' ? { integerValue: String(v) } : { stringValue: v }; return f; };
+      return { name: `reconstructed-${branch}-${sku}.json`, json: [{ readTime: 'reconstructed-from-audit-log', found: {
+        name: `projects/x/databases/(default)/documents/stock_sessions/${branch}/items/${sku}`,
+        fields: F({ sku, barcode: sku, countResetAt: epoch, status: 'stock_adjustment', auditStatus: 'stock_adjustment', initialStatus: 'audit',
+          countedQty: 53, scannedBy: 'PDA-A', firstScanAt: first, auditor: 'Pharm', recheckBy: 'Pharm',
+          recheckQty: 19, recheckSystemQty: sysAtRecheck, recheckAt: last, timestamp: last, rev: 1 }) } }] };
+    };
+    const file = await desk.page.evaluate(`(${build.toString()})(${JSON.stringify({ sku: 'S-F05', branch: 'SRC', epoch: desk.epoch, sysAtRecheck, first: local(1), last: local(2) })})`);
+    // ปล่อยให้ตัวจัดการ `files` ทำงานเหมือนผลจาก PITR (ชื่อเอกสารต้องเป็นรูป stock_sessions/<สาขา>/items/<SKU>)
+    const dry = await run(desk.page, { files: [file] });
+    expect(dry).toMatchObject({ dryRun: true, willRestore: 1 });
+    expect(dry.plan[0].sum).toMatchObject({ status: 'stock_adjustment', counted: 53, recheck: 19, system: sysAtRecheck, diff: -1, passedRecheck: true });
+    expect(await getDoc(PROJECT_ID, ITEM)).toBeNull();
+    expect(await run(desk.page, { files: [file], dryRun: false })).toMatchObject({ created: 1, failed: [] });
+    const cloud = await getDoc(PROJECT_ID, ITEM);
+    expect(cloud).toMatchObject({ status: 'stock_adjustment', countedQty: 53, recheckQty: 19, recheckSystemQty: sysAtRecheck, auditor: 'Pharm', updatedBy: 'restore-pitr' });
+    expect(cloud.systemQty).toBeUndefined();                 // ไม่แต่งค่าที่ไม่รู้ขึ้นมาเอง
+    expect(cloud.effectiveQty).toBeUndefined();
+    await desk.page.waitForFunction(() => state.scanData.get('S-F05')?.status === 'stock_adjustment', null, { timeout: 20000, polling: 100 });
+    await quiet(desk.page);
+    // ในแอป: ยังเป็นรายการ Stock Adj แต่ยอดระบบตอนรีเช็คไม่ตรงยอดสด → ไม่ขึ้นใบ 📦 (กันส่ง ORDS ซ้ำ) และถูกรายงานว่า "ต้องรีเช็คใหม่"
+    const view = await desk.page.evaluate(() => ({ rows: _buildAdjustDocRows('ords').concat(_buildAdjustDocRows('irps')).map((x) => x.sku), stale: _adjustDocAudit().stale }));
+    expect(view.rows).toEqual([]);
+    expect(view.stale).toEqual([expect.objectContaining({ sku: 'S-F05', cnt: 19, frozen: sysAtRecheck, live })]);
+    expect(strip(await getDoc(PROJECT_ID, ITEM))).toEqual(strip(cloud));     // เครื่องไหนก็ไม่ทับ
+    // login ใหม่ → แอปสร้าง marker กลับจาก item เอง โดยไม่ล้ม แม้ item ไม่มี systemQty/effectiveQty
+    const desk2 = await bootJoinCount(browser, { role: 'pharmacist', user: 'Pharm2', mode: 'desktop', expectEpoch: desk.epoch });
+    await waitForDoc(PROJECT_ID, MARKERS, (d) => d?.items?.['S-F05']?.status === 'stock_adjustment' && d.items['S-F05'].recheckQty === 19, { timeout: 25000 });
+    expect(await status(desk2.page)).toBe('stock_adjustment');
+    expect(strip(await getDoc(PROJECT_ID, ITEM))).toEqual(strip(cloud));
+    await closeApp(desk2); await closeApp(desk);
   });
 
   test('D. Cloud ไม่ใช่ schema v2 → หยุดก่อนวางแผน แม้หน้านี้ยังเชื่อว่าเป็น v2 (ไม่เขียนอะไร)', async ({ browser }) => {
