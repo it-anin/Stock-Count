@@ -180,6 +180,7 @@
     .sv-chip.active { background:rgba(0,114,198,0.1); color:var(--accent); border-color:rgba(0,114,198,0.55); box-shadow:0 2px 8px rgba(0,114,198,0.15); }
     .sv-sub { display:block; font-size:0.64rem; font-weight:400; color:var(--text3); margin-top:2px; white-space:nowrap; }
     #stockValidateCard .ptable thead th, #stockValidateCard .ptable tbody td { padding:8px 10px; }
+    @media (max-width:1100px) { #stockValidateCard .ptable thead th, #stockValidateCard .ptable tbody td { padding:8px 7px; } }   /* หน้าต่างแคบ (แบ่งครึ่งจอคู่ ProMaxx ≈960px) — 11 คอลัมน์ (รวมหน่วย) ต้องไม่ล้นแนวนอน · จอกว้างไม่เปลี่ยน */
     #stockValidateCard .ptable tbody td { vertical-align:top; }   /* ช่องที่มีข้อความย่อยใต้ตัวเลขทำให้แถวสูงขึ้น — ชิดบนเพื่อให้ตัวเลขทุกช่องอยู่บรรทัดเดียวกัน */
     #stockValidateCard { height:calc(100vh - 80px); }   /* ความสูงคงที่ — เปลี่ยนหน้า/ตัวกรอง/แถวมีข้อความย่อยหรือไม่ การ์ดต้องไม่ยืดหด (ฟุตเตอร์+ปุ่มเปลี่ยนหน้าอยู่ที่เดิม) */
     #stockValidateCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
@@ -1265,7 +1266,7 @@
     <div class="stock-popup-body" style="user-select:text;">
       <table class="ptable">
         <thead id="svThead"></thead>
-        <tbody id="svBody"><tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
+        <tbody id="svBody"><tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล</td></tr></tbody>
       </table>
     </div>
     <div class="stock-popup-footer">
@@ -10301,6 +10302,7 @@ function _adjErpCardStats(){
 //   Col 4/5 "ทั้งเดือน" = ทุกใบของสินค้านั้นในรายงานที่แนบของรอบนี้ — ไม่ใช้ขอบล่างรายแถว _adjErpLowDay แบบคอลัมน์ Report ใน 📦 (parser ตัดใบก่อนวันเริ่มรอบอยู่แล้ว)
 //   Col 7 = Col 3 === Col 6 → ตรง · ข้อยกเว้นเดียว: แถว R01 ล่าสุด ที่ผลต่าง 0 แต่มีใบสุทธิ ≠ 0 = ปรับแล้ว R01 วันถัดไปตามทัน → ตรง (กติกาเดียวกับ _adjErpSettledByErp) · ⛔ ห้ามใช้กับแถวค่าแช่
 //   เฉพาะ stock_adjustment (ไม่รวมรอรีเช็ค · ผู้ใช้เลือก) · สิทธิ์เหมือน 📦 (_adjErpEnabled) + ไม่ใช่ PDA
+//   คอลัมน์ "หน่วย" (16 ต.ค. 2026) อยู่ถัดจากชื่อสินค้า — ไม่นับเป็น Col 1–7 (เหมือนรหัส/ชื่อ) · ค่า = _svUnit(sku) ตาราง 11 คอลัมน์ (colspan="11" ทั้งใน HTML ตั้งต้นและแถวว่าง)
 //   รีเฟรช: _refreshStockValidate ถูกเรียกบรรทัดแรกของ _applyStatAuditCardMode (hub ที่ถูกเรียกทุกจุดที่ผล ERP/รายการ Stock Adj เปลี่ยน · login/logout)
 // STOCK_VALIDATE=false = ไม่มีการ์ด/ป็อปอัพ ที่เหลือเท่าเดิมทุกจุด (ทางถอย — เทสสลับได้)
 let STOCK_VALIDATE=true;
@@ -10327,6 +10329,13 @@ function _svAppStatus(sd){
 function _stockValidateEnabled(){return STOCK_VALIDATE&&_adjErpEnabled()&&!_isPdaApp();}
 function _svSigned(v){return v>0?'+'+v:String(v);}   // 0 → "0" · ลบ → "-3" · บวก → "+2"
 function _svColor(v){return v>0?'var(--green)':v<0?'var(--red)':'var(--text3)';}
+// หน่วยตามแอป (16 ต.ค. 2026 · ผู้ใช้สั่ง) = ชื่อหน่วยเล็กสุดของ SKU จาก R05.106 (บาร์โค้ดตัวคูณ 1 → state.skuDirectMap)
+//   ชุดเดียวกับ 📊 ประวัติการนับ (แท็บ Stock Adj) · รายงานผลการนับ · Export Stock Adj และเป็น fallback ของคอลัมน์หน่วยใน 📦
+//   ตัวเลขทุกช่องของตารางนี้ (ยอดระบบ/ยอดนับ/BASEQUANTITY ของ ORDS-IRPS) เป็นหน่วยเล็กสุดอยู่แล้ว จึงใช้ชื่อหน่วยเดียวกันทั้งแถว
+//   ⛔ ห้ามใช้ _priceMap (R05.105 — โหลดเฉพาะตอนเปิด 📦 หน่วยของ SKU เดียวกันจะต่างกันตามว่าเปิด 📦 มาก่อนหรือไม่)
+//   ⛔ ห้ามใช้หน่วยของบาร์โค้ดที่สแกน (barcodes[0] / แถว RESULT — อาจเป็นกล่อง/แผง ไม่ตรงกับหน่วยของตัวเลขในตาราง)
+//   ไม่มี (R05 ไม่มีบาร์โค้ดตัวคูณ 1 / ไม่มีข้อมูลสินค้า) = '' → จอแสดง "—" · Excel เว้นว่าง
+function _svUnit(sku){const u=state.skuDirectMap?state.skuDirectMap.get(sku):null;return (u&&u.unitName)||'';}
 // แถวของตาราง (ฟังก์ชันบริสุทธิ์ ไม่แตะ state) → {st,rows,counts:{mismatch,match},skipped:{noSku,noBasis}} · เรียง ไม่ตรง → ตรง → ไม่มีรายงาน แล้วตาม SKU
 function _stockValidateRows(){
   const st=_adjErpCurrent();
@@ -10352,7 +10361,7 @@ function _stockValidateRows(){
     }
     const ov=_adjQtyOverride(sd,n.ev.diff);   // จำนวนที่เภสัชแก้ในใบ 📦 (null = ไม่ได้แก้ / ผลต่างเปลี่ยนแล้ว)
     const ovMatch=ov!==null&&_adjErpRound(Math.abs(net))===ov&&(ov===0||Math.sign(net)===Math.sign(diff));
-    rows.push({sku,name:state.skuMap.get(sku)?.productName||'',sys,cnt,diff,src,raw,comp:src==='confirm'?_adjErpRound(cnt-raw):0,
+    rows.push({sku,name:state.skuMap.get(sku)?.productName||'',unit:_svUnit(sku),sys,cnt,diff,src,raw,comp:src==='confirm'?_adjErpRound(cnt-raw):0,
       sold:Number(sd.soldQty)||0,inbound:Number(sd.inboundQty)||0,r16103:Number(sd.r16103Qty)||0,
       docs,ords,irps,net,state:state_,caughtUp,ov,ovMatch});
   }
@@ -10365,7 +10374,7 @@ function _stockValidateRows(){
       let ords=0,irps=0;for(const x of docs){if(x.type==='ORDS')ords+=x.qty;else if(x.type==='IRPS')irps+=x.qty;}
       ords=_adjErpRound(ords);irps=_adjErpRound(irps);
       const net=_adjErpNet(docs);
-      rows.push({sku,name:state.skuMap.get(sku)?.productName||'',sys:_rawSystemQty(sku),cnt:null,diff:null,src:'live',raw:0,comp:0,sold:0,inbound:0,r16103:0,
+      rows.push({sku,name:state.skuMap.get(sku)?.productName||'',unit:_svUnit(sku),sys:_rawSystemQty(sku),cnt:null,diff:null,src:'live',raw:0,comp:0,sold:0,inbound:0,r16103:0,
         docs,ords,irps,net,state:(ords>0&&irps>0&&net===0)?'lot':'outside',caughtUp:false,ov:null,ovMatch:false,extra:true,appSt:_svAppStatus(sd)});
       extra++;
     }
@@ -10467,7 +10476,7 @@ function renderStockValidateTable(pre){
     }
   }
   const thead=document.getElementById('svThead');
-  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">Stock ในระบบ<br>(R01.102)</th><th style="text-align:center;">Stock<br>นับจริง</th><th style="text-align:center;">Stock<br>ที่ควรปรับ</th><th style="text-align:center;">เอกสาร<br>ORDS</th><th style="text-align:center;">เอกสาร<br>IRPS</th><th style="text-align:center;">ผล Diff เอกสาร<br>(ORDS + IRPS)</th><th style="text-align:center;">ผลตรวจกับเอกสาร</th></tr>';
+  if(thead)thead.innerHTML='<tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th style="text-align:center;">หน่วย</th><th style="text-align:center;">Stock ในระบบ<br>(R01.102)</th><th style="text-align:center;">Stock<br>นับจริง</th><th style="text-align:center;">Stock<br>ที่ควรปรับ</th><th style="text-align:center;">เอกสาร<br>ORDS</th><th style="text-align:center;">เอกสาร<br>IRPS</th><th style="text-align:center;">ผล Diff เอกสาร<br>(ORDS + IRPS)</th><th style="text-align:center;">ผลตรวจกับเอกสาร</th></tr>';
   const rows=_svViewRows(res);
   const sk=[res.skipped.noSku?`ไม่มีข้อมูลสินค้า (R05) ${res.skipped.noSku}`:'',res.skipped.noBasis?`ข้อมูลไม่ครบ ${res.skipped.noBasis}`:''].filter(Boolean).join(' · ');
   const rc=document.getElementById('svRowCount');
@@ -10476,7 +10485,7 @@ function renderStockValidateTable(pre){
   const pgn=_paginate(rows.length,STOCK_VALIDATE_PAGE_SIZE,_svPage);_svPage=pgn.page;
   const view=rows.slice(pgn.start,pgn.start+pgn.size);
   _renderPagerUi('svPager',pgn,view.length);
-  if(!rows.length){body.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">${res.rows.length?'ไม่มีรายการในตัวกรองนี้':'ไม่มีสินค้าที่ Stock Adjustment'}</td></tr>`;return;}
+  if(!rows.length){body.innerHTML=`<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3)">${res.rows.length?'ไม่มีรายการในตัวกรองนี้':'ไม่มีสินค้าที่ Stock Adjustment'}</td></tr>`;return;}
   body.innerHTML=view.map((r,i)=>{
     const sysTitle=r.extra?'R01.102 ล่าสุด — สินค้านี้ไม่ได้เป็น Stock Adj ในแอป (ไม่มียอดตอนตัดสิน)':r.src==='live'?'ระบบไม่ได้แช่ยอดระบบตอนตัดสิน (เช่น 🚫 ไม่มีของ) — ใช้ R01 ล่าสุด':`R01.102 ${SV_SRC_UI[r.src]} (ไม่ขยับตาม R01 รายวัน)`;
     const cntTitle=r.src==='confirm'&&r.comp?`ยอดนับที่ชดเชยการเคลื่อนไหวระหว่างนับ (R16) ให้เทียบกับ R01 ตอน Confirm\nนับจริง ${r.raw}\nขายก่อนสแกน +${r.sold}\nR16.103 +${r.r16103}\nรับเข้าก่อนสแกน −${r.inbound}`:'';
@@ -10484,11 +10493,13 @@ function renderStockValidateTable(pre){
     const cntSub=cn?`<span class="sv-sub">${_adjErpEsc(cn)}</span>`:'';
     const diffSub=on?`<span class="sv-sub">${_adjErpEsc(on)}</span>`:'';
     const ui=SV_STATE_UI[r.state];
+    const unitCell=r.unit?`<td style="text-align:center;color:var(--text2);">${_adjErpEsc(r.unit)}</td>`:'<td style="text-align:center;color:var(--text3);">—</td>';   // หน่วยตามแอป (_svUnit) · ไม่มี = "—"
     const netCell=st?`<td style="text-align:center;font-weight:700;color:${_svColor(r.net)};">${_svSigned(r.net)}</td>`:'<td style="text-align:center;color:var(--text3);">—</td>';
     return `<tr data-sku="${_adjErpEsc(r.sku)}" data-sv-state="${r.state}">`
       +`<td style="color:var(--text3);font-size:0.75rem;">${pgn.start+i+1}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.72rem;color:var(--accent);font-weight:700;">${_adjErpEsc(r.sku)}</td>`
       +`<td class="ptd-name" style="min-width:130px;">${_adjErpEsc(r.name)}</td>`
+      +unitCell
       +`<td style="text-align:center;" title="${_adjErpEsc(sysTitle)}"><span style="font-weight:700;">${r.sys===null?'—':r.sys}</span></td>`
       +(r.extra?`<td style="text-align:center;color:var(--text3);" title="แอปไม่มีผลนับ Stock Adj ของสินค้านี้ให้เทียบ">—</td><td style="text-align:center;color:var(--text3);">—</td>`
         :`<td style="text-align:center;"${cntTitle?` title="${_adjErpEsc(cntTitle)}"`:''}><span style="font-weight:700;">${r.cnt}</span>${cntSub}</td>`
@@ -10538,8 +10549,8 @@ function exportStockValidateExcel(){
   const res=_stockValidateRows();const st=res.st;
   const rows=_svViewRows(res);
   if(!rows.length){toast('ไม่มีรายการให้ Export','warn');return;}
-  const header=['รหัสสินค้า','ชื่อสินค้า','Stock ในระบบ (R01.102)','ยอดระบบ ณ','Stock นับจริง','Stock ที่ควรปรับ','ORDS','IRPS','ผล Diff (ORDS + IRPS)','ผลตรวจ','เลขที่เอกสาร','หมายเหตุ'];
-  const aoa=[header].concat(rows.map(r=>[r.sku,r.name,r.sys===null?'':r.sys,SV_SRC_UI[r.src],r.cnt===null?'':r.cnt,r.diff===null?'':r.diff,
+  const header=['รหัสสินค้า','ชื่อสินค้า','หน่วย','Stock ในระบบ (R01.102)','ยอดระบบ ณ','Stock นับจริง','Stock ที่ควรปรับ','ORDS','IRPS','ผล Diff (ORDS + IRPS)','ผลตรวจ','เลขที่เอกสาร','หมายเหตุ'];
+  const aoa=[header].concat(rows.map(r=>[r.sku,r.name,r.unit,r.sys===null?'':r.sys,SV_SRC_UI[r.src],r.cnt===null?'':r.cnt,r.diff===null?'':r.diff,
     st&&st.cover.ORDS?(r.ords?-r.ords:0):'',st&&st.cover.IRPS?r.irps:'',st?r.net:'',st?SV_STATE_UI[r.state].text:'',
     r.docs.map(d=>`${d.no} ${_adjErpFmtAt(d.at,true)} ${d.type} ${d.qty}`).join(', '),_svNotes(r).join(' · ')]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
