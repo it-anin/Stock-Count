@@ -6,6 +6,7 @@
 //   2. PDA ใช้ป้ายสั้น (ช่องสถานะแคบ)
 //   3. ★ WH ไม่ถูกแตะ (ยังเป็น Recheck)
 //   4. ★ สวิตช์ปิด = ข้อความเดิมทุกตัวอักษร
+//   5. ★ 📊 ประวัติการนับ → ผู้ช่วยนับครั้งแรก: ช่อง Status = "⚠️ Stock Adj" ทุกแถว (12 ต.ค. 2026 · เดิม "⚠️ รอรีเช็ค")
 const { test, expect, bootBare, closeApp, newAppContext, waitForAppReady } = require('../../lib/hooks');
 
 // สร้างสถานะสาขา: audit = รอรีเช็ค · adj = Stock Adj ตรง · pass
@@ -208,5 +209,73 @@ test('★ สวิตช์ปิด (PHARMACY_RECHECK_TERMS=false) → ข้�
   expect(seen.some((l) => l.startsWith('.center-panel'))).toBe(true);
   await app.page.evaluate(() => openAuditVerifyPopup());
   expect((await auditLines(app.page, ['#auditVerifyPopupOverlay'])).length).toBeGreaterThan(0);
+  await closeApp(app);
+});
+
+// ── 📊 ประวัติการนับ → 👥 ผู้ช่วยนับครั้งแรก → ช่อง Status (12 ต.ค. 2026 · ผู้ใช้สั่ง) ──
+// ช่องนี้ = ผลของการนับครั้งแรก ไม่ใช่สถานะปัจจุบัน — สาขายานับไม่ตรงเข้า Stock Adj ทันทีโดยตั้งใจ (PHARMACY_DIRECT_STOCK_ADJ)
+// → "⚠️ Stock Adj" สีแดงทุกแถว รวม Audit เดิมก่อนสลับ / รายการที่ ↺ / ที่เภสัชรีเช็คแล้ว (เดิม "⚠️ รอรีเช็ค" สีเหลือง)
+// WH และปิดสวิตช์ตัวใดตัวหนึ่ง (PHARMACY_RECHECK_TERMS / PHARMACY_DIRECT_STOCK_ADJ) = ป้ายเดิมทุกตัวอักษร
+async function addFirstCountRows(page) {
+  await page.evaluate(() => {
+    const mk = (sku, sd) => {
+      state.skuMap.set(sku, { sku, productName: 'p-' + sku, unitPrice: 20, systemQty: 5, negSys: false, barcodes: [{ barcode: 'B' + sku, unitName: 'ชิ้น', unitMultiplier: 1 }], isDel: false });
+      state.scanData.set(sku, { countedQty: 3, timestamp: '2026-09-30 10:00:00', firstScanAt: '2026-09-30 10:00:00', scannedBy: 'T', ...sd });
+    };
+    // Audit เดิมที่เภสัชรีเช็คแล้ว — ผลของการนับครั้งแรกยังเป็น "นับไม่ตรง"
+    mk('LP0', { status: 'pass', initialStatus: 'audit', auditor: 'Pharm', recheckQty: 5 });
+    mk('LA0', { status: 'stock_adjustment', initialStatus: 'audit', auditor: 'Pharm', recheckQty: 4 });
+    // 🚫 ไม่มีของ (noStock) ไม่ใช่ "นับไม่ตรง" → ไม่อยู่ในแท็บนี้ (กติกาเดิม — _wasFirstCountMismatch)
+    mk('NS0', { status: 'stock_adjustment', initialStatus: 'stock_adjustment', countedQty: 0, noStock: true });
+  });
+}
+// อ่านช่อง Status ของแท็บผู้ช่วยนับครั้งแรก → { sku: 'ข้อความ|สี' }
+function readFirstCountStatus(page, { log = null } = {}) {
+  return page.evaluate((log) => {
+    if (log) { // ทาง fallback: ไม่มีรายการในเครื่อง → แสดงจาก stock_audit_log
+      for (const [sku, sd] of [...state.scanData.entries()]) if (_wasFirstCountMismatch(sd)) state.scanData.delete(sku);
+      _hsFilter = 'assistant'; _hsAssistantSel = ''; _hsFirestoreLoading = false; _hsFirestoreItems = log;
+      renderHistoryStatsTable();
+    } else openHistoryStatsPopup();   // แท็บเริ่มต้น = ผู้ช่วยนับครั้งแรก
+    const col = [...document.querySelectorAll('#historyStatsThead th')].findIndex((th) => th.textContent.trim() === 'Status');
+    const out = {};
+    for (const tr of document.querySelectorAll('#historyStatsBody tr')) {
+      const td = tr.children[col]; const span = td && td.querySelector('span');
+      out[tr.children[1].textContent.trim()] = `${td ? td.textContent.trim() : '(ไม่มีช่อง)'}|${span ? span.style.color : ''}`;
+    }
+    return out;
+  }, log);
+}
+
+test('★ 📊 ผู้ช่วยนับครั้งแรก: ช่อง Status สาขายา = "⚠️ Stock Adj" ทุกแถว · WH / สวิตช์ปิด = ป้ายเดิม', async ({ browser }) => {
+  const app = await bootBare(browser);
+  const ADJ = '⚠️ Stock Adj|var(--red)';
+  for (const branch of ['SRC', 'KKL', 'SSS']) for (const role of ['pharmacist', 'assistant']) {
+    await setup(app.page, { branch, role });
+    await addFirstCountRows(app.page);
+    // AU = Audit เดิม/↺ (ยังรอรีเช็ค) · SA = Stock Adj ตรง · LP/LA = Audit เดิมที่รีเช็คแล้ว · PS0/NS0 ไม่ใช่นับไม่ตรง → ไม่อยู่ในแท็บ
+    expect(await readFirstCountStatus(app.page), `${branch}/${role}`).toEqual({ AU0: ADJ, AU1: ADJ, SA0: ADJ, LP0: ADJ, LA0: ADJ });
+  }
+  // ทาง fallback จาก stock_audit_log — log ที่ไม่มี directAdj (Audit เดิม / log ก่อน 29 ก.ย.) ก็ต้องเป็น Stock Adj
+  const logItem = (sku, extra = {}) => ({ sku, productName: 'p-' + sku, barcode: '', countedQty: 3, scannedBy: 'T', timestamp: '2026-09-30 10:00:00',
+    firstScanAt: '2026-09-30 10:00:00', status: 'audit', auditor: '', recheckQty: null, backorder: false, ...extra });
+  const LOG = [logItem('LG0'), logItem('LG1', { status: 'stock_adjustment', directAdj: true, effectiveQty: 3, systemQty: 5 })];
+  expect(await readFirstCountStatus(app.page, { log: LOG })).toEqual({ LG0: ADJ, LG1: ADJ });
+
+  // ★ WH ไม่ถูกแตะ — นับครั้งแรกไม่ตรงยังเป็น Recheck
+  await setup(app.page, { branch: 'WH', role: 'supervisor' });
+  const WH_RECHECK = '⚠️ Recheck|var(--yellow)';
+  expect(await readFirstCountStatus(app.page)).toEqual({ AU0: WH_RECHECK, AU1: WH_RECHECK, SA0: ADJ });
+
+  // ★ ทางถอย: ปิดสวิตช์ตัวใดตัวหนึ่ง = ป้ายเดิมทุกตัวอักษร (Stock Adj เฉพาะรายการ directAdj)
+  await setup(app.page, { terms: false });
+  await addFirstCountRows(app.page);
+  const OLD_AUDIT = '⚠️ Audit|var(--yellow)';
+  expect(await readFirstCountStatus(app.page)).toEqual({ AU0: OLD_AUDIT, AU1: OLD_AUDIT, SA0: ADJ, LP0: OLD_AUDIT, LA0: OLD_AUDIT });
+  await app.page.evaluate(() => { PHARMACY_DIRECT_STOCK_ADJ = false; });
+  await setup(app.page);
+  await addFirstCountRows(app.page);
+  const OLD_RECHECK = '⚠️ รอรีเช็ค|var(--yellow)';
+  expect(await readFirstCountStatus(app.page)).toEqual({ AU0: OLD_RECHECK, AU1: OLD_RECHECK, SA0: ADJ, LP0: OLD_RECHECK, LA0: OLD_RECHECK });
   await closeApp(app);
 });

@@ -4683,6 +4683,9 @@ window.addEventListener('DOMContentLoaded',async()=>{
       currentUser=_savedUser;
       currentRole=_savedRole;
       updateUserDisplay();
+      // การ์ด Recheck/ประวัติการนับ/ปรับปรุงสินค้าเป็น display:none ใน HTML และถูกเปิดโดย selectEmployee() กับที่นี่เท่านั้น
+      // ข้ามไป = รีโหลดอัตโนมัติหลัง deploy (heartbeat/SW) ทุกครั้งการ์ดหาย → WH Supervisor ต้อง F5 (ต.ค. 2026 · เทส panels-after-auto-reload)
+      updateAuditVerifyPanel();updateHistoryStatsPanel();updateAdjustDocPanel();
       await initAfterLogin();
     }else{
       showBranchSelector();
@@ -9322,7 +9325,10 @@ async function loadAuditLogFromFirestore(){
 
 function _renderAssistantRows(tbody,cnt,items){
   const auditBadge=`<span style="color:var(--yellow);font-weight:700;">⚠️ ${_auditTerm()}</span>`;
-  const adjBadge=`<span style="color:var(--red);font-weight:700;">⚠️ Stock Adj</span>`;   // Stock Adj ตรงจากรอบแรก (directAdj) — รายการ Audit เดิมคงป้ายเดิม
+  const adjBadge=`<span style="color:var(--red);font-weight:700;">⚠️ Stock Adj</span>`;   // Stock Adj ตรงจากรอบแรก (directAdj)
+  // ช่อง Status ของแท็บนี้ = "ผลของการนับครั้งแรก" ไม่ใช่สถานะปัจจุบัน — สาขายานับไม่ตรงเข้า Stock Adj ทันทีโดยตั้งใจ (PHARMACY_DIRECT_STOCK_ADJ · 29 ก.ย. 2026)
+  // → "⚠️ Stock Adj" ทุกแถว รวม Audit เดิมก่อนสลับ/รายการที่ ↺ (ผู้ใช้สั่ง 12 ต.ค. 2026 · เดิม "⚠️ รอรีเช็ค") · WH / ปิดสวิตช์ตัวใดตัวหนึ่ง = ป้ายเดิม
+  const allAdj=_pharmNoAuditTerms()&&_directStockAdjEnabled();
   const isWh=currentBranch==='WH';
   tbody.innerHTML=items.map((it,i)=>{
     const loc=isWh?(state.locationMap.get(it.sku)||'—'):'';
@@ -9333,7 +9339,7 @@ function _renderAssistantRows(tbody,cnt,items){
       <td class="ptd-name">${it.productName}</td>
       ${isWh?`<td style="text-align:center;font-size:0.75rem;color:var(--text2);">${loc}</td>`:''}
       <td style="text-align:center;font-weight:700;">${it.countedQty}</td>
-      <td style="text-align:center;">${it.directAdj===true?adjBadge:auditBadge}</td>
+      <td style="text-align:center;">${allAdj||it.directAdj===true?adjBadge:auditBadge}</td>
       <td style="font-size:0.7rem;color:var(--text3);">${it.timestamp}</td>
       <td style="font-weight:600;color:var(--text2);">${it.scannedBy}</td>
     </tr>`;
