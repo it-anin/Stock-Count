@@ -4683,6 +4683,9 @@ window.addEventListener('DOMContentLoaded',async()=>{
       currentUser=_savedUser;
       currentRole=_savedRole;
       updateUserDisplay();
+      // การ์ด Recheck/ประวัติการนับ/ปรับปรุงสินค้าเป็น display:none ใน HTML และถูกเปิดโดย selectEmployee() กับที่นี่เท่านั้น
+      // ข้ามไป = รีโหลดอัตโนมัติหลัง deploy (heartbeat/SW) ทุกครั้งการ์ดหาย → WH Supervisor ต้อง F5 (ต.ค. 2026 · เทส panels-after-auto-reload)
+      updateAuditVerifyPanel();updateHistoryStatsPanel();updateAdjustDocPanel();
       await initAfterLogin();
     }else{
       showBranchSelector();
