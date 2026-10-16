@@ -6965,7 +6965,7 @@ function applyAuditTerminology(){
   set('statAuditLabel',w);
   set('auditVerifyPanelTitle',verify);
   set('auditVerifyBtnLabel',verify);
-  set('popupFilterAuditLabel',w);
+  set('popupFilterAuditLabel',_pharmTxt(w,'Stock Adj')); // ปุ่มกรอง key 'audit' ของ 📋 กรอง audit + stock_adjustment (getFilteredPopupRows) → สาขายาเรียก "Stock Adj" (16 ต.ค. 2026) · WH=Recheck · ปิดสวิตช์=Audit
   set('popupThAudit',_pharmTxt(w,'ผลตรวจ')); // คอลัมน์นี้โชว์ผลตรวจ (✅/⏳/Stock Adj) ไม่ใช่รายการรอรีเช็ค
   set('avTabAuditLabel',w);
   const pdaAv=document.getElementById('btnPdaAuditVerify');if(pdaAv)pdaAv.title=verify;

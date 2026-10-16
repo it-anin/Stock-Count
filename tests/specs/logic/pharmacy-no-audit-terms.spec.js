@@ -7,6 +7,7 @@
 //   3. ★ WH ไม่ถูกแตะ (ยังเป็น Recheck)
 //   4. ★ สวิตช์ปิด = ข้อความเดิมทุกตัวอักษร
 //   5. ★ 📊 ประวัติการนับ → ผู้ช่วยนับครั้งแรก: ช่อง Status = "⚠️ Stock Adj" ทุกแถว (12 ต.ค. 2026 · เดิม "⚠️ รอรีเช็ค")
+//   6. ★ 📋 รายการสต็อคสินค้า → ปุ่มกรอง key 'audit' = "Stock Adj" (16 ต.ค. 2026 · เดิม "รอรีเช็ค") — ชื่อต้องตรงเนื้อหา (audit + stock_adjustment) · WH ยัง "Recheck" · สวิตช์ปิด "Audit"
 const { test, expect, bootBare, closeApp, newAppContext, waitForAppReady } = require('../../lib/hooks');
 
 // สร้างสถานะสาขา: audit = รอรีเช็ค · adj = Stock Adj ตรง · pass
@@ -53,10 +54,11 @@ test('★ เภสัชสาขายา มีรายการรอรี
       sub: document.getElementById('auditProgressLabel').textContent,
       panel: document.getElementById('auditVerifyPanelTitle').textContent,
       btn: document.getElementById('pharmacistAuditBtnLabel').textContent,
+      filter: document.getElementById('popupFilterAuditLabel').textContent, // ปุ่มกรองของ 📋 — ตรวจทั้ง 3 สาขา (16 ต.ค. 2026 · เดิม "รอรีเช็ค")
       pill: document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill').innerText, // Desktop แบ่ง 2 บรรทัด (ช่อง 128px)
     }));
     // การ์ดใบที่ 4 ของสาขายา = "Stock Adj เข้าระบบ" (ต.ค. 2026 · PHARMACY_ADJ_ERP_CARD — การ์ดรอรีเช็คเดิมตรึงไว้ในเทสสวิตช์ปิดด้านล่าง)
-    expect(t, branch).toEqual({ card: 'Stock Adj เข้าระบบ', sub: 'เข้า ProMaxx แล้ว', panel: 'Stock Adj', btn: '✓ ยืนยันรีเช็ค', pill: '⚠️ Stock Adj\nรอรีเช็ค' });
+    expect(t, branch).toEqual({ card: 'Stock Adj เข้าระบบ', sub: 'เข้า ProMaxx แล้ว', panel: 'Stock Adj', btn: '✓ ยืนยันรีเช็ค', filter: 'Stock Adj', pill: '⚠️ Stock Adj\nรอรีเช็ค' });
     // ป้ายต้องไม่ล้นช่อง STATUS (เคยถูกตัดเป็น "Stock Adj · รอรีเช็…" เมื่ออยู่บรรทัดเดียว)
     const fit = await app.page.evaluate(() => { const p = document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill'); const c = p.parentElement;
       return p.getBoundingClientRect().right <= c.getBoundingClientRect().right + 0.5; });
@@ -73,12 +75,18 @@ test('★ เภสัชสาขายา มีรายการรอรี
   expect(await auditLines(app.page, ['#auditVerifyPopupOverlay'])).toEqual([]);
   await app.page.evaluate(() => closeAuditVerifyPopup());
 
-  // 📋 รายการสต็อค — ตัวกรอง/หัวคอลัมน์/ป้ายในตาราง (เภสัชเปิดมาที่ตัวกรองรอรีเช็ค)
+  // 📋 รายการสต็อค — ตัวกรอง/หัวคอลัมน์/ป้ายในตาราง (เภสัชเปิดมาที่ตัวกรอง Stock Adj · 16 ต.ค. 2026 ผู้ใช้สั่งเปลี่ยนชื่อปุ่มจาก "รอรีเช็ค")
   await app.page.evaluate(() => { openStockPopup(); renderPopupTable(); });
   await app.page.waitForFunction(() => document.querySelectorAll('#popupTableBody tr').length >= 2, null, { polling: 100 });
   expect(await auditLines(app.page, ['#stockPopupOverlay'])).toEqual([]);
   expect(await app.page.evaluate(() => [document.getElementById('popupFilterAuditLabel').textContent, document.getElementById('popupThAudit').textContent]))
-    .toEqual(['รอรีเช็ค', 'ผลตรวจ']);
+    .toEqual(['Stock Adj', 'ผลตรวจ']);
+  // ★ ชื่อปุ่มต้องตรงกับเนื้อหา: ปุ่มที่ active ตอนเปิดคือปุ่ม "Stock Adj" และมันกรอง audit (รอรีเช็ค) + stock_adjustment รวมกัน ไม่รวม pass
+  //   (ถ้าตัวกรองเหลือแค่ audit ชื่อ "Stock Adj" จะหลอกผู้ใช้ — ห้ามให้ชื่อกับเนื้อหาแยกจากกัน)
+  expect(await app.page.evaluate(() => ({
+    active: document.getElementById('popupFilterAuditLabel').closest('.popup-filter').classList.contains('active'),
+    skus: getFilteredPopupRows().map((r) => r.sku).sort(),
+  }))).toEqual({ active: true, skus: ['AU0', 'AU1', 'SA0'] });
   await closeApp(app);
 });
 
@@ -161,11 +169,12 @@ test('★ WH ไม่ถูกแตะ — ยังเป็น Recheck ท�
     const t = await app.page.evaluate(() => ({
       term: _auditTerm(), mismatch: _mismatchTerm(), pill: getScanRowStyle('audit').label,
       card: document.getElementById('statAuditLabel').textContent, panel: document.getElementById('auditVerifyPanelTitle').textContent,
-      th: document.getElementById('popupThAudit').textContent, title: (openAuditVerifyPopup(), document.getElementById('auditVerifyTitle').textContent),
+      th: document.getElementById('popupThAudit').textContent, filter: document.getElementById('popupFilterAuditLabel').textContent, // ปุ่มกรองของ 📋 — WH ไม่ใช้คำว่า Stock Adj (16 ต.ค. 2026)
+      title: (openAuditVerifyPopup(), document.getElementById('auditVerifyTitle').textContent),
       guide: document.getElementById('guideAuditPill').textContent,
     }));
     await app.page.evaluate(() => closeAuditVerifyPopup());
-    expect(t, role).toEqual({ term: 'Recheck', mismatch: 'Recheck', pill: '⚠️ Recheck', card: 'Recheck', panel: 'Recheck', th: 'Recheck',
+    expect(t, role).toEqual({ term: 'Recheck', mismatch: 'Recheck', pill: '⚠️ Recheck', card: 'Recheck', panel: 'Recheck', th: 'Recheck', filter: 'Recheck',
       title: '🔍 Recheck — รีเช็คสินค้า', guide: '⚠️ Recheck' });
   }
   await closeApp(app);
