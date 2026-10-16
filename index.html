@@ -6409,6 +6409,11 @@ function _pharmTxt(oldStr,newStr){return _pharmNoAuditTerms()?newStr:oldStr;}
 // ปิด = guard เดิม (รับเฉพาะ initialStatus audit / directAdj) · ดู reopenPharmacyAudit
 let PHARMACY_NOSTOCK_REOPEN=true;
 function _noStockReopenEnabled(){return PHARMACY_NOSTOCK_REOPEN&&_isPharmacyBranch();}
+// ── สาขายา: ↺ สแกนใหม่ (แท็บ Stock Adj) = กลับเป็น ⏳ รอนับ (pending) เริ่มสแกนใหม่ตั้งแต่ต้น ไม่เข้ารีเช็ค (16 ต.ค. 2026 · ผู้ใช้สั่ง) ──
+// เดิมปุ่มเรียก reopenPharmacyAudit (→ audit รอรีเช็ค) · ตอนนี้เรียก restartPharmacyScan: ล้างผลนับเดิมทั้ง item แล้วผู้ช่วยสแกนนับใหม่ → Confirm รอบแรกตามสูตรเดิม
+// ปิด = ปุ่ม/ข้อความกลับเป็น ↺ → รอรีเช็ค ทุกตัวอักษร (reopenPharmacyAudit ไม่ถูกแตะ) · ดู restartPharmacyScan + CLAUDE.md §↺ สแกนใหม่ → ⏳ รอนับ
+let PHARMACY_RESCAN_TO_PENDING=true;
+function _rescanToPendingOn(){return PHARMACY_RESCAN_TO_PENDING&&_isPharmacyBranch();}
 // ── สาขายา PDA: ไม่มีแถวปุ่มใต้ RESULT (9 ต.ค. 2026 · ผู้ใช้สั่ง) ──
 // เดิมผู้ช่วยบน PDA เห็นป้าย "Confirm ที่ Desktop เท่านั้น" + ปุ่ม ✕ ซ่อนรายการ → ซ่อนทั้งแถว #confirmClearRow แบบเดียวกับ WH PDA (ดู updateScanInputMode)
 // ตัดสินด้วย User-Agent (_isPdaApp) ไม่ใช่ความกว้างจอ — กติกาเดียวกับด่าน Confirm สาขายา · Desktop/WH ไม่แตะ
@@ -6969,11 +6974,15 @@ function applyAuditTerminology(){
   setHtml('guideStep6',isWh
     ?'รายการ <strong style="color:var(--yellow);">⚠️ Recheck</strong> → <strong>warehouse</strong> สแกนรีเช็คที่ช่อง scan หลัก → <strong>หัวหน้างาน</strong>กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'
     :_pharmTxt('รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong>',
-      'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong>) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong style="color:var(--yellow);">รอรีเช็ค</strong> → สแกนนับใหม่ → กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'));
+      _rescanToPendingOn()
+        // ↺ สแกนใหม่ → ⏳ รอนับ (PHARMACY_RESCAN_TO_PENDING) — ผู้ช่วยสแกนนับใหม่แล้ว Confirm ไม่ผ่านรีเช็ค · "รอรีเช็ค" เหลือเฉพาะที่ค้างจากรอบก่อน
+        ?'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong> ที่ค้างจากรอบก่อน) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong>⏳ รอนับ</strong> → ผู้ช่วยสแกนนับใหม่ → กด <strong>Confirm</strong> บน Desktop'
+        :'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong>) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong style="color:var(--yellow);">รอรีเช็ค</strong> → สแกนนับใหม่ → กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'));
   set('guideRulePill',isWh?'Pass / Recheck / Stock Adj':_pharmTxt('Pass / Audit / Stock Adj','Pass / รอรีเช็ค / Stock Adj'));
   setHtml('guideQtyRule','ราคาบาร์โค้ด (R05.106 คอลัมน์ B) &lt; 1,000 บาท → แก้ Qty ได้ · ตั้งแต่ 1,000 บาทหรือไม่มีราคา → สแกนทีละชิ้น');
   set('guideAuditPill',isWh?'⚠️ Recheck':_pharmTxt('⚠️ Audit','⚠️ รอรีเช็ค'));
-  set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':_pharmTxt('จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify','Stock Adj ที่เภสัชกด ↺ (หรือค้างจากรอบก่อน) — ขึ้นใบ 📦 แล้ว · สแกนนับใหม่แล้วยืนยันบน Desktop เพื่อปรับผล'));
+  set('guideAuditDesc',isWh?'จำนวนไม่ตรง — รอ warehouse รีเช็ค + หัวหน้างานยืนยันรีเช็ค':_pharmTxt('จำนวนไม่ตรง — รอเภสัชตรวจซ้ำใน Audit Verify',_rescanToPendingOn()?'Stock Adj ที่ค้างจากรอบก่อน — ขึ้นใบ 📦 แล้ว · สแกนนับใหม่แล้วยืนยันบน Desktop เพื่อปรับผล'
+    :'Stock Adj ที่เภสัชกด ↺ (หรือค้างจากรอบก่อน) — ขึ้นใบ 📦 แล้ว · สแกนนับใหม่แล้วยืนยันบน Desktop เพื่อปรับผล'));
   _applyStatAuditCardMode(); // ป้าย statAuditLabel ด้านบนเป็นของการ์ดเดิม — สาขายา (PHARMACY_ADJ_ERP_CARD) ทับกลับเป็น "Stock Adj เข้าระบบ"
 }
 function getScanRowStyle(s){
@@ -7209,7 +7218,7 @@ function guideHtml(isWh){
       +'<li>สแกนสินค้า</li>'
       +'<li>ก่อนกด Confirm → อัพโหลด <strong>R16.104</strong>'+(isWh?' + <strong>R16.103</strong>':'')+'</li>'
       +'<li>กด <strong>Confirm</strong> → ระบบตรวจสอบสินค้า</li>'
-      +'<li>'+(isWh?'รายการไม่ตรง → พนักงานรีเช็ค → หัวหน้างานยืนยัน':_pharmTxt('Audit (ไม่ตรง) → เภสัช Login PDA สแกนสินค้ารีเช็ค','ไม่ตรง → Stock Adj ทันที → เภสัชออกใบที่ 📦 ปรับปรุงสินค้า (สงสัยรายการไหน กด ↺ สแกนใหม่ แล้วรีเช็ค)'))+'</li>'
+      +'<li>'+(isWh?'รายการไม่ตรง → พนักงานรีเช็ค → หัวหน้างานยืนยัน':_pharmTxt('Audit (ไม่ตรง) → เภสัช Login PDA สแกนสินค้ารีเช็ค','ไม่ตรง → Stock Adj ทันที → เภสัชออกใบที่ 📦 ปรับปรุงสินค้า (สงสัยรายการไหน กด ↺ สแกนใหม่ '+(_rescanToPendingOn()?'แล้วให้ผู้ช่วยนับใหม่':'แล้วรีเช็ค')+')'))+'</li>'
     +'</ol>'
   +'</div>'
   +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid var(--border);">'
@@ -8563,6 +8572,73 @@ async function reopenPharmacyAudit(sku){
   renderAuditVerifyTable();updateAuditVerifyCount();updatePharmacistAuditConfirmBtn();
   beepSuccess();toast(`↺ ${sku} กลับไปรอสแกนรีเช็คแล้ว`,'success');
 }
+// ↺ สแกนใหม่ (สาขายา · แท็บ Stock Adj · 16 ต.ค. 2026 · ผู้ใช้สั่ง · สวิตช์ PHARMACY_RESCAN_TO_PENDING):
+// ล้างผลนับเดิมทั้ง item → ⏳ รอนับ (pending) เริ่มสแกนใหม่ตั้งแต่ต้น · ไม่เข้ารีเช็ค
+// ผู้ช่วยสแกนนับใหม่ที่หน้าหลัก → Confirm รอบแรกตามสูตรเดิม (เภสัชสแกน pending ไม่ได้ — processPharmacistAuditScan: "ใช้รหัสผู้ช่วยนับสินค้า")
+// ⛔ ต้องเป็น transaction เดียวที่ลบทั้ง marker และ item — marker เป็น authoritative: ถ้าเหลือ marker audit/final อุปกรณ์อื่นและ login รอบถัดไป
+//    จะสร้าง sd กลับให้เอง (_applyPharmacyAuditMarkersToState · SKU อยู่ใน skuMap) แล้ว _reconcileScanItems ดันกลับขึ้น Cloud = รีเซ็ตหายเงียบ
+//    ถ้าลบสองขั้นแยกกัน ล้มกลางคันจะค้างครึ่งทาง · Stock Adj ตรงจากรอบแรก (directAdj) ปกติไม่มี marker → ลบ item อย่างเดียว
+// ⛔ ห้ามแตะ local ก่อน transaction สำเร็จ — ล้ม/abort = ไม่เปลี่ยนอะไร กดซ้ำได้ (idempotent: item ไม่มีบน Cloud = ถือว่าสำเร็จ)
+// ผลนับเดิมหายถาวร — ไม่มีทางย้อน (ต่างจาก reopenPharmacyAudit ที่ทิ้งยอดนับไว้) · ร่องรอยมีแค่ console [restart scan] + stock_audit_log ของวันเก่า
+const _restartScanBusy=new Set();
+async function restartPharmacyScan(sku){
+  if(!_isPharmacyBranch()||currentRole!=='pharmacist'){beepWarn();toast('เฉพาะเภสัชกรเท่านั้น','warn');return;}
+  if(_isPdaApp()){beepWarn();toast('สแกนใหม่ที่ Desktop เท่านั้น','warn');return;}
+  if(_blockScanForBranchConfirm()||_branchConfirming)return;
+  if(!_db||!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อสแกนใหม่','error');return;}
+  sku=String(sku);
+  if(_restartScanBusy.has(sku))return;
+  const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
+  if(!sd||sd.status!=='stock_adjustment'){beepWarn();toast('รายการนี้สแกนใหม่ไม่ได้','warn');return;}
+  const shown=sd.recheckQty!=null?sd.recheckQty:sd.countedQty;
+  if(!confirm(`สแกนใหม่ตั้งแต่ต้น: ${sku}\n${si?.productName||''}\n\nผลนับเดิม ${shown} จะถูกล้าง รายการกลับเป็น ⏳ รอนับ\nให้ผู้ช่วยสแกนนับใหม่ แล้ว Confirm ที่ Desktop (ไม่ต้องรีเช็ค)\n\nถ้าส่งใบ ORDS/IRPS ของรายการนี้เข้า ERP ไปแล้ว ระวังปรับซ้ำ\nยืนยันหรือไม่?`))return;
+  // ตรวจหลัง confirm (กล่องโต้ตอบหยุด event loop — flush ที่ค้างอาจเริ่มทันทีที่กลับมา) · เขียนค้างอยู่ = ผลอาจฟื้นเอกสารหลังเราลบ
+  if(_scanItemInFlight.has(sku)){beepWarn();toast('กำลังบันทึกรายการนี้ — รอสักครู่แล้วกดใหม่','warn');return;}
+  const epoch=_countResetAt||'';const knownRev=_scanItemRev.get(sku)||0;
+  const itemRef=getScanItemsRef().doc(sku),markerRef=getPharmacyAuditMarkerRef();
+  // แก้ที่ยังไม่ได้ flush ถูกทิ้งไปกับผลนับเดิม · ถ้า transaction ล้ม _reconcileScanItems จะเห็นว่าต่างจากที่ sync แล้วและส่งซ้ำเอง
+  _dirtySkus.delete(sku);
+  _restartScanBusy.add(sku);
+  let nextMarkerItems=null;
+  try{
+    await _db.runTransaction(async tx=>{
+      nextMarkerItems=null;   // transaction ถูกรันซ้ำได้เมื่อชนกัน — ตั้งค่าใหม่ทุกรอบ
+      const itemSnap=await tx.get(itemRef);
+      const markerSnap=await tx.get(markerRef);
+      const server=itemSnap.exists?(itemSnap.data()||{}):null;
+      // doc id คือ SKU ใช้ร่วมทุกรอบ — เศษรอบอื่นไม่ใช่ของรอบนี้ (ไม่ลบ ไม่ใช้ตัดสิน) · ของรอบนี้ที่ไม่ใช่ Stock Adj แล้ว/rev เปลี่ยน = มีเครื่องอื่นแก้ระหว่างทาง
+      const current=server&&String(server.countResetAt||'')===epoch?server:null;
+      if(current&&(current.status!=='stock_adjustment'||(knownRev&&Number(current.rev)!==knownRev)))throw new Error('RESCAN_CHANGED');
+      const old=markerSnap.exists?(markerSnap.data()||{}):{};
+      if((old.countResetAt||'')===epoch&&old.items&&Object.prototype.hasOwnProperty.call(old.items,sku)){
+        const items={...old.items};delete items[sku];
+        // เก็บ field อื่นของ doc ไว้ครบ — เหมือน _writePharmacyAuditMarkers · legacyLogBackfilledAt: ถ้ายังไม่มี ให้ตั้งในก้อนเดียวกัน
+        // ⛔ ไม่งั้น login เครื่องถัดไปรัน _backfillPharmacyAuditMarkersFromLog อ่าน stock_audit_log (รายการ audit/ผ่านรีเช็คไม่มี directAdj)
+        //    แล้วสร้าง marker final กลับ → sd กลับเป็น Stock Adj เดิมทับยอดที่ผู้ช่วยเพิ่งนับใหม่ (เจอใน e2e: doc ที่ไม่มี flag — ทุก login ก่อนหน้า skuMap ยังว่าง)
+        //    migration นั้นมีไว้กู้ Audit ที่ session รุ่นเก่าทำหาย — รอบที่มี marker ใช้งานอยู่แล้วไม่ต้องใช้ · Stock Adj ตรง (directAdj) ถูก backfill ข้ามอยู่แล้ว
+        tx.set(markerRef,{...old,items,legacyLogBackfilledAt:old.legacyLogBackfilledAt||firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+        nextMarkerItems=items;
+      }
+      if(current)tx.delete(itemRef);
+    });
+  }catch(e){
+    console.warn('[restart scan]',e.code||'',e.message);beepError();
+    if(e.message==='RESCAN_CHANGED')toast('รายการนี้เปลี่ยนจากเครื่องอื่น — ยังไม่ล้างผล รอ Sync แล้วกดใหม่','warn',5000);
+    else toast('สแกนใหม่ไม่สำเร็จ: '+_shortErr(e),'error');
+    return;
+  }finally{_restartScanBusy.delete(sku);}
+  // สำเร็จ = Cloud สะอาดแล้ว (marker + item) → ล้างในเครื่อง: placeholder pending รูปเดียวกับ _applyScanItemRemoved
+  if(nextMarkerItems&&(_pharmacyAuditMarkerData.countResetAt||'')===epoch)_pharmacyAuditMarkerData={..._pharmacyAuditMarkerData,items:nextMarkerItems,legacyLogBackfilledAt:_pharmacyAuditMarkerData.legacyLogBackfilledAt||new Date().toISOString()};
+  state.scanData.set(sku,{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:sd.location||'',scans:[]});
+  _dirtySkus.delete(sku);_scanItemRev.delete(sku);_scanItemSynced.delete(sku);
+  // แก้ในใบ/เขียนที่เริ่มระหว่างรอ transaction อาจฟื้นเอกสารหลังเราลบ → ให้ flush ลบซ้ำ (sd เป็น pending = batch.delete)
+  if(_scanItemInFlight.has(sku)){_dirtySkus.add(sku);_scheduleScanFlush(SCAN_ITEM_FLUSH_MS);}
+  scanListMap.delete(sku);
+  console.info('[restart scan]',sku,{countedQty:sd.countedQty,recheckQty:sd.recheckQty,directAdj:sd.directAdj===true,initialStatus:sd.initialStatus,by:currentUser||''});
+  invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();updateStats();renderTable();
+  renderAuditVerifyTable();updateAuditVerifyCount();updatePharmacistAuditConfirmBtn();
+  beepSuccess();toast(`↺ ${sku} กลับเป็น ⏳ รอนับ — ให้ผู้ช่วยสแกนใหม่`,'success');
+}
 // worker: ตัดสิน pass/stock_adjustment ของ audit item เดียวจากยอดรีเช็คใน sd.recheckQty
 // deferSync=true (ใช้โดย _confirmPharmacyAuditBatched) → ไม่ save/sync/render รายตัว ให้ caller ทำครั้งเดียวตอนจบ
 function confirmAuditVerifyItem(sku,silent=false,deferSync=false){
@@ -8620,6 +8696,8 @@ function renderAuditVerifyTable(){
     const _adjCols=canReopen?9:8;
     if(!rows.length){tbody.innerHTML=`<tr><td colspan="${_adjCols}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการ Stock Adjustment</td></tr>`;return;}
     const isWhAdj=currentBranch==='WH';
+    // ↺ สแกนใหม่: สาขายา (PHARMACY_RESCAN_TO_PENDING) = ล้างแล้วกลับเป็น ⏳ รอนับ · ปิดสวิตช์ = เปิดรีเช็คเหมือนเดิม
+    const rescan=canReopen&&_rescanToPendingOn();
     tbody.innerHTML=rows.map((r,i)=>{
       const{sku,sd,si}=r;
       const bc=si.barcodes.map(b=>b.barcode).join(', ');
@@ -8650,7 +8728,7 @@ function renderAuditVerifyTable(){
         +`<td${recheckTitle} style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;font-weight:700;">${recheckVal}</td>`
         +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${diffCell}</td>`
         +`<td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${sd.firstScanAt||sd.timestamp||'—'}</td>`
-        +(canReopen?`<td style="text-align:center;"><button onclick="reopenPharmacyAudit('${sku}')" title="เปิดกลับไปสแกนรีเช็คใหม่" style="border:1px solid rgba(0,114,198,0.4);background:rgba(0,114,198,0.08);color:var(--accent);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">↺ สแกนใหม่</button></td>`:'')
+        +(canReopen?`<td style="text-align:center;"><button onclick="${rescan?'restartPharmacyScan':'reopenPharmacyAudit'}('${sku}')" title="${rescan?'ล้างผลนับ แล้วสแกนนับใหม่ตั้งแต่ต้น (⏳ รอนับ)':'เปิดกลับไปสแกนรีเช็คใหม่'}" style="border:1px solid rgba(0,114,198,0.4);background:rgba(0,114,198,0.08);color:var(--accent);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">↺ สแกนใหม่</button></td>`:'')
         +`</tr>`;
     }).join('');
   } else {

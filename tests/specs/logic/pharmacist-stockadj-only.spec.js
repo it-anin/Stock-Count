@@ -52,7 +52,8 @@ async function popup(page) {
       filter: _avFilter, title: document.getElementById('auditVerifyTitle').textContent,
       tabAudit: vis('avBtnAudit'), scanRow: vis('avScanRow'), confirmAll: vis('avConfirmAllBtn'),
       activeTab: (document.querySelector('#auditVerifyPopupOverlay .popup-filter.active') || {}).id,
-      reopenBtns: document.querySelectorAll('#auditVerifyTableBody button[onclick^="reopenPharmacyAudit"]').length,
+      // ปุ่ม ↺ ในแท็บ Stock Adj: ผูก restartPharmacyScan (→ ⏳ รอนับ · PHARMACY_RESCAN_TO_PENDING) หรือ reopenPharmacyAudit (→ รอรีเช็ค · สวิตช์ปิด) — เทสนี้ตรึงแค่ "มีปุ่ม"
+      reopenBtns: document.querySelectorAll('#auditVerifyTableBody button[onclick^="reopenPharmacyAudit"], #auditVerifyTableBody button[onclick^="restartPharmacyScan"]').length,
     };
   });
 }
