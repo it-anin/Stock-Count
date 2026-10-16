@@ -206,7 +206,24 @@ test('ไม่มีรายงาน = "—" + แถบบอกให้แ
   expect([d['D-IRPS'].irps, d['D-IRPS'].irpsTitle, d['D-IRPS'].net, d['D-IRPS'].res, d['D-ORDS'].res]).toEqual(['—', 'IRPS: ยังไม่มีข้อมูลในรายงานที่แนบ', '0', 'ไม่ตรง', 'ตรง']);
   // แถบช่วงที่รายงานครอบ: "ORDS <ช่วง> · IRPS <ช่วง>" (ไม่มีชื่อรายงาน/เวลาอัปเดต/คำว่า "ถึง") — วันเดียว = วันนั้นวันเดียว
   expect(await app.page.textContent('#svInfo')).toBe('ORDS 24/09/2026 14:43 · IRPS: ยังไม่มีข้อมูล');
+  // บรรทัดเดือนอยู่เหนือแถบช่วง (ตามเดือนในเอกสาร) · ข้อความคำอธิบายคอลัมน์เดิมถูกถอดแล้ว
+  expect(await app.page.evaluate(() => {
+    const m = document.getElementById('svMonth'), i = document.getElementById('svInfo');
+    return [m.textContent, m.style.display, !!(m.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING),
+      document.getElementById('stockValidateCard').textContent.includes('ไม่ขยับตาม R01 รายวัน · Stock ที่ควรปรับ')];
+  })).toEqual(['เอกสารปรับปรุงเดือน กันยายน 2026 (ตามเดือนในเอกสาร)', '', true, false]);
+  expect(await app.page.evaluate(() => {
+    const mk = (f, t) => ({ cover: { ORDS: { fromDay: f, toAt: t }, IRPS: null } });
+    return [
+      _svCoverMonthText(mk('2026-09-01', '2026-09-30 20:56')),
+      _svCoverMonthText(mk('2026-08-05', '2026-09-30 16:57')),
+      _svCoverMonthText(mk('2025-12-20', '2026-01-03 09:00')),
+      _svCoverMonthText({ cover: { ORDS: { toAt: '2026-10-02 09:00' }, IRPS: { fromDay: '2026-10-01', toAt: '2026-10-15 10:00' } } }),
+      _svCoverMonthText({ cover: { ORDS: null, IRPS: null } }), _svCoverMonthText(null),
+    ];
+  })).toEqual(['กันยายน 2026', 'สิงหาคม – กันยายน 2026', 'ธันวาคม 2025 – มกราคม 2026', 'ตุลาคม 2026', '', '']);
   expect(await app.page.evaluate(() => [
+
     _svCoverRange({ fromDay: '2026-09-01', toAt: '2026-09-30 20:56' }),     // เดือนเดียวกัน → 1-30/09/2026 20:56
     _svCoverRange({ fromDay: '2026-09-24', toAt: '2026-09-24 14:43' }),     // วันเดียว
     _svCoverRange({ fromDay: '2026-08-05', toAt: '2026-09-30 16:57' }),     // ข้ามเดือน

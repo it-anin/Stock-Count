@@ -1258,8 +1258,8 @@
       <button class="stock-popup-close" onclick="closeStockValidatePopup()">✕</button>
     </div>
     <div style="padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.74rem;color:var(--text3);line-height:1.6;">
+      <div id="svMonth" style="display:none;font-weight:600;color:var(--text2);"></div>
       <div id="svInfo" style="font-weight:600;color:var(--text2);">ยังไม่แนบ R02.102</div>
-      Stock ในระบบ / นับจริง = ตัวเลขตอนตัดสินเป็น Stock Adj (ไม่ขยับตาม R01 รายวัน) · Stock ที่ควรปรับ = นับจริง − ระบบ · ORDS / IRPS = ทุกใบของสินค้านั้นในรายงานที่แนบ (ตั้งแต่วันเริ่มรอบนับ) · ผล Diff = ORDS + IRPS
     </div>
     <div id="svBar" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);align-items:center;gap:8px;flex-wrap:wrap;"></div>
     <div class="stock-popup-body" style="user-select:text;">
@@ -10361,6 +10361,25 @@ function _svCoverRange(c){
   if(f[1]===t[1])return `${f[3]}/${f[2]}-${to}`;
   return `${f[3]}/${f[2]}/${f[1]}-${to}`;
 }
+// เดือนของเอกสารที่รายงานครอบ (ตามวันที่ในเอกสาร ไม่ใช่เดือนที่แนบ) — เดือนเดียว "กันยายน 2026" · ข้ามเดือน "สิงหาคม – กันยายน 2026" · ข้ามปี "ธันวาคม 2025 – มกราคม 2026" · ไม่มีข้อมูล = ''
+const SV_TH_MONTHS=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+function _svCoverMonthText(st){
+  if(!st||!st.cover)return '';
+  const keys=new Set();
+  for(const t of ADJ_ERP_TYPES){
+    const c=st.cover[t];if(!c)continue;
+    for(const s of [c.fromDay,c.toAt]){
+      const m=/^(\d{4})-(\d{2})/.exec(s||'');
+      if(m&&+m[2]>=1&&+m[2]<=12)keys.add(m[1]+'-'+m[2]);
+    }
+  }
+  const ks=[...keys].sort();
+  if(!ks.length)return '';
+  const lab=k=>{const [y,m]=k.split('-');return {y,n:SV_TH_MONTHS[+m-1]};};
+  const a=lab(ks[0]),b=lab(ks[ks.length-1]);
+  if(ks.length===1)return `${a.n} ${a.y}`;
+  return a.y===b.y?`${a.n} – ${b.n} ${a.y}`:`${a.n} ${a.y} – ${b.n} ${b.y}`;
+}
 function _svInfoHtml(st){
   if(!st)return '<span style="color:var(--red);">ยังไม่แนบ R02.102</span> — แนบที่ 📦 ปรับปรุงสินค้า → 🧾 ตรวจสอบ รายงาน R02.102';
   const parts=[];
@@ -10395,6 +10414,8 @@ function renderStockValidateTable(pre){
   const st=res.st;
   if(!st)_svFilter='all';   // ไม่มีรายงาน = ไม่มีผลตรวจให้กรอง
   const info=document.getElementById('svInfo');if(info)info.innerHTML=_svInfoHtml(st);
+  const mon=document.getElementById('svMonth');
+  if(mon){const mt=_svCoverMonthText(st);mon.style.display=mt?'':'none';mon.textContent=mt?`เอกสารปรับปรุงเดือน ${mt} (ตามเดือนในเอกสาร)`:'';}
   const bar=document.getElementById('svBar');
   if(bar){
     if(!st){bar.style.display='none';bar.innerHTML='';}
