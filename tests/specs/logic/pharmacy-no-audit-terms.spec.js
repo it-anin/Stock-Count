@@ -8,6 +8,7 @@
 //   4. ★ สวิตช์ปิด = ข้อความเดิมทุกตัวอักษร
 //   5. ★ 📊 ประวัติการนับ → ผู้ช่วยนับครั้งแรก: ช่อง Status = "⚠️ Stock Adj" ทุกแถว (12 ต.ค. 2026 · เดิม "⚠️ รอรีเช็ค")
 //   6. ★ 📋 รายการสต็อคสินค้า → ปุ่มกรอง key 'audit' = "Stock Adj" (16 ต.ค. 2026 · เดิม "รอรีเช็ค") — ชื่อต้องตรงเนื้อหา (audit + stock_adjustment) · WH ยัง "Recheck" · สวิตช์ปิด "Audit"
+//   7. ★ 📋 Export Excel ของตัวกรองนั้น (16 ต.ค. 2026 · ผู้ใช้สั่ง "เปลี่ยนชื่อรอรีเช็คใน Export Excel ด้วย") — ชื่อชีต + toast ใช้ชื่อเดียวกับป้ายปุ่ม (_popupAuditFilterTerm) · ตัวกรองอื่น/ชื่อไฟล์/หัวคอลัมน์ไม่เปลี่ยน
 const { test, expect, bootBare, closeApp, newAppContext, waitForAppReady } = require('../../lib/hooks');
 
 // สร้างสถานะสาขา: audit = รอรีเช็ค · adj = Stock Adj ตรง · pass
@@ -177,6 +178,71 @@ test('★ WH ไม่ถูกแตะ — ยังเป็น Recheck ท�
     expect(t, role).toEqual({ term: 'Recheck', mismatch: 'Recheck', pill: '⚠️ Recheck', card: 'Recheck', panel: 'Recheck', th: 'Recheck', filter: 'Recheck',
       title: '🔍 Recheck — รีเช็คสินค้า', guide: '⚠️ Recheck' });
   }
+  await closeApp(app);
+});
+
+// ── 📋 Export Excel ของตัวกรอง key 'audit' (16 ต.ค. 2026 · ผู้ใช้สั่ง "เปลี่ยนชื่อรอรีเช็คใน Export Excel ด้วย") ──
+// ผู้ใช้เห็น "รอรีเช็ค" 2 ที่หลังกด Export: ชื่อชีต (แท็บในไฟล์ Excel) + toast "Export … N รายการ สำเร็จ" — ต้องเป็นชื่อเดียวกับป้ายปุ่มกรอง
+// ชื่อไฟล์ audit_<วันที่>.xlsx กับหัวคอลัมน์ "… Status" คงเดิม (ไม่ใช่คำว่า "รอรีเช็ค" · นอกขอบเขตคำสั่ง — ตรึงไว้ให้รู้ว่าตั้งใจไม่แตะ)
+function exportWithFilter(page, filter) {
+  return page.evaluate((filter) => {
+    invalidatePopupRowsCache();
+    popupFilterState = filter; popupStaffFilter = 'all';
+    document.getElementById('popupSearch').value = '';
+    const expected = getFilteredPopupRows().length;                       // จำนวนแถวที่ตารางจะให้เห็นเมื่อเลือกตัวกรองนี้
+    const toasts = []; const realToast = window.toast; window.toast = (m) => toasts.push(String(m));
+    let file = null; const realWrite = XLSX.writeFile;
+    XLSX.writeFile = (wb, name) => { const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }); file = { name, sheet: wb.SheetNames[0], header8: aoa[0][7], rows: aoa.length - 1 }; };
+    try { exportExcel(); } finally { window.toast = realToast; XLSX.writeFile = realWrite; popupFilterState = 'all'; }
+    return { file, toasts, expected, button: document.getElementById('popupFilterAuditLabel').textContent };
+  }, filter);
+}
+
+test('★ 📋 Export Excel ตัวกรอง "Stock Adj" (สาขายา): ชื่อชีต + toast = Stock Adj ตรงกับป้ายปุ่ม · ไม่มีคำว่า รอรีเช็ค · ชื่อไฟล์/หัวคอลัมน์คงเดิม · ตัวกรองอื่นไม่เปลี่ยน', async ({ browser }) => {
+  const app = await bootBare(browser);
+  for (const branch of ['SRC', 'KKL', 'SSS']) for (const role of ['pharmacist', 'assistant']) {
+    await setup(app.page, { branch, role });
+    const r = await exportWithFilter(app.page, 'audit');
+    const id = `${branch}/${role}`;
+    // AU0/AU1 (รอรีเช็ค) + SA0 (Stock Adj ตรง) = 3 แถว — ชุดเดียวกับที่ปุ่มกรองให้เห็น (ไม่รวม pass)
+    expect(r.expected, id).toBe(3);
+    expect(r.file, id).toMatchObject({ sheet: 'Stock Adj', header8: 'Recheck Status', rows: 3 });
+    expect(r.file.name, id).toMatch(/^audit_.+\.xlsx$/);
+    expect(r.toasts, id).toEqual(['Export Stock Adj 3 รายการ สำเร็จ']);
+    expect(r.button, id).toBe('Stock Adj');                                // ปุ่ม = ชีต = toast (ห้ามแยกชื่อกัน)
+    expect(JSON.stringify([r.file, r.toasts]), id).not.toContain('รอรีเช็ค');
+  }
+  // ตัวกรองอื่น: ชื่อเดิม ไม่ถูกเปลี่ยนเป็น Stock Adj
+  await setup(app.page, { branch: 'SRC', role: 'pharmacist' });
+  const pass = await exportWithFilter(app.page, 'pass');
+  expect(pass.file).toMatchObject({ sheet: 'Stock', rows: 1 });
+  expect(pass.file.name).toMatch(/^stock_pass_.+\.xlsx$/);
+  expect(pass.toasts).toEqual(['Export Pass 1 รายการ สำเร็จ']);
+  const all = await exportWithFilter(app.page, 'all');
+  expect(all.file).toMatchObject({ sheet: 'Stock', rows: all.expected });
+  expect(all.expected).toBeGreaterThanOrEqual(4);
+  expect(all.file.name).toMatch(/^stock_all_.+\.xlsx$/);
+  expect(all.toasts).toEqual([`Export ทั้งหมด ${all.expected} รายการ สำเร็จ`]);
+  await closeApp(app);
+});
+
+test('★ 📋 Export Excel ตัวกรองนี้: WH = Recheck · ปิดสวิตช์ (PHARMACY_RECHECK_TERMS=false) = Audit — ไม่ถูกแตะ', async ({ browser }) => {
+  const app = await bootBare(browser);
+  for (const role of ['supervisor', 'warehouse']) {
+    await setup(app.page, { branch: 'WH', role });
+    const r = await exportWithFilter(app.page, 'audit');
+    expect(r.expected, role).toBeGreaterThan(0);                           // มีแถวจริง ไม่ใช่ผ่านเพราะว่างเปล่า
+    expect(r.file, role).toMatchObject({ sheet: 'Recheck', header8: 'Recheck Status', rows: r.expected });
+    expect(r.toasts, role).toEqual([`Export Recheck ${r.expected} รายการ สำเร็จ`]);
+    expect(r.button, role).toBe('Recheck');
+  }
+  await setup(app.page, { terms: false });                                // สาขายา + ปิดสวิตช์ = คำเดิม Audit ทุกตัวอักษร
+  const off = await exportWithFilter(app.page, 'audit');
+  expect(off.expected).toBe(3);
+  expect(off.file).toMatchObject({ sheet: 'Audit', header8: 'Audit Status', rows: 3 });
+  expect(off.file.name).toMatch(/^audit_.+\.xlsx$/);
+  expect(off.toasts).toEqual(['Export Audit 3 รายการ สำเร็จ']);
+  expect(off.button).toBe('Audit');
   await closeApp(app);
 });
 
