@@ -161,10 +161,7 @@ test('★ direct Stock Adj (ไม่มี marker): confirm → transaction เ
   const t = await toasts(app.page);
   expect(t).toEqual(['success|↺ SA0 กลับเป็น ⏳ รอนับ — ให้ผู้ช่วยสแกนใหม่']);
   const dlg = (await cloud(app.page)) && await app.page.evaluate(() => window.__confirms[0]);
-  expect(dlg).toContain('สแกนใหม่ตั้งแต่ต้น: SA0');
-  expect(dlg).toContain('⏳ รอนับ');
-  expect(dlg).toContain('ไม่ต้องรีเช็ค');
-  expect(dlg).toContain('ระวังปรับซ้ำ');
+  expect(dlg).toBe('เริ่มนับใหม่: SA0\nสินค้า SA0\n\nสแกนสินค้าใหม่และกด Confirm');
   await closeApp(app);
 });
 

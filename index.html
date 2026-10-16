@@ -8590,8 +8590,7 @@ async function restartPharmacyScan(sku){
   if(_restartScanBusy.has(sku))return;
   const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
   if(!sd||sd.status!=='stock_adjustment'){beepWarn();toast('รายการนี้สแกนใหม่ไม่ได้','warn');return;}
-  const shown=sd.recheckQty!=null?sd.recheckQty:sd.countedQty;
-  if(!confirm(`สแกนใหม่ตั้งแต่ต้น: ${sku}\n${si?.productName||''}\n\nผลนับเดิม ${shown} จะถูกล้าง รายการกลับเป็น ⏳ รอนับ\nให้ผู้ช่วยสแกนนับใหม่ แล้ว Confirm ที่ Desktop (ไม่ต้องรีเช็ค)\n\nถ้าส่งใบ ORDS/IRPS ของรายการนี้เข้า ERP ไปแล้ว ระวังปรับซ้ำ\nยืนยันหรือไม่?`))return;
+  if(!confirm(`เริ่มนับใหม่: ${sku}\n${si?.productName||''}\n\nสแกนสินค้าใหม่และกด Confirm`))return;
   // ตรวจหลัง confirm (กล่องโต้ตอบหยุด event loop — flush ที่ค้างอาจเริ่มทันทีที่กลับมา) · เขียนค้างอยู่ = ผลอาจฟื้นเอกสารหลังเราลบ
   if(_scanItemInFlight.has(sku)){beepWarn();toast('กำลังบันทึกรายการนี้ — รอสักครู่แล้วกดใหม่','warn');return;}
   const epoch=_countResetAt||'';const knownRev=_scanItemRev.get(sku)||0;
