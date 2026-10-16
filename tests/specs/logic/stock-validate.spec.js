@@ -281,8 +281,9 @@ test('สิทธิ์: เภสัชสาขายาเห็น · WH / 
   const vis = () => app.page.evaluate(() => { _applyStatAuditCardMode(); return [document.getElementById('stockValidatePanel').style.display, _stockValidateEnabled()]; });
   await seed(app.page);
   expect(await vis()).toEqual(['', true]);
+  // badge = 6 ไม่ตรง + 1 เอกสารนอกใบที่ยังไม่รับทราบ (SKU PASS นับ Pass แต่มีใบ ORDS ใน ERP) — นับรวมตั้งแต่ 16 ต.ค. 2026 (STOCK_VALIDATE_OUTSIDE · stock-validate-outside.spec.js)
   expect(await app.page.evaluate(() => [document.getElementById('stockValidateCount').textContent, document.getElementById('stockValidateCount').style.background]))
-    .toEqual(['6', 'rgba(217, 48, 37, 0.9)']);
+    .toEqual(['7', 'rgba(217, 48, 37, 0.9)']);
   for (const opt of [{ role: 'assistant' }, { branch: 'WH', role: 'supervisor', files: [] }]) {   // ไฟล์ SYSBRANCHID 0 ถูกปฏิเสธที่ WH — ไม่แนบ
     await seed(app.page, opt);
     expect([opt, await vis()]).toEqual([opt, ['none', false]]);
@@ -308,9 +309,10 @@ test('รีเฟรชเองผ่าน hub (_applyStatAuditCardMode) ค�
   const app = await bootBare(browser);
   await seed(app.page, { pages: 25 });
   await app.page.evaluate(() => { _applyStatAuditCardMode(); openStockValidatePopup(); setStockValidatePage(2); });
-  expect(await app.page.textContent('#stockValidateCount')).toBe('31');
+  // 31 ไม่ตรง (6 + PG-01..25) + 1 นอกใบที่ยังไม่รับทราบ (PASS) · ใบใหม่ของ D-NONE (Stock Adj) ทำให้ไม่ตรงลด 1 — ไม่เพิ่มรายการนอกใบ
+  expect(await app.page.textContent('#stockValidateCount')).toBe('32');
   await app.page.evaluate(([o, i, i2]) => { __erp([o, i, i2]); _applyStatAuditCardMode(); }, [FILE_O, FILE_I, FILE_I2]);
-  expect(await app.page.evaluate(() => [_svPage, document.getElementById('stockValidateCount').textContent])).toEqual([2, '30']);
+  expect(await app.page.evaluate(() => [_svPage, document.getElementById('stockValidateCount').textContent])).toEqual([2, '31']);
   const r = (await svRows(app.page)).rows.find((x) => x.sku === 'D-NONE');
   expect([r.state, r.irps, r.net]).toEqual(['match', 2, 2]);
   // XSS: ชื่อสินค้า + เลขที่ใบเป็นข้อความ ไม่ถูกตีความเป็น HTML

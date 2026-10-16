@@ -1221,7 +1221,7 @@
   </div>
 </div>
 
-<!-- เอกสารปรับปรุง LOT สินค้า (เดิม "ใบใน ERP นอกใบ 📦" · 10 ต.ค. 2026 · ADJ_ERP_LOT_AWARE · ชื่อบนจอใหม่ 11 ต.ค. 2026) — ใบ ORDS/IRPS ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ: ใบปรับปรุงลด/เพิ่มสินค้า (outside) / ปรับปรุง LOT สินค้า / ปกติ · เปิดจากปุ่มในแถบ 🧾 ของ 📦 -->
+<!-- เอกสารปรับปรุง LOT สินค้า (เดิม "ใบใน ERP นอกใบ 📦" · 10 ต.ค. 2026 · ADJ_ERP_LOT_AWARE · ชื่อบนจอใหม่ 11 ต.ค. 2026) — ใบ ORDS/IRPS ของสินค้าที่ใบ 📦 ไม่ได้สั่งปรับ: ใบปรับปรุงลด/เพิ่มสินค้า (outside) / ปรับปรุง LOT สินค้า / ปกติ · เปิดจากปุ่มในแถบ 🧾 ของ 📦 และจากปุ่มในแถบผลตรวจของ ✅ Stock Validate (16 ต.ค. 2026) -->
 <div class="stock-popup-overlay" id="adjErpOutsideOverlay" style="display:none;z-index:501;" onclick="handleAdjErpOutsideOverlayClick(event)">
   <div class="stock-popup" id="adjErpOutsideCard" style="max-width:1240px;">
     <div class="stock-popup-header">
@@ -9957,7 +9957,9 @@ function _adjErpOutsideDirCounts(list){
   for(const x of list)if(x.kind==='outside'){const d=_adjErpOutDir(x);c.all[d]++;if(!(x.ack&&x.ack.valid))c.warn[d]++;}
   return c;
 }
-function _adjErpOutsideBtnHtml(list){
+// id/onclick: ปุ่มเดียวกันวางได้ 2 ที่ — แถบ 🧾 ใน 📦 (ค่าเริ่มต้น) กับแถบผลตรวจของ ✅ Stock Validate (id svOutsideBtn · openAdjErpOutsideFromSv)
+//   ⛔ id ต้องไม่ซ้ำกันในหน้า (เทสหยิบปุ่มของ 📦 ด้วย getElementById('adjErpOutsideBtn') — ซ้ำแล้วได้ตัวแรกใน DOM) · ค่าเริ่มต้นต้องให้ HTML เดิมทุกตัวอักษร
+function _adjErpOutsideBtnHtml(list,id='adjErpOutsideBtn',onclick='openAdjErpOutsidePopup()'){
   if(!list.length)return '';
   const c=_adjErpOutsideCounts(list),d=_adjErpOutsideDirCounts(list);
   const parts=[],warn=[];
@@ -9967,17 +9969,33 @@ function _adjErpOutsideBtnHtml(list){
   if(c.acked)parts.push(`✓ รับทราบแล้ว <b>${c.acked}</b>`);
   if(c.lot)parts.push(`🔁 ปรับปรุง LOT สินค้า <b>${c.lot}</b>`);
   if(!parts.length)parts.push(`ℹ️ ${ADJ_ERP_OUT_TITLE} <b>${list.length}</b>`);
-  return `<button type="button" id="adjErpOutsideBtn" class="adj-erp-outside-btn${c.warn?' warn':''}" onclick="openAdjErpOutsidePopup()" title="${ADJ_ERP_OUT_TITLE}: ตรวจสอบรายการเอกสาร ORDS/IRPS ที่มีการเพิ่มเข้า ProMaxx — กดเพื่อดูรายการ">${parts.join(' · ')}</button>`;
+  return `<button type="button" id="${id}" class="adj-erp-outside-btn${c.warn?' warn':''}" onclick="${onclick}" title="${ADJ_ERP_OUT_TITLE}: ตรวจสอบรายการเอกสาร ORDS/IRPS ที่มีการเพิ่มเข้า ProMaxx — กดเพื่อดูรายการ">${parts.join(' · ')}</button>`;
 }
 function _adjErpStatusLabel(s){return({pass:'✅ Pass',stock_adjustment:'Stock Adj',audit:'รอรีเช็ค',pending:'ยังไม่นับ',scanning:'กำลังนับ'})[s]||(s?s:'— ไม่อยู่ในรอบนับ');}
+// เปิดจากปุ่มในหน้า ✅ Stock Validate (STOCK_VALIDATE_OUTSIDE): ป็อปอัพนี้ (z-index 501) ซ้อนเหนือ Stock Validate (500)
+//   จำที่มาไว้ใน _adjErpOutsideFromSv → Stock Validate ปิด/หมดสิทธิ์ต้องปิดป็อปอัพนี้ตามด้วย ไม่ให้ค้างลอย (เหมือน closeAdjustDocPopup ที่ปิดป็อปอัพนี้ตาม 📦)
+//   เปิดจาก 📦 = ไม่จำ (openAdjErpOutsidePopup ตั้งเป็น false ทุกครั้ง) → ปิด Stock Validate ไม่แตะป็อปอัพที่ 📦 เปิดไว้
+let _adjErpOutsideFromSv=false;
 function openAdjErpOutsidePopup(){
   if(!_adjErpEnabled()||!ADJ_ERP_LOT_AWARE)return;
+  _adjErpOutsideFromSv=false;
   _adjErpAckEdit='';
   renderAdjErpOutsideTable();
   _openModal('adjErpOutsideOverlay','adjErpOutsideCard');
   _loadAdjErpAckFromCloud();   // รับทราบที่เครื่องอื่นเพิ่งกด (ไม่รอ) — มาแล้ววาดใหม่เอง
 }
-function closeAdjErpOutsidePopup(){_adjErpAckEdit='';_closeModal('adjErpOutsideOverlay','adjErpOutsideCard');}
+function openAdjErpOutsideFromSv(){
+  if(!STOCK_VALIDATE_OUTSIDE||!_stockValidateEnabled())return;
+  openAdjErpOutsidePopup();
+  const xo=document.getElementById('adjErpOutsideOverlay');
+  _adjErpOutsideFromSv=!!xo&&xo.style.display==='flex';   // เปิดไม่สำเร็จ (สวิตช์/สิทธิ์) = ไม่จำ
+}
+function _closeAdjErpOutsideIfFromSv(){
+  if(!_adjErpOutsideFromSv)return;
+  _adjErpOutsideFromSv=false;_adjErpAckEdit='';
+  const xo=document.getElementById('adjErpOutsideOverlay');if(xo)xo.style.display='none';
+}
+function closeAdjErpOutsidePopup(){_adjErpOutsideFromSv=false;_adjErpAckEdit='';_closeModal('adjErpOutsideOverlay','adjErpOutsideCard');}
 function handleAdjErpOutsideOverlayClick(e){if(e.target===document.getElementById('adjErpOutsideOverlay'))closeAdjErpOutsidePopup();}
 // ช่องรับทราบของแถวปรับยอดนอกใบ — ใช้ dataset ของแถว (ไม่ฝัง SKU ลงสตริง JS)
 function _adjErpAckCellHtml(x){
@@ -10307,13 +10325,29 @@ let STOCK_VALIDATE=true;
 let STOCK_VALIDATE_PAGE_SIZE=20;   // ไม่ใช่เลขบวก = ไม่แบ่งหน้า (ดู _paginate)
 let _svFilter='all';   // 'all' | 'mismatch' | 'match'
 let _svPage=1;
+// ── ปุ่ม "เอกสารนอกใบ" ในหน้านี้ + badge นับรวม (16 ต.ค. 2026 · ผู้ใช้สั่ง — ทางเลือก A ของการวิเคราะห์ "ปรับเพิ่ม" · ทุกเหตุผลของรายการนอกใบ) ──
+//   ปุ่ม = _adjErpOutsideBtnHtml ตัวเดียวกับแถบ 🧾 ใน 📦 (id svOutsideBtn) · กดแล้วเปิดป็อปอัพ "เอกสารปรับปรุง LOT สินค้า" เดิม (openAdjErpOutsideFromSv) ซึ่งครอบทุกเหตุผล:
+//     Pass ตั้งแต่นับ · รีเช็คแล้ว Pass · ยังไม่ได้นับ · ไม่อยู่ในรอบ · ค้างส่ง · แก้เป็น 0 · ไม่มีใน R05 · 🔁 ปรับปรุง LOT · ℹ️ ปกติ — ⛔ ห้ามเขียนกติกานอกใบซ้ำที่นี่ (ใช้ _adjErpOutsideList เท่านั้น)
+//   badge แดงของการ์ด = ไม่ตรง + เอกสารนอกใบที่ "ยังไม่รับทราบ" (kind outside · c.warn) — กติกาเดียวกับปุ่มแดงใน 📦 · ไม่นับ ✓ รับทราบแล้ว / 🔁 ปรับปรุง LOT / ℹ️ ปกติ (ไม่ใช่ปัญหา: นับแล้ว badge แดงถาวรทุกครั้งที่พนักงานปรับปรุง LOT)
+//   ไม่ใช่ filter ของตาราง: แถวของตารางยังเป็น stock_adjustment ล้วน (เทส/Excel/ชิปเท่าเดิม) · Excel ของหน้านี้ไม่รวมรายการนอกใบ (ป็อปอัพนอกใบมี Export ของตัวเอง)
+//   "รับทราบ" ไม่มี listener (อ่านตอนเปิดป็อปอัพ) → badge ต้องรู้ว่าอะไรรับทราบแล้วตั้งแต่ login: _svEnsureAckLoaded อ่านให้ครั้งเดียวต่อ (สาขา|รอบนับ) แบบ lazy จาก hub
+//     (ไม่อ่านใน updateAdjustDocPanel เพราะเส้นทางรีโหลดอัตโนมัติเรียกก่อน initAfterLogin — _countResetAt ยังว่าง → ผลอ่านผิดรอบ)
+// STOCK_VALIDATE_OUTSIDE=false = ไม่มีปุ่ม/ไม่นับใน badge/ไม่อ่านรับทราบ — หน้านี้เท่าเดิมทุกตัวอักษร (ทางถอย — เทสสลับได้)
+let STOCK_VALIDATE_OUTSIDE=true;
+let _svAckTried='';   // (สาขา|รอบนับ) ที่เคยอ่านรับทราบให้ badge แล้ว — อ่านอัตโนมัติครั้งเดียว (ล้ม = ไม่วนซ้ำ · เปิดป็อปอัพอ่านใหม่เอง) · ล้างตอน logout (updateAdjustDocPanel)
 const SV_SRC_UI={confirm:'ตอน Confirm',recheck:'ตอนรีเช็ค',live:'R01 ล่าสุด'};
 const SV_STATE_UI={match:{text:'ตรง',color:'var(--green)'},mismatch:{text:'ไม่ตรง',color:'var(--red)'},na:{text:'—',color:'var(--text3)'}};
 const SV_FILTER_LABEL={mismatch:'ไม่ตรง',match:'ตรง'};
 function _stockValidateEnabled(){return STOCK_VALIDATE&&_adjErpEnabled()&&!_isPdaApp();}
 function _svSigned(v){return v>0?'+'+v:String(v);}   // 0 → "0" · ลบ → "-3" · บวก → "+2"
 function _svColor(v){return v>0?'var(--green)':v<0?'var(--red)':'var(--text3)';}
-// แถวของตาราง (ฟังก์ชันบริสุทธิ์ ไม่แตะ state) → {st,rows,counts:{mismatch,match},skipped:{noSku,noBasis}} · เรียง ไม่ตรง → ตรง → ไม่มีรายงาน แล้วตาม SKU
+// รายการนอกใบสำหรับปุ่ม + badge ของหน้านี้ → {list,c:{warn,acked,lot,ok}} · ว่างเมื่อสวิตช์ปิด/ไม่มีรายงาน (ADJ_ERP_LOT_AWARE ปิด → _adjErpOutsideList ว่างเอง)
+function _svOutside(st){
+  if(!STOCK_VALIDATE_OUTSIDE||!st)return {list:[],c:{warn:0,acked:0,lot:0,ok:0}};
+  const list=_adjErpOutsideList();
+  return {list,c:_adjErpOutsideCounts(list)};
+}
+// แถวของตาราง (ฟังก์ชันบริสุทธิ์ ไม่แตะ state) → {st,rows,counts:{mismatch,match},skipped:{noSku,noBasis},outside:{list,c}} · เรียง ไม่ตรง → ตรง → ไม่มีรายงาน แล้วตาม SKU
 function _stockValidateRows(){
   const st=_adjErpCurrent();
   const idx=st?_adjErpIndex(st):null;
@@ -10344,7 +10378,7 @@ function _stockValidateRows(){
   }
   const rank={mismatch:0,match:1,na:2};
   rows.sort((a,b)=>rank[a.state]-rank[b.state]||(a.sku<b.sku?-1:a.sku>b.sku?1:0));
-  return {st,rows,counts,skipped};
+  return {st,rows,counts,skipped,outside:_svOutside(st)};
 }
 function _svViewRows(res){return res.st&&_svFilter!=='all'?res.rows.filter(r=>r.state===_svFilter):res.rows;}
 function _svDocsTitle(docs,type){const a=docs.filter(x=>x.type===type);return a.length?a.map(x=>`${x.no} · ${_adjErpFmtAt(x.at,true)} · ${x.type} ${x.qty}`).join('\n'):`ไม่มีใบ ${type} ของสินค้านี้ในรายงาน`;}
@@ -10407,12 +10441,13 @@ function _svNotes(r){
 }
 function _renderStockValidateBadge(res){
   const c=document.getElementById('stockValidateCount');if(!c)return;
-  const mm=res.counts.mismatch;
-  const text=res.st?String(mm):'—';
+  // badge = ไม่ตรง (ตาราง) + เอกสารนอกใบที่ยังไม่รับทราบ (ปุ่มข้างตัวกรอง · STOCK_VALIDATE_OUTSIDE) — สวิตช์ปิด/ไม่มีรายการ ow=0 → ตัวเลขและ tooltip เท่าเดิมทุกตัวอักษร
+  const mm=res.counts.mismatch,ow=res.outside?res.outside.c.warn:0,total=mm+ow;
+  const text=res.st?String(total):'—';
   if(c.textContent!==text)c.textContent=text;
-  c.style.background=res.st&&mm>0?'rgba(217,48,37,0.9)':'rgba(255,255,255,0.25)';
+  c.style.background=res.st&&total>0?'rgba(217,48,37,0.9)':'rgba(255,255,255,0.25)';
   const btn=c.closest('button');
-  if(btn)btn.title=res.st?`ไม่ตรง ${mm} · ตรง ${res.counts.match} · Stock Adj ทั้งหมด ${res.rows.length} รายการ`:'ยังไม่แนบ R02.102 — แนบที่ 📦 ปรับปรุงสินค้า → 🧾';
+  if(btn)btn.title=res.st?`ไม่ตรง ${mm}${ow?` · เอกสารนอกใบที่ยังไม่รับทราบ ${ow}`:''} · ตรง ${res.counts.match} · Stock Adj ทั้งหมด ${res.rows.length} รายการ`:'ยังไม่แนบ R02.102 — แนบที่ 📦 ปรับปรุงสินค้า → 🧾';
 }
 function renderStockValidateTable(pre){
   const body=document.getElementById('svBody');if(!body)return;
@@ -10427,8 +10462,10 @@ function renderStockValidateTable(pre){
     if(!st){bar.style.display='none';bar.innerHTML='';}
     else{
       const chip=(k,label,cnt)=>`<button type="button" class="sv-chip${_svFilter===k?' active':''}" data-sv-filter="${k}" onclick="setStockValidateFilter('${k}')">${label} <b>${cnt}</b></button>`;
+      // ปุ่มเอกสารนอกใบ (ไม่ใช่ชิปตัวกรอง — ⛔ ห้ามใช้คลาส .sv-chip: โค้ดอื่นวน .sv-chip ตามคลาส) · รายการว่าง/สวิตช์ปิด = ไม่มีปุ่ม
       bar.innerHTML='<span style="font-size:0.72rem;font-weight:700;color:var(--text2);">ผลตรวจ</span>'
-        +chip('all','ทั้งหมด',res.rows.length)+chip('mismatch','❌ ไม่ตรง',res.counts.mismatch)+chip('match','✅ ตรง',res.counts.match);
+        +chip('all','ทั้งหมด',res.rows.length)+chip('mismatch','❌ ไม่ตรง',res.counts.mismatch)+chip('match','✅ ตรง',res.counts.match)
+        +(res.outside?_adjErpOutsideBtnHtml(res.outside.list,'svOutsideBtn','openAdjErpOutsideFromSv()'):'');
       bar.style.display='flex';
     }
   }
@@ -10464,16 +10501,27 @@ function renderStockValidateTable(pre){
       +'</tr>';
   }).join('');
 }
-// เรียกจาก _applyStatAuditCardMode (hub) — โชว์/ซ่อนการ์ด + badge + วาดใหม่ถ้าป็อปอัพเปิดอยู่ (คงหน้าเดิม) · หมดสิทธิ์ = ปิดป็อปอัพด้วย
+// badge ต้องรู้ว่าอะไร "รับทราบ" แล้วตั้งแต่ login โดยไม่ต้องรอใครเปิดป็อปอัพ — ไม่งั้นนับทุกรายการเป็นยังไม่รับทราบ (badge สูงเกินแล้วลดเองตอนเปิดป็อปอัพ)
+//   อ่านเมื่อมีรายการ outside จริงเท่านั้น · ครั้งเดียวต่อ (สาขา|รอบนับ) (_svAckTried ตั้งก่อนอ่าน → ล้ม/ออฟไลน์ไม่วนซ้ำทุกรอบ hub) · มาแล้ว _adjErpOutsideRefresh → hub วาด badge ใหม่เอง
+function _svEnsureAckLoaded(list){
+  if(!STOCK_VALIDATE_OUTSIDE||!_db||!_adjErpAckOn()||_adjErpAckCurrent())return;
+  if(!list.some(x=>x.kind==='outside'))return;
+  const key=currentBranch+'|'+(_countResetAt||'');
+  if(_svAckTried===key)return;
+  _svAckTried=key;
+  _loadAdjErpAckFromCloud();
+}
+// เรียกจาก _applyStatAuditCardMode (hub) — โชว์/ซ่อนการ์ด + badge + วาดใหม่ถ้าป็อปอัพเปิดอยู่ (คงหน้าเดิม) · หมดสิทธิ์ = ปิดป็อปอัพ (และป็อปอัพนอกใบที่เปิดจากหน้านี้) ด้วย
 function _refreshStockValidate(){
   const on=_stockValidateEnabled();
   const p=document.getElementById('stockValidatePanel');
   if(p){const d=on?'':'none';if(p.style.display!==d)p.style.display=d;}
   const ov=document.getElementById('stockValidateOverlay');
   const open=!!ov&&ov.style.display==='flex';
-  if(!on){if(open)ov.style.display='none';return;}
+  if(!on){if(open)ov.style.display='none';_closeAdjErpOutsideIfFromSv();return;}
   const res=_stockValidateRows();
   _renderStockValidateBadge(res);
+  _svEnsureAckLoaded(res.outside.list);
   if(open)renderStockValidateTable(res);
 }
 function openStockValidatePopup(){
@@ -10484,8 +10532,9 @@ function openStockValidatePopup(){
   _openModal('stockValidateOverlay','stockValidateCard');
   const b=document.querySelector('#stockValidateCard .stock-popup-body');if(b)b.scrollTop=0;
   _loadAdjErpFromCloud();   // ผลที่แนบล่าสุด (ไม่รอ · มาแล้ว hub วาดใหม่เอง) — จำเป็นเมื่อไม่มี listener (PHARMACY_ADJ_ERP_CARD ปิด)
+  if(STOCK_VALIDATE_OUTSIDE)_loadAdjErpAckFromCloud();   // รับทราบที่เครื่องอื่นเพิ่งกด (ไม่รอ · มาแล้ว _adjErpOutsideRefresh → hub วาด badge/ปุ่มใหม่เอง)
 }
-function closeStockValidatePopup(){_closeModal('stockValidateOverlay','stockValidateCard',()=>{const el=document.getElementById('scanInput');if(el)el.focus();});}
+function closeStockValidatePopup(){_closeAdjErpOutsideIfFromSv();_closeModal('stockValidateOverlay','stockValidateCard',()=>{const el=document.getElementById('scanInput');if(el)el.focus();});}
 function handleStockValidateOverlayClick(e){if(e.target===document.getElementById('stockValidateOverlay'))closeStockValidatePopup();}
 function setStockValidateFilter(f){
   _svFilter=SV_FILTER_LABEL[f]?f:'all';_svPage=1;
@@ -10666,6 +10715,7 @@ async function _adjErpAckSave(sku,val){
 function _adjErpOutsideRefresh(){
   const ov=document.getElementById('adjustDocPopupOverlay');if(ov&&ov.style.display==='flex')renderAdjustDocTable();
   const xo=document.getElementById('adjErpOutsideOverlay');if(xo&&xo.style.display==='flex')renderAdjErpOutsideTable();
+  _refreshStockValidate();   // ปุ่ม + badge ของหน้า ✅ Stock Validate ใช้รับทราบชุดเดียวกัน — กดรับทราบ/อ่านรับทราบเสร็จแล้วตัวเลขต้องขยับเอง (หมดสิทธิ์/สวิตช์ปิด = no-op)
 }
 function armAdjErpAck(sku){
   if(!_adjErpAckOn()||_adjErpAckBusy)return;
@@ -11611,7 +11661,7 @@ function updateAdjustDocPanel(){
     // ผู้ช่วยสาขายายังต้องใช้ผลนี้กับการ์ด "Stock Adj เข้าระบบ" (_adjErpCardOn) → ล้างเฉพาะเมื่อไม่มีใครใช้ (logout/สาขาอื่น/สวิตช์ปิด)
     if(!_adjErpCardOn()){_adjErp=null;_adjErpReadToken++;}
     _adjHist=null;_adjHistReadToken++;_adjHistExpanded.clear();_adjHistUndoArm='';_adjHistImportCur=null;   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
-    _adjErpAck=null;_adjErpAckReadToken++;_adjErpAckEdit='';   // รับทราบปรับยอดนอกใบ (local) — ของบน cloud ยังอยู่ เปิด 📦 ครั้งหน้าอ่านใหม่   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
+    _adjErpAck=null;_adjErpAckReadToken++;_adjErpAckEdit='';_svAckTried='';   // รับทราบปรับยอดนอกใบ (local) — ของบน cloud ยังอยู่ เปิด 📦 ครั้งหน้าอ่านใหม่ · _svAckTried ล้างให้ login ถัดไปอ่านให้ badge ใหม่   // ประวัติปรับปรุง (local) — ของบน cloud ยังอยู่ ล็อกอินครั้งหน้าอ่านใหม่
   }else _loadAdjHistFromCloud();   // อ่านประวัติตอนเข้าใช้งาน (ไม่รอ) เพื่อให้ป้ายตัวเลขปุ่ม 📦 ไม่นับแถวที่ส่งออกไปแล้ว — กรองรอบนับตอนใช้ จึงไม่ต้องรอ _countResetAt
   updateAdjustDocCount();
   _applyStatAuditCardMode();
