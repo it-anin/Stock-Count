@@ -94,7 +94,7 @@ const domRows = (page) => page.evaluate(() => [...document.querySelectorAll('#sv
   const main = (td) => { const s = td.querySelector('span'); return s ? s.textContent : td.textContent.trim(); };
   const color = (td) => { const s = td.querySelector('span'); return s ? s.style.color : ''; };
   const sub = (td) => [...td.querySelectorAll('.sv-sub')].map((x) => x.textContent).join(' | ');
-  return { sku: tr.dataset.sku, no: c[0].textContent, name: c[2].textContent, sys: main(c[3]), sysSub: sub(c[3]), cnt: main(c[4]), cntSub: sub(c[4]),
+  return { sku: tr.dataset.sku, no: c[0].textContent, name: c[2].textContent, sys: main(c[3]), sysSub: sub(c[3]), sysTitle: c[3].title, cnt: main(c[4]), cntSub: sub(c[4]),
     diff: main(c[5]), diffColor: color(c[5]), diffSub: sub(c[5]), ords: main(c[6]), ordsColor: color(c[6]), ordsSub: sub(c[6]), ordsTitle: c[6].title,
     irps: main(c[7]), irpsColor: color(c[7]), irpsTitle: c[7].title, net: c[8].textContent.trim(), netColor: c[8].style.color,
     res: main(c[9]), resColor: color(c[9]), resSub: sub(c[9]) };
@@ -137,7 +137,9 @@ test('★ ตัวเลขตอนตัดสิน: ค่าแช่ไ�
   // บนจอ: ป้ายที่มา · ยอดนับดิบ + R16
   await app.page.evaluate(() => openStockValidatePopup());
   const d = Object.fromEntries((await domRows(app.page)).map((x) => [x.sku, x]));
-  expect([d['D-ORDS'].sys, d['D-ORDS'].sysSub, d['R-OLD'].sysSub, d['NS-LIVE'].sysSub]).toEqual(['10', 'ตอน Confirm', 'ตอนรีเช็ค', 'R01 ล่าสุด']);
+  expect([d['D-ORDS'].sys, d['D-ORDS'].sysSub, d['R-OLD'].sysSub, d['NS-LIVE'].sysSub]).toEqual(['10', '', '', '']);   // 16 ต.ค. 2026: ไม่มีข้อความที่มาใต้ตัวเลขแล้ว (ที่มายังอยู่ใน tooltip + Excel)
+  expect([d['D-ORDS'].sysTitle, d['R-OLD'].sysTitle, d['NS-LIVE'].sysTitle]).toEqual([
+    expect.stringContaining('ตอน Confirm'), expect.stringContaining('ตอนรีเช็ค'), expect.stringContaining('R01 ล่าสุด')]);
   expect([d['D-COMP'].cnt, d['D-COMP'].cntSub, d['D-ORDS'].cntSub]).toEqual(['9', 'นับ 7 · R16 +2', '']);
   await closeApp(app);
 });
@@ -432,7 +434,7 @@ test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไ�
   await app.page.evaluate(() => setStockValidateFilter('outside'));
   const d = await view();
   expect(Object.keys(d).sort()).toEqual(['AUD', 'PASS', 'X-LOT', 'X-MIX', 'X-NONE', 'X-PEND']);
-  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', sys: '7', sysSub: 'R01 ล่าสุด', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'ปรับนอกแอป', resColor: 'var(--yellow)', resSub: 'สถานะในแอป: ยังไม่ได้นับ' });
+  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', sys: '7', sysSub: '', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'ปรับนอกแอป', resColor: 'var(--yellow)', resSub: 'สถานะในแอป: ยังไม่ได้นับ' });
   expect(d['PASS']).toMatchObject({ ords: '-1', ordsColor: 'var(--red)', irps: '0', net: '-1', res: 'ปรับนอกแอป', resSub: 'สถานะในแอป: Pass' });
   expect(d['AUD'].resSub).toBe('สถานะในแอป: รอรีเช็ค');
   expect(d['X-LOT']).toMatchObject({ ords: '-1', irps: '+1', net: '0', res: 'ปรับปรุง LOT', resSub: 'สถานะในแอป: Pass' });
