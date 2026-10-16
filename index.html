@@ -6943,6 +6943,10 @@ function _removeSkuFromFirestore(sku){
 // WH ใช้คำว่า "Recheck" แทน "Audit" ทุก label ที่ผู้ใช้เห็น (status code 'audit' ไม่เปลี่ยน)
 // สาขายา (ต.ค. 2026 · PHARMACY_RECHECK_TERMS): ไม่มีขั้น Audit แล้ว → รายการที่รอเภสัชเรียก "รอรีเช็ค"
 function _auditTerm(){return currentBranch==='WH'?'Recheck':_pharmTxt('Audit','รอรีเช็ค');}
+// ชื่อตัวกรอง key 'audit' ของ 📋 รายการสต็อคสินค้า — ใช้ทั้งป้ายปุ่ม (applyAuditTerminology) และ toast/ชื่อชีตตอน Export Excel (exportExcel) ให้ตรงกันเสมอ
+// ตัวกรองนี้รวม audit + stock_adjustment (getFilteredPopupRows) → สาขายาเรียก "Stock Adj" (16 ต.ค. 2026) · WH = Recheck · ปิดสวิตช์ = Audit
+// ⛔ ห้ามเปลี่ยนที่ _auditTerm() แทน — ใช้ร่วมกับแท็บ "รอรีเช็ค" ของป็อปอัพ Stock Adj (avTabAuditLabel) ซึ่งมีแต่ status 'audit' จริง
+function _popupAuditFilterTerm(){return _pharmTxt(_auditTerm(),'Stock Adj');}
 // ป้ายสถานะ audit ในตาราง (RESULT / 📋) — สาขายาบอกชัดว่ายังเป็นงานของ Stock Adj ที่รอเภสัชรีเช็ค (ขึ้นใบ 📦 แล้วด้วยเลขตอน Confirm · ต.ค. 2026 ดู _isAuditAdjItem)
 // PDA ช่องแคบ ใช้คำสั้น · twoLine = ช่อง STATUS ของ RESULT (128px) — บรรทัดเดียวล้นจนถูกตัด จึงแบ่ง 2 บรรทัด
 //   (<br> ใน span block ตัดบรรทัดได้แม้ .pill เป็น nowrap · ใช้เฉพาะใน HTML ห้ามส่งไป textContent/toast)
@@ -6966,7 +6970,7 @@ function applyAuditTerminology(){
   set('statAuditLabel',w);
   set('auditVerifyPanelTitle',verify);
   set('auditVerifyBtnLabel',verify);
-  set('popupFilterAuditLabel',w);
+  set('popupFilterAuditLabel',_popupAuditFilterTerm()); // ปุ่มกรอง key 'audit' ของ 📋 (ชื่อเดียวกับ toast/ชื่อชีตตอน Export — ดู _popupAuditFilterTerm) · WH=Recheck · ปิดสวิตช์=Audit
   set('popupThAudit',_pharmTxt(w,'ผลตรวจ')); // คอลัมน์นี้โชว์ผลตรวจ (✅/⏳/Stock Adj) ไม่ใช่รายการรอรีเช็ค
   set('avTabAuditLabel',w);
   const pdaAv=document.getElementById('btnPdaAuditVerify');if(pdaAv)pdaAv.title=verify;
@@ -7206,10 +7210,10 @@ function exportExcel(){
   const header=['SKU','Barcode','ProductName','SystemQty','CountedQty','Status','Timestamp',_pharmTxt(_auditTerm()+' Status','Recheck Status')],rows=[header];
   getFilteredPopupRows().forEach(r=>{rows.push([r.sku,r.barcodes,r.info.productName,r.info.systemQty,r.sd.countedQty,r.sd.status,_fmtDateDMY(r.sd.timestamp),r.sd.auditStatus||'pending']);});
   if(rows.length===1){toast('ไม่มีข้อมูลให้ Export ตามตัวกรองที่เลือก','warn');return;}
-  const label=popupFilterState==='audit'?_auditTerm():(POPUP_FILTER_LABELS[popupFilterState]||popupFilterState);
+  const label=popupFilterState==='audit'?_popupAuditFilterTerm():(POPUP_FILTER_LABELS[popupFilterState]||popupFilterState);
   const fileTag=popupFilterState==='audit'?'audit':`stock_${popupFilterState}`;
   const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=header.map((_,c)=>{let m=header[c].length;rows.slice(1).forEach(r=>{const v=r[c]==null?'':String(r[c]);if(v.length>m)m=v.length;});return{wch:m+2};});
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(popupFilterState==='audit'?_auditTerm():'Stock').slice(0,31));XLSX.writeFile(wb,`${fileTag}_${_fileDateDMY()}.xlsx`);toast(`Export ${label} ${rows.length-1} รายการ สำเร็จ`,'success');
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(popupFilterState==='audit'?_popupAuditFilterTerm():'Stock').slice(0,31));XLSX.writeFile(wb,`${fileTag}_${_fileDateDMY()}.xlsx`);toast(`Export ${label} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
 // คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
