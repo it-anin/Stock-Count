@@ -6,6 +6,7 @@ const path = require('path');
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 const TOOL = fs.readFileSync(path.join(__dirname, '../../../tools/restore-item-from-pitr.js'), 'utf8');
+const RECON = fs.readFileSync(path.join(__dirname, '../../../tools/recon-item-from-auditlog.js'), 'utf8');
 
 // เอกสาร item แบบ Stock Adj ที่ผ่านรีเช็ค (initialStatus audit + auditor) ในรูป REST ดิบ — ครบชนิดค่าที่ item มีจริง: string / integer / timestamp
 const REST_DOC = (over = {}) => ({
@@ -149,6 +150,57 @@ test.describe('tools/restore-item-from-pitr.js — logic', () => {
     // bootBare = ไม่ login + Firestore ชี้พอร์ตตาย → ต้องหยุดที่ด่านแรกโดยไม่เรียก Cloud
     const noLogin = await app.page.evaluate(async (files) => { try { await restoreFromPitr({ files }); return 'ran'; } catch (e) { return e.message; } }, [{ name: 'a.json', json: FILE() }]);
     expect(noLogin).toMatch(/ยังไม่ได้เลือกสาขา|ยังไม่ได้เชื่อมต่อ Firestore/);
+    await closeApp(app);
+  });
+
+  test('★ reconItem (ประกอบจากแถว stock_audit_log): ORDS −1 → ระบบตอนรีเช็ค = รีเช็ค+1 · IRPS +2 → รีเช็ค−2 · อ่านผ่าน parseItemFile ได้ครบ · ไม่แต่งค่าที่ไม่รู้', async ({ browser }) => {
+    const app = await boot(browser);
+    await app.page.addScriptTag({ content: RECON });
+    const r = await app.page.evaluate(() => {
+      currentBranch = 'SSS'; _countResetAt = '2026-08-05T08:30:40.811Z';
+      const { parseItemFile, summarize } = restoreFromPitr._internals;
+      const mk = (o) => { const f = reconItem(o); return parseItemFile(f.name, f.json); };
+      const base = { sku: '100026', counted: 53, by: 'A', first: '2026-08-11 14:33:57', auditor: 'B', recheck: 19, last: '2026-09-24 11:59:31' };
+      const ords = mk({ ...base, diff: -1 }), irps = mk({ ...base, sku: '100027', recheck: 10, diff: 2 });
+      return { ords: ords.data, ordsBranch: ords.branch, ordsName: reconItem({ ...base, diff: -1 }).name, ordsSum: summarize(ords.data), irpsSys: irps.data.recheckSystemQty, irpsSum: summarize(irps.data) };
+    });
+    expect(r.ordsBranch).toBe('SSS');
+    expect(r.ordsName).toBe('reconstructed-SSS-100026.json');
+    expect(r.ords).toEqual({ sku: '100026', barcode: '100026', countResetAt: '2026-08-05T08:30:40.811Z', status: 'stock_adjustment', auditStatus: 'stock_adjustment', initialStatus: 'audit',
+      countedQty: 53, scannedBy: 'A', firstScanAt: '2026-08-11 14:33:57', auditor: 'B', recheckBy: 'B', recheckQty: 19, recheckSystemQty: 20, recheckAt: '2026-09-24 11:59:31', timestamp: '2026-09-24 11:59:31', rev: 1 });
+    expect(r.ords.systemQty).toBeUndefined();     // ไม่แต่งค่าที่ log ไม่เก็บ
+    expect(r.ords.effectiveQty).toBeUndefined();
+    expect(r.ordsSum).toMatchObject({ diff: -1, system: 20, recheck: 19, counted: 53, passedRecheck: true });
+    expect(r.irpsSys).toBe(8);
+    expect(r.irpsSum).toMatchObject({ diff: 2, system: 8, recheck: 10 });
+    await closeApp(app);
+  });
+
+  test('reconItem: ไม่ login / ค่าไม่ครบ / diff ผิด / เวลาอยู่ก่อนรอบนับ / เครื่องหมายทำให้ระบบติดลบ = ปฏิเสธ ไม่เดา', async ({ browser }) => {
+    const app = await boot(browser);
+    await app.page.addScriptTag({ content: RECON });
+    const r = await app.page.evaluate(() => {
+      const t = (o) => { try { reconItem(o); return ''; } catch (e) { return e.message; } };
+      const base = { sku: '100026', counted: 53, by: 'A', first: '2026-08-11 14:33:57', auditor: 'B', recheck: 19, last: '2026-09-24 11:59:31', diff: -1 };
+      const noLogin = t(base);
+      currentBranch = 'SSS'; _countResetAt = '2026-08-05T08:30:40.811Z';
+      return {
+        noLogin,
+        missing: t({ ...base, auditor: '' }), zeroDiff: t({ ...base, diff: 0 }), fracDiff: t({ ...base, diff: -0.5 }), strQty: t({ ...base, recheck: '19' }),
+        badTime: t({ ...base, last: 'วันนี้' }), beforeEpoch: t({ ...base, first: '2026-07-01 10:00:00' }), negSys: t({ ...base, recheck: 1, diff: 5 }),
+        slash: t({ ...base, sku: 'a/b' }), ok: t(base),
+      };
+    });
+    expect(r.noLogin).toContain('ยังไม่ได้ login');
+    expect(r.missing).toContain('ขาดค่า "auditor"');
+    expect(r.zeroDiff).toContain('diff ต้องเป็นจำนวนเต็ม');
+    expect(r.fracDiff).toContain('diff ต้องเป็นจำนวนเต็ม');
+    expect(r.strQty).toContain('recheck ต้องเป็นตัวเลข');
+    expect(r.badTime).toContain('รูปแบบ');
+    expect(r.beforeEpoch).toContain('ก่อนรอบนับ');
+    expect(r.negSys).toContain('ติดลบ');
+    expect(r.slash).toContain('sku ไม่ถูกต้อง');
+    expect(r.ok).toBe('');
     await closeApp(app);
   });
 });

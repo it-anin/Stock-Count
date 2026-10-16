@@ -16,6 +16,7 @@ const { waitForDoc, getDoc } = require('../../lib/emulator');
 const { seedItems } = require('../../lib/seed');
 
 const TOOL = fs.readFileSync(path.join(__dirname, '../../../tools/restore-item-from-pitr.js'), 'utf8');
+const RECON = fs.readFileSync(path.join(__dirname, '../../../tools/recon-item-from-auditlog.js'), 'utf8');
 const ITEM = 'stock_sessions/SRC/items/S-F05';
 const MARKERS = 'stock_sessions/SRC_pharmacy_audit_markers';
 
@@ -231,15 +232,8 @@ test.describe('tools/restore-item-from-pitr.js', () => {
     expect(sysAtRecheck).not.toBe(live);                 // ต้องต่างจากยอดสด = ฐานไม่สด → ห้ามเด้งเข้าใบ
     // เวลาในรูปแบบที่แอปเก็บ (เวลาท้องถิ่น 'YYYY-MM-DD HH:mm:ss') — ต้องอยู่หลังรอบนับของเทส ไม่งั้นแอปถือว่า item ไม่ใช่ของรอบนี้ (ของจริงรอบ 5 ส.ค. · นับ 11 ส.ค. อยู่ในรอบ)
     const local = (min) => { const d = new Date(Date.now() + min * 60000), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
-    const build = ({ sku, branch, epoch, sysAtRecheck, first, last }) => {   // เหมือนโค้ดที่ส่งให้ผู้ใช้วางใน Console ทุกบรรทัด (ต่างแค่ค่าตัวเลข)
-      const F = (o) => { const f = {}; for (const [k, v] of Object.entries(o)) f[k] = typeof v === 'number' ? { integerValue: String(v) } : { stringValue: v }; return f; };
-      return { name: `reconstructed-${branch}-${sku}.json`, json: [{ readTime: 'reconstructed-from-audit-log', found: {
-        name: `projects/x/databases/(default)/documents/stock_sessions/${branch}/items/${sku}`,
-        fields: F({ sku, barcode: sku, countResetAt: epoch, status: 'stock_adjustment', auditStatus: 'stock_adjustment', initialStatus: 'audit',
-          countedQty: 53, scannedBy: 'PDA-A', firstScanAt: first, auditor: 'Pharm', recheckBy: 'Pharm',
-          recheckQty: 19, recheckSystemQty: sysAtRecheck, recheckAt: last, timestamp: last, rev: 1 }) } }] };
-    };
-    const file = await desk.page.evaluate(`(${build.toString()})(${JSON.stringify({ sku: 'S-F05', branch: 'SRC', epoch: desk.epoch, sysAtRecheck, first: local(1), last: local(2) })})`);
+    await desk.page.addScriptTag({ content: RECON });
+    const file = await desk.page.evaluate((o) => reconItem(o), { sku: 'S-F05', counted: 53, by: 'PDA-A', first: local(1), auditor: 'Pharm', recheck: 19, last: local(2), diff: -1 });
     // ปล่อยให้ตัวจัดการ `files` ทำงานเหมือนผลจาก PITR (ชื่อเอกสารต้องเป็นรูป stock_sessions/<สาขา>/items/<SKU>)
     const dry = await run(desk.page, { files: [file] });
     expect(dry).toMatchObject({ dryRun: true, willRestore: 1 });
