@@ -13,12 +13,16 @@
 //   8. เรียง · ชิป · แบ่งหน้า 20 · Export Excel ครบทุกแถวของตัวกรอง
 //   9. สิทธิ์ (WH · ผู้ช่วย · PDA · สวิตช์ปิด · logout ปิดป็อปอัพ) · 10. รีเฟรชเองผ่าน hub คงหน้า · XSS · 11. คลิกในป็อปอัพไม่ดึงโฟกัสไปช่องสแกน
 //   12. ตารางไม่ล้นที่หน้าต่าง 960px (แบ่งครึ่งจอคู่ ProMaxx)
+//   13. ★ คอลัมน์หน่วย (16 ต.ค. 2026) ถัดจากชื่อสินค้า (ไม่นับเป็น Col) → ตาราง 11 คอลัมน์ · หน่วยเล็กสุดตามแอป (skuDirectMap) ตรงกับ 📦/📊 · ไม่มี = "—" (Excel เว้นว่าง) · กัน XSS
 // (ข้อมูลสังเคราะห์ทั้งหมด — ห้ามใช้ CSV จริง)
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 const EPOCH = '2026-08-05T01:00:00.000Z';   // เริ่มรอบ 5/8
 const SCAN = '2026-08-10 16:00:00';          // นับ 10/8
 const XSS_DOC = 'ORDS" ONMOUSEOVER="__SVXSS2=1';   // หลุดจาก title="…" ได้ถ้าไม่ escape
+const XSS_UNIT = '<b onmouseover="window.__SVXSS3=1">เม็ด</b>';   // หน่วยมาจากไฟล์ CSV (R05.106) ต้อง escape เหมือนชื่อสินค้า
+// หน่วยตามแอป (state.skuDirectMap = หน่วยเล็กสุดจาก R05.106) — SKU ที่ไม่ระบุได้ 'เม็ด' · null = ไม่มีบาร์โค้ดตัวคูณ 1 (ไม่มีรายการใน skuDirectMap)
+const UNITS = { 'D-PART': 'กล่อง', 'D-IRPS': 'แผง', 'D-XSS': XSS_UNIT, 'D-NONE': null };
 
 const HDR = ['SYSWAREHOUSEID', 'TRANDATE', 'TRANNO', 'REFERENCENO1', 'SYSVOUCHERID', 'SYSSALEID', 'TOTAL', 'TOTALVAT', 'GRANDTOTAL', 'FCANCEL',
   'TAXRATE', 'SYSPERSONID', 'SYSBRANCHID', 'FPROCESS', 'SCANCODE', 'ITEMNAME', 'SYSUNITID', 'BASEQUANTITY', 'QUANTITY', 'SYSITEMID', 'PRICE',
@@ -42,7 +46,7 @@ const MISMATCH = ['D-EDIT', 'D-NONE', 'D-PART', 'NS-LIVE', 'R-FRESH', 'R-FROZEN0
 const MATCH = ['D-COMP', 'D-EARLY', 'D-IRPS', 'D-LOT', 'D-ORDS', 'D-XSS', 'NS-CAUGHT', 'R-OLD'];
 
 async function seed(page, { role = 'pharmacist', branch = 'SRC', files = [FILE_O, FILE_I], pages = 0, extras = false } = {}) {
-  await page.evaluate(({ role, branch, EPOCH, SCAN, files, pages, extras }) => {
+  await page.evaluate(({ role, branch, EPOCH, SCAN, files, pages, extras, UNITS }) => {
     STOCK_VALIDATE = true; STOCK_VALIDATE_PAGE_SIZE = 20; STOCK_VALIDATE_ERP_EXTRAS = extras;   // เทสเดิมตรึงพฤติกรรม "เฉพาะ Stock Adj" (= ทางถอย) · แถวนอกแอปมีเทสของตัวเองท้ายไฟล์ ADJUST_DOC_ERP_CHECK = true; PHARMACY_ADJ_ERP_CARD = true; ADJ_ERP_LOT_AWARE = true;
     ADJUST_DOC_QTY_EDIT = true; PHARMACY_AUDIT_IN_ADJUST_DOC = true; ADJUST_DOC_SKIP_REOPENED = true; ADJUST_DOC_HISTORY = true;
     currentBranch = branch; currentRole = role; currentUser = 'Pharm'; _countResetAt = EPOCH;
@@ -53,7 +57,11 @@ async function seed(page, { role = 'pharmacist', branch = 'SRC', files = [FILE_O
     for (const el of document.querySelectorAll('[id$="Modal"]')) if (el.style.display === 'flex') el.style.display = 'none';   // หน้าเลือกสาขา/PIN ของ bootBare บังการคลิก
     const base = { auditor: '', countedQty: 0, timestamp: SCAN, firstScanAt: SCAN, scannedBy: 'Asst' };
     const add = (sku, live, sd, name) => {
-      if (live !== null) state.skuMap.set(sku, { sku, productName: name || ('สินค้า ' + sku), unitPrice: 20, systemQty: live, negSys: false, barcodes: [], isDel: false });
+      if (live !== null) {
+        state.skuMap.set(sku, { sku, productName: name || ('สินค้า ' + sku), unitPrice: 20, systemQty: live, negSys: false, barcodes: [], isDel: false });
+        const unit = Object.prototype.hasOwnProperty.call(UNITS, sku) ? UNITS[sku] : 'เม็ด';
+        if (unit !== null) state.skuDirectMap.set(sku, { barcode: 'BC-' + sku, unitName: unit });
+      }
       if (sd) state.scanData.set(sku, { ...base, ...sd });
     };
     const direct = (eff, sys, extra = {}) => ({ status: 'stock_adjustment', auditStatus: 'stock_adjustment', initialStatus: 'stock_adjustment',
@@ -85,7 +93,7 @@ async function seed(page, { role = 'pharmacist', branch = 'SRC', files = [FILE_O
       _adjErp = { ...m, branch, epoch: EPOCH, updatedBy: 'Pharm', updatedAt: '2026-10-10T03:00:00.000Z', localOnly: false, ...extra };
     };
     if (files.length) __erp(files);
-  }, { role, branch, EPOCH, SCAN, files, pages, extras });
+  }, { role, branch, EPOCH, SCAN, files, pages, extras, UNITS });
 }
 const svRows = (page) => page.evaluate(() => _stockValidateRows());
 // แถวบนจอ: sku → ข้อความ/สีของทุกช่อง
@@ -94,10 +102,12 @@ const domRows = (page) => page.evaluate(() => [...document.querySelectorAll('#sv
   const main = (td) => { const s = td.querySelector('span'); return s ? s.textContent : td.textContent.trim(); };
   const color = (td) => { const s = td.querySelector('span'); return s ? s.style.color : ''; };
   const sub = (td) => [...td.querySelectorAll('.sv-sub')].map((x) => x.textContent).join(' | ');
-  return { sku: tr.dataset.sku, no: c[0].textContent, name: c[2].textContent, sys: main(c[3]), sysSub: sub(c[3]), sysTitle: c[3].title, cnt: main(c[4]), cntSub: sub(c[4]),
-    diff: main(c[5]), diffColor: color(c[5]), diffSub: sub(c[5]), ords: main(c[6]), ordsColor: color(c[6]), ordsSub: sub(c[6]), ordsTitle: c[6].title,
-    irps: main(c[7]), irpsColor: color(c[7]), irpsTitle: c[7].title, net: c[8].textContent.trim(), netColor: c[8].style.color,
-    res: main(c[9]), resColor: color(c[9]), resSub: sub(c[9]) };
+  // ตำแหน่งช่อง (11 คอลัมน์): 0 ลำดับ · 1 รหัส · 2 ชื่อ · 3 หน่วย · 4 ระบบ · 5 นับ · 6 ควรปรับ · 7 ORDS · 8 IRPS · 9 ผล Diff · 10 ผลตรวจ
+  return { sku: tr.dataset.sku, no: c[0].textContent, name: c[2].textContent, unit: c[3].textContent.trim(), unitColor: c[3].style.color,
+    sys: main(c[4]), sysSub: sub(c[4]), sysTitle: c[4].title, cnt: main(c[5]), cntSub: sub(c[5]),
+    diff: main(c[6]), diffColor: color(c[6]), diffSub: sub(c[6]), ords: main(c[7]), ordsColor: color(c[7]), ordsSub: sub(c[7]), ordsTitle: c[7].title,
+    irps: main(c[8]), irpsColor: color(c[8]), irpsTitle: c[8].title, net: c[9].textContent.trim(), netColor: c[9].style.color,
+    res: main(c[10]), resColor: color(c[10]), resSub: sub(c[10]) };
 }));
 
 test('ค่าเริ่มต้นที่ส่งมอบ: STOCK_VALIDATE เปิด · หน้าละ 20 · การ์ดอยู่ใต้ 📦 ซ่อนจนล็อกอิน · มีป็อปอัพใน DOM', async ({ browser }) => {
@@ -265,12 +275,14 @@ test('เรียงไม่ตรงก่อน · ชิปตัวกร�
   });
   expect(xl.name).toMatch(/^stock_validate_SRC_\d{2}-\d{2}-\d{4}\.xlsx$/);
   expect(xl.sheet).toBe('Stock Validate');
-  expect(xl.aoa[0]).toEqual(['รหัสสินค้า', 'ชื่อสินค้า', 'Stock ในระบบ (R01.102)', 'ยอดระบบ ณ', 'Stock นับจริง', 'Stock ที่ควรปรับ', 'ORDS', 'IRPS', 'ผล Diff (ORDS + IRPS)', 'ผลตรวจ', 'เลขที่เอกสาร', 'หมายเหตุ']);
+  expect(xl.aoa[0]).toEqual(['รหัสสินค้า', 'ชื่อสินค้า', 'หน่วย', 'Stock ในระบบ (R01.102)', 'ยอดระบบ ณ', 'Stock นับจริง', 'Stock ที่ควรปรับ', 'ORDS', 'IRPS', 'ผล Diff (ORDS + IRPS)', 'ผลตรวจ', 'เลขที่เอกสาร', 'หมายเหตุ']);
   expect(xl.aoa.length - 1).toBe(31);   // ทุกแถวของตัวกรอง (หน้าที่เห็นมี 11)
-  expect(xl.aoa.find((r) => r[0] === 'D-PART')).toEqual(['D-PART', 'สินค้า D-PART', 10, 'ตอน Confirm', 5, -5, -3, 0, -3, 'ไม่ตรง',
+  expect(xl.aoa.find((r) => r[0] === 'D-PART')).toEqual(['D-PART', 'สินค้า D-PART', 'กล่อง', 10, 'ตอน Confirm', 5, -5, -3, 0, -3, 'ไม่ตรง',
     'ORDSBY001 24/09/2026 14:43 ORDS 2, ORDSBY002 24/09/2026 14:43 ORDS 1', 'ต่าง -2']);
-  expect(xl.aoa.find((r) => r[0] === 'D-EDIT')[11]).toBe('ใบ 📦 แก้เป็น 3 · ต่าง -1 · ตรงกับจำนวนที่แก้ในใบ 📦');
-  expect(xl.aoa.find((r) => r[0] === 'NS-LIVE')[11]).toBe('ไม่ได้แช่ยอดระบบตอนตัดสิน — ใช้ R01 ล่าสุด · ต่าง -5');
+  expect(xl.aoa.find((r) => r[0] === 'D-EDIT')[12]).toBe('ใบ 📦 แก้เป็น 3 · ต่าง -1 · ตรงกับจำนวนที่แก้ในใบ 📦');
+  expect(xl.aoa.find((r) => r[0] === 'NS-LIVE')[12]).toBe('ไม่ได้แช่ยอดระบบตอนตัดสิน — ใช้ R01 ล่าสุด · ต่าง -5');
+  // หน่วยใน Excel: ตรงกับจอ (หน่วยตามแอป) · SKU ที่ไม่มีหน่วยเว้นว่าง ไม่ใช่ "—" (ช่องที่ไม่มีข้อมูลของไฟล์นี้เว้นว่างทั้งหมด)
+  expect(['D-EDIT', 'D-NONE'].map((s) => xl.aoa.find((r) => r[0] === s)[2])).toEqual(['เม็ด', '']);
   // ปิดแล้วเปิดใหม่ = ตัวกรอง "ทั้งหมด" หน้า 1 (ไม่จำของเดิม)
   await app.page.evaluate(() => { document.getElementById('stockValidateOverlay').style.display = 'none'; openStockValidatePopup(); });
   expect(await app.page.evaluate(() => [_svFilter, _svPage, document.querySelector('#svBar .sv-chip.active').dataset.svFilter, document.querySelectorAll('#svBody tr[data-sku]').length]))
@@ -319,7 +331,7 @@ test('รีเฟรชเองผ่าน hub (_applyStatAuditCardMode) ค�
   await app.page.evaluate(() => setStockValidateFilter('match'));
   const x = await app.page.evaluate(() => {
     const tr = [...document.querySelectorAll('#svBody tr[data-sku]')];
-    const ords = tr.find((t) => t.dataset.sku === 'D-XSS').children[6];
+    const ords = tr.find((t) => t.dataset.sku === 'D-XSS').children[7];   // ช่อง ORDS (index 7 หลังเพิ่มคอลัมน์หน่วย)
     return { xss: [window.__SVXSS, window.__SVXSS2], img: document.querySelectorAll('#svBody img').length, attrs: ords.getAttributeNames(),
       name: tr.find((t) => t.dataset.sku === 'D-IRPS').children[2].textContent, title: ords.title };
   });
@@ -382,11 +394,65 @@ test('ตารางไม่ล้นที่หน้าต่าง 960px (
   await seed(app.page, { files: [] });
   await app.page.evaluate(([o, i]) => {
     for (const si of state.skuMap.values()) si.productName = 'ยาทดสอบชื่อยาวเท่าของจริง พาราเซตามอล 500 มก. ชนิดเม็ด 10 แผง x 10 เม็ด';
+    for (const u of state.skuDirectMap.values()) u.unitName = 'แคปซูลนิ่ม';   // คอลัมน์หน่วย (16 ต.ค. 2026) ต้องไม่ดันตารางจนล้น
+    state.skuDirectMap.get('D-PART').unitName = 'กล่อง (10 แผง x 10 เม็ด)';   // หน่วยหลายคำต้องขึ้นบรรทัดใหม่ได้ (ห้าม white-space:nowrap — ไม่งั้นช่องหน่วยกว้าง ~160px แล้วตารางล้น)
     __erp([o, i]); openStockValidatePopup();
   }, [real(FILE_O), real(FILE_I)]);
-  expect(await app.page.evaluate(() => document.querySelector('#svBody tr[data-sku="D-PART"]').children[6].title)).toContain('ORDSBY006260900002');
+  expect(await app.page.evaluate(() => document.querySelector('#svBody tr[data-sku="D-PART"]').children[7].title)).toContain('ORDSBY006260900002');   // ช่อง ORDS
   const m = await app.page.evaluate(() => { const b = document.querySelector('#stockValidateCard .stock-popup-body'); return { body: b.clientWidth, table: b.querySelector('table').scrollWidth }; });
   expect(m.table, JSON.stringify(m)).toBeLessThanOrEqual(m.body);
+  await closeApp(app);
+});
+
+// ── คอลัมน์ "หน่วย" (16 ต.ค. 2026 · ผู้ใช้สั่ง "แสดงหน่วยตามแอป") ──
+// หน่วยตามแอป = หน่วยเล็กสุดของ SKU (R05.106 บาร์โค้ดตัวคูณ 1 → state.skuDirectMap) — ชุดเดียวกับ 📦 / 📊 ประวัติการนับ / รายงานผลการนับ
+test('★ คอลัมน์หน่วย: ถัดจากชื่อสินค้า · หน่วยเล็กสุดตามแอป · ไม่มี = "—" · กัน XSS · colspan เท่าจำนวนคอลัมน์', async ({ browser }) => {
+  const app = await bootBare(browser);
+  // HTML ตั้งต้น (ก่อนวาดครั้งแรก): colspan ต้องเท่าจำนวนคอลัมน์ ไม่งั้นแถว "ยังไม่มีข้อมูล" ไม่เต็มความกว้าง
+  const initialColspan = await app.page.evaluate(() => document.querySelector('#svBody td').colSpan);
+  await seed(app.page);
+  await app.page.evaluate(() => openStockValidatePopup());
+  const head = await app.page.evaluate(() => [...document.querySelectorAll('#svThead th')].map((t) => t.textContent));
+  expect(head.length).toBe(11);
+  expect(head.slice(0, 5)).toEqual(['ลำดับ', 'รหัสสินค้า', 'ชื่อสินค้า', 'หน่วย', 'Stock ในระบบ(R01.102)']);
+  expect(initialColspan).toBe(head.length);
+  const all = await domRows(app.page);
+  const d = Object.fromEntries(all.map((x) => [x.sku, x]));
+  // หน่วยตามที่แอปเก็บไว้ (skuDirectMap) · SKU ที่ไม่มีบาร์โค้ดตัวคูณ 1 = "—" สีจาง
+  expect([d['D-ORDS'].unit, d['D-PART'].unit, d['D-IRPS'].unit]).toEqual(['เม็ด', 'กล่อง', 'แผง']);
+  expect([d['D-ORDS'].unitColor, d['D-NONE'].unit, d['D-NONE'].unitColor]).toEqual(['var(--text2)', '—', 'var(--text3)']);
+  expect(all.every((x) => x.unit && x.unit !== 'undefined' && x.unit !== 'null')).toBe(true);   // ไม่มีแถวไหนหลุดเป็น undefined/null/ว่าง
+  // XSS: หน่วยมาจากไฟล์ CSV ต้องเป็นข้อความ ไม่ถูกตีความเป็น HTML (เหมือนชื่อสินค้า)
+  expect(d['D-XSS'].unit).toBe(XSS_UNIT);
+  expect(await app.page.evaluate(() => [document.querySelectorAll('#svBody b').length, window.__SVXSS3])).toEqual([0, undefined]);
+  // ตามแอป: SKU เดียวกันต้องได้หน่วยเดียวกับ 📦 (ใบ ORDS/IRPS) และ 📊 ประวัติการนับ แท็บ Stock Adj — แหล่งเดียว (skuDirectMap)
+  // (📦/📊 วาดหน่วยแบบไม่ escape — เทียบด้วยหน่วยธรรมดา จึงแทนหน่วย XSS ก่อน)
+  const par = await app.page.evaluate(() => {
+    state.skuDirectMap.get('D-XSS').unitName = 'เม็ด';
+    const sv = new Map(_stockValidateRows().rows.map((x) => [x.sku, x.unit]));
+    const doc = [..._buildAdjustDocRows('ords'), ..._buildAdjustDocRows('irps')].filter((r) => sv.has(r.sku)).map((r) => [r.sku, r.unit, sv.get(r.sku)]);   // รอรีเช็ค (AUD) อยู่ใน 📦 แต่ไม่ใช่ Stock Adj ของตารางนี้
+    _hsFilter = 'stockadj'; renderHistoryStatsTable();
+    const hs = [...document.querySelectorAll('#historyStatsBody tr')].map((tr) => [tr.children[1].textContent.trim(), tr.children[4].textContent.trim()]);
+    return { doc, hs, sv: Object.fromEntries(sv) };
+  });
+  expect(par.doc.length).toBeGreaterThan(5);
+  for (const [sku, unit, svUnit] of par.doc) expect([sku, svUnit]).toEqual([sku, unit]);          // 📦: ไม่มีหน่วย = '' (เท่ากับค่าใน Stock Validate)
+  expect(par.hs.length).toBe(14);
+  for (const [sku, unit] of par.hs) expect([sku, unit]).toEqual([sku, par.sv[sku] || '—']);        // 📊: ไม่มีหน่วย = '—'
+  // ไม่ขึ้นกับ R05.105 (_priceMap — โหลดเมื่อเปิด 📦 เท่านั้น) และไม่ใช่หน่วยของบาร์โค้ดที่สแกน (กล่อง/ลัง) — ตัวเลขในตารางเป็นหน่วยเล็กสุดเสมอ
+  await app.page.evaluate(() => {
+    _priceMap = new Map([['D-PART', { unit: 'BOX', price: 99 }], ['D-NONE', { unit: 'BOX2', price: 99 }]]);
+    state.skuMap.get('D-PART').barcodes = [{ barcode: 'BOX-BC', unitName: 'ลัง', unitMultiplier: 12, unitPrice: 1 }];
+    state.skuMap.get('D-NONE').barcodes = [{ barcode: 'BOX-BC2', unitName: 'ลัง', unitMultiplier: 12, unitPrice: 1 }];   // มีแต่บาร์โค้ดตัวคูณ 12 — ไม่มีตัวคูณ 1
+    renderStockValidateTable();
+  });
+  const after = Object.fromEntries((await domRows(app.page)).map((x) => [x.sku, x.unit]));
+  expect(after['D-PART']).toBe('กล่อง');   // ไม่ใช่ BOX (R05.105) และไม่ใช่ ลัง (บาร์โค้ดที่มี)
+  expect(after['D-NONE']).toBe('—');       // ไม่มีบาร์โค้ดตัวคูณ 1 = ไม่มีหน่วย — ไม่ fallback ไปบาร์โค้ดอื่น/R05.105 (เหมือน 📊)
+  // แถวว่าง: colspan เท่าจำนวนคอลัมน์
+  await app.page.evaluate(() => { state.scanData.clear(); renderStockValidateTable(); });
+  expect(await app.page.evaluate(() => [document.querySelector('#svBody td').colSpan, document.querySelector('#svBody td').textContent]))
+    .toEqual([11, 'ไม่มีสินค้าที่ Stock Adjustment']);
   await closeApp(app);
 });
 
@@ -404,6 +470,9 @@ async function seedExtras(page, opts = {}) {
     state.scanData.set('X-LOT', { ...base, status: 'pass', auditStatus: 'approved', initialStatus: 'pass', countedQty: 3 });
     state.skuMap.set('X-MIX', { sku: 'X-MIX', productName: 'ยาใบสองทิศไม่เท่ากัน', unitPrice: 20, systemQty: 9, negSys: false, barcodes: [], isDel: false });
     state.scanData.set('X-MIX', { ...base, status: 'pass', auditStatus: 'approved', initialStatus: 'pass', countedQty: 9 });
+    // หน่วยตามแอป (skuDirectMap): X-PEND/X-LOT มี · X-MIX ไม่มีบาร์โค้ดตัวคูณ 1 · X-NONE ไม่อยู่ในรอบนับ · PASS/AUD ได้ 'เม็ด' จาก seed
+    state.skuDirectMap.set('X-PEND', { barcode: 'BC-X-PEND', unitName: 'ขวด' });
+    state.skuDirectMap.set('X-LOT', { barcode: 'BC-X-LOT', unitName: 'ซอง' });
     for (const [k, v] of state.skuMap) _r01RawQty.set(k, v.systemQty);   // _rawSystemQty อ่านจาก R01 ดิบ (r01Data) — เทสไม่มี R01 จึงใส่ตรงๆ
     // X-NONE: ไม่มีทั้ง skuMap และ scanData = ไม่อยู่ในรอบนับ · NOSKU = Stock Adj ที่ไม่มีข้อมูลสินค้า (อยู่ใน skipped ไม่ซ้ำเป็นแถวนอกแอป)
   });
@@ -434,13 +503,15 @@ test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไ�
   await app.page.evaluate(() => setStockValidateFilter('outside'));
   const d = await view();
   expect(Object.keys(d).sort()).toEqual(['AUD', 'PASS', 'X-LOT', 'X-MIX', 'X-NONE', 'X-PEND']);
-  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', sys: '7', sysSub: '', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'มีปรับเอกสาร', resColor: 'var(--yellow)', resSub: 'นับจริง: ยังไม่ได้นับ' });
+  expect(d['X-PEND']).toMatchObject({ name: 'ยารอนับ', unit: 'ขวด', sys: '7', sysSub: '', cnt: '—', diff: '—', ords: '0', irps: '+2', irpsColor: 'var(--green)', net: '+2', res: 'มีปรับเอกสาร', resColor: 'var(--yellow)', resSub: 'นับจริง: ยังไม่ได้นับ' });
   expect(d['PASS']).toMatchObject({ ords: '-1', ordsColor: 'var(--red)', irps: '0', net: '-1', res: 'มีปรับเอกสาร', resSub: 'นับจริง: Pass' });
   expect(d['AUD'].resSub).toBe('นับจริง: รอรีเช็ค');
   expect(d['X-LOT']).toMatchObject({ ords: '-1', irps: '+1', net: '0', res: 'ปรับปรุง LOT', resSub: 'นับจริง: Pass' });
   expect(d['X-MIX']).toMatchObject({ ords: '-2', irps: '+1', net: '-1', res: 'มีปรับเอกสาร' });
   expect(d['X-NONE']).toMatchObject({ name: '', sys: '—', irps: '+1', res: 'มีปรับเอกสาร', resSub: 'นับจริง: ไม่อยู่ในรอบนับ' });
   expect(d['X-PEND'].irpsTitle).toContain('IRPSBY009');                   // เลขที่ใบ/จำนวนยังอยู่ใน tooltip
+  // หน่วยของแถวนอกแอป = หน่วยตามแอปเหมือนแถว Stock Adj (skuDirectMap) · ไม่มี = "—"
+  expect(['X-PEND', 'X-LOT', 'PASS', 'AUD', 'X-MIX', 'X-NONE'].map((s) => d[s].unit)).toEqual(['ขวด', 'ซอง', 'เม็ด', 'เม็ด', '—', '—']);
   // ชิป: มีเฉพาะเมื่อมีแถวนอกแอป · "ตรง/ไม่ตรง" ไม่มีแถวนอกแอปปน · badge = ไม่ตรงของ Stock Adj เท่าเดิม แต่ tooltip บอกจำนวนนอกแอป
   expect(await app.page.evaluate(() => [...document.querySelectorAll('#svBar .sv-chip')].map((b) => b.textContent))).toEqual(['ทั้งหมด 20', '❌ ไม่ตรง 6', '✅ ตรง 8', '⚠️ นอกแอป 6']);
   await app.page.evaluate(() => setStockValidateFilter('match'));
@@ -458,8 +529,8 @@ test('★ แถวนอกแอป: SKU ในใบ IRPS/ORDS แต่ไ�
     return got;
   });
   expect(xl.length - 1).toBe(6);
-  expect(xl.find((x) => x[0] === 'X-PEND')).toEqual(['X-PEND', 'ยารอนับ', 7, 'R01 ล่าสุด', '', '', 0, 2, 2, 'มีปรับเอกสาร', 'IRPSBY009 24/09/2026 13:33 IRPS 2', 'นับจริง: ยังไม่ได้นับ']);
-  expect(xl.find((x) => x[0] === 'X-NONE').slice(0, 9)).toEqual(['X-NONE', '', '', 'R01 ล่าสุด', '', '', 0, 1, 1]);
+  expect(xl.find((x) => x[0] === 'X-PEND')).toEqual(['X-PEND', 'ยารอนับ', 'ขวด', 7, 'R01 ล่าสุด', '', '', 0, 2, 2, 'มีปรับเอกสาร', 'IRPSBY009 24/09/2026 13:33 IRPS 2', 'นับจริง: ยังไม่ได้นับ']);
+  expect(xl.find((x) => x[0] === 'X-NONE').slice(0, 10)).toEqual(['X-NONE', '', '', '', 'R01 ล่าสุด', '', '', 0, 1, 1]);
   await closeApp(app);
 });
 
