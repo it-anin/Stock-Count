@@ -3,7 +3,7 @@
 //     Uses the app's own startNewCount so the session doc / epoch / schemaVersion are always format-correct
 //     (no hand-crafted session blobs to drift out of date).
 //   bootJoinCount  — device 2+: boots after the fact and adopts session/epoch/catalog from the cloud.
-const { newAppContext, armDialog, waitForAppReady, waitForCatalog } = require('./boot');
+const { newAppContext, armDialog, waitForAppReady, waitForLoginDone, waitForCatalog } = require('./boot');
 const { emuPort, clearAll } = require('./emulator');
 const { seedMasters } = require('./seed');
 const F = require('./fixtures');
@@ -56,6 +56,7 @@ async function bootFreshCount(browser, opts = {}) {
   const app = await newAppContext(browser, { branch, role, user, mode, projectId, firestorePort: emuPort(), login: true });
   await app.page.goto('/index.html');
   await waitForAppReady(app.page);
+  await waitForLoginDone(app.page);   // เครื่องที่ "พร้อม" = ล็อกอินจบแล้ว (ไม่ใช่แค่มี currentUser) — ดู waitForLoginDone
 
   // Real startNewCount(): new epoch, schemaVersion 2, cloud session doc created, old masters wiped.
   // prompt() opened inside page.evaluate deadlocks Playwright — stub it for the call instead of using a real dialog.
@@ -92,6 +93,7 @@ async function bootJoinCount(browser, opts = {}) {
   }
   await app.page.goto('/index.html');
   await waitForAppReady(app.page);
+  await waitForLoginDone(app.page);   // ล็อกอินจบก่อน — ไม่งั้นสแกนที่ยัดเข้า scanQueue ตรงๆ ถูกด่านช่วงโหลดกันไว้แล้วค้างในคิว (LOGIN_SCAN_BLOCK)
   // Epoch adoption (session snapshot with a newer countResetAt) wipes local r01 via
   // _resetLocalR01ToEmpty — whether it lands before or after the boot-time master restore is an
   // async race (role-dependent steps shift the timing). Make the join deterministic: wait for the
