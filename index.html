@@ -10,7 +10,22 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-512.svg">
   <script src="libs/papaparse.min.js"></script>
-  <script src="libs/xlsx.full.min.js"></script>
+  <!-- xlsx.full.min.js (880 KB) ใช้เฉพาะอัปโหลด/Export Excel บน Desktop — แอป PDA (UA StockCountPDA = เงื่อนไขเดียวกับ _isPdaApp) ไม่ใช้เลย
+       แต่เดิมบล็อกหน้าให้แปลโค้ด ~0.4–0.5 วิ (CPU 6×) ทุกครั้งที่เปิดแอป → PDA ไม่โหลดตอนเปิด · Desktop/เบราว์เซอร์อื่นโหลดเหมือนเดิมทุกอย่าง (document.write = บล็อกการ parse ลำดับเดียวกับแท็กเดิม)
+       เผื่อ PDA ได้ใช้ XLSX จริง (เช่นจอกว้างเกิน 600px จนเห็นการ์ดอัปโหลด): getter โหลดแบบ sync ตอนถูกแตะครั้งแรก → ใช้งานได้เหมือนเดิม แค่สะดุดหนึ่งครั้ง (ไม่ต้องแก้ 28 จุดที่เรียก XLSX.)
+       ทางถอย: XLSX_SKIP_ON_PDA=false → PDA โหลดตอนเปิดเหมือนก่อนแก้ (ดู CLAUDE.md §⚡ PDA ไม่โหลด xlsx ตอนเปิดแอป) -->
+  <script>
+    var XLSX_SKIP_ON_PDA=true;
+    (function(){
+      if(!(XLSX_SKIP_ON_PDA&&/StockCountPDA/.test(navigator.userAgent))){document.write('<script src="libs/xlsx.full.min.js"><\/script>');return;}
+      Object.defineProperty(window,'XLSX',{configurable:true,get:function(){
+        delete window.XLSX; // ให้ `var XLSX={}` ในไฟล์ไลบรารีสร้างตัวจริงทับ (ไม่งั้นวนเรียก getter ซ้ำ)
+        try{var x=new XMLHttpRequest();x.open('GET','libs/xlsx.full.min.js',false);x.send();if(x.status===200)(0,eval)(x.responseText);}
+        catch(e){console.warn('[xlsx] โหลดไม่สำเร็จ',e);}
+        return window.XLSX;
+      }});
+    })();
+  </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
@@ -7522,9 +7537,19 @@ function _applyR16MetaFromDoc(r01d){
     }
   }
 }
+// อ่าน Cloud ตอนล็อกอินพร้อมกัน (ต.ค. 2026 · ผู้ใช้อนุมัติแผนตามกฎ 1) — เดิม restoreFromFirestore รอ [R01+R05] → PM → session doc → items ต่อกันทีละรอบ Cloud
+// ตอนนี้ "เริ่มอ่าน" PM meta และ session doc พร้อมกับ R01+R05 แล้วค่อยรอ/ใช้ผลที่จุดเดิมในโค้ด ⇒ ลำดับ apply (R01→R05→PM→session) และข้อมูลที่ได้ไม่เปลี่ยน เปลี่ยนแค่จังหวะที่ส่ง request
+// ⛔ items ต้องอ่านหลัง session doc เสมอ (query ด้วย countResetAt ของ session) · ⛔ ผลที่อ่านล่วงหน้าห่อด้วย _prefetchRead ที่ไม่ reject (ไม่งั้นรอบที่ล้มก่อนถึงจุด await ขึ้น unhandled rejection) · false = รอทีละรอบเหมือนเดิมทุกจุด (ทางถอยระดับ 1 — CLAUDE.md §⚡ อ่าน Cloud พร้อมกัน)
+let LOGIN_PARALLEL_READ=true;
+function _prefetchRead(makeRef){
+  if(!LOGIN_PARALLEL_READ)return null;
+  try{const ref=makeRef();return ref?ref.get().then(v=>({v}),e=>({e})):null;}catch(e){return null;}   // สร้าง ref/เริ่ม get ไม่ได้ = ไม่ prefetch · จุดใช้งานอ่านเองแบบเดิม
+}
+async function _prefetchedValue(p){const r=await p;if('e' in r)throw r.e;return r.v;}   // โยน error ที่จุดใช้งานเหมือนที่ await get() ตรงๆ จะโยน
 async function restoreMasterFromFirestore(force=false){
   if(!_db||!currentBranch)return;
   const id=getSessionId();
+  const _pmRead=_prefetchRead(()=>getProductMasterMetaRef());   // PM meta เริ่มอ่านพร้อม R01+R05 (ใช้ที่ท้ายฟังก์ชัน)
   // R01/R05: ข้ามถ้ามีแล้วและไม่ force — แต่ timestamp อ่านเสมอ
   try{
     if(force||currentBranch==='WH'||!state.r01Data.length||!state.r05Data.length){
@@ -7567,7 +7592,7 @@ async function restoreMasterFromFirestore(force=false){
   // (เดิม doc.exists===false เป็น no-op เงียบ ซึ่งไม่มีปัญหาตอน global_pm แต่ตอนนี้ PM ผูกสาขาแล้ว)
   try{
     const pmRef=getProductMasterMetaRef();
-    const pmMetaDoc=pmRef?await pmRef.get():null;
+    const pmMetaDoc=pmRef?(_pmRead?await _prefetchedValue(_pmRead):await pmRef.get()):null;
     if(pmMetaDoc&&pmMetaDoc.exists)applyProductMasterMeta(pmMetaDoc.data());
     else{
       state.productMasterData=[];state.productMasterMap.clear();
@@ -8172,12 +8197,14 @@ async function restoreFromFirestore(force=false){
   if(!_db||!currentBranch)return;
   document.getElementById('dbStatus').textContent='Loading...';
   try{
+    // session doc เริ่มอ่านพร้อมกับ master (LOGIN_PARALLEL_READ) — ไม่ขึ้นกับผล master (master ไม่เขียน session doc) · ใช้ผลที่จุดเดิมด้านล่าง
+    const _sessRead=_prefetchRead(()=>_db.collection('stock_sessions').doc(getSessionId()));
     // PM ดึงจาก Firestore เสมอ (badge ต้องแสดง)
     await restoreMasterFromFirestore(force);
     // ถ้า localStorage มี scanData+master อยู่แล้ว ใช้ข้อมูลนั้น (ใหม่กว่า Firestore) เว้นแต่ force=true
     const hasLocalSessionData=state.scanData.size>0;
     const hasLocalMasterData=state.r01Data.length>0&&state.r05Data.length>0;
-    const doc=await _db.collection('stock_sessions').doc(getSessionId()).get();
+    const doc=_sessRead?await _prefetchedValue(_sessRead):await _db.collection('stock_sessions').doc(getSessionId()).get();
     if(!doc.exists){document.getElementById('dbStatus').textContent='Ready';return;}
     _readSchemaVersion(doc);
     const raw=doc.data();

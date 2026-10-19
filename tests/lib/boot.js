@@ -50,6 +50,16 @@ async function newAppContext(browser, opts = {}) {
         sessionStorage.setItem('_autoUpdateRole', role);
       } catch (e) {}
     }, { branch, user, role });
+    // บันทึกว่า initAfterLogin จบแล้ว (ปิดใน finally ของมัน) — สัญญาณ "ล็อกอินจบจริง" ให้ waitForLoginDone
+    // ห่อตอน DOMContentLoaded (init script ลงทะเบียนก่อน handler ของแอป) แบบเดียวกับ login-loader-boot.spec.js · ไม่แก้ไฟล์ production
+    await context.addInitScript(() => {
+      window.__loginDone = false;
+      document.addEventListener('DOMContentLoaded', () => {
+        const o = window.initAfterLogin;
+        if (typeof o !== 'function') return;
+        window.initAfterLogin = async function (...a) { try { return await o.apply(this, a); } finally { window.__loginDone = true; } };
+      });
+    });
   }
 
   const page = await context.newPage();
@@ -76,6 +86,15 @@ async function waitForAppReady(page, { login = true, timeout = 20000 } = {}) {
   );
 }
 
+// Login finished = initAfterLogin() returned (overlay closed, scan block released, listeners started).
+// waitForAppReady({login:true}) only waits for currentUser, which is set BEFORE initAfterLogin even starts — a test that scans
+// right after boot was relying on the login happening to finish first. While the loader is up, scans are dropped on purpose
+// (LOGIN_SCAN_BLOCK) and pushing straight into scanQueue leaves them stuck. Needs newAppContext(login:true) (installs the flag).
+// Epoch adoption (_countResetAt) is NOT a login-finished signal: it happens mid-restore, and moves earlier when reads overlap.
+async function waitForLoginDone(page, { timeout = 30000 } = {}) {
+  await page.waitForFunction(() => window.__loginDone === true, null, { timeout, polling: 50 });
+}
+
 // Catalog loaded = ALL master datasets present and rebuildMaps() ran on them.
 // Checking skuMap alone races the boot-time restore (initAfterLogin's restore and ours overlap;
 // the force path clears r01Data before refilling it).
@@ -87,4 +106,4 @@ async function waitForCatalog(page, { minSkus = 1, timeout = 20000 } = {}) {
   );
 }
 
-module.exports = { newAppContext, armDialog, waitForAppReady, waitForCatalog, closeAllContexts, BASE_URL };
+module.exports = { newAppContext, armDialog, waitForAppReady, waitForLoginDone, waitForCatalog, closeAllContexts, BASE_URL };
