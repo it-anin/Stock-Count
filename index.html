@@ -1502,6 +1502,12 @@ let _pmListenerReady = false;
 let _scanSessionUnsubscribe = null;
 let _scanItemsUnsubscribe = null;      // listener ของ stock_sessions/{branch}/items (schema v2)
 let _scanItemsListenerEpoch = '';      // epoch ที่ query ปัจจุบันผูกอยู่ — เปลี่ยน epoch = ต้อง restart
+// LOGIN_ITEMS_LISTENER_ONCE: ตอนล็อกอิน items ถูกอ่านซ้ำ 3 รอบ (get ใน _loadScanItemsFromCloud + listener ที่เริ่มท้าย restoreFromFirestore
+// + listener ที่ถูกทิ้งแล้วสร้างใหม่ตอน startScanSessionListener ขั้น ④) — ทุกรอบถอดรหัสทั้งชุดบน main thread (ไม่มี cache) · วัดแล้วโตตามจำนวนรายการ
+// เปิด = (ก) startScanSessionListener ไม่ทิ้ง items listener ที่ฟัง epoch เดียวกันอยู่ (ข) restoreFromFirestore ไม่เริ่ม listener เอง (ขั้น ④ เริ่มให้)
+//        (ค) listener ที่ error ล้าง handle ทิ้ง ให้การเริ่มครั้งถัดไปสร้างใหม่ได้ (เดิมการทิ้ง-สร้างใหม่ตอนล็อกอินปลุก listener ที่เสียให้โดยบังเอิญ)
+// ปิด = พฤติกรรมเดิมทุกไบต์ (ทางถอยระดับ 1 — ดู CLAUDE.md §⚡ items listener ตอนล็อกอิน)
+let LOGIN_ITEMS_LISTENER_ONCE = true;
 let _whCountUnsubscribe = null;
 let _whCountInboxData = {};
 let _whCountConfirmationUnsubscribe = null;
@@ -2031,10 +2037,12 @@ function stopProductMasterListener(){
   if(_pmUnsubscribe){_pmUnsubscribe();_pmUnsubscribe=null;}
   _pmListenerReady=false;
 }
-function stopScanSessionListener(){
+// keepItems=true: เฉพาะตอน startScanSessionListener "ผูกใหม่" (LOGIN_ITEMS_LISTENER_ONCE) — items listener ที่ฟัง epoch เดียวกันอยู่ต้องไม่ถูกทิ้ง
+// (ทิ้งแล้วสร้างใหม่ = อ่านทั้งชุดซ้ำ) · ผู้เรียกอื่นทุกจุด (selectBranch / เข้า Admin Mode) ไม่ส่งพารามิเตอร์ = หยุดทั้งหมดเหมือนเดิม
+function stopScanSessionListener(keepItems=false){
   if(_scanSessionUnsubscribe){_scanSessionUnsubscribe();_scanSessionUnsubscribe=null;}
   clearTimeout(_snapshotMergeTimer);_snapshotMergeTimer=null;
-  stopScanItemsListener();
+  if(!keepItems)stopScanItemsListener();
 }
 function _isPdaApp(){return navigator.userAgent.includes('StockCountPDA');}
 function _branchUsesConfirmLock(){return _isPharmacyBranch()||currentBranch==='WH';}
@@ -3007,7 +3015,7 @@ async function _removeWhRecheckInboxItems(skus){
 }
 function startScanSessionListener(){
   if(!_db||!currentBranch||_adminMode)return;
-  stopScanSessionListener();
+  stopScanSessionListener(LOGIN_ITEMS_LISTENER_ONCE);   // items listener ที่ฟัง epoch เดียวกันอยู่คงไว้ — startScanItemsListener() ท้ายฟังก์ชันนี้ข้ามเองด้วย guard epoch
   const ref=_db.collection('stock_sessions').doc(getSessionId());
   _scanSessionUnsubscribe=ref.onSnapshot(doc=>{
     if(!doc.exists)return;
@@ -3088,7 +3096,7 @@ function startScanItemsListener(){
   if(_scanItemsUnsubscribe&&_scanItemsListenerEpoch===epoch)return; // ฟัง epoch นี้อยู่แล้ว
   stopScanItemsListener();
   _scanItemsListenerEpoch=epoch;
-  _scanItemsUnsubscribe=getScanItemsRef().where('countResetAt','==',epoch).onSnapshot(snap=>{
+  const _unsub=getScanItemsRef().where('countResetAt','==',epoch).onSnapshot(snap=>{
     // การเขียนของเครื่องนี้เอง (local echo) — state ถูกต้องอยู่แล้ว ไม่ต้อง apply ซ้ำ
     if(snap.metadata.hasPendingWrites)return;
     let touched=false,statusTouched=false,needsFullRender=false;
@@ -3138,7 +3146,13 @@ function startScanItemsListener(){
     else{updateStats();renderTable();updateConfirmBtn();updatePharmacistAuditConfirmBtn();}
     if(document.getElementById('auditVerifyPopupOverlay')?.style.display==='flex')renderAuditVerifyTable();
     document.getElementById('dbStatus').textContent='Synced ☁️';
-  },e=>console.warn('[scanItems listener]',e.message));
+  },e=>{
+    console.warn('[scanItems listener]',e.message);
+    // listener ที่ error จบการทำงานแล้ว (SDK ไม่ส่ง snapshot อีก) แต่ handle ยังค้าง → guard "ฟัง epoch นี้อยู่แล้ว" จะไม่ยอมสร้างใหม่ตลอดไป
+    // เดิมการทิ้ง-สร้างใหม่ตอนล็อกอินปลุกให้โดยบังเอิญ · ล้างเฉพาะเมื่อ handle ยังเป็นของ listener ตัวนี้ (ไม่ทับตัวใหม่ที่ถูกสร้างไปแล้ว)
+    if(LOGIN_ITEMS_LISTENER_ONCE&&_scanItemsUnsubscribe===_unsub){_scanItemsUnsubscribe=null;_scanItemsListenerEpoch='';}
+  });
+  _scanItemsUnsubscribe=_unsub;
 }
 function stopScanItemsListener(){
   if(_scanItemsUnsubscribe){_scanItemsUnsubscribe();_scanItemsUnsubscribe=null;}
@@ -8274,7 +8288,10 @@ async function restoreFromFirestore(force=false){
         for(const[sku,sd]of beforeDirty)if(sd)state.scanData.set(sku,sd); // ของสดที่ยังไม่ขึ้น cloud ต้องไม่หาย
         _applyPharmacyAuditMarkersToState();
         invalidatePopupRowsCache();rebuildScanListMap(true);renderScanList();updateStats();renderTable();updateConfirmBtn();
-        startScanItemsListener();
+        // LOGIN_ITEMS_LISTENER_ONCE: ไม่เริ่ม listener ตรงนี้ — initAfterLogin ขั้น ④ (startScanSessionListener) เริ่มให้หลังรีเซ็ตของค้างข้ามวันแล้ว
+        // (listener รอบนี้เดิมถูกทิ้งที่ขั้น ④ อยู่แล้ว · snapshot แรกของมันยังไปคั่นคิว SDK ทำให้ขั้น ③ อ่าน marker ใบเดียวช้าเป็นวินาที)
+        // snapshot แรกของ listener คือสถานะปัจจุบัน — การเปลี่ยนแปลงจากเครื่องอื่นช่วงที่ยังไม่ผูกไม่หาย
+        if(!LOGIN_ITEMS_LISTENER_ONCE)startScanItemsListener();
         document.getElementById('dbStatus').textContent='Synced';return;
       }
       // merge confirmed items from Firestore even when local data exists
