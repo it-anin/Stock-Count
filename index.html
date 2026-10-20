@@ -9,6 +9,14 @@
   <title>Stock Count System</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-512.svg">
+  <!-- ฉากขาวต่อเนื่อง (ผู้ใช้อนุมัติ "ข้อ A" 20 ต.ค. 2026): เปิดแอป → เลือกสาขา → PIN → เลือกชื่อ → หน้า Loading เป็นพื้นขาวต่อเนื่อง ไม่เห็นโครงหน้าเปล่าคั่น
+       สวิตช์อยู่ตรงนี้ใน head เพราะต้องตัดสินก่อนวาดเฟรมแรก (#bootCover ขาวคลุมโครงหน้าเปล่าระหว่างรอสคริปต์หลัก ~950 KB แปล/รัน + เช็ค maintenance.json)
+       true = เปิด · false = ไม่ใส่คลาส login-white บน html → ไม่มีฉากขาวเฟรมแรก / หน้า Loading กลับเป็น #f0f4f8 / หน้าเลือกชื่อกลับเป็นสีเข้มโปร่ง เหมือนก่อนแก้ทุกจุด
+       ทางถอยระดับ 1 = เปลี่ยนเป็น false แล้ว deploy (ดู CLAUDE.md §🤍 ฉากขาวต่อเนื่อง) -->
+  <script>
+    var LOGIN_WHITE_FLOW=true;
+    if(LOGIN_WHITE_FLOW)document.documentElement.classList.add('login-white');
+  </script>
   <script src="libs/papaparse.min.js"></script>
   <!-- xlsx.full.min.js (880 KB) ใช้เฉพาะอัปโหลด/Export Excel บน Desktop — แอป PDA (UA StockCountPDA = เงื่อนไขเดียวกับ _isPdaApp) ไม่ใช้เลย
        แต่เดิมบล็อกหน้าให้แปลโค้ด ~0.4–0.5 วิ (CPU 6×) ทุกครั้งที่เปิดแอป → PDA ไม่โหลดตอนเปิด · Desktop/เบราว์เซอร์อื่นโหลดเหมือนเดิมทุกอย่าง (document.write = บล็อกการ parse ลำดับเดียวกับแท็กเดิม)
@@ -355,6 +363,17 @@
     body.pda-power-save #loginLoader .ll-ring { width:56px; height:56px; }
     body.pda-power-save #loginLoader .ll-ring svg { display:none; }
     body.pda-power-save #loginLoader .ll-ring img { position:static; width:56px; height:56px; margin:0; }
+    /* ฉากขาวต่อเนื่อง (LOGIN_WHITE_FLOW · ผู้ใช้อนุมัติ "ข้อ A" 20 ต.ค. 2026) — ทุกกฎอยู่ใต้ html.login-white: ปิดสวิตช์ = คลาสไม่ขึ้น = ไม่มีกฎไหนทำงาน
+       #bootCover = ฉากขาวใน HTML ขึ้นตั้งแต่เฟรมแรกโดยไม่รอ JS (ไม่งั้นเห็นโครงหน้าเปล่าระหว่างรอสคริปต์หลัก + maintenance.json) · JS ปิดผ่าน _bootCoverHide()
+       ตัวกันค้าง: animation ล้วน (ไม่พึ่ง JS) ซ่อนเองหลัง 6 วิ — JS พัง/เน็ตค้างก็ไม่ค้างจอขาว (กลับไปเห็นโครงหน้าเหมือนก่อนแก้)
+       z-index 9980 = เหนือหน้าแอป · ใต้ #loginLoader (9990) และ modal ทุกตัว · หน้าเลือกชื่อ (#employeeModal) ขาวเฉพาะตอนล็อกอิน/สลับสาขา (JS ใส่คลาส ew-white เมื่อมี callback)
+       เปลี่ยนชื่อระหว่างใช้งาน (PDA แตะชื่อบนหัวจอ) ไม่ใส่คลาส = ฉากเข้มโปร่งเดิม · ⛔ !important จำเป็น: ฉากหลัง/เงาการ์ดเลือกชื่อเขียน inline ใน HTML */
+    #bootCover { display:none; }
+    html.login-white #bootCover { display:block; position:fixed; inset:0; z-index:9980; background:#fff; animation:bootCoverOut 0.01s 6s forwards; }
+    @keyframes bootCoverOut { to { opacity:0; visibility:hidden; } }
+    html.login-white #loginLoader { background:#fff; }
+    html.login-white #employeeModal.ew-white { background:#fff!important; animation:none; }
+    html.login-white #employeeModal.ew-white #employeeModalCard { border:1px solid var(--border); box-shadow:0 8px 32px rgba(0,60,120,0.10)!important; }
     .btn-remove-row { width:20px; height:20px; border-radius:6px; border:1px solid rgba(217,48,37,0.35); background:rgba(217,48,37,0.08); color:var(--red); cursor:pointer; font-size:0.6rem; font-weight:700; display:flex; align-items:center; justify-content:center; transition:background 0.15s,border-color 0.15s; margin:auto; padding:0; }
     .btn-remove-row:hover { background:rgba(217,48,37,0.18); border-color:rgba(217,48,37,0.6); }
     .btn-audit-inline:disabled { opacity:0.5; cursor:not-allowed; background:var(--surface3); border-color:var(--border); color:var(--text3); }
@@ -555,6 +574,9 @@
   </style>
 </head>
 <body>
+<!-- ฉากขาวเฟรมแรก (LOGIN_WHITE_FLOW · กฎ CSS อยู่ใต้ html.login-white) — ต้องเป็น element แรกใน body และมีใน HTML ตั้งแต่ต้น เพื่อให้ขึ้นก่อนสคริปต์หลักรัน
+     ปิดโดย _bootCoverHide(): หน้าเลือกสาขาขึ้น หรือเริ่ม initAfterLogin · ตัวกันค้าง = CSS ล้วน 6 วิ · ห้ามใส่เนื้อหาหรือ element ที่รับ event ในนี้ -->
+<div id="bootCover" aria-hidden="true"></div>
 
 <div class="toast-container" id="toastContainer"></div>
 <!-- โหลดทั้งหน้าหลังใส่ PIN (วงแหวน + เช็กลิสต์ขั้นตอน) — เปิด/ปิดโดย initAfterLogin ผ่าน _loginLoaderShow/_loginLoaderStep/_loginLoaderHide เท่านั้น · สวิตช์ LOGIN_LOADER
@@ -1973,6 +1995,9 @@ function updateBranchDisplay(){
   const locBtn=document.getElementById('btnLocation');
   if(locBtn)locBtn.style.display=(currentBranch==='WH'&&window.innerWidth>600)?'':'none';
 }
+// ฉากขาวเฟรมแรก (#bootCover · LOGIN_WHITE_FLOW) — ปิดเมื่อมีอย่างอื่นรับช่วงคลุมจอแล้ว: หน้าเลือกสาขา (modal ขาวทึบ) หรือเริ่ม initAfterLogin (หน้า Loading ขาวทึบขึ้นใน task เดียวกัน)
+// เรียกซ้ำได้/ไม่มี element = ไม่ทำอะไร · ตัวกันค้างฝั่ง CSS (ซ่อนเองใน 6 วิ) ทำงานแม้ไม่มีใครเรียกฟังก์ชันนี้
+function _bootCoverHide(){const c=document.getElementById('bootCover');if(c)c.remove();}
 function showBranchSelector(){
   const modal=document.getElementById('branchModal');
   const card=document.getElementById('branchModalCard');
@@ -1982,6 +2007,7 @@ function showBranchSelector(){
   void card.offsetWidth;
   modal.classList.add('branch-overlay-enter');
   card.classList.add('branch-card-enter');
+  _bootCoverHide();   // ท้ายฟังก์ชันโดยตั้งใจ: modal ขึ้นแล้วค่อยปิดฉากขาว (ถ้าบรรทัดบนพัง ฉากขาวยังคลุมอยู่แทนที่จะเห็นโครงหน้าเปล่า)
 }
 function _openModal(overlayId, cardId){
   const ov=document.getElementById(overlayId);
@@ -3364,6 +3390,9 @@ function showEmployeeSelector(callback){
     b.onclick=()=>selectEmployee(name,'warehouse');
     whBtns.appendChild(b);
   });
+  // ฉากขาวต่อเนื่อง (LOGIN_WHITE_FLOW): ล็อกอิน/สลับสาขา (มี callback = ต่อด้วย initAfterLogin → หน้า Loading ขาว) → ฉากหลังขาวทึบ ไม่เห็นโครงหน้าเปล่าลางๆ
+  // เปลี่ยนชื่อระหว่างใช้งาน (openUserLabelSelector · ไม่มี callback · แอปเปิดใช้งานอยู่) → ถอดคลาส = ฉากเข้มโปร่งเดิม · toggle ทุกครั้งที่เปิด (คลาสค้างจากรอบก่อนไม่ได้)
+  document.getElementById('employeeModal').classList.toggle('ew-white',!!LOGIN_WHITE_FLOW&&!!callback);
   _openModal('employeeModal','employeeModalCard');
 }
 function selectEmployee(name,role){
@@ -3459,6 +3488,7 @@ function _loginLoaderHide(){
   const el=document.getElementById('loginLoader');if(el)el.classList.remove('show');
 }
 async function initAfterLogin(){
+  _bootCoverHide();   // ฉากขาวเฟรมแรก: เส้นทางรีโหลดอัตโนมัติเข้าที่นี่ตรงๆ (ไม่ผ่านหน้าเลือกสาขา) · หน้า Loading ขาวทึบขึ้นใน task เดียวกันด้านล่าง จึงไม่มีเฟรมที่เห็นหน้าแอป
   _resetWhSupervisorFilter();
   const _loaderOn=LOGIN_LOADER;
   const _startEmpty=window.innerWidth<=600&&(currentBranch==='WH'||currentRole==='assistant');
