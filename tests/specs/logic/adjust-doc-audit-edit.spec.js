@@ -358,7 +358,7 @@ test('กำลังพิมพ์ในช่องจำนวน → ตา
   await closeApp(app);
 });
 
-test('ค่าเริ่มต้น: โหมดซ่อนของเภสัชปิด — ไม่มี audit ค้างก็เห็นช่องสแกน/RESULT/ปุ่มยืนยันรีเช็ค/แท็บรอรีเช็ค · สแกน Stock Adj ที่ไม่ได้ ↺ ยังถูกปฏิเสธ', async ({ browser }) => {
+test('ค่าเริ่มต้น: โหมดซ่อนของเภสัชปิด — ไม่มี audit ค้างก็เห็นช่องสแกน/RESULT/ปุ่มยืนยันรีเช็ค/แท็บแรก (📦 ค้างส่ง) · สแกน Stock Adj ที่ไม่ได้ ↺ ยังถูกปฏิเสธ', async ({ browser }) => {
   const app = await bootBare(browser);
   const r = await app.page.evaluate(() => {
     const sw = PHARMACIST_STOCKADJ_ONLY;                 // ค่าเริ่มต้นของ index.html — ห้ามเทสนี้ตั้งเอง

@@ -974,9 +974,10 @@
       <button id="avScanBtn" onclick="handleAuditVerifyScan()" style="padding:10px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;">สแกน</button>
     </div>
     <div id="avTabRow" style="padding:8px 22px;border-bottom:1px solid var(--border);display:flex;gap:8px;">
-      <button id="avBtnAudit" class="popup-filter active" onclick="setAvFilter('audit',this)"><span>⚠️</span><span><span id="avTabAuditLabel">Audit</span> <span id="avCountAudit" style="background:rgba(224,140,0,0.2);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
+      <button id="avBtnAudit" class="popup-filter active" onclick="setAvFilter('audit',this)"><span id="avTabAuditIcon">⚠️</span><span><span id="avTabAuditLabel">Audit</span> <span id="avCountAudit" style="background:rgba(224,140,0,0.2);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
       <button id="avBtnStockAdj" class="popup-filter" onclick="setAvFilter('stock_adj',this)"><span>🔴</span><span>Stock Adj <span id="avCountStockAdj" style="background:rgba(217,48,37,0.15);padding:1px 6px;border-radius:10px;font-size:0.68rem;margin-left:3px;font-weight:700;">0</span></span></button>
     </div>
+    <div id="avBackorderHint" style="display:none;padding:8px 22px;border-bottom:1px solid var(--border);font-size:0.76rem;line-height:1.5;color:var(--text2);background:rgba(107,63,160,0.05);"></div>
     <div class="stock-popup-body">
       <table class="ptable">
         <thead id="auditVerifyThead"><tr>
@@ -2214,7 +2215,10 @@ function _pharmacyAuditMarkerFromFinal(sku,source,confirmedAt,confirmedTimestamp
   // ต้องตรงกับ confirmAuditVerifyItem ทุกตัวแปร: ชดเชย R16 ตามเวลารีเช็ค + เทียบยอดระบบที่ freeze ไว้
   const calc=getPharmacistAuditEffectiveQty(sku,qty,source?.recheckAt||source?.timestamp||'');
   const baseSys=_recheckBaselineSystemQty(sku,source);
-  const status=calc.effectiveQty===baseSys?'pass':'stock_adjustment';
+  // ธง backorder (ค้างส่ง) ชนะสูตรเสมอ — เหมือน confirmAuditVerifyItem: ค้างส่งนับ 0 vs ระบบติดลบ ไม่มีทางเท่ากัน
+  // เดิมบรรทัดนี้ไม่ดูธง → marker ผลสุดท้ายเป็น stock_adjustment แล้ว _applyPharmacyAuditMarkersToState ทับ pass ในเครื่อง → รายการกลับเข้าใบ IRPS
+  // (พบ 19 ต.ค. 2026 · เทส specs/logic+e2e/backorder-marker.spec.js ตรึงให้ผล marker == ผลในเครื่องทุกชุด)
+  const status=(source?.backorder||calc.effectiveQty===baseSys)?'pass':'stock_adjustment';
   // directAdj:false — ผลที่เภสัชยืนยันแล้วไม่ใช่ Stock Adj ตรง (marker เดิมอาจเป็นผลแปลงที่มีธงค้างจาก merge)
   return {sku,status,auditStatus:status==='pass'?'approved':'stock_adjustment',initialStatus:'audit',directAdj:false,
     auditor:currentUser||'',confirmedAt,confirmedBy:currentUser||'',timestamp:confirmedTimestamp||confirmedAt,
@@ -6092,12 +6096,14 @@ function _addRecheckScanQty(sku,sd,addQty){
 }
 // มาร์ค "ค้างส่งลูกค้า" — เดินรางเดียวกับ "รีเช็คได้ 0" ทุกประการ ต่างแค่ธง backorder ที่พลิกผลตอน Confirm
 // ไม่บันทึกจำนวนปลอม: recheckQty=0 คือของจริงบนชั้น (ว่าง) ธงเป็นตัวบอกว่า "ว่างเพราะค้างส่ง ไม่ใช่ของหาย"
-function markBackorderItem(sku){
-  if(_blockScanForBranchConfirm())return;
+// opts.skipConfirm = ผู้เรียก (markBackorderFromAdj) ถามผู้ใช้ไปแล้วครั้งเดียวทั้งสองขั้น · ไม่ส่ง opts = พฤติกรรมเดิมทุกตัวอักษร
+// คืน true เมื่อมาร์คสำเร็จ (ผู้เรียกเดิมจากปุ่ม onclick ไม่อ่านค่าคืน)
+function markBackorderItem(sku,opts={}){
+  if(_blockScanForBranchConfirm())return false;
   const sd=state.scanData.get(sku);
-  if(!_canMarkBackorder(sku,sd)){toast('รายการนี้มาร์คค้างส่งไม่ได้','warn');return;}
+  if(!_canMarkBackorder(sku,sd)){toast('รายการนี้มาร์คค้างส่งไม่ได้','warn');return false;}
   const si=state.skuMap.get(sku);
-  if(!confirm(`${sku}\n${si?.productName||''}\n\nยอดระบบ ${_rawSystemQty(sku)} — ยืนยันว่าเป็นของค้างส่งลูกค้า?\n\nรายการนี้จะผ่าน (Pass) โดยไม่ออกใบปรับสต็อก และยอดติดลบจะคงไว้ให้หายเองตอนของเข้า`))return;
+  if(!opts.skipConfirm&&!confirm(`${sku}\n${si?.productName||''}\n\nยอดระบบ ${_rawSystemQty(sku)} — ยืนยันว่าเป็นของค้างส่งลูกค้า?\n\nรายการนี้จะผ่าน (Pass) โดยไม่ออกใบปรับสต็อก และยอดติดลบจะคงไว้ให้หายเองตอนของเข้า`))return false;
   sd.recheckQty=0;sd.recheckBy=currentUser||'';sd.recheckAt=new Date().toISOString();
   sd.backorder=true;sd.manualEditAt=Date.now();
   _freezeRecheckBaseline(sku,sd);
@@ -6105,6 +6111,37 @@ function markBackorderItem(sku){
   const e=scanListMap.get(sku);if(e)e.totalQty=0;
   toast(`${sku}: มาร์คค้างส่งแล้ว — ยืนยันที่ Desktop เพื่อปิดงาน`,'info',4000);
   scheduleSave();renderAuditVerifyTable();updatePharmacistAuditConfirmBtn();scheduleScanListRender();
+  return true;
+}
+// แท็บ 📦 ค้างส่ง · แถว Stock Adj (19 ต.ค. 2026): Stock Adj ไม่ใช่ audit จึงมาร์คตรงๆ ไม่ได้ (_canMarkBackorder รับเฉพาะ audit)
+//   → ↺ เปิดกลับเป็นรอรีเช็คก่อน (reopenPharmacyAudit — marker reopen เขียนขึ้น Cloud ก่อนแก้ในเครื่อง) แล้วมาร์คค้างส่ง (draft recheckQty=0 + backorder)
+//   → เภสัชกด ✓ ยืนยันทั้งหมด (_confirmPharmacyAuditBatched: ล็อกสาขา + ตรวจ R01/R16 + marker ผลสุดท้าย = pass) ปิดเป็น Pass ไม่ออกใบ
+// ยืนยัน 1 ครั้งสำหรับสองขั้น · ล้มกลางทาง (reopen สำเร็จแต่มาร์คไม่สำเร็จ) = รายการค้างเป็นรอรีเช็คติดลบในแท็บเดิม กดซ้ำได้ ไม่มีสถานะค้างครึ่งทางที่ซ่อนจากตา
+// ⛔ ห้ามเขียน status/marker ตรงๆ ที่นี่ — ใช้ฟังก์ชันเดิมทั้งสองขั้นเพื่อให้ marker/ธง/สถานะเดินครบทุก path (ดู CLAUDE.md §ธงต้องเดินทางครบทุก path)
+const _boFromAdjBusy=new Set();
+function _canBackorderFromAdj(sku,sd){
+  if(!sd||sd.status!=='stock_adjustment')return false;
+  if(!_isPharmacyBranch()||currentRole!=='pharmacist'||_isPdaApp())return false;
+  if(!_isReopenableAdj(sd))return false;      // เงื่อนไขเดียวกับที่ reopenPharmacyAudit รับจริง
+  const g=_rawSystemQty(sku);                 // ค่าดิบจาก R01 — ห้ามใช้ skuMap.systemQty
+  return g!==null&&g<0;                       // ค้างส่ง = ระบบ "ติดลบ" เท่านั้น (G=0 ไม่ใช่หนี้ลูกค้า)
+}
+async function markBackorderFromAdj(sku){
+  sku=String(sku);
+  if(_boFromAdjBusy.has(sku))return;
+  if(_blockScanForBranchConfirm()||_branchConfirming)return;
+  const sd=state.scanData.get(sku);
+  if(!_canBackorderFromAdj(sku,sd)){beepWarn();toast('รายการนี้มาร์คค้างส่งไม่ได้','warn');return;}
+  if(!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อมาร์คค้างส่ง','error');return;}
+  const si=state.skuMap.get(sku);const cnt=Number(sd.countedQty||0);
+  if(!confirm(`${sku}\n${si?.productName||''}\n\nยอดระบบ ${_rawSystemQty(sku)} · นับได้ ${cnt}`
+    +(cnt>0?`\n⚠️ นับเจอของบนชั้น ${cnt} ชิ้น — ถ้ามีของจริง ไม่ควรมาร์คค้างส่ง`:'')
+    +`\n\nยืนยันว่าเป็นของค้างส่งลูกค้า?\n\nรายการนี้จะผ่าน (Pass) โดยไม่ออกใบปรับสต็อก และยอดติดลบจะคงไว้ให้หายเองตอนของเข้า\n(มาร์คแล้วกด ✓ ยืนยันทั้งหมด เพื่อปิดงาน)`))return;
+  _boFromAdjBusy.add(sku);
+  try{
+    if(!await reopenPharmacyAudit(sku,{skipConfirm:true,silent:true}))return;
+    if(markBackorderItem(sku,{skipConfirm:true}))beepSuccess();
+  }finally{_boFromAdjBusy.delete(sku);}
 }
 
 function processPharmacistAuditScan(){
@@ -6456,13 +6493,21 @@ function _noStockReopenEnabled(){return PHARMACY_NOSTOCK_REOPEN&&_isPharmacyBran
 // ปิด = ปุ่ม/ข้อความกลับเป็น ↺ → รอรีเช็ค ทุกตัวอักษร (reopenPharmacyAudit ไม่ถูกแตะ) · ดู restartPharmacyScan + CLAUDE.md §↺ สแกนใหม่ → ⏳ รอนับ
 let PHARMACY_RESCAN_TO_PENDING=true;
 function _rescanToPendingOn(){return PHARMACY_RESCAN_TO_PENDING&&_isPharmacyBranch();}
+// ── สาขายา: แท็บแรกของป็อปอัพ 🔴 Stock Adj = "📦 ค้างส่ง" แทน "รอรีเช็ค" (19 ต.ค. 2026 · ผู้ใช้สั่ง) ──
+// ที่มา: ตั้งแต่ 29 ก.ย. ไม่มีขั้น Audit แล้ว แท็บรอรีเช็ค (status audit) แทบว่าง และปุ่ม 📦 ค้างส่ง ที่อยู่แต่ในแท็บนั้น (ใช้ได้เฉพาะ audit)
+//   เข้าไม่ถึงอีกเลยตั้งแต่ ↺ ในแท็บ Stock Adj กลายเป็น "สแกนใหม่ → ⏳ รอนับ" (16 ต.ค.) ⇒ สินค้าติดลบจากค้างส่งลูกค้าถูกดันกลับเป็น 0 ด้วยใบ IRPS
+// แท็บใหม่แสดงสินค้าที่ R01 "ติดลบ" และนับแล้วไม่ตรง (Stock Adj / รอรีเช็คเก่า) + ที่มาร์คแล้วรอยืนยัน → กด 📦 ค้างส่ง แล้วกด ✓ ยืนยันทั้งหมด = Pass ไม่ออกใบ
+// ใช้ปุ่มเดิม #avBtnAudit / key 'audit' (ไม่เพิ่มแท็บที่สาม) · WH และปิดสวิตช์ = แท็บรอรีเช็ค/Recheck เดิมทุกตัวอักษร (เทสตรึง) · ดู _backorderTabRows / markBackorderFromAdj
+let PHARMACY_BACKORDER_TAB=true;
+function _backorderTabOn(){return PHARMACY_BACKORDER_TAB&&_isPharmacyBranch();}
 // ── สาขายา PDA: ไม่มีแถวปุ่มใต้ RESULT (9 ต.ค. 2026 · ผู้ใช้สั่ง) ──
 // เดิมผู้ช่วยบน PDA เห็นป้าย "Confirm ที่ Desktop เท่านั้น" + ปุ่ม ✕ ซ่อนรายการ → ซ่อนทั้งแถว #confirmClearRow แบบเดียวกับ WH PDA (ดู updateScanInputMode)
 // ตัดสินด้วย User-Agent (_isPdaApp) ไม่ใช่ความกว้างจอ — กติกาเดียวกับด่าน Confirm สาขายา · Desktop/WH ไม่แตะ
 // ปิด = แถวกลับมาพร้อม ✕ ซ่อนรายการ (ป้ายถูกลบโค้ดแล้ว) · ⛔ ด่านกัน Confirm บน PDA (validateAndProcess/updateConfirmBtn/CSS ซ่อน #btnConfirm) ห้ามลบ
 let PHARMACY_PDA_HIDE_CONFIRM_ROW=true;
 function _legacyAuditCount(){let n=0;for(const[,sd] of state.scanData.entries())if(sd&&sd.status==='audit')n++;return n;}
-function _pharmAuditIdle(nAudit){return PHARMACIST_STOCKADJ_ONLY&&_isPharmacyBranch()&&currentRole==='pharmacist'&&nAudit===0;}
+// แท็บ 📦 ค้างส่งเปิดอยู่ = ไม่ idle (โหมดซ่อนเดิมนับแค่ audit=0 แล้วซ่อนปุ่ม #avBtnAudit ซึ่งตอนนี้คือแท็บค้างส่ง · PHARMACIST_STOCKADJ_ONLY ปิดอยู่แล้ว)
+function _pharmAuditIdle(nAudit){return PHARMACIST_STOCKADJ_ONLY&&!_backorderTabOn()&&_isPharmacyBranch()&&currentRole==='pharmacist'&&nAudit===0;}
 let _pharmIdleApplied=false;
 // จุดเดียวที่สลับ UI ตามโหมด — idempotent · role อื่น/สวิตช์ปิด = ไม่แตะ DOM เลย (ยกเว้นย้อนของที่ idle เคยแตะ)
 function _applyPharmacistAuditMode(nAudit){
@@ -7011,6 +7056,7 @@ function applyAuditTerminology(){
   set('popupFilterAuditLabel',_popupAuditFilterTerm()); // ปุ่มกรอง key 'audit' ของ 📋 (ชื่อเดียวกับ toast/ชื่อชีตตอน Export — ดู _popupAuditFilterTerm) · WH=Recheck · ปิดสวิตช์=Audit
   set('popupThAudit',_pharmTxt(w,'ผลตรวจ')); // คอลัมน์นี้โชว์ผลตรวจ (✅/⏳/Stock Adj) ไม่ใช่รายการรอรีเช็ค
   set('avTabAuditLabel',w);
+  _syncAvBackorderTabUi(); // สาขายา (PHARMACY_BACKORDER_TAB): ทับป้ายแท็บแรกเป็น "📦 ค้างส่ง" · WH/ปิดสวิตช์ = ป้ายเดิมที่ตั้งไว้ด้านบน
   const pdaAv=document.getElementById('btnPdaAuditVerify');if(pdaAv)pdaAv.title=verify;
   set('pharmIdleNoteTitle',_pharmTxt('เภสัชไม่ต้องสแกน / ทำ Audit','ไม่มีรายการรอรีเช็ค — เภสัชไม่ต้องสแกน'));
   _applyPharmacistAuditMode(_legacyAuditCount()); // เภสัช idle: ทับป้ายแผงด้านบนเป็น "Stock Adj" (role อื่น = ไม่แตะ)
@@ -8591,18 +8637,25 @@ function confirmAllAuditVerify(){
 // เภสัชกด ↺ เปิดรายการที่ยืนยันไปแล้ว (pass/stock_adjustment) กลับเป็น Audit เพื่อสแกนรีเช็คใหม่
 // ใช้เมื่อยอดที่ยืนยันไปไม่สะท้อนของจริง (เช่น สแกนตกไป หรือของเพิ่งมาถึงหลังรีเช็ค)
 // Desktop เท่านั้น ตามกฎเดียวกับการยืนยัน Audit — PDA ไม่มี R16 raw timeline ครบ ตัดสินใจแทนไม่ได้
-async function reopenPharmacyAudit(sku){
-  if(!_isPharmacyBranch()||currentRole!=='pharmacist'){beepWarn();toast('เฉพาะเภสัชกรเท่านั้น','warn');return;}
-  if(_isPdaApp()){beepWarn();toast('เปิดรีเช็คใหม่ที่ Desktop เท่านั้น','warn');return;}
-  if(_blockScanForBranchConfirm())return;
-  if(!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อเปิดรีเช็คใหม่','error');return;}
+// opts (19 ต.ค. 2026 · ให้ปุ่ม 📦 ค้างส่ง ในแท็บใหม่เรียกต่อ — markBackorderFromAdj): skipConfirm = ผู้เรียกถามผู้ใช้ไปแล้ว · silent = ไม่ขึ้น toast/เสียงสำเร็จ
+//   คืน true เมื่อเปิดรีเช็คสำเร็จ · false เมื่อถูกปฏิเสธ/ล้ม (ผู้เรียกเดิมจากปุ่ม ↺ ไม่อ่านค่าคืน) · ไม่ส่ง opts = พฤติกรรมเดิมทุกตัวอักษร
+// รับทั้งรายการที่เคยเป็น Audit และ Stock Adj ตรงจากรอบแรก (directAdj — ไม่ผ่าน Audit) — ↺ เป็นทางถอยเดียวของกลุ่มหลัง
+// + 🚫 ไม่มีของ (noStock) ที่ออกเป็น Stock Adj (ต.ค. 2026 · PHARMACY_NOSTOCK_REOPEN) — เดิมปุ่มขึ้นแต่กดแล้วถูกปฏิเสธ
+// แยกเป็นตัวช่วยเพื่อให้แท็บ 📦 ค้างส่ง ตัดสินว่า "ปุ่มกดได้ไหม" ตรงกับที่ reopen จะรับจริง ไม่เพี้ยนกัน
+function _isReopenableAdj(sd){
+  if(!sd||!['pass','stock_adjustment'].includes(sd.status))return false;
+  const noStockAdj=_noStockReopenEnabled()&&sd.noStock===true&&sd.status==='stock_adjustment';
+  return sd.initialStatus==='audit'||sd.directAdj===true||noStockAdj;
+}
+async function reopenPharmacyAudit(sku,opts={}){
+  if(!_isPharmacyBranch()||currentRole!=='pharmacist'){beepWarn();toast('เฉพาะเภสัชกรเท่านั้น','warn');return false;}
+  if(_isPdaApp()){beepWarn();toast('เปิดรีเช็คใหม่ที่ Desktop เท่านั้น','warn');return false;}
+  if(_blockScanForBranchConfirm())return false;
+  if(!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อเปิดรีเช็คใหม่','error');return false;}
   const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
-  // รับทั้งรายการที่เคยเป็น Audit และ Stock Adj ตรงจากรอบแรก (directAdj — ไม่ผ่าน Audit) — ↺ เป็นทางถอยเดียวของกลุ่มหลัง
-  // + 🚫 ไม่มีของ (noStock) ที่ออกเป็น Stock Adj (ต.ค. 2026 · PHARMACY_NOSTOCK_REOPEN) — เดิมปุ่มขึ้นแต่กดแล้วถูกปฏิเสธ
-  const noStockAdj=_noStockReopenEnabled()&&sd?.noStock===true&&sd.status==='stock_adjustment';
-  if(!sd||!si||(sd.initialStatus!=='audit'&&sd.directAdj!==true&&!noStockAdj)||!['pass','stock_adjustment'].includes(sd.status)){beepWarn();toast('รายการนี้เปิดรีเช็คใหม่ไม่ได้','warn');return;}
+  if(!si||!_isReopenableAdj(sd)){beepWarn();toast('รายการนี้เปิดรีเช็คใหม่ไม่ได้','warn');return false;}
   const shown=sd.recheckQty!=null?sd.recheckQty:sd.countedQty;
-  if(!confirm(`เปิดรีเช็คใหม่: ${sku}\n${si.productName||''}\n\nยอดรีเช็คเดิม ${shown} จะถูกล้าง และรายการกลับไปรอสแกนรีเช็ค\nยืนยันหรือไม่?`))return;
+  if(!opts.skipConfirm&&!confirm(`เปิดรีเช็คใหม่: ${sku}\n${si.productName||''}\n\nยอดรีเช็คเดิม ${shown} จะถูกล้าง และรายการกลับไปรอสแกนรีเช็ค\nยืนยันหรือไม่?`))return false;
   const at=new Date().toISOString();
   const countTs=sd.firstScanAt||sd.timestamp||''; // คืนเวลานับรอบแรก (ตอนยืนยันถูกทับด้วยเวลา confirm)
   try{
@@ -8615,7 +8668,7 @@ async function reopenPharmacyAudit(sku){
       recheckQty:null,recheckBy:'',recheckAt:'',recheckSystemQty:null,recheckR01Version:'',backorder:false,
       soldQty:0,inboundQty:0,r16103Qty:0,effectiveQty:Number(sd.countedQty||0),systemQty:Number(si.systemQty||0),
       r01Version:state.r01Version||'',r16Version:state.r16DetailVersion||'',r16_103Version:state.r16_103DetailVersion||''}]);
-  }catch(e){console.warn('[reopen audit]',e.message);beepError();toast('เปิดรีเช็คใหม่ไม่สำเร็จ: '+_shortErr(e),'error');return;}
+  }catch(e){console.warn('[reopen audit]',e.message);beepError();toast('เปิดรีเช็คใหม่ไม่สำเร็จ: '+_shortErr(e),'error');return false;}
   sd.status='audit';sd.auditStatus='pending';sd.auditor='';sd.timestamp=countTs;
   delete sd.recheckQty;delete sd.recheckBy;delete sd.recheckAt;delete sd.recheckSystemQty;delete sd.recheckR01Version;delete sd.backorder;
   delete sd.effectiveQty;delete sd.pharmacyAuditConfirmedAt;
@@ -8631,7 +8684,8 @@ async function reopenPharmacyAudit(sku){
   invalidatePopupRowsCache();saveSession();syncToFirestore();
   rebuildScanListMap(true);renderScanList();updateStats();renderTable();
   renderAuditVerifyTable();updateAuditVerifyCount();updatePharmacistAuditConfirmBtn();
-  beepSuccess();toast(`↺ ${sku} กลับไปรอสแกนรีเช็คแล้ว`,'success');
+  if(!opts.silent){beepSuccess();toast(`↺ ${sku} กลับไปรอสแกนรีเช็คแล้ว`,'success');}
+  return true;
 }
 // ↺ สแกนใหม่ (สาขายา · แท็บ Stock Adj · 16 ต.ค. 2026 · ผู้ใช้สั่ง · สวิตช์ PHARMACY_RESCAN_TO_PENDING):
 // ล้างผลนับเดิมทั้ง item → ⏳ รอนับ (pending) เริ่มสแกนใหม่ตั้งแต่ต้น · ไม่เข้ารีเช็ค
@@ -8736,14 +8790,111 @@ function confirmAuditVerifyItem(sku,silent=false,deferSync=false){
   return result;
 }
 
+// ── แท็บ 📦 ค้างส่ง (สาขายา · 19 ต.ค. 2026 · สวิตช์ PHARMACY_BACKORDER_TAB) ──
+// แถว = สินค้าที่ R01 "ติดลบ" และนับแล้วไม่ตรง: Stock Adj (adj) · รอรีเช็คเก่า (audit) · + ที่มาร์คค้างส่งแล้วรอยืนยัน (marked)
+//   อ่าน G ดิบผ่าน _rawSystemQty เท่านั้น (ห้ามใช้ skuMap.systemQty) · marked แสดงเสมอแม้ R01 ขยับเป็น ≥ 0 (กัน draft ที่รอยืนยันหายจากตา)
+//   ไม่รวม: ยังไม่ได้นับ/รอ Confirm (pending/scanning) · Pass · SKU ที่ไม่มีแถวใน R01 (ไม่รู้ G) · G = 0 (ไม่ใช่หนี้ลูกค้า)
+function _backorderTabRows(){
+  const rows=[];
+  for(const[sku,sd] of state.scanData.entries()){
+    if(!sd)continue;
+    const st=sd.status;
+    const marked=st==='audit'&&!sd.auditor&&!!sd.backorder;
+    const g=_rawSystemQty(sku);
+    if(!marked){
+      if(st!=='stock_adjustment'&&!(st==='audit'&&!sd.auditor))continue;
+      if(g===null||g>=0)continue;
+    }
+    const si=state.skuMap.get(sku);if(!si)continue;
+    rows.push({sku,sd,si,g,kind:marked?'marked':(st==='audit'?'audit':'adj')});
+  }
+  const rank={adj:0,audit:0,marked:1};   // ยังไม่ตัดสินก่อน · มาร์คแล้ว (รอยืนยัน) ตามหลัง
+  rows.sort((a,b)=>(rank[a.kind]-rank[b.kind])||a.sku.localeCompare(b.sku,'en',{numeric:true}));
+  return rows;
+}
+const AV_BACKORDER_HINT='สินค้าที่ R01 ติดลบ (ขายให้ลูกค้าไปก่อนของเข้า) และนับแล้วไม่ตรง · กด 📦 ค้างส่ง = ปิดงานโดยไม่ออกใบปรับสต็อก (ยอดติดลบคงไว้) แล้วกด ✓ ยืนยันทั้งหมด';
+// ป้าย/ไอคอน/สี badge/hint ของปุ่มแท็บแรก — idempotent · ปิดสวิตช์/WH = ค่าเดิมเป๊ะ (⚠️ + _auditTerm()) · เรียกจาก applyAuditTerminology และต้น renderAuditVerifyTable
+function _syncAvBackorderTabUi(){
+  const on=_backorderTabOn();
+  const $=id=>document.getElementById(id);
+  const icon=$('avTabAuditIcon'),label=$('avTabAuditLabel'),cnt=$('avCountAudit'),btn=$('avBtnAudit'),hint=$('avBackorderHint');
+  if(icon)icon.textContent=on?'📦':'⚠️';
+  if(label)label.textContent=on?'ค้างส่ง':_auditTerm();
+  if(cnt)cnt.style.background=on?'rgba(107,63,160,0.15)':'rgba(224,140,0,0.2)';
+  if(btn)btn.title=on?'สินค้าที่ระบบ (R01) ติดลบ — ขายให้ลูกค้าไปก่อนของเข้า (ค้างส่ง) · เภสัชตัดสินว่าจะปิดงานโดยไม่ออกใบปรับสต็อก':'';
+  if(hint){
+    const show=on&&_avFilter==='audit'&&window.innerWidth>600;
+    hint.style.display=show?'':'none';
+    hint.textContent=show?AV_BACKORDER_HINT:'';
+  }
+}
+function _renderBackorderTab(rows,thead,tbody,rc){
+  const isPda=window.innerWidth<=600;
+  const canAct=_isPharmacyBranch()&&currentRole==='pharmacist';   // ปุ่มบนแถว Stock Adj ต้อง Desktop เพิ่ม (reopen เป็น Desktop เท่านั้น — ดู _canBackorderFromAdj)
+  if(thead)thead.innerHTML=isPda
+    ?'<tr><th>SKU</th><th>Name</th><th style="text-align:center;">ระบบ</th>'+(canAct?'<th style="text-align:center;">ค้างส่ง</th>':'')+'</tr>'
+    :'<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">ระบบ (R01)</th><th style="text-align:center;">นับได้</th><th style="text-align:center;">สถานะ</th><th>เวลานับ</th>'+(canAct?'<th style="text-align:center;">ค้างส่ง</th>':'')+'</tr>';
+  if(rc)rc.textContent=rows.length+' รายการ ค้างส่ง';
+  // ✓ ยืนยันทั้งหมด = ยืนยันรีเช็คทุกรายการที่มี draft (รวมที่มาร์คค้างส่งไว้) — เงื่อนไขเดียวกับแท็บรอรีเช็คเดิม · สาขายา + PDA ซ่อน (ยืนยันได้เฉพาะ Desktop)
+  const confirmAllBtn=document.getElementById('avConfirmAllBtn');
+  if(confirmAllBtn)confirmAllBtn.style.display=(getPharmacistAuditPendingMap().size>0&&!(_isPdaApp()&&_isPharmacyBranch()))?'':'none';
+  const colspan=(isPda?3:8)+(canAct?1:0);
+  if(!rows.length){tbody.innerHTML=`<tr><td colspan="${colspan}" style="text-align:center;padding:40px;color:var(--text3)">ไม่มีรายการติดลบที่รอตัดสิน</td></tr>`;return;}
+  const btnStyle='border:1px solid rgba(107,63,160,0.4);background:rgba(107,63,160,0.08);color:var(--purple);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;';
+  const STATUS_UI={
+    adj:'<span style="color:var(--red);font-weight:700;">⚠️ Stock Adj</span>',
+    audit:'<span style="color:var(--yellow);font-weight:700;">⚠️ รอรีเช็ค</span>',
+    marked:'<span style="color:var(--purple);font-weight:700;">📦 ค้างส่ง · รอยืนยัน</span>',
+  };
+  tbody.innerHTML=rows.map((r,i)=>{
+    const{sku,sd,si,g,kind}=r;
+    const bc=si.barcodes.map(b=>b.barcode).join(', ');
+    const bcShort=bc.length>22?bc.slice(0,22)+'…':bc;
+    let act='';
+    if(canAct){
+      let inner='<span style="color:var(--text3);">—</span>';
+      if(kind==='marked')inner=`<button onclick="resetRecheckItem('${sku}')" title="ถอนการมาร์คค้างส่ง" style="${btnStyle}">✕ ถอน</button>`;
+      else if(kind==='audit'&&_canMarkBackorder(sku,sd))inner=`<button onclick="markBackorderItem('${sku}')" title="ของค้างส่งลูกค้า — ผ่านโดยไม่ออกใบปรับสต็อก" style="${btnStyle}">📦 ค้างส่ง</button>`;
+      else if(kind==='adj'&&_canBackorderFromAdj(sku,sd))inner=`<button onclick="markBackorderFromAdj('${sku}')" title="ของค้างส่งลูกค้า — มาร์คแล้วกด ✓ ยืนยันทั้งหมด เพื่อปิดเป็น Pass โดยไม่ออกใบปรับสต็อก" style="${btnStyle}">📦 ค้างส่ง</button>`;
+      act=`<td style="text-align:center;">${inner}</td>`;
+    }
+    const sysCell=g===null?'<span style="color:var(--text3);">—</span>':`<span style="color:${g<0?'var(--red)':'var(--text2)'};font-weight:700;">${g}</span>`;
+    const trStyle=kind==='marked'?'background:rgba(107,63,160,0.06);':'';
+    // รอรีเช็คเก่าที่เภสัชสแกนรีเช็คไว้แล้ว (ยังไม่ยืนยัน) — โชว์ยอดที่สแกน (แท็บรอรีเช็คเดิมมีคอลัมน์ Recheck นี้) ไม่งั้นมองไม่เห็นว่ามี draft ค้างรอ ✓ ยืนยันทั้งหมด
+    // marked = draft 0 โดยดีไซน์ (ป้ายสถานะบอกอยู่แล้ว) · adj = ยังไม่มี draft
+    const draftNote=kind==='audit'&&sd.recheckQty!=null?`<div style="font-size:0.66rem;color:var(--accent);font-weight:700;">สแกนรีเช็ค ${Number(sd.recheckQty)}</div>`:'';
+    if(isPda){
+      return`<tr style="${trStyle}"><td class="ptd-sku">${_adjErpEsc(sku)}</td><td class="ptd-name">${_adjErpEsc(si.productName)}</td>`
+        +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${sysCell}${draftNote}</td>${act}</tr>`;
+    }
+    const cnt=Number(sd.countedQty||0);
+    // นับเจอของบนชั้น (> 0) ทั้งที่ระบบติดลบ = ผิดปกติ ไม่ใช่ค้างส่งแน่นอนเสมอไป → ไฮไลต์ให้เภสัชดูก่อนกด
+    const cntCell=cnt>0?`<span style="color:var(--yellow);font-weight:700;" title="นับเจอของบนชั้น — ตรวจก่อนมาร์คค้างส่ง">${cnt}</span>`:`<span style="color:var(--text2);font-weight:700;">${cnt}</span>`;
+    return`<tr style="${trStyle}">`
+      +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
+      +`<td class="ptd-sku">${_adjErpEsc(sku)}</td>`
+      +`<td class="ptd-bc" title="${_adjErpEsc(bc)}">${_adjErpEsc(bcShort)}</td>`
+      +`<td class="ptd-name">${_adjErpEsc(si.productName)}</td>`
+      +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${sysCell}</td>`
+      +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${cntCell}</td>`
+      +`<td style="font-size:0.74rem;text-align:center;white-space:nowrap;">${STATUS_UI[kind]}${draftNote}</td>`
+      +`<td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${_adjErpEsc(sd.firstScanAt||sd.timestamp||'—')}</td>`
+      +act
+      +`</tr>`;
+  }).join('');
+}
+
 function renderAuditVerifyTable(){
   const tbody=document.getElementById('auditVerifyTableBody');if(!tbody)return;
   const thead=document.getElementById('auditVerifyThead');
   const rc=document.getElementById('auditVerifyRowCount');
+  _syncAvBackorderTabUi();
   // update filter badges
   let nAudit=0,nAdj=0;
   for(const[,sd] of state.scanData.entries()){if(sd.status==='audit')nAudit++;else if(sd.status==='stock_adjustment')nAdj++;}
-  const ca=document.getElementById('avCountAudit');if(ca)ca.textContent=nAudit;
+  // แท็บแรกของสาขายา = ค้างส่ง → badge นับแถวของแท็บนั้น (ไม่ใช่จำนวน audit) · WH/สวิตช์ปิด = จำนวน audit เหมือนเดิม
+  const boRows=_backorderTabOn()?_backorderTabRows():null;
+  const ca=document.getElementById('avCountAudit');if(ca)ca.textContent=boRows?boRows.length:nAudit;
   const cs=document.getElementById('avCountStockAdj');if(cs)cs.textContent=nAdj;
 
   // ↺ เปิดรีเช็คใหม่: เภสัช Desktop เท่านั้น (กฎเดียวกับการยืนยัน Audit)
@@ -8791,6 +8942,9 @@ function renderAuditVerifyTable(){
         +(canReopen?`<td style="text-align:center;"><button onclick="${rescan?'restartPharmacyScan':'reopenPharmacyAudit'}('${sku}')" title="${rescan?'ล้างผลนับ แล้วสแกนนับใหม่ตั้งแต่ต้น (⏳ รอนับ)':'เปิดกลับไปสแกนรีเช็คใหม่'}" style="border:1px solid rgba(0,114,198,0.4);background:rgba(0,114,198,0.08);color:var(--accent);padding:4px 10px;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">↺ สแกนใหม่</button></td>`:'')
         +`</tr>`;
     }).join('');
+  } else if(boRows){
+    // สาขายา (PHARMACY_BACKORDER_TAB): แท็บแรก = 📦 ค้างส่ง — โค้ดแท็บรอรีเช็คเดิมด้านล่างยังอยู่ครบสำหรับ WH และตอนปิดสวิตช์
+    _renderBackorderTab(boRows,thead,tbody,rc);
   } else {
     const isPda=window.innerWidth<=600;
     // ปุ่ม "ค้างส่ง" โผล่เฉพาะเภสัชที่มีสิทธิ์ (ดู _canMarkBackorder) — กดได้ทั้ง PDA และ Desktop เหมือนการสแกนรีเช็ค

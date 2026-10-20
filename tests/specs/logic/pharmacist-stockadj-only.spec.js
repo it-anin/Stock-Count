@@ -14,9 +14,11 @@
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 // ตั้ง role/สาขา/รายการ แล้วสั่งให้ UI คำนวณโหมดใหม่ผ่านเส้นทางจริง (updateAuditVerifyCount)
-async function setup(page, { branch = 'SRC', role = 'pharmacist', audit = 0, adj = 1, on = true, terms = true } = {}) {
-  await page.evaluate(({ branch, role, audit, adj, on, terms }) => {
-    PHARMACIST_STOCKADJ_ONLY = on; PHARMACY_RECHECK_TERMS = terms;
+// backorder = สวิตช์แท็บ 📦 ค้างส่ง (19 ต.ค. 2026) — ค่าเริ่มต้นปิดในเทสไฟล์นี้ เพราะแท็บนั้นทำให้ไม่ idle (ปุ่มแรกของป็อปอัพคือแท็บค้างส่ง ซ่อนไม่ได้)
+//   เทสไฟล์นี้ตรึงพฤติกรรมของโหมดซ่อน (ทางถอย PHARMACIST_STOCKADJ_ONLY=true) จึงต้องปิดแท็บค้างส่งเพื่อให้โหมดซ่อนทำงานตามที่ตรึงไว้ · ข้อที่ตรึงการทับกันของสองสวิตช์อยู่ท้ายไฟล์
+async function setup(page, { branch = 'SRC', role = 'pharmacist', audit = 0, adj = 1, on = true, terms = true, backorder = false } = {}) {
+  await page.evaluate(({ branch, role, audit, adj, on, terms, backorder }) => {
+    PHARMACIST_STOCKADJ_ONLY = on; PHARMACY_RECHECK_TERMS = terms; PHARMACY_BACKORDER_TAB = backorder;
     currentBranch = branch; currentRole = role; currentUser = 'T';
     state.scanData.clear(); state.skuMap.clear();
     const mk = (sku, status) => {
@@ -29,7 +31,7 @@ async function setup(page, { branch = 'SRC', role = 'pharmacist', audit = 0, adj
     // ลำดับเดียวกับ initAfterLogin: updateScanInputMode (เปิดแถบยืนยัน Audit ของเภสัช) → applyAuditTerminology (ตั้งป้ายแผงแล้วให้โหมดทับ)
     updateScanInputMode(); applyAuditTerminology();
     updateAuditVerifyCount();
-  }, { branch, role, audit, adj, on, terms });
+  }, { branch, role, audit, adj, on, terms, backorder });
 }
 
 // สถานะที่ผู้ใช้เห็นจริง (computed style — ไม่ใช่แค่ class)
@@ -176,5 +178,27 @@ test('การแก้นี้ไม่แตะเส้นทางสแ�
     return { status: s.status, recheckQty: s.recheckQty, recheckBy: s.recheckBy };
   });
   expect(r).toEqual({ status: 'stock_adjustment', recheckQty: undefined, recheckBy: undefined });
+  await closeApp(app);
+});
+
+// ★ สองสวิตช์ทับกัน (19 ต.ค. 2026): โหมดซ่อน (PHARMACIST_STOCKADJ_ONLY — ทางถอยที่ยังอยู่) ต้องไม่ซ่อนแท็บ 📦 ค้างส่ง
+//   ปุ่มแรกของป็อปอัพ (#avBtnAudit) ตอนนี้คือแท็บค้างส่ง · โหมดซ่อนเดิมนับ "audit = 0 → ซ่อนปุ่มนั้น + เปิดแท็บ Stock Adj" ซึ่งจะซ่อนแท็บใหม่ไปด้วย
+//   → _pharmAuditIdle คืน false เมื่อแท็บค้างส่งเปิด (สาขายา) · ปิดแท็บค้างส่ง = โหมดซ่อนทำงานตามเดิม (ข้อด้านบนตรึงไว้)
+test('★ โหมดซ่อนเปิดคู่กับแท็บ 📦 ค้างส่ง → ไม่ idle: แท็บค้างส่งอยู่ · ป็อปอัพเปิดที่แท็บแรก · ปิดแท็บค้างส่ง = โหมดซ่อนทำงาน', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await setup(app.page, { audit: 0, adj: 1, on: true, backorder: true });
+  expect(await ui(app.page)).toEqual(NORMAL_UI);                 // ไม่ idle แม้ audit = 0 → ช่องสแกน/RESULT/แถบยืนยันอยู่ครบ
+  await app.page.evaluate(() => openAuditVerifyPopup());
+  expect(await popup(app.page)).toMatchObject({ filter: 'audit', tabAudit: true, activeTab: 'avBtnAudit', scanRow: true });
+  expect(await app.page.evaluate(() => document.getElementById('avTabAuditLabel').textContent)).toBe('ค้างส่ง');
+  await app.page.evaluate(() => closeAuditVerifyPopup());
+  // ปิดแท็บค้างส่งกลางทาง → โหมดซ่อนกลับมาทำงาน (idle) ตามที่เคยตรึงไว้
+  await app.page.evaluate(() => { PHARMACY_BACKORDER_TAB = false; applyAuditTerminology(); updateAuditVerifyCount(); });
+  expect(await ui(app.page)).toEqual(IDLE_UI);
+  // WH: แท็บค้างส่งไม่เกี่ยว (เปิดสวิตช์ก็ไม่เปลี่ยนอะไร) — ไม่ idle เหมือนเดิม
+  await setup(app.page, { branch: 'WH', role: 'supervisor', audit: 0, adj: 1, on: true, backorder: true });
+  const wh = await ui(app.page);
+  expect(wh.idleClass).toBe(false);
+  expect(await app.page.evaluate(() => document.getElementById('avTabAuditLabel').textContent)).toBe('Recheck');
   await closeApp(app);
 });
