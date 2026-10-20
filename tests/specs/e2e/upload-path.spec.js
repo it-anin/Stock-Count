@@ -97,10 +97,11 @@ test.describe('CSV upload path', () => {
     expect(parsed.catOnReview).toBe('REVIEW');
     expect(parsed.catOnBlank).toBeUndefined();
 
-    // Total SKU / Progress set (ส.ค. 2026): G ≠ 0 OR Col D ∈ A/B/C/REVIEW — this clause only ever adds
+    // Total SKU / Progress set (ส.ค. 2026): G ≠ 0 OR Col D ∈ A/B/C — this clause only ever adds
+    // (REVIEW ถูกถอดออกจากกลุ่ม "นับแม้ G=0" เมื่อ 20 ต.ค. 2026 — แต่ cat:'REVIEW' ยังถูกเก็บลง PBM ตามด้านบน)
     expect(parsed.countableCount).toBe(F.COUNTABLE_COUNT);
     expect(parsed.countableAbcZero).toBe(true);      // A/B/C ที่ระบบขึ้น 0 → ต้องเดินไปนับ (กติกาที่เพิ่มมา)
-    expect(parsed.countableReviewZero).toBe(true);   // REVIEW ที่ระบบขึ้น 0 → ได้สิทธิ์เดียวกับ A/B/C
+    expect(parsed.countableReviewZero).toBe(false);  // REVIEW ที่ระบบขึ้น 0 → ไม่เข้า Progress (20 ต.ค. 2026)
     expect(parsed.countableZero).toBe(true);         // S-ZERO ก็จัดชั้น A → G=0 ไม่ตัดออกอีกแล้ว
     expect(parsed.countableNeg).toBe(true);          // G ติดลบ → นับตามเดิม
     expect(parsed.countableNoCat).toBe(true);        // Col D ว่างแต่มีสต็อก → ยังนับตามกติกาเดิม

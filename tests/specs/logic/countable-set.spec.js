@@ -1,16 +1,17 @@
 // "SKU ที่ต้องนับ" (_countableSkus) = มีแถวใน R01.102 · หมวด Col P ไม่ขึ้นต้นด้วย 11.
-//                                     และ ( G ≠ 0  หรือ  Col D ใน PBM ∈ {A,B,C,REVIEW} )
+//                                     และ ( G ≠ 0  หรือ  Col D ใน PBM ∈ {A,B,C} )
+// (20 ต.ค. 2026: REVIEW ถูกถอดออกจากกลุ่ม "นับแม้ G=0" — นับเฉพาะเมื่อ G ≠ 0 · สวิตช์ REVIEW_ZERO_NOT_COUNTED)
 // (ก.ย. 2026: ถอดคำว่า DELETE ออกจากหมวดที่ตัดทิ้ง — ตัวตัดสินของหมวดนั้นกลับไปเป็นยอดคงเหลือตามปกติ)
 // ตัวเดียวที่อยู่เบื้องหลังทั้งการ์ด Total SKU และตัวเศษ/ตัวหารของ Progress
 //
 // กับดักที่เทสนี้ล็อกไว้:
-//  1) A/B/C/REVIEW ที่ระบบขึ้นสต็อก 0 ต้อง "นับ" — คือทั้งหมดของกติกาที่เพิ่มมา ส.ค. 2026
+//  1) A/B/C ที่ระบบขึ้นสต็อก 0 ต้อง "นับ" — คือทั้งหมดของกติกาที่เพิ่มมา ส.ค. 2026 (REVIEW ที่ G=0 ไม่นับ ตั้งแต่ 20 ต.ค. 2026)
 //  2) เงื่อนไขกลุ่มนี้มีแต่เพิ่ม ไม่มีทางตัดออก → PBM ไฟล์เก่าที่ไม่มี `cat` ต้องได้ผลเท่ากติกาเดิมเป๊ะ
 //     (ถ้าใครเผลอเปลี่ยน OR เป็น AND ทุกสาขาที่ยังไม่อัป PBM จะได้ Total SKU = 0 ทันที)
 //  3) หมวดใน R01 (ธง nc) ชนะทั้งสองข้อเสมอ
 //  4) ต้องอ่าน G จาก state.r01Data (ค่าดิบ) ไม่ใช่ skuMap.systemQty ที่ clamp negSys เป็น 0 แล้ว
-//  5) REVIEW ได้สิทธิ์เต็มรูปแบบเหมือน A/B/C (ส.ค. 2026 รอบ 2) — ไม่ถูกกรองออกจาก PBM, ไม่ติด DEL,
-//     ชื่อสินค้ามาจาก PBM ไม่ใช่ R01 — ต่างจาก D/P ที่ยังถูกกรองทิ้งเหมือนเดิม
+//  5) REVIEW ยังอยู่ใน PBM catalog เหมือน A/B/C (ส.ค. 2026 รอบ 2) — ไม่ถูกกรองออก, ไม่ติด DEL,
+//     ชื่อสินค้ามาจาก PBM ไม่ใช่ R01 — ต่างจาก D/P ที่ยังถูกกรองทิ้งเหมือนเดิม · ที่ต่างจาก A/B/C มีแค่ "ยอด 0 ไม่เข้า Progress"
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 // สร้างชุดข้อมูลสังเคราะห์ตรงเข้า state แล้วเรียก rebuildMaps() ของจริง (ไม่แตะไฟล์ production)
@@ -27,6 +28,7 @@ async function countableFrom(page, { r01, pm }) {
   }, { r01, pm });
 }
 
+// _isForceCountColD ตัดสิน "เก็บ cat ลง PBM หรือไม่" (ยังรวม REVIEW) — ไม่ใช่ตัวตัดสินการนับแล้ว (ดู REVIEW_ZERO_NOT_COUNTED)
 test('_isForceCountColD — เทียบเป๊ะเฉพาะ A/B/C/REVIEW', async ({ browser }) => {
   const app = await bootBare(browser);
   const out = await app.page.evaluate(() => [
@@ -107,9 +109,9 @@ test('_countableSkus — ตาราง P1–P8: นับเมื่อ G ≠
   await closeApp(app);
 });
 
-// REVIEW ได้สิทธิ์เต็มรูปแบบเหมือน A/B/C (ส.ค. 2026 รอบ 2) — ไม่ใช่แค่ "นับได้แม้ G=0" แต่ทั้งชุด:
-// อยู่ใน PBM catalog ตามปกติ, ไม่ติดแท็ก DEL, ชื่อสินค้ามาจาก PBM ไม่ใช่ R01
-test('_countableSkus — Col D REVIEW ได้สิทธิ์เต็มรูปแบบเหมือน A/B/C', async ({ browser }) => {
+// REVIEW ยังอยู่ใน PBM catalog เหมือน A/B/C (ส.ค. 2026 รอบ 2): ไม่ติดแท็ก DEL, ชื่อสินค้ามาจาก PBM ไม่ใช่ R01, เก็บ cat ไว้
+// แต่ตั้งแต่ 20 ต.ค. 2026 "ยอด G=0 ไม่เข้า Progress" — หลุดเฉพาะจากชุดนับ (ตัวหาร/ตัวเศษ) ไม่ใช่จากระบบ
+test('_countableSkus — Col D REVIEW: G=0 ไม่นับ แต่ยังอยู่ใน catalog ครบ (ไม่ติด DEL · ชื่อจาก PBM · เก็บ cat)', async ({ browser }) => {
   const app = await bootBare(browser);
   await app.page.evaluate(() => { currentBranch = 'SRC'; });
 
@@ -123,16 +125,136 @@ test('_countableSkus — Col D REVIEW ได้สิทธิ์เต็มร
   ];
 
   const out = await countableFrom(app.page, { r01, pm });
-  expect(out.countable).toEqual(['REV-STOCK', 'REV-ZERO']);   // ทั้งคู่นับ แม้ตัวหนึ่ง G=0
+  expect(out.countable).toEqual(['REV-STOCK']);   // ★ ตัวที่ G=0 ไม่นับ · ตัวที่มีของยังนับ
+  expect(out.total).toBe(1);
 
   const info = await app.page.evaluate(() => ({
     isDel: state.skuMap.get('REV-ZERO')?.isDel,
     productName: state.skuMap.get('REV-ZERO')?.productName,
     inPmMap: state.productMasterMap.has('REV-ZERO'),
+    inSkuMap: state.skuMap.has('REV-ZERO'),
+    cat: state.productMasterData.find((r) => r.sku === 'REV-ZERO')?.cat,
   }));
   expect(info.isDel).toBe(false);              // ไม่ติดแท็ก DEL — ต่างจาก D/P
   expect(info.productName).toBe('ชื่อจาก PBM'); // ชื่อมาจาก PBM ไม่ใช่ R01
   expect(info.inPmMap).toBe(true);              // อยู่ใน catalog จริง ไม่ถูกกรองทิ้ง
+  expect(info.inSkuMap).toBe(true);             // ยังสแกนได้ Confirm ได้ — ตัดเฉพาะจาก Progress
+  expect(info.cat).toBe('REVIEW');              // PBM บน Cloud ไม่ถูกแตะ → ไม่ต้องอัป PBM ใหม่ และถอยกลับด้วยสวิตช์ได้
+
+  await closeApp(app);
+});
+
+// ตารางของกติกาใหม่ (20 ต.ค. 2026) — เทียบ REVIEW กับ A/B/C ในชุดข้อมูลเดียวกัน เพื่อให้เห็นว่ามีแค่ REVIEW ที่ G=0 แล้วหลุด
+test('_countableSkus — REVIEW นับเฉพาะ G ≠ 0 (ติดลบก็นับ) · A/B/C ที่ G=0 ยังนับ · ธง nc ยังชนะเหมือนเดิม', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await app.page.evaluate(() => { currentBranch = 'SRC'; });
+
+  const r01 = [
+    { colE: 'RV-ZERO', productName: 'REVIEW + 0', systemQty: 0 },
+    { colE: 'RV-STOCK', productName: 'REVIEW + มีของ', systemQty: 5 },
+    { colE: 'RV-NEG', productName: 'REVIEW + ติดลบ (ค้างส่ง)', systemQty: -2 },
+    { colE: 'AA-ZERO', productName: 'A + 0', systemQty: 0 },
+    { colE: 'BB-ZERO', productName: 'B + 0', systemQty: 0 },
+    { colE: 'CC-ZERO', productName: 'C + 0', systemQty: 0 },
+    { colE: 'RV-OFFICE', productName: 'REVIEW + หมวด 11. + มีของ', systemQty: 7, nc: 1 },
+    { colE: 'RV-DEL-POS', productName: 'REVIEW + DELETE + มีของ', systemQty: 3, nc: 2 },
+    { colE: 'RV-DEL-ZERO', productName: 'REVIEW + DELETE + 0', systemQty: 0, nc: 2 },
+    { colE: 'NO-CAT-ZERO', productName: 'ไม่จัดชั้น + 0', systemQty: 0 },
+  ];
+  const pm = [
+    { sku: 'RV-ZERO', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'RV-STOCK', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'RV-NEG', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'AA-ZERO', productName: 'x', unitPrice: 10, cat: 'A' },
+    { sku: 'BB-ZERO', productName: 'x', unitPrice: 10, cat: 'B' },
+    { sku: 'CC-ZERO', productName: 'x', unitPrice: 10, cat: 'C' },
+    { sku: 'RV-OFFICE', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'RV-DEL-POS', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'RV-DEL-ZERO', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'NO-CAT-ZERO', productName: 'x', unitPrice: 10 },
+  ];
+
+  const out = await countableFrom(app.page, { r01, pm });
+  expect(out.countable).toEqual(['AA-ZERO', 'BB-ZERO', 'CC-ZERO', 'RV-DEL-POS', 'RV-NEG', 'RV-STOCK']);
+  expect(out.total).toBe(6);
+  expect(out.countable).not.toContain('RV-ZERO');        // ★ เคสหลัก: REVIEW + G=0 ไม่เข้า Progress
+  expect(out.countable).toContain('RV-STOCK');           // REVIEW + มีของ → นับ
+  expect(out.countable).toContain('RV-NEG');             // G ติดลบ ≠ 0 → นับ (ค้างส่งลูกค้ายังต้องไปดูชั้น)
+  expect(out.countable).toContain('AA-ZERO');           // ★ คู่เทียบ: A/B/C ที่ G=0 ต้องยังนับ — ห้ามพังไปด้วย
+  expect(out.countable).toContain('BB-ZERO');
+  expect(out.countable).toContain('CC-ZERO');
+  expect(out.countable).not.toContain('RV-OFFICE');      // nc:1 ชนะเหมือนเดิม
+  expect(out.countable).toContain('RV-DEL-POS');         // DELETE + มีของ → นับตามยอด
+  expect(out.countable).not.toContain('RV-DEL-ZERO');    // DELETE + 0 → ไม่นับ (เหมือนเดิม — REVIEW ไม่ใช่ข้อยกเว้น)
+  expect(out.countable).not.toContain('NO-CAT-ZERO');    // ไม่จัดชั้น + 0 → ไม่นับ (เหมือนเดิม)
+
+  await closeApp(app);
+});
+
+// ตัวเศษกับตัวหารต้องมาจากชุดเดียวกัน — REVIEW ที่ G=0 แม้สแกนแล้วก็ต้องไม่ดันตัวเศษ และไม่โผล่ใน 📋 "ยังไม่ได้นับ"
+// (จำนวนแถวของ "ยังไม่ได้นับ" = ตัวหาร − ตัวเศษ เสมอ — CLAUDE.md §Product Branch Master + Total SKU / Progress)
+test('Progress — REVIEW ที่ G=0 ไม่ขยับตัวเศษ/ตัวหาร และไม่อยู่ใน "ยังไม่ได้นับ" (Counted ≤ Total SKU ยังเป็นจริง)', async ({ browser }) => {
+  const app = await bootBare(browser);
+  await app.page.evaluate(() => { currentBranch = 'SRC'; });
+
+  const r01 = [
+    { colE: 'RV-ZERO', productName: 'REVIEW + 0', systemQty: 0 },
+    { colE: 'AA-ZERO', productName: 'A + 0', systemQty: 0 },
+    { colE: 'RV-STOCK', productName: 'REVIEW + มีของ', systemQty: 5 },
+  ];
+  const pm = [
+    { sku: 'RV-ZERO', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'AA-ZERO', productName: 'x', unitPrice: 10, cat: 'A' },
+    { sku: 'RV-STOCK', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+  ];
+  const out = await countableFrom(app.page, { r01, pm });
+  expect(out.total).toBe(2);   // AA-ZERO + RV-STOCK
+
+  const res = await app.page.evaluate(() => {
+    const set = (sku, status) => state.scanData.set(sku, { ...(state.scanData.get(sku) || {}), countedQty: 1, status });
+    set('RV-ZERO', 'scanning');     // ★ REVIEW G=0 สแกนแล้ว → ต้องไม่นับ
+    set('AA-ZERO', 'scanning');     // A G=0 สแกนแล้ว → นับ
+    _writeScanProgress();
+    const pendingRows = () => { invalidatePopupRowsCache(); popupFilterState = 'pending'; return getFilteredPopupRows().map((x) => x.sku).sort(); };
+    const mid = { scanned: _scanProgressCounts().scanned, progress: document.getElementById('progressCount').textContent, pending: pendingRows() };
+    set('RV-ZERO', 'pass');         // Confirm แล้วเป็น Pass ก็ยังไม่เข้าชุดนับ
+    const after = { scanned: _scanProgressCounts().scanned, pass: _scanProgressCounts().pass };
+    return { mid, after };
+  });
+  expect(res.mid.scanned).toBe(1);                 // นับเฉพาะ AA-ZERO
+  expect(res.mid.progress).toBe('1 / 2');          // ตัวเศษ ⊆ ตัวหาร — ไม่ทะลุ 100%
+  expect(res.mid.pending).toEqual(['RV-STOCK']);   // ★ RV-ZERO ไม่โผล่เป็นงานค้าง · แถวค้าง = ตัวหาร − ตัวเศษ = 1
+  expect(res.after).toEqual({ scanned: 1, pass: 0 });   // Pass ของ REVIEW G=0 ไม่ขยับ Counted/Pass
+
+  await closeApp(app);
+});
+
+// ทางถอย: ตั้งสวิตช์เป็น false = REVIEW กลับไปนับแม้ G=0 เหมือนก่อน 20 ต.ค. 2026 (ไม่ต้องอัป PBM ใหม่)
+test('REVIEW_ZERO_NOT_COUNTED — ค่าเริ่มต้นที่ส่งมอบเป็น true · ปิดแล้ว REVIEW G=0 กลับมานับ · A/B/C ไม่เปลี่ยน', async ({ browser }) => {
+  const app = await bootBare(browser);
+  const def = await app.page.evaluate(() => ({ t: typeof REVIEW_ZERO_NOT_COUNTED, v: REVIEW_ZERO_NOT_COUNTED }));
+  expect(def).toEqual({ t: 'boolean', v: true });   // ค่าที่ส่งมอบ — เทสอื่นที่ตั้งเองตรวจข้อนี้ไม่ได้
+
+  await app.page.evaluate(() => { currentBranch = 'SRC'; });
+  const r01 = [
+    { colE: 'RV-ZERO', productName: 'REVIEW + 0', systemQty: 0 },
+    { colE: 'AA-ZERO', productName: 'A + 0', systemQty: 0 },
+    { colE: 'NO-CAT-ZERO', productName: 'ไม่จัดชั้น + 0', systemQty: 0 },
+    { colE: 'RV-OFFICE', productName: 'REVIEW + หมวด 11.', systemQty: 4, nc: 1 },
+  ];
+  const pm = [
+    { sku: 'RV-ZERO', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+    { sku: 'AA-ZERO', productName: 'x', unitPrice: 10, cat: 'A' },
+    { sku: 'NO-CAT-ZERO', productName: 'x', unitPrice: 10 },
+    { sku: 'RV-OFFICE', productName: 'x', unitPrice: 10, cat: 'REVIEW' },
+  ];
+  const on = await countableFrom(app.page, { r01, pm });
+  expect(on.countable).toEqual(['AA-ZERO']);
+
+  await app.page.evaluate(() => { REVIEW_ZERO_NOT_COUNTED = false; });
+  const off = await countableFrom(app.page, { r01, pm });
+  expect(off.countable).toEqual(['AA-ZERO', 'RV-ZERO']);   // กลับเป็นกติกาเดิม: REVIEW G=0 นับ · nc:1 ยังชนะ · ไม่จัดชั้น G=0 ไม่นับ
+  expect(off.total).toBe(2);
 
   await closeApp(app);
 });

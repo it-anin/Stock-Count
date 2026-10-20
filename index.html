@@ -3652,7 +3652,8 @@ function parseFile(file, callback) {
 }
 
 // ─── PBM คอลัมน์ D = การจัดชั้นตามยอดขาย (ส.ค. 2026) ───
-// A = ขายดีมาก · B = ปานกลาง · C = ขายได้เรื่อยๆ · REVIEW = รอตรวจสอบ → 4 ค่านี้คือ "สินค้าที่ต้องเดินไปนับ"
+// A = ขายดีมาก · B = ปานกลาง · C = ขายได้เรื่อยๆ · REVIEW = สินค้าใหม่/รอพิจารณาปรับ → 4 ค่านี้ยังเก็บ `cat` ลง PBM
+// ⚠️ แต่ตั้งแต่ 20 ต.ค. 2026 มีเฉพาะ A/B/C ที่ "นับแม้ G=0" · REVIEW นับเฉพาะเมื่อ G ≠ 0 (ดู REVIEW_ZERO_NOT_COUNTED ข้าง _countableSkus)
 // (ส.ค. 2026 รอบ 2: REVIEW เข้าร่วมกลุ่มเดียวกับ A/B/C เต็มรูปแบบ — ไม่ถูกกรองออกจาก PBM แล้ว
 //  ไม่ติดแท็ก DEL, ชื่อสินค้ามาจาก PBM ไม่ใช่ R01, และนับเข้า Progress แม้ G=0 เหมือน A/B/C ทุกประการ)
 // เทียบเป๊ะเท่านั้น: ค่าว่าง / N / E หรืออะไรก็ตามที่รอด filter D/P = ไม่ต้องนับ
@@ -4836,11 +4837,13 @@ window.addEventListener('DOMContentLoaded',async()=>{
 let _cachedActiveSkus=[];
 let _cachedTotalSku=0;
 // SKU ที่ "ต้องนับ" (ส.ค. 2026 · แยกชนิดธง ก.ย. 2026):
-//   มีแถวใน R01.102  และ  ธง nc ไม่ใช่ 1  และ ( G ≠ 0  หรือ  ( ธง nc ไม่ใช่ 2 และ Col D ใน PBM ∈ {A,B,C,REVIEW} ) )
+//   มีแถวใน R01.102  และ  ธง nc ไม่ใช่ 1  และ ( G ≠ 0  หรือ  ( ธง nc ไม่ใช่ 2 และ Col D ใน PBM ∈ {A,B,C} ) )
 //   - G ≠ 0              : ระบบบอกว่ามีของ → ต้องไปนับ (กติกาเดิม)
-//   - Col D A/B/C/REVIEW : สินค้าขายดี/รอตรวจสอบ → ต้องไปดูของบนชั้นจริง **แม้ระบบจะขึ้น 0** (เพิ่ม ส.ค. 2026)
+//   - Col D A/B/C        : สินค้าขายดี → ต้องไปดูของบนชั้นจริง **แม้ระบบจะขึ้น 0** (เพิ่ม ส.ค. 2026)
+//   - Col D REVIEW       : สินค้าใหม่/รอพิจารณาปรับ → นับ**เฉพาะเมื่อ G ≠ 0** เหมือนสินค้าทั่วไป ยอด 0 ไม่เข้า Progress
+//                          (ผู้ใช้สั่ง 20 ต.ค. 2026 · สวิตช์ REVIEW_ZERO_NOT_COUNTED · ก่อนหน้านี้ REVIEW นับแม้ G=0 เหมือน A/B/C)
 //   - ธง nc:1 (หมวด 11.) ชนะทุกข้อเสมอ
-//   - ธง nc:2 (หมวด DELETE) ตัดสินด้วยยอดอย่างเดียว — **ชั้น A/B/C/REVIEW ดึงของที่ยอด 0 เข้าไม่ได้** (ก.ย. 2026)
+//   - ธง nc:2 (หมวด DELETE) ตัดสินด้วยยอดอย่างเดียว — **ชั้น A/B/C ดึงของที่ยอด 0 เข้าไม่ได้** (ก.ย. 2026)
 //     ของหมวดนี้ถูกมาร์คลบไปแล้ว ยอด 0 จึงแปลว่า "ไม่มีของและไม่ต้องมี" ต่างจากสินค้าขายดีที่ต้องไปดูชั้นทุกวัน
 // เงื่อนไข A/B/C มีแต่ "เพิ่ม" ไม่มีทางตัดออก → PBM ไฟล์เก่าที่ไม่มี field `cat` ให้ผลเท่ากติกาเดิมเป๊ะ
 // จึงไม่ต้องมี feature flag / fallback ใดๆ · ห้ามเปลี่ยน OR เป็น AND ไม่งั้นสาขาที่ยังไม่อัป PBM จะได้ Total SKU = 0
@@ -4849,6 +4852,11 @@ let _cachedTotalSku=0;
 // ⚠️ อ่าน G จาก state.r01Data (ค่าดิบ) ห้ามใช้ skuMap.systemQty — สาขายา clamp negSys เป็น 0 ไปแล้ว
 //    ถ้าใช้ skuMap จะแยก "G=0 จริง" กับ "G ติดลบ (ขายของขาด)" ไม่ออก
 let _countableSkus=new Set();
+// REVIEW (Col D ใน PBM) ที่ยอดระบบ G = 0 ไม่นับเข้า Progress (20 ต.ค. 2026 · ผู้ใช้สั่ง) — REVIEW ยังอยู่ใน PBM catalog ตามปกติ
+// ไม่ติดแท็ก DEL ชื่อมาจาก PBM และยังเก็บ `cat:'REVIEW'` ลง {branch}_pm เหมือนเดิม (ไม่ต้องอัป PBM ใหม่) · ที่เปลี่ยนมีแค่ตัวหาร/ตัวเศษ Progress
+// ⚠️ มีผลกับทุกจุดที่อ่าน _countableSkus พร้อมกัน: Total SKU · Counted · Pass · Progress · ตัวกรอง 📋 "ยังไม่ได้นับ"/DEL
+// rollback = ตั้ง false แล้ว deploy (REVIEW กลับไปนับแม้ G=0) · let เพื่อให้เทสสลับเทียบได้
+let REVIEW_ZERO_NOT_COUNTED=true;
 // SKU → G ดิบจาก R01 (ไม่ผ่าน clamp) — ใช้โดย _rawSystemQty()/_canEnterZeroOnly() · สร้างพร้อมกันใน _rebuildCountableSkus()
 let _r01RawQty=new Map();
 // PBM มีผลกับตัวหาร Progress แล้ว → ทุกจุดที่ PBM/R01 เปลี่ยนต้องเรียกอันนี้ แม้ R05 ยังมาไม่ถึง
@@ -4865,7 +4873,8 @@ function _rebuildCountableSkus(){
   _r01RawQty=qtyMap;   // เก็บ G ดิบไว้ให้ _rawSystemQty() — ห้ามอ่านจาก skuMap เพราะสาขายา clamp negSys เป็น 0
   // `cat` มีเฉพาะแถว A/B/C (loadProductMaster) — ไฟล์เก่าไม่มีเลย → set ว่าง → เงื่อนไขนี้ไม่ทำอะไร
   const abcSkus=new Set();
-  state.productMasterData.forEach(r=>{if(r.cat)abcSkus.add(r.sku);});
+  // REVIEW ไม่อยู่ในชุดนี้ (REVIEW_ZERO_NOT_COUNTED) → ผ่านเงื่อนไข G ≠ 0 อย่างเดียว · A/B/C ไม่เปลี่ยน
+  state.productMasterData.forEach(r=>{if(r.cat&&!(REVIEW_ZERO_NOT_COUNTED&&r.cat==='REVIEW'))abcSkus.add(r.sku);});
   qtyMap.forEach((q,sku)=>{
     const flag=ncFlag.get(sku)||0;
     if(flag===1)return;                                          // หมวด 11. ตัดเด็ดขาด ชนะทุกเงื่อนไข

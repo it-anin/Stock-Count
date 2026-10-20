@@ -95,6 +95,6 @@ for (const [cat, e] of list) {
   console.log(`${mark} ${String(e.rows).padStart(6)} ${String(e.nonZero).padStart(6)}   ${cat === '' ? '(ว่าง)' : cat}`);
 }
 console.log('\nหมายเหตุ:');
-console.log('  "นับ"          = ยังต้องผ่านเงื่อนไข G ≠ 0 หรือ PBM Col D ∈ {A,B,C,REVIEW} อีกชั้น');
-console.log('  "มีของถึงนับ"   = ต้อง G ≠ 0 อย่างเดียว (ธง nc:2) — ชั้น A/B/C/REVIEW ดึงของที่ยอด 0 เข้าไม่ได้');
+console.log('  "นับ"          = ยังต้องผ่านเงื่อนไข G ≠ 0 หรือ PBM Col D ∈ {A,B,C} อีกชั้น (REVIEW นับเฉพาะ G ≠ 0)');
+console.log('  "มีของถึงนับ"   = ต้อง G ≠ 0 อย่างเดียว (ธง nc:2) — ชั้น A/B/C ดึงของที่ยอด 0 เข้าไม่ได้');
 console.log('  "ตัดเด็ดขาด"    = ไม่นับเลยไม่ว่ากรณีใด (ธง nc:1)');

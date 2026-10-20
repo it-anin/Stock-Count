@@ -12,9 +12,10 @@
 //   1) filter — the parser drops rows whose colD is D / P (REVIEW is NOT dropped, ส.ค. 2026 round 2).
 //      pmSourceRows keeps every row (what toPmCsv emits); pmRows is the post-filter set the app should
 //      end up with — asserting one against the other is what proves the filter runs.
-//   2) countable set (ส.ค. 2026) — colD A / B / C / REVIEW is "ต้องเดินไปนับ", and the parser keeps the
-//      value as `cat` on surviving rows. R01 col G is no longer part of that decision for these four.
-//      REVIEW is full parity with A/B/C: stays in the catalog, gets its PBM name, never tagged DEL.
+//   2) countable set (ส.ค. 2026) — the parser keeps colD A / B / C / REVIEW as `cat` on surviving rows;
+//      A / B / C are "ต้องเดินไปนับ" even at zero stock. REVIEW stays in the catalog, gets its PBM name and is
+//      never tagged DEL (full parity with A/B/C there) but, since 20 ต.ค. 2026, it counts only when
+//      R01 col G !== 0 (REVIEW_ZERO_NOT_COUNTED).
 
 const pmSourceRows = [];
 const pmRows = [];
@@ -59,8 +60,8 @@ add({ sku: 'S-NOPRICE',name: 'Test No Price Item',   price: 50,   sys: 8,  barco
 add({ sku: 'S-ZERO',   name: 'Test Zero Stock Med',  price: 20,   sys: 0,  barcodes: [['B-ZERO', 'TAB', 1, 20]] });
 add({ sku: 'S-NEG',    name: 'Test Negative Stock',  price: 20,   sys: -3, barcodes: [['B-NEG', 'TAB', 1, 20]] });
 add({ sku: 'S-MULTI',  name: 'Test Multi Pack',      price: 100,  sys: 60, barcodes: [['B-M1', 'TAB', 1, 100], ['B-M6', 'STRIP', 6, 600], ['B-M24', 'BOX', 24, 2400]] });
-// Col D variants — A/B/C/REVIEW stay in the catalog and pull their SKU into the count even at zero
-// stock. D/P are dropped from PBM but still have stock in R01, so they stay scannable (as DEL) AND
+// Col D variants — A/B/C/REVIEW stay in the catalog; A/B/C also pull their SKU into the count even at zero
+// stock (REVIEW does not since 20 ต.ค. 2026). D/P are dropped from PBM but still have stock in R01, so they stay scannable (as DEL) AND
 // still count — the force-count clause adds, it never subtracts.
 add({ sku: 'S-CATA',   name: 'Test Controlled A',    price: 30, colD: 'A', sys: 4, barcodes: [['B-CATA', 'TAB', 1, 30]] });
 add({ sku: 'S-CATP',   name: 'Test Psychotropic P',  price: 30, colD: 'P', sys: 4, barcodes: [['B-CATP', 'TAB', 1, 30]] });
@@ -69,7 +70,8 @@ add({ sku: 'S-CATD',   name: 'Test Discontinued D',  price: 30, colD: 'D', sys: 
 add({ sku: 'S-REVIEW', name: 'Test Review Row',      price: 30, colD: 'REVIEW', sys: 4, barcodes: [['B-REVIEW', 'TAB', 1, 30]] });
 // The whole point of the ส.ค. 2026 rule: a fast-moving item the system thinks is empty still gets counted
 add({ sku: 'S-ABC0',   name: 'Test Fast Mover Empty',price: 30, colD: 'B', sys: 0, barcodes: [['B-ABC0', 'TAB', 1, 30]] });
-// REVIEW gets the exact same zero-stock treatment as A/B/C
+// REVIEW with zero stock is the one shape that does NOT get A/B/C's zero-stock treatment (20 ต.ค. 2026):
+// it stays in the PBM catalog (not DEL, PBM name) but drops out of the count, like an unclassified zero
 add({ sku: 'S-REVIEW0',name: 'Test Review Empty',    price: 30, colD: 'REVIEW', sys: 0, barcodes: [['B-REVIEW0', 'TAB', 1, 30]] });
 // Unclassified (blank Col D) — counted only through the stock clause, so it splits on systemQty:
 // stock → counted; zero → the one shape that drops out of the count entirely
@@ -142,7 +144,10 @@ const r01CloudRows = r01Rows.map(({ colE, productName, systemQty, colP }) => ({
 // degrades to exactly the legacy rule — which is what every branch runs until its file is re-uploaded.
 // The one category it cannot reach is nc:2 (DELETE): those are already marked for removal, so zero
 // stock there means "none and none expected", not "go look at the shelf".
-const ABC_SKUS = new Set(pmRows.filter((r) => r.cat).map((r) => r.sku));
+// REVIEW keeps `cat` in the PBM but is NOT in this set since 20 ต.ค. 2026 (REVIEW_ZERO_NOT_COUNTED):
+// it counts only through the stock clause (systemQty !== 0), like an unclassified SKU. Mirrors
+// _rebuildCountableSkus() in index.html — change one, change the other.
+const ABC_SKUS = new Set(pmRows.filter((r) => r.cat && r.cat !== 'REVIEW').map((r) => r.sku));
 const COUNTABLE_SKUS = new Set(
   r01Rows
     .filter((r) => !isNonCountColP(r.colP)

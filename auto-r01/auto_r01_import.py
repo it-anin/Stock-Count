@@ -430,12 +430,16 @@ def _row_identity_diff(cloud_rows, items):
 
 
 def _cat_skus_from_pm(branch):
-    """SKU ที่มี field cat ใน {branch}_pm = PBM Col D ∈ {A,B,C,REVIEW} (ตัวที่นับแม้ยอดเป็น 0)"""
+    """SKU ที่นับแม้ยอดเป็น 0 = PBM Col D ∈ {A,B,C}
+
+    REVIEW ยังมี field cat ใน {branch}_pm แต่ไม่อยู่ในชุดนี้ (20 ต.ค. 2026 · ตรงกับ REVIEW_ZERO_NOT_COUNTED ใน index.html):
+    REVIEW นับเฉพาะเมื่อ G ≠ 0 เหมือนสินค้าทั่วไป — ใช้เป็นตัวประเมิน Total SKU ในโหมด --resync-nc เท่านั้น ไม่มีผลกับข้อมูลที่เขียน
+    """
     raw = _rest_get_data_json(f"{branch}_pm")
     if not raw:
         return set(), False
     try:
-        return {r.get("sku") for r in json.loads(raw) if r.get("cat")}, True
+        return {r.get("sku") for r in json.loads(raw) if r.get("cat") and r.get("cat") != "REVIEW"}, True
     except Exception:
         return set(), False
 
@@ -540,7 +544,7 @@ def resync_nc(branches, apply_writes, only_branch):
         cat_skus, has_pm = _cat_skus_from_pm(branch)
         total_before = _countable_count(cloud_rows, cat_skus)
         total_after = _countable_count(items, cat_skus)
-        # หมวด DELETE ที่ยังถูกจัดชั้น A/B/C/REVIEW ไว้ใน PBM = เคสที่ธง nc:2 มีไว้กันโดยเฉพาะ
+        # หมวด DELETE ที่ยังถูกจัดชั้น A/B/C ไว้ใน PBM = เคสที่ธง nc:2 มีไว้กันโดยเฉพาะ (REVIEW ไม่นับ — ดู _cat_skus_from_pm)
         stock_only_with_cat = len({s for s, v in flags_after.items() if v == 2} & cat_skus)
 
         log(f"  แถว {len(items)} · ธงเปลี่ยน {len(changed)} SKU")
@@ -549,7 +553,7 @@ def resync_nc(branches, apply_writes, only_branch):
         log(f"  ขนาด {kb_before:.0f} KB → {kb_after:.0f} KB")
         if has_pm:
             log(f"  Total SKU {total_before} → {total_after}  ({total_after - total_before:+d})")
-            log(f"  หมวด DELETE ที่จัดชั้น A/B/C/REVIEW ไว้ด้วย {stock_only_with_cat} ตัว "
+            log(f"  หมวด DELETE ที่จัดชั้น A/B/C ไว้ด้วย {stock_only_with_cat} ตัว "
                 f"(กลุ่มนี้ยอด 0 จะไม่ถูกนับ — เป็นเหตุผลของธง nc:2)")
         else:
             log(f"  ⚠️ ไม่มี {branch}_pm บน cloud — ประเมิน Total SKU ไม่ได้ (ตัวเลขนับเฉพาะกติกา G ≠ 0)")
