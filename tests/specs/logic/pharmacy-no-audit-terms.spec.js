@@ -66,15 +66,23 @@ test('★ เภสัชสาขายา มีรายการรอรี
     expect(fit, branch).toBe(true);
   }
 
-  // ป็อปอัพ Stock Adj — แท็บรอรีเช็ค (ค่าเริ่มต้นเมื่อมีรายการรอ) แล้วแท็บ Stock Adj
+  // ป็อปอัพ Stock Adj — แท็บแรก (ค่าเริ่มต้นตอนเปิด) แล้วแท็บ Stock Adj
+  //   19 ต.ค. 2026: แท็บแรกของสาขายา = "ค้างส่ง" (PHARMACY_BACKORDER_TAB) — แถวมีเฉพาะ R01 ติดลบ ซึ่งข้อมูลชุดนี้ไม่มี จึงว่าง
+  //   ปิดสวิตช์นั้น = แท็บ "รอรีเช็ค" เดิม (2 รายการ) — ทั้งสองแบบต้องไม่มีคำว่า Audit
+  const popupHead = () => app.page.evaluate(() => ({ title: document.getElementById('auditVerifyTitle').textContent, tab: document.getElementById('avTabAuditLabel').textContent,
+    count: document.getElementById('auditVerifyRowCount').textContent }));
   await app.page.evaluate(() => openAuditVerifyPopup());
   expect(await auditLines(app.page, ['#auditVerifyPopupOverlay'])).toEqual([]);
-  expect(await app.page.evaluate(() => ({ title: document.getElementById('auditVerifyTitle').textContent, tab: document.getElementById('avTabAuditLabel').textContent,
-    count: document.getElementById('auditVerifyRowCount').textContent })))
-    .toEqual({ title: '🔴 Stock Adj — ตรวจ/รีเช็คสินค้า (เภสัช)', tab: 'รอรีเช็ค', count: '2 รายการ รอรีเช็ค' });
+  expect(await popupHead()).toEqual({ title: '🔴 Stock Adj — ตรวจ/รีเช็คสินค้า (เภสัช)', tab: 'ค้างส่ง', count: '0 รายการ ค้างส่ง' });
   await app.page.evaluate(() => document.getElementById('avBtnStockAdj').click());
   expect(await auditLines(app.page, ['#auditVerifyPopupOverlay'])).toEqual([]);
   await app.page.evaluate(() => closeAuditVerifyPopup());
+  await app.page.evaluate(() => { PHARMACY_BACKORDER_TAB = false; applyAuditTerminology(); openAuditVerifyPopup(); });
+  expect(await auditLines(app.page, ['#auditVerifyPopupOverlay'])).toEqual([]);
+  expect(await popupHead()).toEqual({ title: '🔴 Stock Adj — ตรวจ/รีเช็คสินค้า (เภสัช)', tab: 'รอรีเช็ค', count: '2 รายการ รอรีเช็ค' });
+  await app.page.evaluate(() => document.getElementById('avBtnStockAdj').click());
+  expect(await auditLines(app.page, ['#auditVerifyPopupOverlay'])).toEqual([]);
+  await app.page.evaluate(() => { closeAuditVerifyPopup(); PHARMACY_BACKORDER_TAB = true; applyAuditTerminology(); });
 
   // 📋 รายการสต็อค — ตัวกรอง/หัวคอลัมน์/ป้ายในตาราง (เภสัชเปิดมาที่ตัวกรอง Stock Adj · 16 ต.ค. 2026 ผู้ใช้สั่งเปลี่ยนชื่อปุ่มจาก "รอรีเช็ค")
   await app.page.evaluate(() => { openStockPopup(); renderPopupTable(); });
@@ -249,7 +257,8 @@ test('★ 📋 Export Excel ตัวกรองนี้: WH = Recheck · ป�
 test('★ สวิตช์ปิด (PHARMACY_RECHECK_TERMS=false) → ข้อความเดิมทุกตัวอักษร', async ({ browser }) => {
   const app = await bootBare(browser);
   // ตรึงข้อความเดิมของการ์ดใบที่ 4 ด้วย → ปิดการ์ด "Stock Adj เข้าระบบ" (PHARMACY_ADJ_ERP_CARD) ไปพร้อมกัน = ทางถอยทั้งสองชั้น
-  await app.page.evaluate(() => { PHARMACY_ADJ_ERP_CARD = false; });
+  // 19 ต.ค. 2026: ปิดแท็บ 📦 ค้างส่ง (PHARMACY_BACKORDER_TAB) ด้วย → แท็บแรกกลับเป็นป้ายเดิม "Audit" (สวิตช์นั้นแยกจาก PHARMACY_RECHECK_TERMS)
+  await app.page.evaluate(() => { PHARMACY_ADJ_ERP_CARD = false; PHARMACY_BACKORDER_TAB = false; });
   await setup(app.page, { terms: false });
   const t = await app.page.evaluate(() => {
     const txt = (id) => document.getElementById(id).textContent;
