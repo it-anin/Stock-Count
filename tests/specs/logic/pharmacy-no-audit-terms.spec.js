@@ -1,14 +1,16 @@
 // สาขายา (SRC/KKL/SSS) — จอไม่มีคำว่า "Audit" (ต.ค. 2026 · ผู้ใช้สั่ง "ตัดขั้น Audit ของเภสัช" · สวิตช์ PHARMACY_RECHECK_TERMS)
 //
-// แสดงผลล้วน: status code 'audit' ไม่เปลี่ยน · รายการที่รอเภสัช (Audit ค้าง / กด ↺ / R16 อัปซ้ำพลิก) เรียก "Stock Adj · รอรีเช็ค"
+// แสดงผลล้วน: status code 'audit' ไม่เปลี่ยน · รายการที่รอเภสัช (Audit ค้าง / กด ↺ / R16 อัปซ้ำพลิก) เรียก "รอรีเช็ค" (ป้ายสถานะในตาราง RESULT/📋 = "⚠️ Stock Adj" ตั้งแต่ 20 ต.ค. 2026)
 // เทสนี้ตรึง 4 ด้าน:
 //   1. ★ ข้อความที่มองเห็นบนจอสาขายาไม่มี /Audit/ ทุกจุดที่เคยมี (การ์ด · แผง · RESULT · ปุ่มยืนยัน · ป็อปอัพ 2 ตัว · คู่มือ 2 ตัว · Dashboard · toast)
-//   2. PDA ใช้ป้ายสั้น (ช่องสถานะแคบ)
+//   2. PDA: ป้ายสถานะ audit เหมือน Desktop (ไม่แยกคำสั้นตามความกว้างจออีก) + toast ย่อรู้จักข้อความใหม่
 //   3. ★ WH ไม่ถูกแตะ (ยังเป็น Recheck)
 //   4. ★ สวิตช์ปิด = ข้อความเดิมทุกตัวอักษร
 //   5. ★ 📊 ประวัติการนับ → ผู้ช่วยนับครั้งแรก: ช่อง Status = "⚠️ Stock Adj" ทุกแถว (12 ต.ค. 2026 · เดิม "⚠️ รอรีเช็ค")
 //   6. ★ 📋 รายการสต็อคสินค้า → ปุ่มกรอง key 'audit' = "Stock Adj" (16 ต.ค. 2026 · เดิม "รอรีเช็ค") — ชื่อต้องตรงเนื้อหา (audit + stock_adjustment) · WH ยัง "Recheck" · สวิตช์ปิด "Audit"
 //   7. ★ 📋 Export Excel ของตัวกรองนั้น (16 ต.ค. 2026 · ผู้ใช้สั่ง "เปลี่ยนชื่อรอรีเช็คใน Export Excel ด้วย") — ชื่อชีต + toast ใช้ชื่อเดียวกับป้ายปุ่ม (_popupAuditFilterTerm) · ตัวกรองอื่น/ชื่อไฟล์/หัวคอลัมน์ไม่เปลี่ยน
+//   8. ★ ป้ายสถานะ audit ในตาราง RESULT + 📋 (Desktop + PDA) = "⚠️ Stock Adj" บรรทัดเดียว (20 ต.ค. 2026 · ผู้ใช้สั่ง · เดิม "⚠️ Stock Adj · รอรีเช็ค" / แบ่ง 2 บรรทัดใน RESULT / PDA "⚠️ รอรีเช็ค")
+//      — stock_adjustment · WH (Recheck) · สวิตช์ปิด (Audit) ต้องไม่เปลี่ยน
 const { test, expect, bootBare, closeApp, newAppContext, waitForAppReady } = require('../../lib/hooks');
 
 // สร้างสถานะสาขา: audit = รอรีเช็ค · adj = Stock Adj ตรง · pass
@@ -56,11 +58,11 @@ test('★ เภสัชสาขายา มีรายการรอรี
       panel: document.getElementById('auditVerifyPanelTitle').textContent,
       btn: document.getElementById('pharmacistAuditBtnLabel').textContent,
       filter: document.getElementById('popupFilterAuditLabel').textContent, // ปุ่มกรองของ 📋 — ตรวจทั้ง 3 สาขา (16 ต.ค. 2026 · เดิม "รอรีเช็ค")
-      pill: document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill').innerText, // Desktop แบ่ง 2 บรรทัด (ช่อง 128px)
+      pill: document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill').innerText, // ป้ายสถานะ audit ในตาราง RESULT — บรรทัดเดียว (20 ต.ค. 2026 · เดิมแบ่ง 2 บรรทัดเพราะ "Stock Adj · รอรีเช็ค" ล้นช่อง 128px)
     }));
     // การ์ดใบที่ 4 ของสาขายา = "Stock Adj เข้าระบบ" (ต.ค. 2026 · PHARMACY_ADJ_ERP_CARD — การ์ดรอรีเช็คเดิมตรึงไว้ในเทสสวิตช์ปิดด้านล่าง)
-    expect(t, branch).toEqual({ card: 'Stock Adj เข้าระบบ', sub: 'เข้า ProMaxx แล้ว', panel: 'Stock Adj', btn: '✓ ยืนยันรีเช็ค', filter: 'Stock Adj', pill: '⚠️ Stock Adj\nรอรีเช็ค' });
-    // ป้ายต้องไม่ล้นช่อง STATUS (เคยถูกตัดเป็น "Stock Adj · รอรีเช็…" เมื่ออยู่บรรทัดเดียว)
+    expect(t, branch).toEqual({ card: 'Stock Adj เข้าระบบ', sub: 'เข้า ProMaxx แล้ว', panel: 'Stock Adj', btn: '✓ ยืนยันรีเช็ค', filter: 'Stock Adj', pill: '⚠️ Stock Adj' });
+    // ป้ายต้องไม่ล้นช่อง STATUS (ก่อน 20 ต.ค. 2026 ป้ายยาวเคยถูกตัดเป็น "Stock Adj · รอรีเช็…" เมื่ออยู่บรรทัดเดียว — ป้ายสั้นพอดีช่อง)
     const fit = await app.page.evaluate(() => { const p = document.querySelector('#scanListBody .scan-row[data-sku="AU0"] .pill'); const c = p.parentElement;
       return p.getBoundingClientRect().right <= c.getBoundingClientRect().right + 0.5; });
     expect(fit, branch).toBe(true);
@@ -96,6 +98,15 @@ test('★ เภสัชสาขายา มีรายการรอรี
     active: document.getElementById('popupFilterAuditLabel').closest('.popup-filter').classList.contains('active'),
     skus: getFilteredPopupRows().map((r) => r.sku).sort(),
   }))).toEqual({ active: true, skus: ['AU0', 'AU1', 'SA0'] });
+  // ★ ป้ายสถานะในตาราง 📋 (20 ต.ค. 2026 · ผู้ใช้สั่ง): audit = "⚠️ Stock Adj" (เดิม "⚠️ Stock Adj · รอรีเช็ค") · ช่อง "ผลตรวจ" ของ audit ยังเป็น ⏳
+  //   stock_adjustment ต้องไม่ถูกแตะ: สถานะ "⚠️ Stock Adjustment" + ช่อง "ผลตรวจ" "⚠️ Stock Adj" (คนละ helper กับ _auditPillLabel)
+  expect(await app.page.evaluate(() => {
+    const pills = (sku) => {
+      const tr = [...document.querySelectorAll('#popupTableBody tr')].find((r) => r.children[1] && r.children[1].textContent.trim().startsWith(sku));
+      return tr ? [...tr.querySelectorAll('.pill')].map((p) => p.innerText) : null;
+    };
+    return { AU0: pills('AU0'), AU1: pills('AU1'), SA0: pills('SA0') };
+  })).toEqual({ AU0: ['⚠️ Stock Adj', '⏳'], AU1: ['⚠️ Stock Adj', '⏳'], SA0: ['⚠️ Stock Adjustment', '⚠️ Stock Adj'] });
   await closeApp(app);
 });
 
@@ -150,7 +161,7 @@ test('★ โหมด idle · ผู้ช่วย · คู่มือ 2 ต
   await closeApp(app);
 });
 
-test('PDA (≤600px + UA PDA): ป้ายรอรีเช็คแบบสั้น · toast ย่อรู้จักข้อความใหม่', async ({ browser }) => {
+test('PDA (≤600px + UA PDA): ป้ายสถานะ audit = "⚠️ Stock Adj" เหมือน Desktop (20 ต.ค. 2026 · เดิม "⚠️ รอรีเช็ค") · toast ย่อรู้จักข้อความใหม่', async ({ browser }) => {
   const app = await newAppContext(browser, { login: false, mode: 'pda' });
   await app.page.goto('/index.html');
   await waitForAppReady(app.page, { login: false });
@@ -163,8 +174,9 @@ test('PDA (≤600px + UA PDA): ป้ายรอรีเช็คแบบส�
     r01: _toastMessageForDevice('R01.102: 10 รายการ · ล้าง R16 แล้ว อัปใหม่ก่อน Confirm'),
     r01Wh: _toastMessageForDevice('R01.102: 10 รายการ · อัป R16.104/103 ใหม่ก่อน Confirm'),
   }));
-  expect(r.pill).toBe('⚠️ รอรีเช็ค');
-  expect(r.statusPill).toContain('⚠️ รอรีเช็ค');
+  expect(r.pill).toBe('⚠️ Stock Adj');
+  // เทียบทั้งป้าย ไม่ใช่ toContain: "⚠️ Stock Adj" เป็นส่วนหนึ่งของ "⚠️ Stock Adjustment" / "⚠️ Stock Adj · รอรีเช็ค" จึงผ่านเปล่าๆ ได้
+  expect(r.statusPill).toBe('<span class="pill pill-audit">⚠️ Stock Adj</span>');
   expect(r.r16).toBe('R16 อัปเดตแล้ว');
   expect(r.r01).toBe('R01: 10 รายการ — อัป R16 ก่อน Confirm');
   expect(r.r01Wh).toBe('R01: 10 รายการ — อัป R16 ใหม่ก่อน Confirm');
