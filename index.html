@@ -2214,7 +2214,10 @@ function _pharmacyAuditMarkerFromFinal(sku,source,confirmedAt,confirmedTimestamp
   // ต้องตรงกับ confirmAuditVerifyItem ทุกตัวแปร: ชดเชย R16 ตามเวลารีเช็ค + เทียบยอดระบบที่ freeze ไว้
   const calc=getPharmacistAuditEffectiveQty(sku,qty,source?.recheckAt||source?.timestamp||'');
   const baseSys=_recheckBaselineSystemQty(sku,source);
-  const status=calc.effectiveQty===baseSys?'pass':'stock_adjustment';
+  // ธง backorder (ค้างส่ง) ชนะสูตรเสมอ — เหมือน confirmAuditVerifyItem: ค้างส่งนับ 0 vs ระบบติดลบ ไม่มีทางเท่ากัน
+  // เดิมบรรทัดนี้ไม่ดูธง → marker ผลสุดท้ายเป็น stock_adjustment แล้ว _applyPharmacyAuditMarkersToState ทับ pass ในเครื่อง → รายการกลับเข้าใบ IRPS
+  // (พบ 19 ต.ค. 2026 · เทส specs/logic+e2e/backorder-marker.spec.js ตรึงให้ผล marker == ผลในเครื่องทุกชุด)
+  const status=(source?.backorder||calc.effectiveQty===baseSys)?'pass':'stock_adjustment';
   // directAdj:false — ผลที่เภสัชยืนยันแล้วไม่ใช่ Stock Adj ตรง (marker เดิมอาจเป็นผลแปลงที่มีธงค้างจาก merge)
   return {sku,status,auditStatus:status==='pass'?'approved':'stock_adjustment',initialStatus:'audit',directAdj:false,
     auditor:currentUser||'',confirmedAt,confirmedBy:currentUser||'',timestamp:confirmedTimestamp||confirmedAt,
