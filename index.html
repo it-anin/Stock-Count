@@ -6509,7 +6509,7 @@ function _clearAdjQty(sd){delete sd.adjQty;delete sd.adjBase;delete sd.adjBy;del
 //   โค้ด idle ทั้งหมดยังอยู่ครบ (ทางถอย: ตั้ง true) · สแกน Stock Adj ที่ยังไม่กด ↺ ยังถูกปฏิเสธเหมือนเดิม (processPharmacistAuditScan ไม่ถูกแตะ)
 let PHARMACIST_STOCKADJ_ONLY=false;
 // ── สาขายา: จอไม่มีคำว่า Audit (ต.ค. 2026 · ผู้ใช้สั่ง "ตัดขั้น Audit ของเภสัช") ──
-// แสดงผลล้วน: status code 'audit' ไม่เปลี่ยน · รายการที่รอเภสัช (Audit ค้าง / กด ↺ / R16 อัปซ้ำพลิก) เรียก "Stock Adj · รอรีเช็ค"
+// แสดงผลล้วน: status code 'audit' ไม่เปลี่ยน · รายการที่รอเภสัช (Audit ค้าง / กด ↺ / R16 อัปซ้ำพลิก) เรียก "รอรีเช็ค" (ป้ายสถานะในตาราง RESULT/📋 = "⚠️ Stock Adj" — ดู _auditPillLabel)
 // ปิด = ข้อความเดิมทุกตัวอักษร (HTML คงค่าเดิมไว้ · JS ทับหลัง login) · WH ไม่แตะ
 let PHARMACY_RECHECK_TERMS=true;
 function _pharmNoAuditTerms(){return PHARMACY_RECHECK_TERMS&&_isPharmacyBranch();}
@@ -7060,13 +7060,13 @@ function _auditTerm(){return currentBranch==='WH'?'Recheck':_pharmTxt('Audit','�
 // ตัวกรองนี้รวม audit + stock_adjustment (getFilteredPopupRows) → สาขายาเรียก "Stock Adj" (16 ต.ค. 2026) · WH = Recheck · ปิดสวิตช์ = Audit
 // ⛔ ห้ามเปลี่ยนที่ _auditTerm() แทน — ใช้ร่วมกับแท็บ "รอรีเช็ค" ของป็อปอัพ Stock Adj (avTabAuditLabel) ซึ่งมีแต่ status 'audit' จริง
 function _popupAuditFilterTerm(){return _pharmTxt(_auditTerm(),'Stock Adj');}
-// ป้ายสถานะ audit ในตาราง (RESULT / 📋) — สาขายาบอกชัดว่ายังเป็นงานของ Stock Adj ที่รอเภสัชรีเช็ค (ขึ้นใบ 📦 แล้วด้วยเลขตอน Confirm · ต.ค. 2026 ดู _isAuditAdjItem)
-// PDA ช่องแคบ ใช้คำสั้น · twoLine = ช่อง STATUS ของ RESULT (128px) — บรรทัดเดียวล้นจนถูกตัด จึงแบ่ง 2 บรรทัด
-//   (<br> ใน span block ตัดบรรทัดได้แม้ .pill เป็น nowrap · ใช้เฉพาะใน HTML ห้ามส่งไป textContent/toast)
-function _auditPillLabel(twoLine){
+// ป้ายสถานะ audit ในตาราง (RESULT / 📋) — สาขายาเรียก "⚠️ Stock Adj" (20 ต.ค. 2026 · ผู้ใช้สั่ง · เดิม "⚠️ Stock Adj · รอรีเช็ค" / PDA "⚠️ รอรีเช็ค")
+// แสดงผลล้วน: status code 'audit' ไม่เปลี่ยน — เภสัชยังกรอกยอดรีเช็ค/กด ✕ ที่แถวนี้ได้ และรายการยังขึ้นใบ 📦 ด้วยเลขตอน Confirm (ดู _isAuditAdjItem)
+// ป้ายสั้นพอดีช่อง STATUS ทุกอุปกรณ์ (Desktop 128px · PDA) จึงไม่แยก 2 บรรทัด/คำสั้นตามความกว้างจออีก — ผลเป็นข้อความธรรมดา
+// ⚠️ ใน RESULT จะหน้าตาเดียวกับ stock_adjustment (ที่ยังแยกสองสถานะได้: ป้าย "รอรีเช็ค" ในใบ 📦 · แท็บ 📦 ค้างส่ง · Stock Validate)
+function _auditPillLabel(){
   if(!_pharmNoAuditTerms())return'⚠️ '+_auditTerm();
-  if(window.innerWidth<=600)return'⚠️ รอรีเช็ค';
-  return twoLine?'<span style="display:block;text-align:center;line-height:1.25;">⚠️ Stock Adj<br>รอรีเช็ค</span>':'⚠️ Stock Adj · รอรีเช็ค';
+  return'⚠️ Stock Adj';
 }
 // "นับไม่ตรง" (audit + stock_adjustment) — Dashboard/ประวัติ เดิมเรียกรวมว่า Audit
 function _mismatchTerm(){return currentBranch==='WH'?'Recheck':_pharmTxt('Audit','นับไม่ตรง');}
@@ -7111,7 +7111,7 @@ function getScanRowStyle(s){
   const m={
     scanning:          {cls:'var(--accent)',  label: window.innerWidth<=600?'⏳ รอ':'⏳ รอยืนยัน'},
     pass:              {cls:'var(--green)',   label:'✅ Pass'},
-    audit:             {cls:'var(--red)',     label:_auditPillLabel(true)},
+    audit:             {cls:'var(--red)',     label:_auditPillLabel()},
     audit_check:       {cls:'var(--green)',   label:_pharmTxt('✅ Audit Check','✅ ตรวจแล้ว')},
     stock_adjustment:  {cls:'var(--red)',     label:'⚠️ Stock Adj'},
     unknown:           {cls:'var(--purple)',  label:'❓NO STOCK'},
