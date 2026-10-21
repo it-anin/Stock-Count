@@ -4422,6 +4422,36 @@ const _CONFIRMED_STATUSES=new Set(['pass','audit','audit_check','stock_adjustmen
 // - ใช้ writeBatch เมื่อไม่มี race; ใช้ runTransaction เฉพาะ `scanning` เพราะสอง PDA อาจสแกน SKU เดียวกันพร้อมกัน
 // จำกัด scanning items ต่อรอบ — backlog ใหญ่จะได้ทยอยเขียน ไม่ยิงพรึบเดียวจน Firestore เบรก
 const SCAN_ITEM_CONTENDED_PER_FLUSH=25;
+// SCAN_FLUSH_EPOCH_GUARD (ต.ค. 2026 · ผีของ WH 7 ต.ค. · ผู้ใช้อนุมัติแผนตามกฎ 1): _flushDirtySkus แบ่งงานชุดละ SCAN_ITEM_BATCH_SIZE (450)
+//   และ "สร้างชุดถัดไปหลัง await commit ชุดก่อน" โดยถือ item (job.sd) ที่จับไว้ตอนเริ่ม แต่ _scanItemPayload ติดป้าย "รอบสด" (_countResetAt ตอนสร้าง)
+//   ⇒ ถ้าเครื่องนี้รับรอบใหม่ระหว่างรอ (มีเครื่องอื่นกดเริ่มนับใหม่) ชุดถัดไปได้ item เก่า + ป้ายรอบใหม่ + rev 1 (rev map ถูกล้างตอนรับรอบ)
+//   = เอกสารผี: ผลยืนยันรอบเก่าที่ป้ายเป็นรอบใหม่ (PDA สแกนแล้วขึ้น Pass แต่ Desktop ขึ้น รอนับ) — จำลองซ้ำได้ใน tests/specs/e2e/scan-flush-epoch-guard.spec.js
+//   เปิดสวิตช์: ก่อนสร้างทุกชุด + ก่อน _writeScanningItem ทุกตัว (และใน transaction ก่อน tx.set) เทียบ _countResetAt กับ epoch ตอนเริ่ม flush
+//   ไม่ตรง = ทิ้งที่เหลือทั้งหมด ไม่เขียน ไม่ลบ ไม่ requeue (เป็นของรอบที่ไม่มีอยู่แล้ว · requeue หลังรับรอบใหม่ = คำสั่ง "ลบ doc ตาม SKU" ที่ไปโดนของรอบใหม่)
+// rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบได้
+let SCAN_FLUSH_EPOCH_GUARD=true;
+function _flushEpochMoved(epoch){return SCAN_FLUSH_EPOCH_GUARD&&(_countResetAt||'')!==epoch;}
+// WH_GHOST_OP_CHECK (ต.ค. 2026 · ต่อจากข้างบน): เอกสารที่ผูก op (whCountOpId/whRecheckOpId) นับเป็น "Confirm แล้ว" ได้ก็ต่อเมื่อ op นั้น committed จริงในรอบนี้
+//   ตัวอ่านฝั่ง Desktop/listener ใช้กติกานี้อยู่แล้ว (ด่าน whOpId — ข้าม item ที่ op ไม่อยู่ใน _whCommittedOps) แต่ _writeScanningItem เดิมเชื่อ status อย่างเดียว:
+//   PDA สแกน SKU ที่มีผีบน Cloud → transaction เห็น "pass ในรอบนี้" → รับเป็น Pass (abort:'confirmed') ทั้งที่ Desktop ไม่เห็นผลนั้น
+//   เปิดสวิตช์ (WH เท่านั้น): เจอเอกสาร confirmed ที่ผูก op → อ่าน op doc ใน transaction เดียวกัน · ไม่ใช่ state:'committed' ของรอบนี้
+//   (ถูกลบ/preparing/aborted/คนละรอบ) = ผี → ถือว่าไม่มี Confirm: "ลบผีก่อน แล้วสร้างยอดสแกนจริงใน transaction ถัดไป"
+//   ⛔ เขียนทับผีตรงๆ (tx.set / delete+set ใน transaction เดียว) ไม่ได้: firestore.rules (preservesWhWorkflowOpIds) ห้าม update ที่ทิ้ง/เปลี่ยน
+//      whCountOpId·whRecheckOpId ในรอบเดียวกัน → permission-denied (พิสูจน์บน emulator ด้วย rules จริง · เทส e2e "กฎยังห้ามเขียนทับผีตรงๆ")
+//      delete และ create เป็น allow อยู่ จึงลบ (tx 1) แล้วสร้างใหม่ (tx 2) ได้ · ลบแล้วล้มก่อนสร้าง = requeue ตามปกติ (รอบถัดไปเจอ "ไม่มีเอกสาร")
+//   op committed จริง = รับ Confirm เหมือนเดิม · อ่าน op ล้ม = transaction ล้ม (ไม่ลบ ไม่เขียนทับ — fail-closed)
+// rollback = ตั้ง false แล้ว deploy · let เพื่อให้เทสสลับเทียบได้
+let WH_GHOST_OP_CHECK=true;
+// true = เอกสารผูก op ที่ "ไม่มีตัวตน/ไม่ใช่ committed ของรอบนี้" · อ่านผ่าน transaction ที่กำลังทำ
+// ⛔ ห้ามใช้ _whCommittedOps แทน: เครื่องอาจยังโหลด op ไม่ครบ (เพิ่งล็อกอิน/F5) แล้วจะเขียนทับ Confirm จริง · ตัวตัดสินใช้ field เดียวกับด่านอ่าน (recheck ก่อน count)
+async function _whItemOpIsGhost(tx,doc,epoch){
+  if(!WH_GHOST_OP_CHECK||currentBranch!=='WH')return false;
+  const opId=doc&&(doc.whRecheckOpId||doc.whCountOpId);
+  if(!opId)return false;   // ไม่ผูก op = เอกสารแบบเดิม (legacy / สแกนสด) → พฤติกรรมเดิม
+  const opSnap=await tx.get(getWhConfirmOpsRef().doc(String(opId)));
+  const op=opSnap.exists?(opSnap.data()||{}):null;
+  return !(op&&op.state==='committed'&&String(op.countResetAt||'')===epoch);
+}
 async function _flushDirtySkus(){
   if(_scanItemFlushing||_adminMode||!_db||!currentBranch||!_isScanSchemaV2())return;
   if(!_dirtySkus.size)return;
@@ -4435,6 +4465,7 @@ async function _flushDirtySkus(){
   const overflow=[];      // SKU ที่ยังไม่ได้ทำเพราะเกิน cap ต่อรอบ (ไม่ใช่ error)
   let sawRateLimit=false; // เจอ rate limit/quota → ถอยยาว
   let sawError=false;     // เจอ error ใดๆ → เข้าโหมด backoff
+  let epochDropped=0;     // SCAN_FLUSH_EPOCH_GUARD: จำนวนรายการของรอบเก่าที่ทิ้งเพราะรอบนับเปลี่ยนระหว่างส่ง
   try{
     const plain=[];   // เขียนตรงได้ (ลบ / สถานะที่ Confirm แล้ว)
     const contended=[];// ต้อง transaction (scanning — ยอดสะสมจากหลายเครื่อง)
@@ -4446,6 +4477,10 @@ async function _flushDirtySkus(){
     }
     for(let i=0;i<plain.length;i+=SCAN_ITEM_BATCH_SIZE){
       const jobs=plain.slice(i,i+SCAN_ITEM_BATCH_SIZE);
+      // SCAN_FLUSH_EPOCH_GUARD: ชุดก่อนหน้า await commit อยู่ — ถ้ารอบนับเปลี่ยนระหว่างนั้น jobs ที่เหลือคือ item ของรอบที่ไม่มีอยู่แล้ว
+      // (job.sd จับไว้ก่อนเปลี่ยนรอบ แต่ _scanItemPayload จะติดป้ายรอบสด = ผี) → ห้ามเขียน/ลบ ไม่ requeue (requeue หลังรับรอบใหม่ = ลบ doc ของรอบใหม่)
+      // ด่านที่กัน requeue จริงคือ finally ด้านล่าง (ทิ้ง requeue/overflow เมื่อรอบเปลี่ยน) — เช็คตรงนี้เพื่อไม่ต้องสร้าง/วนชุดที่เหลือต่อและนับจำนวนที่ทิ้งให้ถูก
+      if(_flushEpochMoved(epoch)){epochDropped+=plain.length-i;break;}
       if(sawError){for(const j of jobs)requeue.push(j.sku);continue;}
       const batch=_db.batch();
       for(const job of jobs){
@@ -4461,6 +4496,7 @@ async function _flushDirtySkus(){
     // ทยอยเขียน scanning ทีละไม่เกิน N รายการต่อรอบ + เว้นจังหวะ 40ms กัน burst
     let done=0;
     for(const sku of contended){
+      if(_flushEpochMoved(epoch)){epochDropped++;continue;} // รอบเปลี่ยนแล้ว — ของรอบเก่า ไม่เขียน ไม่ requeue
       if(sawError){requeue.push(sku);continue;}
       if(done>=SCAN_ITEM_CONTENDED_PER_FLUSH){overflow.push(sku);continue;} // เกิน cap ไม่ใช่ error
       try{await _writeScanningItem(itemsRef,sku,epoch);done++;await new Promise(r=>setTimeout(r,40));}
@@ -4473,8 +4509,14 @@ async function _flushDirtySkus(){
   }finally{
     _scanItemFlushing=false;
     for(const sku of skus)_scanItemInFlight.delete(sku);
-    for(const sku of requeue)_dirtySkus.add(sku);
-    for(const sku of overflow)_dirtySkus.add(sku);
+    // SCAN_FLUSH_EPOCH_GUARD: รอบเปลี่ยนแล้ว → ที่ค้าง requeue/overflow เป็นของรอบเก่า ห้ามเอากลับเข้า dirty
+    // (หลังรับรอบใหม่ local เป็น pending หมด → รอบ flush ถัดไปจะกลายเป็นคำสั่งลบ doc ตาม SKU ซึ่งไปโดนเอกสารของรอบใหม่)
+    if(_flushEpochMoved(epoch))epochDropped+=requeue.length+overflow.length;
+    else{
+      for(const sku of requeue)_dirtySkus.add(sku);
+      for(const sku of overflow)_dirtySkus.add(sku);
+    }
+    if(epochDropped)console.warn(`[scanItem flush] รอบนับเปลี่ยนระหว่างส่ง — ทิ้ง ${epochDropped} รายการของรอบเก่า (ไม่เขียน)`);
     if(sawError){
       _scanItemFailStreak++;
       // rate limit เริ่มถอย 20s เพิ่มเท่าตัวจนถึง 2 นาที; error อื่นเริ่ม 5s ถึง 1 นาที
@@ -4493,7 +4535,7 @@ async function _flushDirtySkus(){
 
 // เขียนรายการที่ยังเป็น `scanning` แบบ transaction — กันสอง PDA สแกน SKU เดียวกันพร้อมกันแล้วยอดหาย
 // เดิม _applyCloudScanData แก้ด้วย "เลือก countedQty ที่สูงกว่า" ซึ่งทิ้งยอดของอีกเครื่องถ้าสแกนจริงทั้งคู่
-async function _writeScanningItem(itemsRef,sku,epoch){
+async function _writeScanningItem(itemsRef,sku,epoch,ghostRev=0){
   const local=state.scanData.get(sku);
   if(!local||local.status!=='scanning')return;
   const ref=itemsRef.doc(sku);
@@ -4518,17 +4560,34 @@ async function _writeScanningItem(itemsRef,sku,epoch){
     //    แล้วถูกเขียนกลับขึ้น Cloud ในนามรอบใหม่ทั้งชุด (tests/specs/e2e/stale-round-resurrect.spec.js)
     const current=server&&String(server.countResetAt||'')===epoch?server:null;
     // server confirm ไปแล้วในรอบนี้ → ห้าม scanning สดทับผลที่ยืนยันแล้ว (คงกฎเดิมของ merge guard)
-    if(current&&_CONFIRMED_STATUSES.has(current.status))return{abort:'confirmed',server:current};
+    if(current&&_CONFIRMED_STATUSES.has(current.status)){
+      // WH_GHOST_OP_CHECK: ผลที่ผูก op ต้อง committed จริง — op ถูกลบ/ไม่ committed = "ผี" (Desktop ก็ไม่เห็นผลนั้น) ถือว่าไม่มี Confirm
+      // ไม่งั้น PDA รับผีเป็น Pass แล้วสแกนต่อไม่ได้ ทั้งที่ Desktop ขึ้น รอนับ · ghostRev ≠ 0 = รอบนี้ลบผีไปแล้วหนึ่งครั้ง → เจอ confirmed อีก = รับตามเดิม (ไม่วน)
+      if(ghostRev||!await _whItemOpIsGhost(tx,current,epoch))return{abort:'confirmed',server:current};
+      // เขียนทับผีตรงๆ ไม่ได้ (rules ห้าม update ที่ทิ้ง whCountOpId/whRecheckOpId — ดูคอมเมนต์ WH_GHOST_OP_CHECK) → ลบก่อน แล้วสร้างใหม่ใน transaction ถัดไป
+      if(_flushEpochMoved(epoch))return{abort:'localEpoch'};
+      tx.delete(ref);
+      return{ghostDeleted:true,ghostRev:Number(current.rev)||1};
+    }
     const base=current?(Number(current.countedQty)||0):0;
     const merged={...startLocal};
     // ถ้า server มียอดจากเครื่องอื่นอยู่แล้ว ให้บวก delta ของเครื่องนี้เข้าไป ไม่ใช่เขียนทับ
     // delta=0 ก็ต้องใช้ base: server อาจมียอดใหม่กว่าระหว่าง transaction ห้าม local เก่าทับกลับ
     // ไม่มียอดของรอบนี้บน server (ไม่มีเอกสาร/เป็นเศษรอบเก่า) → ยอดในเครื่องคือยอดทั้งหมดของรอบนี้
     merged.countedQty=(current&&!absolute)?base+delta:startQty;
-    const nextRev=(Number(server?.rev)||0)+1;
+    // SCAN_FLUSH_EPOCH_GUARD: เครื่องนี้รับรอบใหม่ระหว่างรอ transaction → startLocal เป็นของรอบเก่า แต่ _scanItemPayload ติดป้ายรอบสด = ผี
+    // เช็คตรงนี้ (ก่อน tx.set ทันที ไม่มี await คั่น) · transaction ถูกรันซ้ำได้เมื่อชน — เช็คทุกรอบ
+    if(_flushEpochMoved(epoch))return{abort:'localEpoch'};
+    // ghostRev: rev ของผีที่เพิ่งลบ — เอกสารใหม่ต่อจากเลขนั้น (rev ไม่ถอยหลัง เหมือนเขียนทับในที่เดิม)
+    const nextRev=Math.max(Number(server?.rev)||0,ghostRev)+1;
     tx.set(ref,_scanItemPayload(sku,merged,nextRev),{merge:false});
     return{rev:nextRev,countedQty:merged.countedQty};
   });
+  if(rev?.ghostDeleted){
+    // ลบผีแล้ว (เอกสารหายไปจาก server) → เขียนยอดสแกนจริงทันทีรอบเดียว · ล้มตรงนี้ → _flushDirtySkus requeue → รอบหน้าเจอ "ไม่มีเอกสาร" ตามปกติ
+    console.warn(`[scanItem] ${sku}: ลบเอกสารผี (ผล Confirm ที่ op ไม่มีอยู่/ไม่ committed) แล้วเขียนยอดสแกนใหม่`);
+    return _writeScanningItem(itemsRef,sku,epoch,rev.ghostRev);
+  }
   if(rev?.abort){
     // เครื่องอื่น Confirm SKU นี้ไปแล้วระหว่างที่เรายังสแกนค้าง → รับผลของ server มาแทน
     // ไม่งั้น local จะค้างเป็น scanning ตลอดไปโดยที่ transaction ปฏิเสธการเขียนทุกครั้ง
