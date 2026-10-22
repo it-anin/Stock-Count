@@ -28,10 +28,18 @@ Auto R16.104 importer  ->  Firestore  (Stock Count · สาขายา SRC / K
     python auto_r16_import.py --branch SRC       # ทำเฉพาะบางสาขา (คั่นด้วยจุลภาคได้ เช่น SRC,KKL)
     python auto_r16_import.py --force            # ข้ามด่านวันที่/ไฟล์นิ่ง (ใช้ตอนทดสอบเท่านั้น)
 
-ตั้งเวลารันทุกวัน 21:00 ด้วย Windows Task Scheduler (ดู README.md) — ตัวสคริปต์ไม่สนใจว่าถูกเรียกกี่โมง
-ดูอย่างเดียวว่าไฟล์เป็นของวันนี้หรือยัง และนิ่งแล้วหรือยัง
+Confirm โดยบอท (ต.ค. 2026 · ไม่บังคับ · ไม่มี flag --confirm* = ไม่ทำอะไรในส่วนนี้เลย) — ให้บอทกด "Confirm" แทน Desktop หลังเผยแพร่ timeline:
+    python auto_r16_import.py --confirm-shadow                         # โหมดเงา: คำนวณ Pass/Stock Adj ของทุกสาขา จดลง auto_r16_confirm_shadow.jsonl ไม่เขียน items
+    python auto_r16_import.py --confirm --confirm-branch SSS --confirm-shadow   # SSS เขียนจริง · สาขาอื่นเป็นโหมดเงา
+    python auto_r16_import.py --confirm-undo confirm_journal\\<ไฟล์>.json [--dry-run]   # ย้อนผล Confirm ที่บอทเขียน
+    python auto_r16_import.py --confirm-compare [--confirm-date 2026-10-22]   # เทียบผลโหมดเงากับสถานะจริง (อ่านอย่างเดียว)
+  ตรรกะตัดสินเป็นพอร์ตของ _buildPendingScanEvaluation() ใน index.html (สำเนาที่ 3 ของสูตร) — ดู CLAUDE.md §Confirm โดยบอท
 
-exit code: 0 สำเร็จ/เนื้อหาเหมือนเดิม · 1 อ่าน/เขียน Firestore ล้ม · 2 ไฟล์/โฟลเดอร์/flag ผิด · 4 ตกด่าน (ไม่เขียน) · 9 ไม่พบ Python (.bat)
+ตั้งเวลารันทุกวัน 21:00 ด้วย Windows Task Scheduler (ดู README.md) — ตัวสคริปต์ไม่สนใจว่าถูกเรียกกี่โมง
+ดูอย่างเดียวว่าไฟล์เป็นของวันนี้หรือยัง และนิ่งแล้วหรือยัง (Confirm จริงต้องหลัง 21:00 และไฟล์ต้อง export หลัง 21:00 ด้วย)
+
+exit code: 0 สำเร็จ/เนื้อหาเหมือนเดิม · 1 อ่าน/เขียน Firestore ล้ม (รวม Confirm เขียนไปบางส่วน) · 2 ไฟล์/โฟลเดอร์/flag ผิด
+           · 4 ตกด่าน (ไม่เขียน · รวม Confirm ติดเวลา/lock/tripwire) · 9 ไม่พบ Python (.bat)
 """
 
 import sys
@@ -44,6 +52,8 @@ import glob
 import hashlib
 import random
 import time
+import uuid
+from collections import Counter
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -545,17 +555,31 @@ def serialize_chunks(timeline_rows, target_bytes=CHUNK_TARGET_BYTES):
 #  Firestore REST
 # ------------------------------------------------------------
 
+def _project_id():
+    # AUTO_R16_PROJECT_ID / AUTO_R16_FIRESTORE_BASE = ให้เทสชี้บอทไปที่ Firestore emulator (ไม่ตั้ง = production ตามเดิม) · ห้ามตั้งบนเครื่องจริง
+    return os.environ.get("AUTO_R16_PROJECT_ID") or PROJECT_ID
+
+
+def _api_root():
+    base = (os.environ.get("AUTO_R16_FIRESTORE_BASE") or "https://firestore.googleapis.com").rstrip("/")
+    return f"{base}/v1/projects/{_project_id()}/databases/(default)/documents"
+
+
 def _doc_url(doc_id, query=""):
-    return (f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}"
-            f"/databases/(default)/documents/stock_sessions/{urllib.parse.quote(doc_id, safe='')}?{query}key={API_KEY}")
+    return f"{_api_root()}/stock_sessions/{urllib.parse.quote(doc_id, safe='')}?{query}key={API_KEY}"
+
+
+_last_http_date = None   # ส่วนหัว Date ของคำตอบล่าสุดจากเซิร์ฟเวอร์ — ขั้น Confirm ใช้ตรวจว่านาฬิกาเครื่องนี้ตรงไหม (clock_skew_seconds)
 
 
 def _request(req, timeout=120, retries=3):
     """urlopen + ลองใหม่เมื่อเน็ตสะดุด/เซิร์ฟเวอร์ตอบ 429/5xx · 4xx อื่น (รวม 404) โยนทันที"""
+    global _last_http_date
     last = None
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
+                _last_http_date = resp.headers.get("Date") or _last_http_date
                 return resp.read()
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503, 504) and attempt + 1 < retries:
@@ -710,6 +734,7 @@ def load_branch_catalog(branch):
             epoch = ""
     sku_set = build_sku_set(pm_rows, r01_rows)
     return {"r01_fields": r01, "r01_version": f_str(r01, "r01Version"), "sku_set": sku_set,
+            "sku_infos": build_sku_infos(pm_rows, r01_rows),   # Confirm ของบอทใช้ (systemQty/ชื่อสินค้า) — ไม่กระทบขั้นตอน timeline
             "r01_rows": len(r01_rows) if isinstance(r01_rows, list) else 0,
             "pm_rows": len(pm_rows) if isinstance(pm_rows, list) else 0, "epoch": epoch}
 
@@ -778,19 +803,1062 @@ def publish_branch(branch, chunks, meta_fields, r01_version, uploaded_at_text, v
 
 
 # ------------------------------------------------------------
+#  Confirm โดยบอท  (ต.ค. 2026 · ผู้ใช้สั่ง "ให้บอท R16 Confirm ให้เลย ไม่ต้องเปิด Browser Desktop")
+# ------------------------------------------------------------
+# ตัวประเมิน (evaluate_candidate) = พอร์ตของ _buildPendingScanEvaluation() + _applyPendingScanEvaluation() ใน index.html
+# เฉพาะทางสาขายา (SRC/KKL/SSS · ไม่ผ่าน Audit — PHARMACY_DIRECT_STOCK_ADJ) · เป็นสำเนาที่ 3 ต่อจาก reEvaluateAuditItems
+# ⚠️ แก้สูตร Confirm ฝั่งเว็บ = ต้องแก้ที่นี่ด้วยเสมอ แล้วรัน:
+#      cd tests && npm run test:logic -- auto-r16-confirm-parity auto-r16-confirm-flow
+#    และ e2e: npm run test:e2e -- auto-r16-confirm   (เทียบผลกับ validateAndProcess() จริงของ Desktop ทุกฟิลด์)
+# ⚠️ ห้ามเปลี่ยนชื่อ/signature ของ build_sku_infos · timeline_maps · evaluate_candidate · item_changes — เทส parity import ตรงๆ
+# ⛔ ไม่มี flag --confirm* = ไม่ทำอะไรในส่วนนี้เลย (สคริปต์เก่า/Task เก่าที่ไม่รู้จัก flag ถูกปฏิเสธ exit 2 อยู่แล้ว)
+
+# ต้องตรงกับ `let PHARMACY_DIRECT_STOCK_ADJ` ใน index.html (เทส parity อ่านค่าจาก index.html จริง) —
+# True = ไม่ตรง → stock_adjustment ทันที (directAdj) · False ฝั่งเว็บ = ส่งเข้า audit (บอทไม่รองรับ → ไม่ Confirm)
+PHARMACY_DIRECT_STOCK_ADJ = True
+
+CONFIRM_OPEN_HOUR = 21              # ร้านปิดสแกน 21:00–08:00 (processScan: _ph<8||_ph>=21) — Confirm จริงได้หลังเวลานี้เท่านั้น
+CONFIRM_SETTLE_SECONDS = 3.8        # เหมือน _confirmPharmacyBatched: รอให้ PDA ที่ได้ lock flush ของค้างขึ้น Cloud ก่อนอ่าน candidate
+CONFIRM_LOCK_TTL_SECONDS = 300      # = BRANCH_CONFIRM_LOCK_MS (5 นาที)
+CONFIRM_BATCH_SIZE = 450            # = SCAN_ITEM_BATCH_SIZE (< 500 writes ต่อ commit)
+CONFIRM_OWNER = "auto-r16"          # ชื่อที่โชว์ในแถบ "กำลัง Confirm ที่ Desktop โดย …" ของ PDA + updatedBy ของ item
+CONFIRM_MAX_CLOCK_SKEW = 120        # วินาที: นาฬิกาเครื่องนี้ต่างจากเซิร์ฟเวอร์ Firestore เกินนี้ = ด่านเวลา 21:00 และอายุ lock เชื่อไม่ได้ → ไม่ Confirm จริง
+SHADOW_LOG_MAX_BYTES = 30 * 1024 * 1024   # เกินนี้ย้ายเป็น .1 (โหมดเงาจดทุกรายการทุกคืน ~2 MB/คืน)
+JOURNAL_KEEP_DAYS = 45              # journal เก่ากว่านี้ถูกลบหลัง Confirm จริงสำเร็จ (ย้อนผลได้ภายในช่วงนี้)
+CONFIRM_TRIPWIRE_MIN_ITEMS = 20     # ต้องมีรายการอย่างน้อยเท่านี้ tripwire ถึงทำงาน (รอบเล็กสัดส่วนแกว่งเป็นปกติ)
+# สัดส่วน Stock Adj สูงสุดที่ยอมให้บอทเขียนเอง (เกินนี้ = สงสัยว่า R01/R16 ผิดชุด → ไม่เขียน รอคนตรวจ · --confirm-max-adj-ratio ปรับได้)
+# ค่าเริ่มต้น 0.5 ตั้งจากข้อมูลจริงที่มี (22 ต.ค. 2026): Confirm ยุคไม่ผ่าน Audit มีวันเดียว = KKL 7 ต.ค. 33/447 (7.4%) · วันอื่นของทั้ง 3 สาขา 0–16%
+# ⚠️ ยังไม่ได้ปรับเทียบด้วยข้อมูลโหมดเงา — ดูอัตราที่ log ทุกคืนแล้วค่อยปรับ
+CONFIRM_TRIPWIRE_MAX_ADJ_RATIO = 0.5
+
+
+def _now_bkk():
+    """เวลาไทยตอนนี้ — จุดเดียวที่เทสสลับนาฬิกาได้ (ห้ามเรียก datetime.now(BKK) ตรงๆ ในโค้ด Confirm)"""
+    return datetime.now(BKK)
+
+
+# ---- ค่า Firestore (typed) ↔ ค่า Python ----
+
+def to_typed(v):
+    """ค่า Python → typed value ของ Firestore REST · เลขลงตัวเขียนเป็น integerValue เหมือน SDK ของเว็บ (Number.isInteger)"""
+    if v is None:
+        return {"nullValue": None}
+    if isinstance(v, bool):
+        return {"booleanValue": v}
+    if isinstance(v, int):
+        return {"integerValue": str(v)}
+    if isinstance(v, float):
+        if v == v and v not in (float("inf"), float("-inf")) and v == int(v) and abs(v) < 2 ** 53:
+            return {"integerValue": str(int(v))}
+        return {"doubleValue": v}
+    if isinstance(v, str):
+        return {"stringValue": v}
+    if isinstance(v, datetime):
+        return T(v)
+    if isinstance(v, (list, tuple)):
+        return {"arrayValue": {"values": [to_typed(x) for x in v]}}
+    if isinstance(v, dict):
+        return {"mapValue": {"fields": {str(k): to_typed(x) for k, x in v.items()}}}
+    raise TypeError(f"to_typed: ชนิดไม่รองรับ {type(v).__name__}")
+
+
+def from_typed(v):
+    """typed value ของ Firestore REST → ค่า Python (timestamp คงเป็นสตริง RFC3339)"""
+    if not isinstance(v, dict) or not v:
+        return None
+    t, x = next(iter(v.items()))
+    if t == "integerValue":
+        return int(x)
+    if t == "doubleValue":
+        return float(x)
+    if t in ("stringValue", "booleanValue", "timestampValue", "referenceValue"):
+        return x
+    if t == "nullValue":
+        return None
+    if t == "arrayValue":
+        return [from_typed(i) for i in (x.get("values") or [])]
+    if t == "mapValue":
+        return {k: from_typed(i) for k, i in (x.get("fields") or {}).items()}
+    return None
+
+
+def plain_fields(fields):
+    return {k: from_typed(v) for k, v in (fields or {}).items()}
+
+
+# ---- catalog ของสาขา (skuMap ของ rebuildMaps() เฉพาะส่วนที่ Confirm/audit log ใช้) ----
+
+def build_sku_infos(pm_rows, r01_rows):
+    """sku → {systemQty, productName, isDel} ตาม rebuildMaps() ของ index.html
+
+    · SKU ใน PBM (ถ้า PBM ว่าง = ทุกแถว R01): systemQty = ค่าของแถว R01 "ท้ายสุด" ของ SKU นั้น (qtyMap.set แถวท้ายชนะ) · ไม่มีแถว R01 = 0 (?? 0)
+    · SKU ที่อยู่ใน R01 แต่ไม่อยู่ใน PBM (เมื่อ PBM ไม่ว่าง) = DEL: systemQty = ค่าของแถวแรกของ SKU นั้นตรงๆ (ไม่ ?? 0)
+    · ชื่อ: PBM.productName || ชื่อล่าสุดที่ไม่ว่างจาก R01 || SKU  ·  DEL: ชื่อแถวแรก || SKU
+    ⚠️ ชื่อ/signature ถูก import ตรงๆ โดยเทส parity
+    """
+    pm = [r for r in pm_rows if isinstance(r, dict)] if isinstance(pm_rows, list) else []
+    r01 = [r for r in r01_rows if isinstance(r, dict)] if isinstance(r01_rows, list) else []
+    qty_map, name_map = {}, {}
+    for r in r01:
+        sku = r.get("colE")
+        qty_map[sku] = r.get("systemQty")
+        if r.get("productName"):
+            name_map[sku] = r["productName"]
+    infos = {}
+    source = pm if pm else [{"sku": r.get("colE"), "productName": r.get("productName")} for r in r01]
+    for r in source:
+        sku = r.get("sku")
+        if not isinstance(sku, str) or not sku or sku in infos:
+            continue
+        q0 = qty_map.get(sku)
+        infos[sku] = {"systemQty": 0 if q0 is None else q0,
+                      "productName": r.get("productName") or name_map.get(sku) or sku, "isDel": False}
+    if pm and r01:
+        pm_set = {r.get("sku") for r in pm}
+        for r in r01:
+            sku = r.get("colE")
+            if isinstance(sku, str) and sku and sku not in pm_set and sku not in infos:
+                infos[sku] = {"systemQty": r.get("systemQty"), "productName": r.get("productName") or sku, "isDel": True}
+    return infos
+
+
+# ---- timeline → map (เหมือน _applyWhR16Rows('104', rows)) ----
+
+def timeline_maps(rows):
+    """แถว timeline [sku, ขายรวม, รับเข้ารวม, rawขาย[], rawรับเข้า[]] → maps ที่ getSoldQtyBefore/getInboundQtyBefore อ่าน"""
+    sales_total, inbound_total, raw_sales, raw_inbound = {}, {}, {}, {}
+    for row in rows or []:
+        if not isinstance(row, (list, tuple)) or not row or not row[0]:
+            continue
+        sku = str(row[0])
+        sales_total[sku] = (row[1] if len(row) > 1 and row[1] else 0)
+        inbound_total[sku] = (row[2] if len(row) > 2 and row[2] else 0)
+        raw_sales[sku] = row[3] if len(row) > 3 and isinstance(row[3], list) else []
+        raw_inbound[sku] = row[4] if len(row) > 4 and isinstance(row[4], list) else []
+    return {"sales_total": sales_total, "inbound_total": inbound_total, "raw_sales": raw_sales, "raw_inbound": raw_inbound}
+
+
+_RE_SCAN_TS = re.compile(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})[T ]([0-9]{2}):([0-9]{2}):([0-9]{2})\Z")   # \Z ไม่ใช่ $ — $ ยอมให้มี \n ต่อท้าย
+
+
+def parse_scan_ts(ts):
+    """new Date(ts.replace(' ','T')) ของ JS สำหรับ timestamp ของ item ('YYYY-MM-DD HH:mm:ss' ตามนาฬิกาเครื่องสแกน)
+
+    คืน datetime (naive) · อ่านไม่ได้ = None (JS ได้ Invalid Date → `td<=scanDate` เป็น false ทุกแถว)
+    รับเฉพาะรูปแบบที่แอปเขียนเอง — รูปแบบอื่น (มี Z / วันที่ล้วน / มีช่องว่างหัวท้าย) JS ตีความต่างกัน จึงถือว่าอ่านไม่ได้และบอทจะไม่ Confirm รายการนั้น
+    ⚠️ ห้าม trim: JS แทนที่ช่องว่าง "ตัวแรก" เป็น T เท่านั้น ' 2026-10-13 08:00:00' จึงเป็น Invalid Date ในแอป (เทส parity ตรึงไว้)
+    """
+    if not isinstance(ts, str):
+        return None
+    m = _RE_SCAN_TS.match(ts)
+    if not m:
+        return None
+    try:
+        return datetime(*(int(x) for x in m.groups()))
+    except ValueError:
+        return None
+
+
+def qty_before(raw_map, total_map, sku, scan_ts, key):
+    """getSoldQtyBefore (key='soldQty') / getInboundQtyBefore (key='qty') ของ index.html
+
+    · timeline ว่างทั้งไฟล์ หรือ item ไม่มี timestamp → ยอดรวมต่อ SKU (fallback เดิมของแอป)
+    · แถวไม่มี TRANDATE / อ่านวันที่ไม่ได้ → ไม่นับ · tranDate <= เวลาสแกน → นับ · บวกตามลำดับในอาร์เรย์ (ทศนิยมต้องได้ผลเดียวกับ JS)
+    """
+    if not raw_map or not scan_ts:
+        return total_map.get(sku) or 0
+    rows = raw_map.get(sku)
+    if not rows:
+        return 0
+    scan_date = parse_scan_ts(scan_ts)
+    total = 0
+    for row in rows:
+        td_raw = row.get("tranDate") if isinstance(row, dict) else None
+        if not td_raw:
+            continue
+        td = parse_tran_date(td_raw)
+        if td is None:
+            continue
+        if scan_date is not None and td <= scan_date:
+            total = total + row.get(key, 0)
+    return total
+
+
+def _gt0(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v > 0
+
+
+def evaluate_candidate(sku, item, sku_infos, tl, direct_enabled=None):
+    """_buildPendingScanEvaluation(): คืน dict ผลตัดสิน หรือ None (ไม่ใช่ scanning / SKU ไม่อยู่ใน skuMap — แอปปล่อยค้าง scanning เหมือนกัน)
+
+    eff = นับ + ขายก่อนเวลาสแกน + R16.103 − รับเข้าก่อนเวลาสแกน  (สาขายาไม่มี R16.103 → 0 เสมอ)
+    eff = ระบบ → pass · noStock && eff=0 && ระบบ>0 → stock_adjustment (ไม่ใช่ direct) · นอกนั้น stock_adjustment แบบ directAdj
+    """
+    if direct_enabled is None:
+        direct_enabled = PHARMACY_DIRECT_STOCK_ADJ
+    if not item or item.get("status") != "scanning":
+        return None
+    si = sku_infos.get(sku)
+    if si is None:
+        return None
+    sys_qty = si["systemQty"]
+    cnt = item.get("countedQty")
+    ts = item.get("timestamp")
+    sold = qty_before(tl["raw_sales"], tl["sales_total"], sku, ts, "soldQty")
+    inbound = qty_before(tl["raw_inbound"], tl["inbound_total"], sku, ts, "qty")
+    r103 = 0
+    eff = cnt + sold + r103 - inbound
+    status, audit_status, direct = "audit", "pending", False
+    if eff == sys_qty:
+        status, audit_status = "pass", "approved"
+    elif item.get("noStock") and eff == 0 and _gt0(sys_qty):
+        status, audit_status = "stock_adjustment", "stock_adjustment"
+    elif direct_enabled:
+        status, audit_status, direct = "stock_adjustment", "stock_adjustment", True
+    return {"sku": sku, "cnt": cnt, "sold": sold, "inbound": inbound, "r103": r103, "eff": eff, "sys": sys_qty,
+            "status": status, "auditStatus": audit_status, "direct": direct, "timestamp": ts}
+
+
+def item_changes(item, res):
+    """field ที่ _applyPendingScanEvaluation() เปลี่ยนบน item (ไม่รวม rev/updatedBy/updatedAt ที่ _scanItemPayload ใส่ให้)"""
+    ch = {}
+    if res["sold"] > 0:
+        ch["soldQty"] = res["sold"]
+        ch["rawCountedQty"] = res["cnt"]
+    if res["inbound"] > 0:
+        ch["inboundQty"] = res["inbound"]
+    if res["r103"] > 0:
+        ch["r16103Qty"] = res["r103"]
+    ch["status"] = res["status"]
+    ch["auditStatus"] = res["auditStatus"]
+    if not item.get("initialStatus"):
+        ch["initialStatus"] = res["status"]
+    if res["direct"]:
+        ch["directAdj"] = True
+        ch["effectiveQty"] = res["eff"]
+        ch["systemQty"] = res["sys"]
+    return ch
+
+
+# ---- ไฟล์สถานะบนเครื่องบอท (shadow log · journal) ----
+
+def _state_dir():
+    return os.environ.get("AUTO_R16_STATE_DIR") or os.path.dirname(os.path.abspath(__file__))
+
+
+def shadow_log_path():
+    return os.path.join(_state_dir(), "auto_r16_confirm_shadow.jsonl")
+
+
+def journal_dir():
+    return os.path.join(_state_dir(), "confirm_journal")
+
+
+def _write_json_atomic(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def _chunks(seq, n):
+    for i in range(0, len(seq), n):
+        yield seq[i:i + n]
+
+
+# ---- เวลา RFC3339 (timestampValue ของ Firestore มีเศษวินาทีได้ถึง 9 หลัก) ----
+
+_RE_RFC3339 = re.compile(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?Z$")
+
+
+def parse_rfc3339(s):
+    m = _RE_RFC3339.match(s or "")
+    if not m:
+        return None
+    y, mo, d, h, mi, se = (int(x) for x in m.groups()[:6])
+    try:
+        return datetime(y, mo, d, h, mi, se, int((m.group(7) or "")[:6].ljust(6, "0")), tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+# ---- Firestore REST: อ่าน/เขียนแบบมีเงื่อนไข (ใช้เฉพาะขั้น Confirm) ----
+
+class PreconditionFailed(Exception):
+    """commit ล้มเพราะเอกสารเปลี่ยน/ไม่ตรงเงื่อนไข — ไม่มีอะไรถูกเขียนในชุดนั้น"""
+
+
+class CommitUncertain(Exception):
+    """commit ไม่รู้ผล (เครือข่ายหลุด/5xx) — ห้ามลองซ้ำเอง ต้องอ่านกลับไปดูก่อน"""
+
+
+class ConfirmLocked(Exception):
+    """มี lock ของ Desktop/บอทอื่นถืออยู่"""
+
+
+def _res_name(rel_path):
+    return f"projects/{_project_id()}/databases/(default)/documents/{rel_path}"
+
+
+def _rel_url(rel_path, query=""):
+    segs = "/".join(urllib.parse.quote(s, safe="") for s in rel_path.split("/"))
+    return f"{_api_root()}/{segs}?{query}key={API_KEY}"
+
+
+def get_doc_meta(rel_path, fields=None):
+    """GET เอกสารตามพาธเต็ม (เช่น 'stock_sessions/SSS_r01') → (fields แบบ typed, updateTime) · ไม่มี doc = (None, None)"""
+    mask = "".join(f"mask.fieldPaths={urllib.parse.quote(f)}&" for f in (fields or []))
+    try:
+        raw = _request(urllib.request.Request(_rel_url(rel_path, mask)), timeout=120)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None, None
+        raise
+    d = json.loads(raw.decode("utf-8"))
+    return d.get("fields") or {}, d.get("updateTime")
+
+
+def run_query_items(branch, filters):
+    """query บน stock_sessions/{branch}/items · filters = [(field, value)] (AND ของ == เท่านั้น)
+    → [(sku, fields แบบ typed, updateTime)] เรียงตาม SKU (ลำดับเดียวกับ Array.sort ของ JS)"""
+    flt = [{"fieldFilter": {"field": {"fieldPath": f}, "op": "EQUAL", "value": to_typed(v)}} for f, v in filters]
+    where = flt[0] if len(flt) == 1 else {"compositeFilter": {"op": "AND", "filters": flt}}
+    body = {"structuredQuery": {"from": [{"collectionId": "items"}], "where": where}}
+    url = f"{_api_root()}/stock_sessions/{urllib.parse.quote(branch, safe='')}:runQuery?key={API_KEY}"
+    raw = _request(urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST",
+                                          headers={"Content-Type": "application/json"}), timeout=300)
+    out = []
+    for r in json.loads(raw.decode("utf-8")):
+        d = r.get("document")
+        if d:
+            out.append((d["name"].rsplit("/", 1)[-1], d.get("fields") or {}, d.get("updateTime")))
+    out.sort(key=lambda t: _utf16_key(t[0]))
+    return out
+
+
+def w_update(rel_path, fields, mask=None, precondition=None, transforms=None):
+    """write แบบ update ของ documents:commit · mask=None = แทนที่ทั้งเอกสาร (เหมือน set()) · transforms = field ที่ให้เซิร์ฟเวอร์ตั้งเวลา"""
+    w = {"update": {"name": _res_name(rel_path), "fields": {k: to_typed(v) for k, v in fields.items()}}}
+    if mask is not None:
+        w["updateMask"] = {"fieldPaths": list(mask)}
+    if transforms:
+        w["updateTransforms"] = [{"fieldPath": f, "setToServerValue": "REQUEST_TIME"} for f in transforms]
+    if precondition:
+        w["currentDocument"] = precondition
+    return w
+
+
+def w_delete(rel_path, precondition=None):
+    w = {"delete": _res_name(rel_path)}
+    if precondition:
+        w["currentDocument"] = precondition
+    return w
+
+
+def commit_writes(writes):
+    """documents:commit — atomic ทั้งชุด · คืน updateTime ของแต่ละ write ตามลำดับ
+
+    · เงื่อนไข (currentDocument) ไม่ตรง → PreconditionFailed (ไม่มีอะไรถูกเขียน)
+    · เครือข่ายหลุด/5xx/429 → CommitUncertain (คำขออาจสำเร็จไปแล้ว — _request ไม่ลองซ้ำให้ เพราะการลองซ้ำจะล้มด้วย precondition แล้วดูเหมือนไม่เคยเขียน)
+    """
+    url = f"{_api_root()}:commit?key={API_KEY}"
+    req = urllib.request.Request(url, data=json.dumps({"writes": writes}).encode("utf-8"), method="POST",
+                                 headers={"Content-Type": "application/json"})
+    try:
+        raw = _request(req, timeout=180, retries=1)
+    except urllib.error.HTTPError as e:
+        text = e.read().decode("utf-8", "replace")
+        try:
+            status = (json.loads(text).get("error") or {}).get("status", "")
+        except ValueError:
+            status = ""
+        if e.code in (400, 404, 409) and status in ("FAILED_PRECONDITION", "ABORTED", "ALREADY_EXISTS", "NOT_FOUND"):
+            raise PreconditionFailed(f"{status}: {text[:200]}")
+        if e.code >= 500 or e.code == 429:
+            raise CommitUncertain(f"HTTP {e.code}")
+        raise RuntimeError(f"HTTP {e.code}: {text[:300]}")
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        raise CommitUncertain(str(e))
+    return [wr.get("updateTime") for wr in json.loads(raw.decode("utf-8")).get("writeResults", [])]
+
+
+# ---- branch confirm lock (ตัวเดียวกับที่ Desktop ใช้: stock_sessions/{branch}_confirm_lock) ----
+
+def acquire_confirm_lock(branch, epoch):
+    """ถือ lock ด้วยวิธีเดียวกับ _acquireBranchConfirmLock (อ่าน-ตรวจ-เขียนแบบมีเงื่อนไข ≈ transaction) → token · มีคนถืออยู่ = ConfirmLocked"""
+    rel = f"stock_sessions/{branch}_confirm_lock"
+    now = _now_bkk().astimezone(timezone.utc)
+    fields, ut = get_doc_meta(rel)
+    if fields is not None:
+        cur = plain_fields(fields)
+        exp = parse_rfc3339(cur.get("expiresAt"))
+        if cur.get("token") and exp is not None and exp > now:
+            raise ConfirmLocked(str(cur.get("owner") or "?"))
+        pre = {"updateTime": ut}
+    else:
+        pre = {"exists": False}
+    token = uuid.uuid4().hex
+    data = {"token": token, "branch": branch, "owner": CONFIRM_OWNER, "role": "bot", "countResetAt": epoch,
+            "expiresAt": now + timedelta(seconds=CONFIRM_LOCK_TTL_SECONDS)}
+    try:
+        commit_writes([w_update(rel, data, precondition=pre, transforms=["startedAt"])])
+    except PreconditionFailed:
+        raise ConfirmLocked("เครื่องอื่นแย่ง lock ได้ก่อน")
+    return token
+
+
+def release_confirm_lock(branch, token):
+    """ปล่อยเฉพาะ lock ที่ token เป็นของเรา (หมดอายุแล้วมีคนยึดต่อ = ไม่แตะของเขา) · ล้ม = lock หมดอายุเองใน 5 นาที"""
+    rel = f"stock_sessions/{branch}_confirm_lock"
+    try:
+        fields, ut = get_doc_meta(rel)
+        if fields is None or plain_fields(fields).get("token") != token:
+            return False
+        commit_writes([w_delete(rel, {"updateTime": ut})])
+        return True
+    except Exception as e:
+        log(f"  ⚠️ ปล่อย lock ไม่สำเร็จ ({e}) — lock จะหมดอายุเองภายใน {CONFIRM_LOCK_TTL_SECONDS // 60} นาที")
+        return False
+
+
+# ---- ด่านและการอ่านก่อน Confirm ----
+
+def confirm_time_problems(now_bkk, mtime_bkk):
+    """เหตุผลที่ยัง Confirm จริงไม่ได้ในเวลานี้ (ว่าง = ผ่าน) · ร้านสแกนได้ถึง 20:59 → ต้องหลัง 21:00 และไฟล์ R16 ต้อง export หลัง 21:00
+    (ไม่งั้นสแกนที่เกิดหลังเวลา export ไม่ถูกชดเชยยอดขาย — ข้อจำกัดเดิมของ R16)"""
+    open_at = now_bkk.replace(hour=CONFIRM_OPEN_HOUR, minute=0, second=0, microsecond=0)
+    out = []
+    if now_bkk < open_at:
+        out.append(f"ยังไม่ถึง {CONFIRM_OPEN_HOUR}:00 ({now_bkk:%H:%M}) — ร้านยังสแกนได้")
+    if mtime_bkk < open_at:
+        out.append(f"ไฟล์ R16 ถูก export ก่อน {CONFIRM_OPEN_HOUR}:00 ({mtime_bkk:%H:%M}) — สแกนหลังเวลา export จะไม่ถูกชดเชย")
+    return out
+
+
+def confirm_preflight(branch, ctx, check_master=True):
+    """สถานะบน Cloud ต้องยังตรงกับตอนเผยแพร่ timeline — คืน (epoch ของ session, [ปัญหา])"""
+    problems = []
+    sess, _ = get_doc_meta(f"stock_sessions/{branch}", ["schemaVersion", "session_data_json"])
+    if sess is None:
+        return "", ["ไม่พบ session ของสาขา"]
+    sf = plain_fields(sess)
+    if sf.get("schemaVersion") != 2:
+        problems.append(f"สาขายังไม่ใช่ schema v2 (schemaVersion={sf.get('schemaVersion')}) — บอทรองรับเฉพาะ v2")
+    try:
+        epoch = (json.loads(sf.get("session_data_json") or "{}") or {}).get("countResetAt", "") or ""
+    except ValueError:
+        epoch = ""
+        problems.append("session_data_json อ่านไม่ได้")
+    if epoch != ctx["cat"]["epoch"]:
+        problems.append("รอบนับเปลี่ยนจากตอนเผยแพร่ timeline (มีคนกดเริ่มนับใหม่?)")
+    if check_master:
+        mf, _ = get_doc_meta(f"stock_sessions/{branch}_r01", ["r01Version", "r16Loaded", "r16DetailVersion"])
+        mp = plain_fields(mf) if mf else {}
+        if mp.get("r01Version") != ctx["cat"]["r01_version"]:
+            problems.append("R01 ของสาขาเปลี่ยนจากตอนเผยแพร่ timeline")
+        if mp.get("r16Loaded") is not True or mp.get("r16DetailVersion") != ctx["version"]:
+            problems.append("master ไม่ได้ประกาศ timeline รุ่นนี้ (มีคนอัป R16 ใหม่ทับ หรือ R01 ใหม่ล้างไปแล้ว)")
+    return epoch, problems
+
+
+def read_candidates(branch, epoch):
+    return [{"sku": sku, "item": plain_fields(typed), "updateTime": ut}
+            for sku, typed, ut in run_query_items(branch, [("countResetAt", epoch), ("status", "scanning")])]
+
+
+def split_candidates(cands, today_str, export_naive, sku_infos):
+    """แยกรายการที่ Confirm ได้ออกจากรายการที่ต้องปล่อยไว้ — คืน (keep, Counter เหตุผลที่ข้าม)
+
+    ต่างจากปุ่ม Confirm ของ Desktop โดยตั้งใจ (ไม่มีคนเฝ้า จึงเข้มกว่า): ข้ามรายการที่ไม่มี/อ่านเวลาสแกนไม่ได้ · สแกนก่อนวันนี้ (ค้างข้ามวัน)
+    · สแกนหลังเวลา export ของไฟล์ R16 (ไม่มียอดชดเชย) — ปล่อยไว้เป็น scanning (Desktop กด Confirm เองได้ หรือถูกรีเซ็ตเช้าวันถัดไปตามเดิม)
+    """
+    keep, skipped = [], Counter()
+    for c in cands:
+        item = c["item"]
+        cnt = item.get("countedQty")
+        if isinstance(cnt, bool) or not isinstance(cnt, (int, float)):
+            skipped["no_count"] += 1
+            continue
+        ts = item.get("timestamp")
+        if not isinstance(ts, str) or not ts:
+            skipped["no_timestamp"] += 1
+            continue
+        d = parse_scan_ts(ts)
+        if d is None:
+            skipped["bad_timestamp"] += 1
+            continue
+        if ts[:10] < today_str:
+            skipped["stale"] += 1
+            continue
+        if export_naive is not None and d > export_naive:
+            skipped["after_export"] += 1
+            continue
+        if c["sku"] not in sku_infos:
+            skipped["not_in_skumap"] += 1
+            continue
+        keep.append(c)
+    return keep, skipped
+
+
+def _skip_text(skipped):
+    names = {"no_count": "ไม่มียอดนับ", "no_timestamp": "ไม่มีเวลาสแกน", "bad_timestamp": "เวลาสแกนอ่านไม่ได้", "stale": "ค้างข้ามวัน",
+             "after_export": "สแกนหลังเวลา export", "not_in_skumap": "SKU ไม่อยู่ในแคตตาล็อก"}
+    return " · ".join(f"{names.get(k, k)} {v}" for k, v in sorted(skipped.items())) or "-"
+
+
+# ---- journal / shadow log ----
+
+def _journal_entry(p):
+    return {"sku": p["sku"], "rev_before": p["rev_before"], "rev_after": p["rev_after"], "before": p["before"], "absent": p["absent"],
+            "after": p["changes"], "update_time_before": p["update_time"], "update_time_after": p.get("after_update_time")}
+
+
+def save_journal(path, journal, plan):
+    journal["items"] = [_journal_entry(p) for p in plan]
+    _write_json_atomic(path, journal)
+
+
+def clock_skew_seconds():
+    """นาฬิกาเครื่องนี้เร็วกว่าเซิร์ฟเวอร์ Firestore กี่วินาที (ลบ = ช้ากว่า) · ยังไม่เคยได้คำตอบ/อ่านส่วนหัวไม่ได้ = None
+    ใช้ datetime.now(UTC) ตรงๆ ไม่ผ่าน _now_bkk (เทสสลับนาฬิกา _now_bkk ได้ แต่นาฬิกาจริงของเครื่องคือสิ่งที่ต้องตรวจ)"""
+    if not _last_http_date:
+        return None
+    try:
+        from email.utils import parsedate_to_datetime
+        server = parsedate_to_datetime(_last_http_date)
+        if server.tzinfo is None:
+            server = server.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+    return (datetime.now(timezone.utc) - server).total_seconds()
+
+
+def prune_journals():
+    """ลบ journal เก่ากว่า JOURNAL_KEEP_DAYS (เฉพาะไฟล์ชื่อตามรูปแบบของบอท) · ลบไฟล์ใดไม่ได้ = ข้ามไฟล์นั้นต่อ (ไม่กระทบงาน · ไม่หยุดทั้งชุด)
+    เรียกหลัง Confirm จริงสำเร็จเท่านั้น — รอบที่ล้ม/ข้าม/เงา ไม่ลบอะไร (journal คือทางย้อนของผลที่เขียนไปแล้ว)"""
+    n = 0
+    try:
+        d = journal_dir()
+        if not os.path.isdir(d):
+            return 0
+        cutoff = time.time() - JOURNAL_KEEP_DAYS * 86400
+        warned = False
+        for name in sorted(os.listdir(d)):   # เรียงชื่อ = ลำดับลบคงที่ทุกเครื่อง (log/เทสไม่ขึ้นกับลำดับของระบบไฟล์)
+            if not re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}_(SRC|KKL|SSS)\.json$", name):
+                continue
+            path = os.path.join(d, name)
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    n += 1
+            except OSError as e:
+                if not warned:
+                    log(f"  ⚠️ ลบ journal เก่า {name} ไม่สำเร็จ ({e}) — ข้ามไฟล์นี้ ไม่กระทบ")
+                    warned = True
+    except Exception as e:
+        log(f"  ⚠️ ลบ journal เก่าไม่สำเร็จ ({e}) — ไม่กระทบ")
+    return n
+
+
+def append_shadow_record(rec):
+    try:
+        os.makedirs(os.path.dirname(shadow_log_path()), exist_ok=True)
+        if os.path.exists(shadow_log_path()) and os.path.getsize(shadow_log_path()) > SHADOW_LOG_MAX_BYTES:
+            os.replace(shadow_log_path(), shadow_log_path() + ".1")
+        with open(shadow_log_path(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as e:
+        log(f"  ⚠️ เขียน shadow log ไม่สำเร็จ ({e}) — ไม่กระทบ")
+
+
+def _result_row(r):
+    return {"sku": r["sku"], "cnt": r["cnt"], "sold": r["sold"], "inbound": r["inbound"], "eff": r["eff"], "sys": r["sys"],
+            "status": r["status"], "direct": bool(r["direct"])}
+
+
+# ---- audit log (stock_audit_log/{branch}_{date}) — Dashboard/ประวัติผู้ช่วยอ่าน · รูปแบบเดียวกับ saveAuditLogToFirestore() ----
+
+def build_audit_log_items(items_by_sku, sku_infos):
+    """รายการ "ไม่ตรงตั้งแต่นับรอบแรก" (initialStatus=audit หรือ directAdj) ทั้งรอบนับ — เหมือนที่ Desktop เขียนจาก state.scanData ทั้งก้อน"""
+    out = []
+    for sku in sorted(items_by_sku, key=_utf16_key):
+        sd = items_by_sku[sku]
+        if not (sd.get("initialStatus") == "audit" or sd.get("directAdj") is True):
+            continue
+        si = sku_infos.get(sku)   # ไม่อยู่ใน skuMap → ชื่อว่าง (เหมือน `si?si.productName:''` ของเว็บ)
+        it = {"sku": sku, "productName": si["productName"] if si else "", "barcode": sd.get("barcode") or "", "countedQty": sd.get("countedQty"),
+              "scannedBy": sd.get("scannedBy") or "", "timestamp": sd.get("timestamp") or "",
+              "firstScanAt": sd.get("firstScanAt") or sd.get("timestamp") or "", "status": sd.get("status"),
+              "auditor": sd.get("auditor") or "", "recheckQty": sd.get("recheckQty"), "backorder": bool(sd.get("backorder"))}
+        if sd.get("directAdj") is True:
+            fin = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) != float("inf") else None
+            it["directAdj"] = True
+            it["effectiveQty"] = fin(sd.get("effectiveQty"))
+            it["systemQty"] = fin(sd.get("systemQty"))
+        out.append(it)
+    return out
+
+
+def write_confirm_audit_log(branch, epoch, sku_infos, now_bkk, date_str=None, write_empty=False):
+    """ล้ม = เตือนอย่างเดียว (ผล Confirm เขียนลง items ไปแล้ว · Desktop เครื่องไหนกด Confirm/ยืนยันทีหลังจะเขียนทับให้เอง)
+
+    date_str: วันของเอกสาร log (ค่าเริ่มต้น = วันนี้ · --confirm-undo ส่งวันที่ของ journal เพื่อเขียนทับ log วันที่บอท Confirm)
+    write_empty: รายการว่างก็เขียน (items=[]) — เว็บไม่เขียน log เมื่อว่าง (`if(!items.length)return`) แต่หลัง --confirm-undo ต้องล้างรายการที่ย้อนออกจาก log"""
+    try:
+        by_sku = {}
+        try:
+            for flt in ([("countResetAt", epoch), ("directAdj", True)], [("countResetAt", epoch), ("initialStatus", "audit")]):
+                for sku, typed, _ut in run_query_items(branch, flt):
+                    by_sku[sku] = plain_fields(typed)
+        except urllib.error.HTTPError as e:
+            # query สองเงื่อนไขอาจต้องการ composite index บน production (emulator ไม่บังคับ) → ถอยไปอ่านทั้งรอบแล้วกรองเอง
+            log(f"  ⚠️ query audit log แบบแคบไม่ได้ (HTTP {e.code}) — ถอยไปอ่านทั้งรอบนับ")
+            by_sku = {sku: plain_fields(typed) for sku, typed, _ut in run_query_items(branch, [("countResetAt", epoch)])}
+        items = build_audit_log_items(by_sku, sku_infos)
+        if not items and not write_empty:
+            return "empty"
+        if len(json.dumps(items, ensure_ascii=False).encode("utf-8")) > 900 * 1024:
+            log("  ⚠️ audit log ใหญ่เกิน 900 KB — ไม่เขียน (Desktop จะเป็นคนเขียนเอง)")
+            return "toolarge"
+        date_str = date_str or now_bkk.strftime("%Y-%m-%d")
+        updated_at = now_bkk.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"   # เหมือน new Date().toISOString()
+        commit_writes([w_update(f"stock_audit_log/{branch}_{date_str}",
+                                {"branch": branch, "date": date_str, "updatedAt": updated_at, "items": items})])
+        return "written"
+    except Exception as e:
+        log(f"  ⚠️ เขียน stock_audit_log ไม่สำเร็จ ({type(e).__name__}: {e}) — ผล Confirm ไม่กระทบ")
+        return "failed"
+
+
+# ---- Confirm ของสาขาเดียว ----
+
+def _verify_chunk_applied(branch, epoch, chunk):
+    """หลัง commit ที่ไม่รู้ผล: อ่านกลับว่า SKU ในชุดนั้นยังเป็น scanning อยู่ไหม → 'all' | 'none' | 'partial' (ชุดเดียวเป็น atomic จึงไม่ควรได้ partial)"""
+    still = {sku for sku, _t, _u in run_query_items(branch, [("countResetAt", epoch), ("status", "scanning")])}
+    flags = [p["sku"] not in still for p in chunk]
+    return "all" if all(flags) else ("none" if not any(flags) else "partial")
+
+
+def _commit_confirm(branch, epoch, plan, journal, jpath):
+    """เขียนผลทีละชุด (atomic ต่อชุด ด้วย updateTime precondition ของ item) → ('ok'|'aborted'|'failed', จำนวน item ที่เขียนแล้ว)"""
+    done = 0
+    for chunk in _chunks(plan, CONFIRM_BATCH_SIZE):
+        writes = []
+        for p in chunk:
+            fields = dict(p["changes"])
+            fields["rev"] = p["rev_after"]
+            fields["updatedBy"] = CONFIRM_OWNER
+            writes.append(w_update(f"stock_sessions/{branch}/items/{p['sku']}", fields, mask=list(fields),
+                                   precondition={"updateTime": p["update_time"]}, transforms=["updatedAt"]))
+        try:
+            times = commit_writes(writes)
+        except PreconditionFailed as e:
+            log(f"  ❌ ชุดนี้ไม่ถูกเขียน — มีรายการเปลี่ยนระหว่างคำนวณ ({str(e)[:120]})")
+            return "aborted", done
+        except CommitUncertain as e:
+            log(f"  ⚠️ commit ไม่รู้ผล ({e}) — อ่านกลับเพื่อตรวจ")
+            try:
+                verdict = _verify_chunk_applied(branch, epoch, chunk)
+            except Exception as e2:
+                log(f"  ❌ อ่านกลับไม่ได้ ({e2}) — ต้องตรวจมือ (ดู journal {jpath})")
+                journal["state"] = "uncertain"
+                save_journal(jpath, journal, plan)
+                return "failed", done
+            if verdict != "all":
+                log(f"  ❌ commit ไม่สำเร็จ (ผลอ่านกลับ: {verdict})")
+                return ("aborted" if verdict == "none" else "failed"), done
+            times = [None] * len(chunk)
+        for p, t in zip(chunk, times):
+            p["after_update_time"] = t
+        done += len(chunk)
+        journal["state"] = "partial" if done < len(plan) else "committed"
+        save_journal(jpath, journal, plan)
+    return "ok", done
+
+
+def confirm_branch(branch, mode, ctx, opts, now_bkk, mtime_bkk):
+    """Confirm ของสาขาเดียว · mode: 'write' (เขียนจริง) | 'shadow' (คำนวณ+จดอย่างเดียว) — --dry-run บังคับเป็นไม่เขียนเสมอ
+    คืน dict {'state': 'confirmed'|'shadow'|'dry'|'nothing'|'skipped'|'locked'|'aborted'|'tripwire'|'failed', ...}"""
+    dry = bool(opts.get("dry_run"))
+    write = (mode == "write") and not dry
+    force = bool(opts.get("force"))
+    label = "DRY — ไม่เขียน" if dry else ("เขียนจริง" if write else "โหมดเงา — ไม่เขียน")
+    log(f"  ── Confirm [{label}] ──")
+    sku_infos = ctx["cat"]["sku_infos"]
+    today_str = now_bkk.strftime("%Y-%m-%d")
+    mtime_naive = mtime_bkk.replace(tzinfo=None)
+    out = {"state": "failed", "branch": branch}
+
+    problems = confirm_time_problems(now_bkk, mtime_bkk)
+    skew = clock_skew_seconds()
+    if skew is not None and abs(skew) > CONFIRM_MAX_CLOCK_SKEW:
+        problems.append(f"นาฬิกาเครื่องนี้คลาดจากเซิร์ฟเวอร์ Firestore {skew:+.0f} วินาที (เกิน {CONFIRM_MAX_CLOCK_SKEW}) — ด่านเวลา 21:00 และอายุ lock เชื่อไม่ได้ · ตั้งเวลาเครื่องให้ตรงก่อน")
+    for p in problems:
+        log(f"  {'❌' if write and not force else '⚠️'} {p}")
+    if write and problems and not force:
+        out["state"] = "skipped"
+        return out
+    if write and not PHARMACY_DIRECT_STOCK_ADJ:
+        log("  ❌ PHARMACY_DIRECT_STOCK_ADJ ปิดอยู่ — เว็บจะส่งรายการไม่ตรงเข้า audit ซึ่งบอทไม่รองรับ · ไม่ Confirm")
+        out["state"] = "skipped"
+        return out
+
+    token = None
+    try:
+        check_master = ctx.get("version") is not None
+        epoch, pf = confirm_preflight(branch, ctx, check_master)
+        if pf:
+            for p in pf:
+                log(f"  ❌ {p}")
+            out["state"] = "skipped"
+            return out
+        if write:
+            token = acquire_confirm_lock(branch, epoch)
+            log(f"  🔒 ถือ {branch}_confirm_lock แล้ว (ทุกเครื่องพักสแกน) — รอ {CONFIRM_SETTLE_SECONDS:g} วิให้ PDA ส่งของค้างขึ้น Cloud")
+            time.sleep(CONFIRM_SETTLE_SECONDS)
+            epoch2, pf2 = confirm_preflight(branch, ctx, check_master)
+            if pf2 or epoch2 != epoch:
+                for p in pf2 or ["รอบนับเปลี่ยนระหว่างรอ"]:
+                    log(f"  ❌ {p}")
+                out["state"] = "aborted"
+                return out
+
+        cands = read_candidates(branch, epoch)
+        keep, skipped = split_candidates(cands, today_str, mtime_naive, sku_infos)
+        tl = timeline_maps(ctx["timeline"])
+        pairs = []
+        for c in keep:
+            r = evaluate_candidate(c["sku"], c["item"], sku_infos, tl)
+            if r is not None:
+                pairs.append((c, r))
+        n = len(pairs)
+        n_pass = sum(1 for _c, r in pairs if r["status"] == "pass")
+        n_adj = n - n_pass
+        ratio = (n_adj / n) if n else 0.0
+        max_ratio = opts.get("max_adj_ratio")
+        if max_ratio is None:
+            max_ratio = CONFIRM_TRIPWIRE_MAX_ADJ_RATIO
+        tripped = n >= CONFIRM_TRIPWIRE_MIN_ITEMS and ratio > max_ratio
+        out.update({"candidates": len(cands), "evaluated": n, "pass": n_pass, "adj": n_adj, "ratio": ratio, "skipped": dict(skipped)})
+        log(f"  รอ Confirm {len(cands)} รายการ · ประเมินได้ {n} → Pass {n_pass} · Stock Adj {n_adj} ({ratio * 100:.1f}%) · ข้าม: {_skip_text(skipped)}")
+
+        if not write:
+            if not dry:
+                append_shadow_record({"ts": now_bkk.isoformat(), "date": today_str, "branch": branch, "mode": "shadow", "early": bool(problems),
+                                      "epoch": epoch, "r01Version": ctx["cat"]["r01_version"], "timelineVersion": ctx.get("version"),
+                                      "candidates": len(cands), "evaluated": n, "skipped": dict(skipped),
+                                      "summary": {"pass": n_pass, "adj": n_adj, "ratio": ratio, "tripwire": tripped},
+                                      "results": [_result_row(r) for _c, r in pairs]})
+            if tripped:
+                log(f"  ⚠️ [เงา] สัดส่วน Stock Adj {ratio * 100:.1f}% เกินเพดาน {max_ratio * 100:.0f}% — ถ้าเป็นโหมดเขียนจริงจะไม่เขียน")
+            log("  [DRY] ยังไม่ได้เขียนอะไร" if dry else "  [เงา] จดผลลง auto_r16_confirm_shadow.jsonl แล้ว — ยังไม่ได้เขียนอะไรขึ้น Cloud")
+            out["state"] = "dry" if dry else "shadow"
+            return out
+
+        if not n:
+            log("  ไม่มีรายการให้ Confirm")
+            out["state"] = "nothing"
+            return out
+        if tripped:
+            log(f"  ❌ TRIPWIRE: Stock Adj {n_adj}/{n} = {ratio * 100:.1f}% เกินเพดาน {max_ratio * 100:.0f}% — สงสัยว่า R01/R16 ผิดชุด · ไม่เขียนอะไร รอคนตรวจ")
+            log("     ตรวจแล้วถ้าถูกต้อง: รันใหม่ด้วย --confirm-max-adj-ratio <ค่าที่สูงกว่า> หรือให้ Desktop กด Confirm เอง")
+            out["state"] = "tripwire"
+            return out
+
+        plan = []
+        for c, r in pairs:
+            item = c["item"]
+            ch = item_changes(item, r)
+            rev_before = item.get("rev") if isinstance(item.get("rev"), (int, float)) and not isinstance(item.get("rev"), bool) else 0
+            plan.append({"sku": c["sku"], "changes": ch, "rev_before": rev_before, "rev_after": rev_before + 1,
+                         "before": {k: item[k] for k in ch if k in item}, "absent": [k for k in ch if k not in item],
+                         "update_time": c["updateTime"]})
+        jpath = os.path.join(journal_dir(), f"{now_bkk:%Y-%m-%d_%H%M%S}_{branch}.json")
+        journal = {"version": 1, "branch": branch, "owner": CONFIRM_OWNER, "startedAt": now_bkk.isoformat(), "epoch": epoch,
+                   "r01Version": ctx["cat"]["r01_version"], "timelineVersion": ctx.get("version"), "state": "planned",
+                   "summary": {"pass": n_pass, "adj": n_adj, "skipped": dict(skipped)}}
+        try:
+            save_journal(jpath, journal, plan)   # เขียน journal ไม่ได้ = ไม่เขียน Cloud (ถ้าผิดจะย้อนไม่ได้)
+        except Exception as e:
+            log(f"  ❌ เขียน journal ไม่ได้ ({e}) — ไม่ Confirm")
+            out["state"] = "failed"
+            return out
+        log(f"  journal: {jpath}")
+        state, done = _commit_confirm(branch, epoch, plan, journal, jpath)
+        out["written"] = done
+        if done:
+            out["audit_log"] = write_confirm_audit_log(branch, epoch, sku_infos, now_bkk)   # สะท้อนสิ่งที่อยู่บน Cloud จริง แม้ชุดหลังล้ม
+        if state != "ok":
+            out["state"] = state
+            if done:
+                log(f"  ⚠️ เขียนไปแล้ว {done}/{len(plan)} รายการก่อนล้ม — รายการที่เหลือยังเป็น scanning · ย้อนได้ด้วย --confirm-undo {jpath}")
+            return out
+        out["state"] = "confirmed"
+        out["journal"] = jpath
+        prune_journals()
+        log(f"  ✅ Confirm {branch} สำเร็จ {done} รายการ — Pass {n_pass}, Stock Adj {n_adj} · audit log: {out['audit_log']}")
+        return out
+    except ConfirmLocked as e:
+        log(f"  ❌ มี lock ถืออยู่ ({e}) — ไม่ Confirm รอบนี้ · รายการยังเป็น scanning (ถ้า Task ไม่ถูกรันซ้ำเอง: Desktop กด Confirm ได้ หรือรันบอทซ้ำด้วยมือ)")
+        out["state"] = "locked"
+        return out
+    except Exception as e:
+        log(f"  ❌ Confirm {branch} ล้ม: {type(e).__name__}: {e}")
+        out["state"] = "failed"
+        return out
+    finally:
+        if token:
+            release_confirm_lock(branch, token)
+
+
+# ------------------------------------------------------------
+#  ย้อนผล Confirm ของบอท  (--confirm-undo) และเทียบผลโหมดเงา (--confirm-compare)
+# ------------------------------------------------------------
+
+UNDO_OWNER = "auto-r16-undo"
+
+
+def _load_journal(path):
+    with open(path, "r", encoding="utf-8") as f:
+        j = json.load(f)
+    if (not isinstance(j, dict) or j.get("version") != 1 or j.get("branch") not in BRANCHES
+            or not isinstance(j.get("items"), list)):
+        raise ValueError("ไม่ใช่ไฟล์ journal ของ auto-r16 (version/branch/items ไม่ครบ)")
+    return j
+
+
+def _still_as_bot_left(entry, current):
+    """รายการยังเป็นอย่างที่บอทเขียนไว้เป๊ะไหม (ไม่มีใครเปลี่ยนต่อหลังบอท) — ใช้ตัดสินว่าย้อนได้ปลอดภัยหรือไม่"""
+    if current.get("updatedBy") != CONFIRM_OWNER:
+        return False
+    if current.get("rev") != entry["rev_after"]:
+        return False
+    return all(current.get(k) == v for k, v in entry["after"].items())
+
+
+def run_undo(opts):
+    """ย้อนผล Confirm ตาม journal · คืน exit code (0 สำเร็จ/ไม่มีอะไรต้องย้อน · 1 ล้ม · 2 ใช้ผิด/ไฟล์ผิด · 4 ปฏิเสธเพราะสถานะไม่ตรง)
+
+    ย้อนเฉพาะรายการที่ยังเป็นผลของบอทเป๊ะ (updatedBy/rev/ค่า after ตรง) · รายการที่มีคนเปลี่ยนต่อแล้ว (↺ ✕ สแกนใหม่ ฯลฯ) ไม่แตะและรายงาน
+    · rev เดินหน้าอย่างเดียว (current+1 — ไม่ถอยกลับเลข rev เดิม) เพื่อให้เครื่องที่จำ rev ไว้เห็นว่ามีการเปลี่ยนจริง"""
+    dry = bool(opts.get("dry_run"))
+    path = opts["undo"]
+    try:
+        j = _load_journal(path)
+    except Exception as e:
+        log(f"❌ อ่าน journal ไม่ได้: {e}")
+        return 2
+    branch, epoch = j["branch"], j.get("epoch") or ""
+    entries = [e for e in j["items"] if isinstance(e, dict) and e.get("sku")]
+    log(f"ย้อนผล Confirm {branch} · journal {path} · state={j.get('state')} · {len(entries)} รายการ · "
+        + ("DRY — ไม่เขียน" if dry else "เขียนจริง"))
+    if j.get("undoneAt"):
+        log(f"⚠️ journal นี้เคยถูกย้อนเมื่อ {j['undoneAt']} — ตรวจสถานะปัจจุบันของแต่ละรายการใหม่ (ที่ย้อนไปแล้วจะถูกข้าม)")
+    token = None
+    try:
+        sess, _ = get_doc_meta(f"stock_sessions/{branch}", ["schemaVersion", "session_data_json"])
+        if sess is None:
+            log("❌ ไม่พบ session ของสาขา — ไม่ย้อน")
+            return 4
+        sf = plain_fields(sess)
+        try:
+            cur_epoch = (json.loads(sf.get("session_data_json") or "{}") or {}).get("countResetAt", "") or ""
+        except ValueError:
+            cur_epoch = None
+        if sf.get("schemaVersion") != 2 or cur_epoch != epoch:
+            log(f"❌ รอบนับปัจจุบันไม่ตรงกับ journal (journal {epoch or '(ว่าง)'} · ตอนนี้ {cur_epoch or '(ว่าง)'}) หรือไม่ใช่ schema v2 "
+                f"— รายการเหล่านี้ไม่ใช่ของรอบนี้แล้ว · ไม่ย้อน")
+            return 4
+        if not dry:
+            token = acquire_confirm_lock(branch, epoch)
+            log(f"🔒 ถือ {branch}_confirm_lock แล้ว — รอ {CONFIRM_SETTLE_SECONDS:g} วิ")
+            time.sleep(CONFIRM_SETTLE_SECONDS)
+        try:
+            found = {sku: (plain_fields(t), ut) for sku, t, ut in run_query_items(branch, [("countResetAt", epoch), ("updatedBy", CONFIRM_OWNER)])}
+        except urllib.error.HTTPError as e:
+            log(f"⚠️ query ตาม updatedBy ไม่ได้ (HTTP {e.code}) — อ่านทีละรายการแทน")
+            found = {}
+            for en in entries:
+                f, ut = get_doc_meta(f"stock_sessions/{branch}/items/{en['sku']}")
+                if f is not None:
+                    found[en["sku"]] = (plain_fields(f), ut)
+        todo, changed, gone = [], [], []
+        for en in entries:
+            hit = found.get(en["sku"])
+            if hit is None:
+                # ไม่อยู่ในผล query = ไม่ใช่ของบอทแล้ว (มีคนเปลี่ยน updatedBy) หรือถูกลบ/ย้อนไปแล้ว
+                gone.append(en["sku"])
+                continue
+            cur, ut = hit
+            if cur.get("countResetAt") != epoch or not _still_as_bot_left(en, cur):
+                changed.append(en["sku"])
+                continue
+            todo.append((en, cur, ut))
+        log(f"ย้อนได้ {len(todo)} · ไม่ใช่ผลของบอทแล้ว/มีคนเปลี่ยนต่อ {len(changed)} · ไม่พบเป็นของบอท {len(gone)}")
+        for label, skus in (("เปลี่ยนต่อหลังบอท", changed), ("ไม่พบเป็นของบอท", gone)):
+            if skus:
+                log(f"   · {label}: {', '.join(skus[:15])}{' …' if len(skus) > 15 else ''}")
+        if dry or not todo:
+            log("[DRY] ยังไม่ได้เขียนอะไร" if dry else "ไม่มีรายการที่ต้องย้อน")
+            return 0
+        done = 0
+        for chunk in _chunks(todo, CONFIRM_BATCH_SIZE):
+            writes = []
+            for en, cur, ut in chunk:
+                fields = dict(en["before"])
+                fields["rev"] = (cur.get("rev") or 0) + 1
+                fields["updatedBy"] = UNDO_OWNER
+                mask = list(en["before"]) + list(en["absent"]) + ["rev", "updatedBy"]   # absent อยู่ใน mask แต่ไม่อยู่ใน fields = ลบ field
+                writes.append(w_update(f"stock_sessions/{branch}/items/{en['sku']}", fields, mask=mask,
+                                       precondition={"updateTime": ut}, transforms=["updatedAt"]))
+            try:
+                commit_writes(writes)
+            except (PreconditionFailed, CommitUncertain) as e:
+                log(f"❌ ย้อนชุดนี้ไม่สำเร็จ ({type(e).__name__}: {str(e)[:120]}) — ย้อนแล้ว {done}/{len(todo)} · รันคำสั่งเดิมซ้ำได้ (ข้ามรายการที่ย้อนไปแล้ว)")
+                return 1
+            done += len(chunk)
+        j["undoneAt"] = _now_bkk().isoformat()
+        j["undoneCount"] = done
+        try:
+            _write_json_atomic(path, j)
+        except Exception as e:
+            log(f"⚠️ บันทึกสถานะ undone ลง journal ไม่ได้ ({e}) — ไม่กระทบ")
+        log(f"✅ ย้อนผล Confirm {branch} แล้ว {done} รายการ → กลับเป็น scanning (Desktop กด Confirm เองได้ หรือรอรีเซ็ตตามเดิม)")
+        try:
+            cat = load_branch_catalog(branch)
+            started = parse_scan_ts(str(j.get("startedAt", "")).replace("T", " ")[:19])
+            write_confirm_audit_log(branch, epoch, (cat or {}).get("sku_infos", {}), _now_bkk(),
+                                    date_str=started.strftime("%Y-%m-%d") if started else None, write_empty=True)
+        except Exception as e:
+            log(f"⚠️ เขียน stock_audit_log ใหม่ไม่สำเร็จ ({e}) — Desktop จะเขียนทับให้เองเมื่อมีการ Confirm ครั้งถัดไป")
+        return 0
+    except ConfirmLocked as e:
+        log(f"❌ มี lock ถืออยู่ ({e}) — ไม่ย้อน ลองใหม่ภายหลัง")
+        return 4
+    except Exception as e:
+        log(f"❌ ย้อนล้ม: {type(e).__name__}: {e}")
+        return 1
+    finally:
+        if token:
+            release_confirm_lock(branch, token)
+
+
+def _read_shadow_records():
+    """อ่านบันทึกเงาทั้งหมดเก่า→ใหม่ — รวมไฟล์ที่ถูกหมุน (.1) ด้วย ไม่งั้นเทียบคืนที่อยู่ก่อนจุดหมุนไม่ได้"""
+    out = []
+    for path in (shadow_log_path() + ".1", shadow_log_path()):
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and rec.get("mode") == "shadow":
+                    out.append(rec)
+    return out
+
+
+def compare_shadow_record(rec, actual_by_sku):
+    """เทียบผลที่โหมดเงาทำนายไว้กับสถานะจริงบน Cloud → dict นับ + รายการที่ต่าง (อ่านอย่างเดียว · ไม่แตะ Firestore)"""
+    c = Counter()
+    diffs = []
+    for r in rec.get("results", []):
+        a = actual_by_sku.get(r["sku"])
+        if a is None:
+            c["missing"] += 1
+        elif a.get("status") == "scanning":
+            c["pending"] += 1
+        elif a.get("status") not in ("pass", "stock_adjustment"):
+            c["other"] += 1
+        else:
+            same = a.get("status") == r["status"]
+            if same and r.get("direct"):
+                same = a.get("directAdj") is True and a.get("effectiveQty") == r["eff"] and a.get("systemQty") == r["sys"]
+            if same:
+                c["same"] += 1
+            else:
+                c["diff"] += 1
+                diffs.append((r, a))
+    return c, diffs
+
+
+def run_compare(opts):
+    """เทียบ shadow log กับสถานะจริง (อ่านอย่างเดียว) · คืน exit code (0 รายงานแล้ว · 1 อ่าน Cloud ไม่ได้ · 2 ไม่มี shadow log)"""
+    recs = _read_shadow_records()
+    if not recs:
+        log(f"❌ ไม่พบบันทึกโหมดเงาใน {shadow_log_path()} — รันบอทด้วย --confirm-shadow ก่อน")
+        return 2
+    want = opts.get("confirm_date")
+    bad_read = False
+    for branch in opts["branches"]:
+        mine = [r for r in recs if r.get("branch") == branch and (not want or r.get("date") == want)]
+        if not mine:
+            log(f"── {branch} ── ไม่มีบันทึกโหมดเงา{f' ของวันที่ {want}' if want else ''}")
+            continue
+        day = max(r.get("date", "") for r in mine)
+        rec = [r for r in mine if r.get("date") == day][-1]   # ถ้าวันเดียวกันรันหลายรอบ ใช้รอบท้ายสุด
+        total = len(rec.get("results", []))
+        s = rec.get("summary", {})
+        log(f"── {branch} · เงา {day} ({str(rec.get('ts', ''))[11:16]}) · ทำนาย {total} รายการ → Pass {s.get('pass', 0)} · "
+            f"Stock Adj {s.get('adj', 0)}{' · มาก่อน 21:00' if rec.get('early') else ''}{' · เกินเพดาน tripwire' if s.get('tripwire') else ''} ──")
+        try:
+            actual = {sku: plain_fields(t) for sku, t, _ut in run_query_items(branch, [("countResetAt", rec.get("epoch", ""))])}
+        except Exception as e:
+            log(f"   ❌ อ่านรายการจริงจาก Cloud ไม่ได้: {type(e).__name__}: {e}")
+            bad_read = True
+            continue
+        c, diffs = compare_shadow_record(rec, actual)
+        log(f"   ตรงกัน {c['same']} · ต่างกัน {c['diff']} · ยังเป็น scanning (ยังไม่มีใคร Confirm) {c['pending']} · "
+            f"สถานะอื่น {c['other']} · ไม่พบรายการ (ถูกรีเซ็ต/ลบ) {c['missing']}")
+        for r, a in diffs[:20]:
+            log(f"   ⚠️ {r['sku']}: เงาทำนาย {r['status']}{'(ตรง)' if r.get('direct') else ''} นับ {r['cnt']} ขาย {r['sold']} รับเข้า {r['inbound']} ระบบ {r['sys']} "
+                f"→ จริง {a.get('status')}"
+                + (f" effectiveQty {a.get('effectiveQty')} ระบบ {a.get('systemQty')}" if a.get("directAdj") is True else ""))
+        if len(diffs) > 20:
+            log(f"   … และอีก {len(diffs) - 20} รายการ")
+        if c["same"] + c["diff"] == 0:
+            log("   (ยังไม่มีรายการที่ถูก Confirm จริงให้เทียบ — โหมดเงาไม่เขียนอะไร ต้องมีคนกด Confirm ที่ Desktop ในรอบเดียวกันก่อนวันถัดไป)")
+    return 1 if bad_read else 0
+
+
+# ------------------------------------------------------------
 #  main
 # ------------------------------------------------------------
 
 USAGE = ("ใช้: python auto_r16_import.py [--dry-run|-n] [--force] [--folder <path>] [--branch SRC,KKL,SSS]\n"
-         "     (ไม่มี flag = โหมดจริง · flag อื่นจะถูกปฏิเสธ — กันตัวเก่าเมินแล้วเขียนจริง)")
+         "     Confirm โดยบอท (ไม่บังคับ · ค่าเริ่มต้นปิด = ไม่มี flag --confirm* ทำงานเหมือนเดิมทุกอย่าง):\n"
+         "       --confirm-shadow                          คำนวณผล Confirm แล้วจดลง auto_r16_confirm_shadow.jsonl (ไม่เขียน items)\n"
+         "       --confirm --confirm-branch SSS[,KKL,SRC]  Confirm จริงเฉพาะสาขาที่ระบุ (สาขาอื่นเป็นโหมดเงาถ้ามี --confirm-shadow)\n"
+         "       --confirm-max-adj-ratio 0.5               เพดานสัดส่วน Stock Adj ที่บอทยอมเขียนเอง (เกิน = ไม่เขียน รอคนตรวจ)\n"
+         "       --confirm-undo <journal.json>             ย้อนผล Confirm ของบอท (ใส่ --dry-run ดูก่อนได้)\n"
+         "       --confirm-compare [--confirm-date YYYY-MM-DD]   เทียบผลโหมดเงากับสถานะจริงบน Cloud (อ่านอย่างเดียว)\n"
+         "     (flag อื่นจะถูกปฏิเสธ — กันตัวเก่าเมินแล้วเขียนจริง)")
 
 
 def parse_args(argv):
     """คืน dict หรือโยน SystemExit(2) เมื่อเจอ flag ที่ไม่รู้จัก — เรียกจาก main() เท่านั้น (ห้ามเรียกตอน import)"""
-    opts = {"dry_run": False, "force": False, "folder": None, "branches": list(BRANCHES)}
+    opts = {"dry_run": False, "force": False, "folder": None, "branches": list(BRANCHES),
+            "confirm": False, "confirm_shadow": False, "confirm_branches": [], "max_adj_ratio": None,
+            "undo": None, "compare": False, "confirm_date": None}
     i = 0
+
+    def value_of(a, name):
+        """--name VALUE หรือ --name=VALUE → (ค่า, จำนวนตำแหน่งที่ใช้เพิ่ม) · ไม่มีค่า = None"""
+        if a == name:
+            return (argv[i + 1], 1) if i + 1 < len(argv) else (None, 0)
+        if a.startswith(name + "="):
+            return a.split("=", 1)[1], 0
+        return False, 0
+
     while i < len(argv):
         a = argv[i]
+        extra = 0
         if a in ("--dry-run", "-n"):
             opts["dry_run"] = True
         elif a == "--force":
@@ -798,24 +1866,85 @@ def parse_args(argv):
         elif a in ("-h", "--help"):
             print(USAGE)
             raise SystemExit(0)
-        elif a == "--folder" and i + 1 < len(argv):
-            opts["folder"] = argv[i + 1]
-            i += 1
-        elif a.startswith("--folder="):
-            opts["folder"] = a.split("=", 1)[1]
-        elif a == "--branch" and i + 1 < len(argv):
-            opts["branches"] = [x.strip().upper() for x in argv[i + 1].split(",") if x.strip()]
-            i += 1
-        elif a.startswith("--branch="):
-            opts["branches"] = [x.strip().upper() for x in a.split("=", 1)[1].split(",") if x.strip()]
+        elif a == "--confirm":
+            opts["confirm"] = True
+        elif a == "--confirm-shadow":
+            opts["confirm_shadow"] = True
+        elif a == "--confirm-compare":
+            opts["compare"] = True
+        elif value_of(a, "--folder")[0] is not False:
+            v, extra = value_of(a, "--folder")
+            if v is None:
+                log("❌ --folder ต้องมีค่า")
+                raise SystemExit(2)
+            opts["folder"] = v
+        elif value_of(a, "--branch")[0] is not False:
+            v, extra = value_of(a, "--branch")
+            if v is None:
+                log("❌ --branch ต้องมีค่า")
+                raise SystemExit(2)
+            opts["branches"] = [x.strip().upper() for x in v.split(",") if x.strip()]
+        elif value_of(a, "--confirm-branch")[0] is not False:
+            v, extra = value_of(a, "--confirm-branch")
+            if v is None:
+                log("❌ --confirm-branch ต้องมีค่า (เช่น SSS หรือ SSS,KKL)")
+                raise SystemExit(2)
+            opts["confirm_branches"] = [x.strip().upper() for x in v.split(",") if x.strip()]
+        elif value_of(a, "--confirm-max-adj-ratio")[0] is not False:
+            v, extra = value_of(a, "--confirm-max-adj-ratio")
+            try:
+                ratio = float(v)
+            except (TypeError, ValueError):
+                ratio = None
+            if ratio is None or not (0 < ratio <= 1):
+                log("❌ --confirm-max-adj-ratio ต้องเป็นเลขมากกว่า 0 และไม่เกิน 1 (เช่น 0.5 = Stock Adj ไม่เกินครึ่ง · 1 = ปิดเพดาน)")
+                raise SystemExit(2)
+            opts["max_adj_ratio"] = ratio
+        elif value_of(a, "--confirm-undo")[0] is not False:
+            v, extra = value_of(a, "--confirm-undo")
+            if not v:
+                log("❌ --confirm-undo ต้องระบุไฟล์ journal (อยู่ในโฟลเดอร์ confirm_journal ข้างสคริปต์)")
+                raise SystemExit(2)
+            opts["undo"] = v
+        elif value_of(a, "--confirm-date")[0] is not False:
+            v, extra = value_of(a, "--confirm-date")
+            if not v or not re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", v):
+                log("❌ --confirm-date ต้องเป็น YYYY-MM-DD")
+                raise SystemExit(2)
+            opts["confirm_date"] = v
         else:
             log(f"❌ flag ไม่รู้จัก: {a}")
             log(USAGE)
             raise SystemExit(2)
-        i += 1
+        i += 1 + extra
     bad = [b for b in opts["branches"] if b not in BRANCHES]
     if bad or not opts["branches"]:
         log(f"❌ --branch ต้องเป็น {', '.join(BRANCHES)} (เจอ: {', '.join(bad) or '(ว่าง)'})")
+        raise SystemExit(2)
+
+    # ความสัมพันธ์ระหว่าง flag Confirm — เข้มโดยเจตนา: ตั้งผิดแล้ว "เงียบแต่ไม่ทำงาน" อันตรายกว่าปฏิเสธ
+    utility = bool(opts["undo"]) or opts["compare"]
+    if opts["undo"] and opts["compare"]:
+        log("❌ --confirm-undo กับ --confirm-compare ใช้พร้อมกันไม่ได้")
+        raise SystemExit(2)
+    if utility and (opts["confirm"] or opts["confirm_shadow"] or opts["confirm_branches"]):
+        log("❌ --confirm-undo / --confirm-compare เป็นโหมดเครื่องมือ ใช้ร่วมกับ --confirm / --confirm-shadow / --confirm-branch ไม่ได้")
+        raise SystemExit(2)
+    if opts["confirm_date"] and not opts["compare"]:
+        log("❌ --confirm-date ใช้ได้กับ --confirm-compare เท่านั้น")
+        raise SystemExit(2)
+    if opts["confirm"] and not opts["confirm_branches"]:
+        log("❌ --confirm ต้องระบุสาขาที่ให้ Confirm จริงด้วย --confirm-branch (เช่น --confirm-branch SSS) — ไม่มีค่าเริ่มต้น 'ทุกสาขา' โดยตั้งใจ")
+        raise SystemExit(2)
+    if opts["confirm_branches"] and not opts["confirm"]:
+        log("❌ --confirm-branch ต้องใช้คู่กับ --confirm (ตั้งไว้เฉยๆ จะดูเหมือนเปิดแล้วทั้งที่ไม่ทำงาน)")
+        raise SystemExit(2)
+    badc = [b for b in opts["confirm_branches"] if b not in BRANCHES or b not in opts["branches"]]
+    if badc:
+        log(f"❌ --confirm-branch ต้องเป็นสาขาที่อยู่ใน --branch ด้วย (เจอ: {', '.join(badc)} · --branch คือ {', '.join(opts['branches'])})")
+        raise SystemExit(2)
+    if opts["max_adj_ratio"] is not None and not (opts["confirm"] or opts["confirm_shadow"]):
+        log("❌ --confirm-max-adj-ratio ใช้ได้เมื่อมี --confirm หรือ --confirm-shadow เท่านั้น")
         raise SystemExit(2)
     return opts
 
@@ -842,8 +1971,11 @@ def _fmt_td(d):
     return f"{d:%d/%m %H:%M}"
 
 
-def process_branch(branch, rows_by_branch, names, header, r05_rows, path, mtime, opts, today):
-    """คืน 'written' | 'unchanged' | 'dry' (โหมด --dry-run ที่จะเขียน) | 'skipped' (ตกด่าน) | 'failed' (Firestore ล้ม)"""
+def process_branch(branch, rows_by_branch, names, header, r05_rows, path, mtime, opts, today, confirm_ctx=None):
+    """คืน 'written' | 'unchanged' | 'dry' (โหมด --dry-run ที่จะเขียน) | 'skipped' (ตกด่าน) | 'failed' (Firestore ล้ม)
+
+    confirm_ctx (dict, ไม่บังคับ): ถ้าส่งมา สาขาที่ผ่านเป็น written/unchanged/dry จะถูกใส่รายละเอียดที่ขั้น Confirm ต้องใช้ (ไม่เปลี่ยนพฤติกรรมเดิม)
+    """
     cfg = BRANCHES[branch]
     dry_run, force = opts["dry_run"], opts["force"]
     own_rows = rows_by_branch.get(branch) or []
@@ -913,10 +2045,14 @@ def process_branch(branch, rows_by_branch, names, header, r05_rows, path, mtime,
             and f_bool(cat["r01_fields"], "r16Loaded")
             and f_str(cat["r01_fields"], "r16DetailVersion") == f_str(old_meta, "version")):
         log(f"  ✅ {branch}: เนื้อหาเหมือนเดิมทุกไบต์และ master ชี้รุ่นนี้อยู่แล้ว — ไม่เขียน")
+        if confirm_ctx is not None:
+            confirm_ctx[branch] = {"cat": cat, "timeline": timeline, "version": f_str(old_meta, "version"), "stats": st}
         return "unchanged"
 
     if dry_run:
         log(f"  [DRY] {branch}: จะเขียน {len(chunks)} chunk + meta + ประกาศที่ {branch}_r01 (ยังไม่เขียน)")
+        if confirm_ctx is not None:
+            confirm_ctx[branch] = {"cat": cat, "timeline": timeline, "version": None, "stats": st}
         return "dry"
 
     now = datetime.now(BKK)
@@ -933,18 +2069,55 @@ def process_branch(branch, rows_by_branch, names, header, r05_rows, path, mtime,
         log(f"  ❌ {branch}: เขียนไม่สำเร็จ: {e}")
         return "failed"
     log(f"  ✅ เขียน {branch} แล้ว: {len(timeline)} SKU · {len(chunks)} chunk · {size_kb:.0f} KB · version {version} · \"{uploaded_at_text}\"")
+    if confirm_ctx is not None:
+        confirm_ctx[branch] = {"cat": cat, "timeline": timeline, "version": version, "stats": st}
     return "written"
+
+
+def _confirm_exit_code(results):
+    """exit code ของขั้น Confirm (นับเฉพาะสาขาที่สั่งเขียนจริง) · โหมดเงาล้มไม่ทำให้ Task แดง — งานหลัก (เผยแพร่ timeline) ไม่เกี่ยว
+
+    0 = ผ่าน/ไม่มีอะไรต้อง Confirm · 4 = ตกด่านโดยไม่ได้เขียนอะไร (เวลา/lock/tripwire/ข้อมูลเปลี่ยน) · 1 = ล้ม หรือเขียนไปแล้วบางส่วน (ต้องมีคนดู)"""
+    rc = 0
+    for r in results.values():
+        if not r.get("real"):
+            continue
+        st = r.get("state")
+        if st in ("confirmed", "nothing", "dry"):
+            continue
+        if st == "failed" or (r.get("written") or 0) > 0:
+            return 1
+        rc = 4
+    return rc
+
+
+def _confirm_summary(results):
+    out = []
+    for b, r in results.items():
+        st = r.get("state", "?")
+        n = r.get("written") if st == "confirmed" else (r.get("evaluated") if st in ("shadow", "dry") else None)
+        out.append(f"Confirm {b} {st}" + (f"({n})" if n is not None else ""))
+    return " · ".join(out)
 
 
 def main(argv=None):
     opts = parse_args(sys.argv[1:] if argv is None else argv)
+    if opts["undo"]:
+        sys.exit(run_undo(opts))
+    if opts["compare"]:
+        sys.exit(run_compare(opts))
     dry_run, force = opts["dry_run"], opts["force"]
+    want_confirm = opts["confirm"] or opts["confirm_shadow"]
     folder, folder_src = resolve_watch_folder(opts["folder"])
 
     log(f"เริ่มงาน auto R16.104 import  (dry_run={dry_run}, force={force}, สาขา={','.join(opts['branches'])})")
     log(f"เครื่อง: {os.environ.get('COMPUTERNAME', '?')} · ผู้ใช้: {os.environ.get('USERNAME', '?')}")
     log(f"โฟลเดอร์: {folder}   [จาก {folder_src}]")
     log("ปลายทาง: stock_sessions/{branch}_r16_104_meta + chunks + {branch}_r01 (r16Loaded/r16UploadedAt/r16DetailVersion)")
+    if want_confirm:
+        ratio = opts["max_adj_ratio"] if opts["max_adj_ratio"] is not None else CONFIRM_TRIPWIRE_MAX_ADJ_RATIO
+        log(f"Confirm โดยบอท: เขียนจริง={','.join(opts['confirm_branches']) or '-'} · โหมดเงา(สาขาที่เหลือ)={'ใช่' if opts['confirm_shadow'] else 'ไม่'} · "
+            f"เพดาน Stock Adj {ratio * 100:.0f}% · ปลายทาง: stock_sessions/{{branch}}/items/* + {{branch}}_confirm_lock + stock_audit_log")
 
     if not os.path.isdir(folder):
         log("❌ ไม่มีโฟลเดอร์นี้ในเครื่อง — ยกเลิก")
@@ -963,7 +2136,7 @@ def main(argv=None):
 
     mtime = os.path.getmtime(path)
     mtime_bkk = datetime.fromtimestamp(mtime, BKK)
-    now_bkk = datetime.now(BKK)
+    now_bkk = _now_bkk()
     today = now_bkk.date()
     log(f"ไฟล์ล่าสุด: {os.path.basename(path)}  (แก้ไขล่าสุด {mtime_bkk:%Y-%m-%d %H:%M:%S} เวลาไทย · {os.path.getsize(path):,} ไบต์)")
 
@@ -1022,19 +2195,43 @@ def main(argv=None):
         log(f"❌ อ่าน global_r05 จาก Firestore ไม่ได้: {e}")
         sys.exit(1)
 
+    confirm_ctx = {} if want_confirm else None
     results = {}
     for branch in opts["branches"]:
         try:
-            results[branch] = process_branch(branch, by_branch, names, rows[0], r05_rows, path, mtime, opts, today)
+            results[branch] = process_branch(branch, by_branch, names, rows[0], r05_rows, path, mtime, opts, today, confirm_ctx)
         except Exception as e:   # สาขาหนึ่งล้มห้ามหยุดสาขาอื่น
             log(f"  ❌ {branch}: {type(e).__name__}: {e}")
             results[branch] = "failed"
 
+    # ขั้น Confirm มาหลังเผยแพร่ timeline ครบทุกสาขาเสมอ — Confirm ค้าง/ล้มห้ามทำให้ timeline ของสาขาอื่นไม่ถูกเผยแพร่
+    confirm_results = {}
+    if want_confirm:
+        for branch in opts["branches"]:
+            real = opts["confirm"] and branch in opts["confirm_branches"]
+            if not real and not opts["confirm_shadow"]:
+                continue
+            ctx = confirm_ctx.get(branch)
+            if ctx is None:
+                log(f"── Confirm {branch} ── ข้าม: ขั้นเผยแพร่ timeline ของสาขานี้ไม่ผ่าน ({results.get(branch)})")
+                confirm_results[branch] = {"state": "skipped", "branch": branch, "real": real}
+                continue
+            try:
+                res = confirm_branch(branch, "write" if real else "shadow", ctx, opts, _now_bkk(), mtime_bkk)
+            except Exception as e:   # confirm_branch จับ exception เองแล้ว — กันหลุดจากจุดที่ไม่คาดคิด
+                log(f"  ❌ Confirm {branch}: {type(e).__name__}: {e}")
+                res = {"state": "failed", "branch": branch}
+            res["real"] = real
+            confirm_results[branch] = res
+
     summary = " · ".join(f"{b} {r}" for b, r in results.items())
-    if any(r == "failed" for r in results.values()):
+    if confirm_results:
+        summary += " · " + _confirm_summary(confirm_results)
+    confirm_rc = _confirm_exit_code(confirm_results)
+    if any(r == "failed" for r in results.values()) or confirm_rc == 1:
         log(f"❌ จบงานแบบมีสาขาล้มเหลว: {summary}")
         sys.exit(1)
-    if any(r == "skipped" for r in results.values()):
+    if any(r == "skipped" for r in results.values()) or confirm_rc == 4:
         log(f"❌ จบงาน แต่มีสาขาตกด่าน (ไม่ได้เขียน): {summary}")
         sys.exit(4)
     if dry_run:
@@ -1043,6 +2240,8 @@ def main(argv=None):
         log(f"✅ จบงาน: {summary}")
         if any(r == "written" for r in results.values()):
             log("Desktop สาขายาที่เปิดค้างจะโหลด timeline เองภายในไม่กี่วินาที (toast 'R16 อัปเดตจาก Cloud แล้ว') · เครื่องที่ login ใหม่โหลดตอน login")
+        if any(r.get("state") == "confirmed" for r in confirm_results.values()):
+            log("Confirm โดยบอทเสร็จแล้ว — พนักงานเปิดเช้าวันถัดไปเห็น Pass/Stock Adj ได้ทันที (ย้อนได้ด้วย --confirm-undo <journal> · journal อยู่ในโฟลเดอร์ confirm_journal)")
     sys.exit(0)
 
 
