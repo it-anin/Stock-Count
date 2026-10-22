@@ -6,6 +6,9 @@
 
 > ใช้ได้เฉพาะ **SRC / KKL / SSS** · **ไม่ทำ WH** (WH มีขั้นอัป R16 ของตัวเองอยู่แล้ว) · **ไม่ทำ R16.103**
 > ต้องใช้คู่กับเว็บรุ่นที่มีตัวอ่าน `_loadPharmacyR16Timeline()` (สวิตช์ `PHARMACY_R16_CLOUD_TIMELINE`) — เขียน Firestore อย่างเดียว **ไม่ปลดล็อกปุ่ม Confirm**
+>
+> 🤖 **Confirm โดยบอท (ต.ค. 2026 · ผู้ใช้สั่ง):** บอทตัวนี้ "กด Confirm ให้เลย" หลังอัป R16 ได้ด้วย (ตัดสิน Pass / Stock Adj แทนปุ่ม Confirm ของ Desktop) —
+> **ปิดเป็นค่าเริ่มต้น** ต้องใส่ flag `--confirm-shadow` / `--confirm` เอง · อ่านหัวข้อ [🤖 Confirm โดยบอท](#-confirm-โดยบอท) **ก่อนเปิด** · ไม่ใส่ flag = ทำงานเหมือนเดิมทุกอย่าง
 
 ## ทำไมต้องเป็น "timeline" ไม่ใช่ยอดรวม
 
@@ -21,6 +24,7 @@ Confirm ของสาขายาตัดสินด้วยสูตร `�
 |---|---|---|---|
 | 1 | Task `BOT16104` (BOTR16104 · ProMaxx GUI) | export R16.104 "ประจำวัน = วันนี้" ของ **3 สาขาในไฟล์เดียว** → `Desktop\run-upload-stock\R16104.CSV` (เขียน `.part` แล้วค่อยเปลี่ยนชื่อ) | README ของบอทแนะนำ ~20:30 · **ยังไม่เคยให้ Task ยิงจริงบน AninMainPC — ตรวจ `LastWriteTime` บนเครื่องจริงก่อนเลือกเวลาข้อ 2** |
 | 2 | **`auto-r16` (โฟลเดอร์นี้)** · Task `AutoR16Import` | อ่านไฟล์ → แยกตามสาขา → เขียน chunks + meta + ประกาศที่ `{branch}_r01` | **21:00** (ร้านปิดสแกน 21:00–08:00) · ต้องหลังข้อ 1 เสร็จ |
+| 2b | **`auto-r16` ต่อท้ายข้อ 2 ในการรันเดียวกัน — เฉพาะเมื่อใส่ `--confirm*`** (ปิดเป็นค่าเริ่มต้น) | **Confirm ให้เลย:** ตัดสิน Pass / Stock Adj ของรายการ `scanning` ทั้งสาขา (ดู [🤖 Confirm โดยบอท](#-confirm-โดยบอท)) | หลังเผยแพร่ timeline ครบทุกสาขา · **~21:10** (หลัง 21:00 และหลังไฟล์ export) |
 | 3 | เว็บ (Desktop สาขายา) | `_loadPharmacyR16Timeline()` โหลด timeline เข้า `r16RawMap` → ปุ่ม Confirm ปลดล็อก | ทันทีที่ master เปลี่ยน (เครื่องที่เปิดค้าง) หรือตอน login |
 | — | `auto-r01` (เช้าวันถัดไป) | R01 ใหม่ + ล้าง `r16*` ใน master → timeline เมื่อวานใช้ไม่ได้เอง (r01Version ไม่ตรง) | ก่อน 08:00 |
 
@@ -34,6 +38,8 @@ Confirm ของสาขายาตัดสินด้วยสูตร `�
 | `auto_r16_import.py` | สคริปต์หลัก (Python stdlib ล้วน — ไม่ต้องลง pip) |
 | `run_auto_r16.bat` | ตัวเรียกสำหรับ Task Scheduler + เก็บ log (หมุนไฟล์ที่ 2 MB) · ASCII ล้วน (ภาษาไทยใน .bat ทำ cmd.exe พัง) |
 | `auto_r16.log` | log การรัน (สร้างอัตโนมัติ · ไม่เข้า git) · รุ่นก่อนหน้า `auto_r16.log.1` |
+| `confirm_journal/` | **ทางย้อนผล Confirm ของบอท** — 1 ไฟล์ต่อสาขาต่อคืนที่ Confirm จริง (`YYYY-MM-DD_HHMMSS_<สาขา>.json`: ค่า item ก่อน/หลังทุกรายการ) · ลบเองเมื่อเก่ากว่า 45 วันหลัง Confirm จริงสำเร็จ · ไม่เข้า git · **อย่าลบมือเอง** ถ้ายังอยากย้อนผลได้ |
+| `auto_r16_confirm_shadow.jsonl` | บันทึกโหมดเงา (`--confirm-shadow`): ผลที่บอท "จะ" ตัดสินต่อ SKU ทุกคืน · เกิน 30 MB หมุนเป็น `.jsonl.1` (เก็บ 2 ไฟล์) · ไม่เข้า git |
 
 ## วิธีรัน
 
@@ -42,6 +48,12 @@ python auto_r16_import.py --dry-run     # อ่าน Firestore + พิมพ�
 python auto_r16_import.py               # โหมดจริง
 python auto_r16_import.py --branch KKL  # เฉพาะบางสาขา (คั่นด้วยจุลภาคได้)
 python auto_r16_import.py --force       # ข้ามด่านวันที่/ไฟล์นิ่ง — ใช้ตอนทดสอบเท่านั้น
+
+# Confirm โดยบอท (ปิดเป็นค่าเริ่มต้น · อ่านหัวข้อ "🤖 Confirm โดยบอท" ก่อน)
+python auto_r16_import.py --confirm-shadow                                  # โหมดเงา: คำนวณ+จดไฟล์ ไม่เขียน items
+python auto_r16_import.py --confirm --confirm-branch SSS --confirm-shadow   # SSS เขียนจริง · สาขาอื่นเงา
+python auto_r16_import.py --confirm-compare                                 # เทียบผลโหมดเงากับสถานะจริง (อ่านอย่างเดียว)
+python auto_r16_import.py --confirm-undo .\confirm_journal\<ไฟล์>.json      # ย้อนผล (ใส่ --dry-run ดูก่อน)
 ```
 
 โฟลเดอร์ CSV หาตามลำดับ: `--folder "<path>"` → ตัวแปรระบบ `AUTO_R16_WATCH_FOLDER` → `%USERPROFILE%\Desktop\run-upload-stock` (ค่าปกติ)
@@ -106,6 +118,107 @@ $env:R16104_REAL_FILE = "$env:USERPROFILE\Desktop\run-upload-stock\R16104.CSV"; 
 กับดักที่จัดการแล้ว: `json.dumps` ใส่ช่องว่างหลังคอมมา (ใช้ `separators=(',',':')`) · เลขลงตัวต้องไม่มี `.0` · `float()` ของ Python รับเลขอาหรับ/`inf`/`1_0` แต่ JS ได้ NaN (`_js_number` รับเฉพาะรูปแบบที่ JS รับ) · `str.strip()` ต่างจาก `trim()` ของ JS (`\x1c`–`\x1f` `\x85` `\ufeff`) · ขอบ chunk นับ +1 คอมมากับแถวแรกของ chunk ใหม่ด้วย
 ⚠️ **ยังคงพฤติกรรมเดิมของแอป:** ORCM/OCTM ที่ Col A=0 (ขายจากคลัง) ของ SRC ถูกบวกให้หน้าร้าน (งานค้างใน CLAUDE.md — ห้ามแก้เงียบเฉพาะฝั่งบอท)
 
+## 🤖 Confirm โดยบอท
+
+**เป้าหมาย (ผู้ใช้สั่ง 22 ต.ค. 2026):** วันที่ 1 พนักงานสแกน → จบวัน บอทอัป R16 แล้ว **Confirm ให้เลย** (ตัดสิน Pass / Stock Adj) → วันที่ 2 พนักงานเห็น Stock Adj ได้ทันทีและสแกนต่อได้ โดยไม่ต้องรอใครเปิด Desktop กด Confirm
+
+> ⏳ **สถานะ: เขียนแล้ว + ผ่านเทสอัตโนมัติ แต่ยังไม่เคยรันกับข้อมูลจริง และยังไม่ได้วางบน `BIGYAMAINPC`** · ค่าเริ่มต้น**ปิด** · ลำดับเปิดที่ตกลงไว้: **โหมดเงาก่อน** → เขียนจริงทีละสาขา SSS → KKL → SRC
+> ตอนนี้ร้านยังไม่มีการนับ ⇒ โหมดเงา**ยังไม่มีอะไรให้เทียบ** จนกว่าจะเริ่มนับรอบใหม่
+
+### หลักการ
+
+- ผลที่บอทเขียน = ผลที่ปุ่ม Confirm ของ Desktop (`validateAndProcess`) เขียนบนข้อมูลชุดเดียวกัน **ทุกฟิลด์** — พิสูจน์ด้วยเทส (ตรรกะเทียบหน้าเว็บจริง + fuzz · dual-run บน emulator) ดู CLAUDE.md §Confirm โดยบอท
+- เฉพาะสาขายา (ไม่ผ่าน Audit — `PHARMACY_DIRECT_STOCK_ADJ`): `นับ + ขายก่อนเวลาสแกน − รับเข้าก่อนเวลาสแกน` = ระบบ → **pass** · ไม่ตรง → **stock_adjustment** (`directAdj` + แช่ `effectiveQty`/`systemQty`) · `noStock` ตามกติกาเดิม
+- ใช้ lock ตัวเดียวกับ Desktop (`{branch}_confirm_lock`) — ระหว่างบอททำงานทุกเครื่องขึ้นแถบ "กำลัง Confirm ที่ Desktop โดย auto-r16 — พักการสแกนชั่วคราว" (ไม่กี่วินาที)
+- ⚠️ **สูตรนี้มีสำเนาที่ 3 แล้ว** (`_buildPendingScanEvaluation` · `reEvaluateAuditItems` ใน `index.html` · `evaluate_candidate()` ที่นี่) — แก้สูตรฝั่งเว็บต้องแก้ที่นี่ด้วยแล้วรัน `cd tests && npm run test:logic -- auto-r16-confirm-parity auto-r16-confirm-flow auto-r16-confirm-tools` และ `npm run test:e2e -- auto-r16-confirm`
+- ⛔ ห้ามเปลี่ยนชื่อ/signature ของ `build_sku_infos` · `timeline_maps` · `evaluate_candidate` · `item_changes` — เทส parity import ตรงๆ
+
+### flag
+
+| flag | ทำอะไร |
+|---|---|
+| (ไม่ใส่) | ทำงานเหมือนเดิมทุกอย่าง — เผยแพร่ timeline อย่างเดียว |
+| `--confirm-shadow` | **โหมดเงา:** ทุกสาขาที่ผ่านด่าน บอทคำนวณผล Confirm ครบทุกรายการแล้ว**จดลงไฟล์** `auto_r16_confirm_shadow.jsonl` — ไม่เขียน items / lock / audit log เลย |
+| `--confirm --confirm-branch SSS[,KKL,SRC]` | **เขียนจริง** เฉพาะสาขาที่ระบุ (ต้องอยู่ใน `--branch` ด้วย · ไม่มีค่าเริ่มต้น "ทุกสาขา" โดยตั้งใจ) · สาขาที่เหลือเป็นโหมดเงาถ้ามี `--confirm-shadow` |
+| `--confirm-max-adj-ratio 0.5` | เพดานสัดส่วน Stock Adj ที่บอทยอมเขียนเอง (tripwire) · `1` = ปิดเพดาน |
+| `--confirm-undo <journal.json>` | **ย้อนผล** Confirm ของบอท (ใส่ `--dry-run` ดูก่อนได้) |
+| `--confirm-compare [--confirm-date YYYY-MM-DD]` | เทียบผลโหมดเงากับสถานะจริงบน Cloud (อ่านอย่างเดียว) |
+| `--dry-run` | คำนวณและรายงานอย่างเดียว ไม่ถือ lock ไม่เขียนอะไร (ไม่จดโหมดเงาด้วย) |
+| `--force` | ข้ามด่านเวลา/นาฬิกา — **ใช้ตอนทดสอบเท่านั้น** |
+
+flag ผิดรูป/ขัดกัน (เช่น `--confirm` ไม่มี `--confirm-branch` · `--confirm-branch` ไม่มี `--confirm` · สาขานอก `--branch`) → **ปฏิเสธ exit 2** ไม่เงียบ
+
+### บอททำอะไรต่อสาขา (เขียนจริง · ลำดับห้ามสลับ)
+
+1. **ด่านเวลา:** ต้องหลัง 21:00 (ร้านปิดสแกน 21:00–08:00) · ไฟล์ R16 ต้อง export หลัง 21:00 · นาฬิกาเครื่องต้องตรงเซิร์ฟเวอร์ Firestore (ต่างเกิน 120 วิ = ไม่ทำ) · ทำได้ภายในวันเดียวกันเท่านั้น (พ้นเที่ยงคืน = ตกด่าน)
+2. **preflight:** สาขาเป็น schema v2 · รอบนับ/R01/timeline เหมือนตอนเผยแพร่เมื่อกี้ (มีคนอัป R16 ทับ/กดเริ่มนับใหม่ = ไม่ทำ)
+3. **ถือ lock** แล้วรอ 3.8 วิให้ PDA ส่งของค้างขึ้น Cloud → ตรวจ preflight ซ้ำ
+4. **อ่านรายการ `scanning` ของรอบนี้ → คัดกรอง (เข้มกว่า Desktop โดยตั้งใจ เพราะไม่มีคนเฝ้า):** **ไม่ Confirm** และปล่อยเป็น `scanning`: สแกนก่อนวันนี้ (ค้างข้ามวัน) · สแกนหลังเวลา export ของไฟล์ · ไม่มี/อ่านเวลาสแกนไม่ได้ · ไม่มียอดนับ · SKU ไม่อยู่ในแคตตาล็อกสาขา — log บอกจำนวนแต่ละกลุ่ม
+5. **tripwire:** Stock Adj เกิน 50% ของ ≥ 20 รายการ = สงสัย R01/R16 ผิดชุด → ไม่เขียนอะไร (exit 4) รอคนตรวจ · ⚠️ ค่า 50% ตั้งจากข้อมูลจริงที่มีน้อยมาก (Confirm ยุคไม่ผ่าน Audit มีวันเดียว = KKL 7 ต.ค. 33/447 = 7.4% · วันอื่นของ 3 สาขา 0–16%) — **ยังไม่ได้ปรับเทียบด้วยโหมดเงา** ดูอัตราใน log ทุกคืนแล้วค่อยปรับ (`--confirm-max-adj-ratio`)
+6. **journal ก่อนเขียน:** บันทึกค่า item ก่อน/หลังลง `confirm_journal/` (เขียน journal ไม่ได้ = ไม่เขียน Cloud เลย เพราะถ้าผิดจะย้อนไม่ได้)
+7. **เขียนแบบ atomic ต่อชุด (≤ 450 รายการ):** `documents:commit` + เงื่อนไข `updateTime` ของทุก item — มี item ใดเปลี่ยนระหว่างบอทคำนวณ (พนักงานสแกนเพิ่ม/เครื่องอื่น Confirm) = ชุดนั้นไม่ถูกเขียนเลย (ทั้งก้อนหรือไม่เลย) · เขียนแต่ละ item แบบ mask เฉพาะฟิลด์ที่ Confirm แตะ + `rev + 1` + `updatedBy: 'auto-r16'` + `updatedAt` จากเซิร์ฟเวอร์ · commit ที่ไม่รู้ผล (เครือข่ายหลุด) = ไม่ลองซ้ำเอง อ่านกลับดูก่อน
+8. **เขียน `stock_audit_log/{สาขา}_{วันที่}`** (Dashboard/ประวัติผู้ช่วยอ่าน) แบบเดียวกับที่ Desktop เขียน — ล้มแค่เตือน ผล Confirm ไม่กระทบ
+9. **ปล่อย lock** (เฉพาะ lock ที่ token เป็นของบอทเอง) · แล้วลบ journal ที่เก่ากว่า 45 วัน (เฉพาะหลัง Confirm จริงสำเร็จ)
+
+> ⚠️ สาขาที่มี > 450 รายการในคืนเดียวจะถูกแบ่งเป็นหลาย commit — **atomic เฉพาะภายในชุด** ถ้าชุดหลังล้มจะเหลือรายการบางส่วน (exit 1 · journal `partial` · รันคำสั่งเดิมซ้ำได้ รายการที่ Confirm แล้วไม่ถูกแตะซ้ำ · หรือ `--confirm-undo`)
+
+### โหมดเงา + เทียบผล
+
+- `--confirm-shadow` จด 1 บรรทัดต่อสาขาต่อรอบ (ผลทำนายต่อ SKU: นับ/ขาย/รับเข้า/ระบบ/สถานะ) — ติดธง `early` ถ้ารันก่อน 21:00 หรือไฟล์ export ก่อน 21:00 หรือนาฬิกาเครื่องคลาด (ตัวเลขนั้นไม่ใช่ของ 21:10 จริง)
+- `python auto_r16_import.py --confirm-compare` เทียบบันทึกล่าสุดของแต่ละสาขากับสถานะจริงบน Cloud: **ตรงกัน / ต่างกัน / ยังเป็น scanning (ยังไม่มีใคร Confirm) / ไม่พบ (ถูกรีเซ็ต)** + รายการที่ต่างพร้อมตัวเลข — อ่านอย่างเดียว · ต้องมีคนกด Confirm จริงที่ Desktop ในรอบเดียวกันก่อน จึงมีอะไรให้เทียบ
+
+### ย้อนผล
+
+```powershell
+Get-ChildItem .\confirm_journal | Sort-Object Name | Select-Object -Last 3        # หา journal ของคืนที่ต้องการ
+python auto_r16_import.py --confirm-undo .\confirm_journal\2026-10-22_211000_SSS.json --dry-run   # ดูก่อน (ไม่เขียน)
+python auto_r16_import.py --confirm-undo .\confirm_journal\2026-10-22_211000_SSS.json             # ย้อนจริง
+```
+
+- ย้อนเฉพาะรายการที่ **ยังเป็นผลของบอทเป๊ะ** (`updatedBy` = auto-r16 · `rev` และค่าตรงที่บอทเขียน) — รายการที่มีคนเปลี่ยนต่อแล้ว (↺ สแกนใหม่ / ✕ / แก้จากเครื่องอื่น) ไม่ถูกแตะ และ log บอก SKU ที่ข้าม
+- ย้อนแล้วรายการกลับเป็น `scanning` (ฟิลด์ที่บอทเพิ่มถูกลบ) · `rev` เดินหน้าอย่างเดียว · Desktop กด Confirm เองต่อได้ตามปกติ (เทส e2e พิสูจน์ว่าได้ผลเดิม) · audit log ของคืนนั้นถูกเขียนใหม่ให้ตรง
+- ⛔ ย้อนไม่ได้ถ้ารอบนับเปลี่ยนแล้ว (กดเริ่มนับใหม่) หรือมี lock ถืออยู่ · **ใบ 📦 ที่ Export ไป ERP แล้วย้อนตามไม่ได้** — ตรวจก่อน Export ใบ Stock Adj ของคืนที่เพิ่งเปิดใช้
+
+### ขั้นตอนเปิดใช้ (บน `BIGYAMAINPC`)
+
+1. **วางไฟล์:** ก๊อปโฟลเดอร์ `auto-r16` ทั้งโฟลเดอร์ทับ (เครื่องนั้นไม่ใช่ git clone) แล้วตรวจรุ่น: `Select-String -Path auto_r16_import.py -Pattern "def evaluate_candidate" -Quiet` ต้องได้ `True` — รุ่นเก่าไม่รู้จัก flag `--confirm*` และ**ปฏิเสธด้วย exit 2** (ไม่ใช่เขียนเงียบ) ⚠️ แปลว่า**ต้องวางไฟล์ใหม่ + ตรวจรุ่นให้ผ่านก่อนแตะ `-Argument` ของ Task เสมอ** — ถ้าใส่ flag ก่อน สคริปต์เก่าจะ exit 2 ตั้งแต่ต้น และ**คืนนั้นไม่เผยแพร่ timeline เลย** (ปุ่ม Confirm ของ Desktop ต้องรออัปมือ)
+2. **ซ้อมแห้ง:** `.\run_auto_r16.bat --dry-run --confirm-shadow` หลัง 21:00 ตอนมีรายการ `scanning` → log ต้องไม่มี ❌ และตัวเลข Pass / Stock Adj สมเหตุสมผล
+3. **เปิดโหมดเงา** ใน Task (ย้ายเวลาเป็นหลัง BOT16104 เสร็จและหลัง 21:00 เช่น 21:10):
+
+```powershell
+$Root = "$env:USERPROFILE\Automation\auto-r16"
+$A = New-ScheduledTaskAction -Execute (Join-Path $Root "run_auto_r16.bat") -Argument "--confirm-shadow" -WorkingDirectory $Root
+$T = New-ScheduledTaskTrigger -Daily -At "21:10"
+Set-ScheduledTask -TaskName "AutoR16Import" -Action $A -Trigger $T
+```
+
+4. **ทุกเช้า:** `Get-Content .\auto_r16.log -Tail 60 -Encoding UTF8` (หา `Confirm SSS shadow(N)`) แล้ว `python auto_r16_import.py --confirm-compare`
+5. **เกณฑ์ผ่านโหมดเงา (ข้อเสนอ — ปรับได้):** อย่างน้อย 3 คืนที่มีรายการประเมิน ≥ 20 รายการต่อสาขา และ `ต่างกัน 0` (ถ้ามีรายการต่างต้องอธิบายได้ทุกตัว) และอัตรา Stock Adj อยู่ในช่วงปกติ
+6. **เปิดเขียนจริงทีละสาขา** (SSS ก่อน): เปลี่ยน `-Argument` เป็น `"--confirm --confirm-branch SSS --confirm-shadow"` (SSS เขียนจริง · KKL/SRC ยังเงา) → เช้าวันถัดไปตรวจ: Desktop เห็น Pass/Stock Adj ครบ · ไม่มี `scanning` ค้างยกเว้นที่ log ระบุว่าข้ามโดยตั้งใจ · ไม่ถูกต้อง → `--confirm-undo`
+7. ขยาย KKL → SRC (`--confirm-branch SSS,KKL` → `SSS,KKL,SRC`) โดยเว้นอย่างน้อย 1–2 คืนต่อสาขา
+
+**ปิดฉุกเฉิน (เร็วสุดก่อน):** เอา `--confirm …` ออกจาก `-Argument` ของ Task (กลับไปเผยแพร่ timeline อย่างเดียว) · หรือ `Disable-ScheduledTask -TaskName AutoR16Import` · พนักงานกด Confirm ที่ Desktop เหมือนเดิมได้เสมอ (ปุ่มไม่ถูกแตะ)
+
+### exit code ของขั้น Confirm
+
+| สถานการณ์ | exit |
+|---|---|
+| Confirm สำเร็จ / ไม่มีรายการ / `--dry-run` / โหมดเงา (แม้โหมดเงาล้ม) | `0` |
+| ตกด่านโดย**ไม่ได้เขียนอะไร**: เวลา/นาฬิกา · lock ถือโดยเครื่องอื่น · preflight ไม่ผ่าน · tripwire · item เปลี่ยนระหว่างคำนวณ | `4` |
+| ล้ม หรือเขียนไปแล้วบางส่วน | `1` |
+| flag ผิด/ไม่ครบ | `2` |
+
+โหมดเงาล้ม**ไม่ทำให้ Task แดง** (งานหลักคือเผยแพร่ timeline) — ดูใน log · Confirm ของสาขาหนึ่งล้มไม่ทำให้สาขาอื่นไม่ถูกเผยแพร่ timeline (เผยแพร่ครบทุกสาขาก่อนเริ่ม Confirm เสมอ)
+
+### ข้อจำกัดของ Confirm โดยบอท
+
+- **ยังไม่เคยรันกับข้อมูลจริง** — ตรรกะตัดสินเทียบกับหน้าเว็บจริงด้วย fuzz และตรวจรูปแบบ item กับข้อมูล production (อ่านอย่างเดียว) แล้ว แต่การเขียนผ่านเทสบน Firestore emulator เท่านั้น · tripwire ยังไม่ได้ปรับเทียบ
+- **ตั้งเวลา 1 ครั้งต่อคืน** (~21:10 — ไม่มี Task ชดเชยแยก) · แต่ Task `AutoR16Import` ตั้ง `-RestartCount 3 -RestartInterval 20m` ไว้แล้ว จึง**อาจถูกรันซ้ำเอง**สูงสุด 3 ครั้งทุก 20 นาทีเมื่อจบด้วย exit ≠ 0 (ไม่ได้ยืนยันบนเครื่องจริงว่า Task Scheduler นับ exit 4 เป็น "ล้ม") — Confirm รันซ้ำได้ปลอดภัย (รายการที่ Confirm แล้วไม่ใช่ `scanning` จึงไม่ถูกแตะซ้ำ · ถือ lock + precondition ทุกรอบ · ถ้ารอบแรกเขียนไปบางส่วน รอบถัดไปทำส่วนที่เหลือต่อ แต่จะมี journal 2 ไฟล์ให้ย้อน) · ไม่ต้องการให้ Confirm ถูกลองซ้ำ = ตั้ง `-RestartCount 0` · พลาดคืนไหน (ไฟล์ R16 มาช้า/lock ชน/tripwire) พนักงานกด Confirm ที่ Desktop เองได้เหมือนเดิม · ⚠️ รายการที่ไม่ถูก Confirm และยังเป็น `scanning` ถูก**รีเซ็ตเช้าวันถัดไป**ตามกฎเดิมของเว็บ (`runStaleGuard` → toast "รีเซ็ตของค้างข้ามวัน") ถ้าไม่มีใครกด Confirm ก่อน
+- ผลเท่ากับที่ Desktop จะได้ถ้ากด Confirm ตอน 21:10 — สแกนหลังเวลา export ไม่ถูกชดเชย (ร้านปิดสแกน 21:00 จึงไม่ควรมี)
+- ไม่รองรับ WH · ไม่รองรับกรณีที่เว็บเปิด `PHARMACY_DIRECT_STOCK_ADJ=false` (ส่งเข้า Audit) — บอทปฏิเสธไม่ Confirm
+- เครื่องบอทต้องตั้งเวลาให้ตรง (เทียบส่วนหัว `Date` ของ Firestore) · ใช้ไฟล์ R16 ที่ export หลัง 21:00 เท่านั้น
+- ต้องใช้เว็บรุ่นที่มีตัวอ่าน timeline (`_loadPharmacyR16Timeline`) ตามหัวข้อบนสุดเหมือนเดิม — Confirm โดยบอทไม่เปลี่ยนฝั่งเว็บเลย (ไม่ต้อง deploy เว็บเพิ่ม · ไม่ bump APK)
+
 ## 🖥️ ติดตั้งบน `BIGYAMAINPC` (เครื่องที่รัน BOTR16104)
 
 > ⚠️ เครื่องนั้น**ไม่ใช่ git clone** — ก๊อปไฟล์ไปวางเอง · แก้สคริปต์ใน repo แล้วต้องเอาไปวางเองทุกครั้ง
@@ -146,9 +259,9 @@ Register-ScheduledTask -TaskName "AutoR16Import" -Action $A -Trigger $T -Setting
 | code | ความหมาย |
 |---|---|
 | `0` | สำเร็จ **หรือ** เนื้อหาเหมือนเดิมจึงไม่เขียน (`--dry-run` ก็ 0) |
-| `1` | อ่าน/เขียน Firestore ล้ม (สาขาที่ล้มถูกเก็บกวาดแล้ว) |
+| `1` | อ่าน/เขียน Firestore ล้ม (สาขาที่ล้มถูกเก็บกวาดแล้ว) · **หรือ Confirm ล้ม/เขียนไปแล้วบางส่วน** |
 | `2` | ไม่พบไฟล์/โฟลเดอร์ หรือ flag ไม่ถูกต้อง |
-| `4` | ตกด่าน (ไฟล์ไม่ใช่วันนี้/ยังไม่นิ่ง · หัวคอลัมน์เพี้ยน · มีแถวไม่ใช่วันนี้ · มีสาขาที่ถูกข้าม) — **ไม่เขียนสาขานั้น** |
+| `4` | ตกด่าน (ไฟล์ไม่ใช่วันนี้/ยังไม่นิ่ง · หัวคอลัมน์เพี้ยน · มีแถวไม่ใช่วันนี้ · มีสาขาที่ถูกข้าม · **หรือขั้น Confirm ตกด่านโดยไม่ได้เขียนอะไร**) — **ไม่เขียนสาขานั้น** |
 | `9` | ไม่พบ Python (`.bat`) |
 
 เห็น exit 4 ติดกันหลายวัน = ไปแก้ที่ Task `BOT16104` (หรือบอท auto-r01) ไม่ใช่ที่นี่ · ตรวจบน Firestore: `{branch}_r01.r16DetailVersion` = `{branch}_r16_104_meta.version` และ `r16UploadedAt` เป็นเย็นวันนี้
@@ -160,3 +273,4 @@ Register-ScheduledTask -TaskName "AutoR16Import" -Action $A -Trigger $T -Setting
 - อัปมือที่ Desktop หลังบอท = local timeline เฉพาะเครื่อง (เครื่องอื่นเห็น version ไม่ตรง → ไม่โหลด timeline ของบอท) เท่ากับสถานะก่อนมีบอท
 - `reEvaluateAuditItems()` ไม่ถูกเรียกตอนโหลดจาก Cloud (กันทุก Desktop พลิกสถานะพร้อมกัน) — สถานะที่ Confirm ไปแล้วไม่เปลี่ยนเอง
 - KKL = `SYSBRANCHID 4` ยืนยันจากไฟล์ตัวอย่างไฟล์เดียว (บอทตรวจ id+ชื่อทุกรอบ) · ความหมาย Col A ของ OTFI/OTFB ของ KKL/SSS ยังไม่มีไฟล์ยืนยัน (ใช้กติกาแอปเดิม)
+- ข้อจำกัดของขั้น **Confirm โดยบอท** อยู่ในหัวข้อ [🤖 Confirm โดยบอท](#-confirm-โดยบอท) (ยังไม่เคยรันกับข้อมูลจริง · tripwire ยังไม่ปรับเทียบ · รอบเดียวต่อคืน)

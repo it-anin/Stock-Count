@@ -42,6 +42,11 @@ auto-adj/__pycache__/
 auto-r16/auto_r16.log
 auto-r16/auto_r16.log.1
 auto-r16/__pycache__/
+# auto-r16 Confirm โดยบอท: ไฟล์สถานะเฉพาะเครื่อง (journal = ค่า item ก่อน/หลัง Confirm ไว้ย้อนผล · shadow log = ผลทำนายต่อ SKU ทุกคืน) — ข้อมูลจริงของสาขา ห้ามเข้า repo
+auto-r16/confirm_journal/
+auto-r16/auto_r16_confirm_shadow.jsonl
+auto-r16/auto_r16_confirm_shadow.jsonl.1
+tests/lib/__pycache__/
 
 # automated tests (tests/.gitignore คุมรายละเอียดอีกชั้น)
 tests/node_modules/
