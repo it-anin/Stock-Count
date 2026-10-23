@@ -9,6 +9,8 @@
 >
 > 🤖 **Confirm โดยบอท (ต.ค. 2026 · ผู้ใช้สั่ง):** บอทตัวนี้ "กด Confirm ให้เลย" หลังอัป R16 ได้ด้วย (ตัดสิน Pass / Stock Adj แทนปุ่ม Confirm ของ Desktop) —
 > **ปิดเป็นค่าเริ่มต้น** ต้องใส่ flag `--confirm-shadow` / `--confirm` เอง · อ่านหัวข้อ [🤖 Confirm โดยบอท](#-confirm-โดยบอท) **ก่อนเปิด** · ไม่ใส่ flag = ทำงานเหมือนเดิมทุกอย่าง
+>
+> 📣 **แจ้งเตือน Telegram (23 ต.ค. 2026 · ผู้ใช้สั่ง "ถ้าบอทไม่ Confirm ให้ส่ง Telegram"):** บอทส่งสรุปทุกคืนหลังรันจบ (✅ สำเร็จ / ❌ ไม่สำเร็จพร้อมสาเหตุ) — **ตั้งค่าใน `.env` ก่อนจึงจะส่ง** (ไม่ตั้ง = ไม่ส่ง ทำงานเหมือนเดิม) · อ่านหัวข้อ [📣 แจ้งเตือน Telegram](#-แจ้งเตือน-telegram)
 
 ## ทำไมต้องเป็น "timeline" ไม่ใช่ยอดรวม
 
@@ -145,6 +147,8 @@ $env:R16104_REAL_FILE = "$env:USERPROFILE\Desktop\run-upload-stock\R16104.CSV"; 
 | `--confirm-compare [--confirm-date YYYY-MM-DD]` | เทียบผลโหมดเงากับสถานะจริงบน Cloud (อ่านอย่างเดียว) |
 | `--dry-run` | คำนวณและรายงานอย่างเดียว ไม่ถือ lock ไม่เขียนอะไร (ไม่จดโหมดเงาด้วย) |
 | `--force` | ข้ามด่านเวลา/นาฬิกา — **ใช้ตอนทดสอบเท่านั้น** |
+| `--notify-test` | ส่งข้อความทดสอบ Telegram แล้วจบ (ใช้เดี่ยวๆ) — ดู [📣 แจ้งเตือน Telegram](#-แจ้งเตือน-telegram) |
+| `--no-notify` | รอบนี้ไม่ส่งแจ้งเตือน (ปกติ `--dry-run` / `--confirm-compare` / `--confirm-undo` ไม่ส่งอยู่แล้ว) |
 
 flag ผิดรูป/ขัดกัน (เช่น `--confirm` ไม่มี `--confirm-branch` · `--confirm-branch` ไม่มี `--confirm` · สาขานอก `--branch`) → **ปฏิเสธ exit 2** ไม่เงียบ
 
@@ -197,7 +201,42 @@ Set-ScheduledTask -TaskName "AutoR16Import" -Action $A -Trigger $T
 6. **เปิดเขียนจริงทีละสาขา** (SSS ก่อน): เปลี่ยน `-Argument` เป็น `"--confirm --confirm-branch SSS --confirm-shadow"` (SSS เขียนจริง · KKL/SRC ยังเงา) → เช้าวันถัดไปตรวจ: Desktop เห็น Pass/Stock Adj ครบ · ไม่มี `scanning` ค้างยกเว้นที่ log ระบุว่าข้ามโดยตั้งใจ · ไม่ถูกต้อง → `--confirm-undo`
 7. ขยาย KKL → SRC (`--confirm-branch SSS,KKL` → `SSS,KKL,SRC`) โดยเว้นอย่างน้อย 1–2 คืนต่อสาขา
 
-**ปิดฉุกเฉิน (เร็วสุดก่อน):** เอา `--confirm …` ออกจาก `-Argument` ของ Task (กลับไปเผยแพร่ timeline อย่างเดียว) · หรือ `Disable-ScheduledTask -TaskName AutoR16Import` · พนักงานกด Confirm ที่ Desktop เหมือนเดิมได้เสมอ (ปุ่มไม่ถูกแตะ)
+#### ทางที่ผู้ใช้เลือกจริง (23 ต.ค. 2026): เขียนจริง 3 สาขาพร้อมกัน + แจ้งเตือน Telegram
+
+ผู้ใช้สั่งข้ามลำดับ SSS → KKL → SRC ด้านบน (ผลโหมดเงาคืน 22 ต.ค. ตรงกับปุ่มจริง 1/1 รายการ) — **ยังไม่เคยเขียนจริงกับข้อมูลจริงเลยสักคืน และ tripwire ยังไม่ได้ปรับเทียบ** จึงชดเชยด้วย: Telegram สรุปทุกคืน (ความเงียบ = มีปัญหา) · journal + `--confirm-undo` · tripwire · **เก็บปุ่ม Confirm ที่ Desktop ไว้เป็นทางสำรองจนกว่าจะผ่านเกณฑ์** (สวิตช์ `PHARMACY_DESKTOP_CONFIRM_BY_BOT` ใน `index.html` ค่าเริ่มต้นปิด — เกณฑ์พลิกอยู่ใน CLAUDE.md)
+
+ลำดับ (ห้ามสลับ — ข้อ 1–2 ก่อนข้อ 5 เสมอ: ① สคริปต์รุ่นเก่าที่ไม่รู้จัก flag ใหม่ → exit 2 → คืนนั้นไม่เผยแพร่ timeline เลย ② ต่อให้เป็นรุ่น 22 ต.ค. ที่รู้จัก `--confirm` ก็ไม่มี Telegram → คืนแรกที่เขียนจริงจะเงียบ ซึ่งคือสิ่งที่แจ้งเตือนมีไว้กัน — และต้องเห็นข้อความ `--notify-test` ในแชทจริงก่อนจึงเปิดเขียนจริง):
+
+1. ก๊อป `auto-r16` ทั้งโฟลเดอร์ทับ (ห้ามลบโฟลเดอร์ — log/`confirm_journal` อยู่ในนั้น) → `Select-String -Path auto_r16_import.py -Pattern "def send_telegram" -Quiet` ต้องได้ `True`
+2. สร้าง `.env` + `python auto_r16_import.py --notify-test` ต้องได้ข้อความในแชท (ดู [📣 แจ้งเตือน Telegram](#-แจ้งเตือน-telegram))
+3. ตั้ง RestartCount (ตอนนี้บน `BIGYAMAINPC` เป็น 0 — ไม่ลองใหม่เลย): ถ้าไฟล์ BOT16104 มาช้าบอทจะลองใหม่ 21:30 / 21:50 / 22:10 ซึ่งยังอยู่ในวันเดียวกัน
+4. ซ้อมด้วยคำสั่งจริงของ Task: `.\run_auto_r16.bat --dry-run --confirm --confirm-branch SSS,KKL,SRC; $LASTEXITCODE` ต้องได้ `0` (ถ้าเป็น `2` = สคริปต์เป็นรุ่นเก่าหรือ flag ผิด — ห้ามไปข้อ 5) · `.bat` เขียนผลลง `auto_r16.log` (ดู `Get-Content .\auto_r16.log -Tail 40 -Encoding UTF8`) · ซ้อมแล้วไม่ส่ง Telegram (`--dry-run` ไม่ส่ง) — ข้อความทดสอบมาจากข้อ 2 เท่านั้น
+5. เปลี่ยน `-Argument` ของ Task
+
+```powershell
+$Root = "C:\Users\AninMainPC\Automation\auto-r16"
+$Bat  = Join-Path $Root "run_auto_r16.bat"
+if (-not (Test-Path $Bat)) { throw "ไม่พบ $Bat" }
+
+# 3) ลองใหม่ได้ 3 ครั้งทุก 20 นาที (exit ≠ 0 เช่น ไฟล์ BOT16104 ยังไม่ใช่ของวันนี้)
+$S = (Get-ScheduledTask -TaskName "AutoR16Import").Settings
+$S.RestartCount = 3
+$S.RestartInterval = "PT20M"
+Set-ScheduledTask -TaskName "AutoR16Import" -Settings $S
+
+# 5) เปิดเขียนจริงทั้ง 3 สาขา
+$A = New-ScheduledTaskAction -Execute $Bat -Argument "--confirm --confirm-branch SSS,KKL,SRC" -WorkingDirectory $Root
+Set-ScheduledTask -TaskName "AutoR16Import" -Action $A
+
+# ตรวจผล
+$t = Get-ScheduledTask -TaskName "AutoR16Import"
+$t.Actions | Select-Object Execute, Arguments
+$t.Settings | Select-Object RestartCount, RestartInterval
+```
+
+6. **คืนแรกที่มีรายการสแกนจริง:** อ่านข้อความ Telegram → เช้าวันถัดไปตรวจ: Desktop เห็น Pass/Stock Adj ครบ · ไม่มี `scanning` ค้างยกเว้นที่ข้อความระบุว่าข้าม · สุ่มเทียบ `confirm_journal\*.json` 5 SKU กับสูตร · **เภสัชตรวจ Stock Adj ก่อน Export ใบ 📦 ไป ERP** (`--confirm-undo` ย้อนได้เฉพาะก่อน Export — หลัง Export ย้อนตามไม่ได้)
+
+**ปิดฉุกเฉิน (เร็วสุดก่อน):** เอา `--confirm …` ออกจาก `-Argument` ของ Task (กลับไปเผยแพร่ timeline อย่างเดียว) · หรือ `Disable-ScheduledTask -TaskName AutoR16Import` · พนักงานกด Confirm ที่ Desktop เหมือนเดิมได้ตราบที่ปุ่มยังไม่ถูกซ่อน (สวิตช์ `PHARMACY_DESKTOP_CONFIRM_BY_BOT` = `false` ซึ่งเป็นค่าเริ่มต้น — ถ้าพลิกเป็น `true` แล้วต้องตั้งกลับ `false` + deploy + F5 ทุก Desktop ก่อน ไม่งั้นไม่มีปุ่มให้กด)
 
 ### exit code ของขั้น Confirm
 
@@ -213,11 +252,52 @@ Set-ScheduledTask -TaskName "AutoR16Import" -Action $A -Trigger $T
 ### ข้อจำกัดของ Confirm โดยบอท
 
 - **ยังไม่เคยรันกับข้อมูลจริง** — ตรรกะตัดสินเทียบกับหน้าเว็บจริงด้วย fuzz และตรวจรูปแบบ item กับข้อมูล production (อ่านอย่างเดียว) แล้ว แต่การเขียนผ่านเทสบน Firestore emulator เท่านั้น · tripwire ยังไม่ได้ปรับเทียบ
-- **ตั้งเวลา 1 ครั้งต่อคืน** (~21:10 — ไม่มี Task ชดเชยแยก) · แต่ Task `AutoR16Import` ตั้ง `-RestartCount 3 -RestartInterval 20m` ไว้แล้ว จึง**อาจถูกรันซ้ำเอง**สูงสุด 3 ครั้งทุก 20 นาทีเมื่อจบด้วย exit ≠ 0 (ไม่ได้ยืนยันบนเครื่องจริงว่า Task Scheduler นับ exit 4 เป็น "ล้ม") — Confirm รันซ้ำได้ปลอดภัย (รายการที่ Confirm แล้วไม่ใช่ `scanning` จึงไม่ถูกแตะซ้ำ · ถือ lock + precondition ทุกรอบ · ถ้ารอบแรกเขียนไปบางส่วน รอบถัดไปทำส่วนที่เหลือต่อ แต่จะมี journal 2 ไฟล์ให้ย้อน) · ไม่ต้องการให้ Confirm ถูกลองซ้ำ = ตั้ง `-RestartCount 0` · พลาดคืนไหน (ไฟล์ R16 มาช้า/lock ชน/tripwire) พนักงานกด Confirm ที่ Desktop เองได้เหมือนเดิม · ⚠️ รายการที่ไม่ถูก Confirm และยังเป็น `scanning` ถูก**รีเซ็ตเช้าวันถัดไป**ตามกฎเดิมของเว็บ (`runStaleGuard` → toast "รีเซ็ตของค้างข้ามวัน") ถ้าไม่มีใครกด Confirm ก่อน
+- **ตั้งเวลา 1 ครั้งต่อคืน** (~21:10 — ไม่มี Task ชดเชยแยก) · ถ้า Task ตั้ง `-RestartCount 3 -RestartInterval 20m` จะ**ถูกรันซ้ำเอง**สูงสุด 3 ครั้งทุก 20 นาทีเมื่อจบด้วย exit ≠ 0 (ไม่ได้ยืนยันบนเครื่องจริงว่า Task Scheduler นับ exit 4 เป็น "ล้ม" · ⚠️ **22 ต.ค. 2026 Task บน `BIGYAMAINPC` เป็น `RestartCount 0`** ทั้งที่เอกสารรุ่นก่อนเขียนว่าตั้งไว้แล้ว — ตรวจด้วย `(Get-ScheduledTask AutoR16Import).Settings | Select RestartCount, RestartInterval` ไม่ใช่เชื่อเอกสาร) — Confirm รันซ้ำได้ปลอดภัย (รายการที่ Confirm แล้วไม่ใช่ `scanning` จึงไม่ถูกแตะซ้ำ · ถือ lock + precondition ทุกรอบ · ถ้ารอบแรกเขียนไปบางส่วน รอบถัดไปทำส่วนที่เหลือต่อ แต่จะมี journal 2 ไฟล์ให้ย้อน) · ไม่ต้องการให้ Confirm ถูกลองซ้ำ = ตั้ง `-RestartCount 0` · ทุกรอบที่รันซ้ำส่ง Telegram หนึ่งข้อความ (❌ ของรอบที่ล้ม แล้ว ✅ ของรอบที่สำเร็จ) · พลาดคืนไหน (ไฟล์ R16 มาช้า/lock ชน/tripwire) พนักงานกด Confirm ที่ Desktop เองได้ตราบที่ปุ่มยังไม่ถูกซ่อน · ⚠️ รายการที่ไม่ถูก Confirm และยังเป็น `scanning` ถูก**รีเซ็ตเช้าวันถัดไป**ตามกฎเดิมของเว็บ (`runStaleGuard` → toast "รีเซ็ตของค้างข้ามวัน") ถ้าไม่มีใครกด Confirm ก่อน — และ R16 ถูกล้างเช้านั้นด้วย (auto-r01) จึงไม่มีทาง Confirm ย้อนหลังข้ามวัน
 - ผลเท่ากับที่ Desktop จะได้ถ้ากด Confirm ตอน 21:10 — สแกนหลังเวลา export ไม่ถูกชดเชย (ร้านปิดสแกน 21:00 จึงไม่ควรมี)
 - ไม่รองรับ WH · ไม่รองรับกรณีที่เว็บเปิด `PHARMACY_DIRECT_STOCK_ADJ=false` (ส่งเข้า Audit) — บอทปฏิเสธไม่ Confirm
 - เครื่องบอทต้องตั้งเวลาให้ตรง (เทียบส่วนหัว `Date` ของ Firestore) · ใช้ไฟล์ R16 ที่ export หลัง 21:00 เท่านั้น
 - ต้องใช้เว็บรุ่นที่มีตัวอ่าน timeline (`_loadPharmacyR16Timeline`) ตามหัวข้อบนสุดเหมือนเดิม — Confirm โดยบอทไม่เปลี่ยนฝั่งเว็บเลย (ไม่ต้อง deploy เว็บเพิ่ม · ไม่ bump APK)
+
+## 📣 แจ้งเตือน Telegram
+
+**ทำไม:** บอทนี้ Confirm แทนพนักงานทุกคืน — คืนไหนไม่ Confirm (ตกด่าน / ล้ม / เครื่องดับ) รายการ `scanning` ของวันนั้นถูกรีเซ็ตเช้าวันถัดไป (ต้องนับใหม่) และบอท `auto-r*` ไม่เคยมีแจ้งเตือนเลย · ผู้ใช้สั่ง 23 ต.ค. 2026: "ถ้าบอทไม่ Confirm ให้ส่ง Telegram"
+
+**ส่งอะไร:** หลังรันจบทุกครั้ง (รวมรันซ้ำของ Task) **1 ข้อความ** — ไม่ใช่เฉพาะตอนล้ม:
+- `✅ auto-r16 · 21:10 21/10/2026 · BIGYAMAINPC — เรียบร้อย` + ไฟล์ที่ใช้ + ต่อสาขา: `SSS: R16 เผยแพร่แล้ว · Confirm 6 รายการ (Pass 3 · Stock Adj 3)` (ถ้าบอทข้ามบางรายการ จะระบุจำนวน/เหตุผลและเตือนว่ายังเป็น `scanning` จะถูกรีเซ็ตเช้าพรุ่งนี้)
+- `❌ … ไม่สำเร็จ (exit N: …)` + สถานะรายสาขา + บรรทัด ❌/⚠️ จาก log + คำสั่ง "รันซ้ำคืนนี้ก่อนเที่ยงคืน"
+- ถ้า Task ไม่มี `--confirm*` ข้อความ ✅ จะมี `⚠️ Confirm โดยบอทปิดอยู่` (กันลืม) · โหมดเงาระบุ "เงา (ไม่เขียน)"
+
+**ทำไมส่งแม้สำเร็จ:** ถ้าเครื่อง `BIGYAMAINPC` ดับ / Task ไม่รัน / ไม่มีเน็ต บอทไม่มีโอกาสส่งอะไรเลย — **ความเงียบคือสัญญาณเดียวที่เหลือ** · ถึง ~22:00 แล้วยังไม่มีข้อความของคืนนี้ = ต้องเข้าไปดูเครื่อง (ข้อจำกัด: ยังไม่มีตัวเฝ้าอิสระที่แจ้งเมื่อ "ไม่มีข้อความ" — ถ้าต้องการ ต้องทำแยก)
+
+**ไม่ส่งเมื่อ:** `--dry-run` · `--confirm-compare` · `--confirm-undo` · `--help` · `--no-notify` · `--notify-test` (ส่งข้อความทดสอบข้อความเดียว) · ไม่ได้ตั้งค่า (log บอกเหตุผล 1 บรรทัด) · `AUTO_R16_NOTIFY=0`
+
+### ตั้งค่า (บน `BIGYAMAINPC`)
+
+สร้างไฟล์ `.env` **ข้างสคริปต์** (`C:\Users\AninMainPC\Automation\auto-r16\.env`):
+
+```
+TELEGRAM_BOT_TOKEN=123456789:AAH...ค่าจาก @BotFather
+TELEGRAM_CHAT_ID=987654321
+```
+
+- ใช้บอท/แชทเดียวกับ BOT16104 ได้ (เลขแชทของกลุ่ม/ช่องขึ้นต้นด้วย `-` หรือใช้ `@ชื่อช่อง`) · หา chat id: ส่งข้อความหาบอท แล้วเปิด `https://api.telegram.org/bot<TOKEN>/getUpdates` ในเบราว์เซอร์เครื่องตัวเอง → `chat.id` (⚠️ URL นี้มี token — อย่าแชร์/แปะที่ไหน)
+- ลำดับที่หาค่า (แยกทีละตัวแปร): **ตัวแปรระบบ** → `.env` ข้างสคริปต์ → `.env` ในโฟลเดอร์ CSV (`run-upload-stock`) · ไวยากรณ์: `KEY=ค่า` · `export KEY=ค่า` · `KEY="ค่า"  # คอมเมนต์` · บรรทัดขึ้นต้น `#` ข้าม · ไฟล์บันทึกเป็น UTF-8 (มี BOM ก็ได้)
+- ค่าตัวอย่างในวงเล็บมุม `<...>` หรือรูปแบบผิดถูกปฏิเสธ (log บอกว่าตัวไหนผิด **โดยไม่พิมพ์ค่านั้นซ้ำ**)
+- ทดสอบ: `python auto_r16_import.py --notify-test` (พิมพ์ผลที่หน้าจอ · หรือ `.\run_auto_r16.bat --notify-test; $LASTEXITCODE` — ⚠️ `.bat` เขียนผลลง `auto_r16.log` ไม่ใช่หน้าจอ ให้ดูด้วย `Get-Content .\auto_r16.log -Tail 15 -Encoding UTF8`) → exit `0` + ข้อความ 🔔 ในแชท · exit `2` = ตั้งค่าไม่ครบ/ผิด/ปิดด้วย `AUTO_R16_NOTIFY` · exit `1` = ส่งไม่สำเร็จ (log บอกเหตุผลสั้น: `HTTP 401` = token ผิด · `HTTP 403` = บอทถูกบล็อก/ไม่ได้อยู่ในกลุ่ม · `URLError` = ไม่มีเน็ต/ถูกบล็อก)
+- ปิดชั่วคราวโดยไม่แก้ Task: `setx AUTO_R16_NOTIFY 0` (เปิด CMD ใหม่) หรือใส่ `--no-notify` ใน `-Argument`
+
+### ความปลอดภัย / ความเสถียร
+
+- ⛔ `.env` อยู่ใน `.gitignore` (repo นี้ **PUBLIC**) — **ห้าม commit / ห้ามแปะ token ในแชท-เอกสาร** · token หลุด = ใครก็ส่งข้อความในนามบอทได้ → เพิกถอนที่ @BotFather (`/revoke`) แล้วออก token ใหม่
+- บอทไม่พิมพ์ token ลง log หรือข้อความ (เหตุผลที่ส่งไม่สำเร็จเป็นแค่ชื่อชนิด error / `HTTP nnn`) และซ่อนสิ่งที่หน้าตาเหมือน token / `key=` ในข้อความด้วย — เป็นชั้นกันพลาด ไม่ใช่เหตุผลให้ประมาท
+- **ส่งไม่ได้/ช้า/ตั้งค่าผิด ไม่เปลี่ยน exit code และไม่ทำให้งานหลักล้ม** · ส่งใน thread แยก รอไม่เกิน 30 วินาที (ต่อคำขอ 10 วินาที) · ลองซ้ำ 1 ครั้งหลังรอ 1.5 วินาที เฉพาะ 429 / 5xx / เครือข่าย (4xx อื่น = ค่าผิด ไม่ลองซ้ำ) · ข้อความยาวเกิน 3,500 ตัวอักษรถูกตัดท้าย
+- ข้อมูลที่ส่งออกนอกเครื่อง: ชื่อเครื่อง · เวลา · ชื่อไฟล์ · จำนวนรายการ Pass/Stock Adj ต่อสาขา · บรรทัดเตือนจาก log (อาจมีรหัส SKU, path ในเครื่อง และ**ชื่อผู้ใช้ที่ถือ lock อยู่** เช่น `มี lock ถืออยู่ (ชื่อ…)` — ไม่มีชื่อสินค้า/ข้อมูลลูกค้า) → ใช้แชทส่วนตัว/กลุ่มภายในเท่านั้น
+
+### คืนที่ได้ ❌ ทำอะไร
+
+1. `Get-Content .\auto_r16.log -Tail 60 -Encoding UTF8` — ข้อความ Telegram ชี้สาเหตุหลักไว้แล้ว (ไฟล์ไม่ใช่วันนี้ → ตรวจ Task `BOT16104` · มี lock → Desktop กำลัง Confirm รอ 5 นาที · tripwire → ตรวจ R01/R16 ว่าผิดชุดไหม · exit 1 → Firestore/เครือข่าย)
+2. แก้สาเหตุแล้ว **รันซ้ำก่อนเที่ยงคืน** (ด่านเวลายังบังคับ: หลัง 21:00 · ไฟล์ R16 export หลัง 21:00 · วันเดียวกัน): `.\run_auto_r16.bat --confirm --confirm-branch SSS,KKL,SRC` — รันซ้ำปลอดภัย (รายการที่ Confirm แล้วไม่ถูกแตะซ้ำ)
+3. ไม่ทัน → รายการ `scanning` ถูกรีเซ็ตเช้าพรุ่งนี้ + R16 ถูกล้าง (auto-r01) ⇒ ต้องนับใหม่ · ทางสำรองระหว่างปุ่มยังอยู่: พนักงานกด Confirm ที่ Desktop เอง (ต้องมี R16 ของวันนี้โหลดอยู่ — ถ้าบอทไม่ได้เผยแพร่ให้อัปมือที่การ์ด R16.104 ก่อน)
 
 ## 🖥️ ติดตั้งบน `BIGYAMAINPC` (เครื่องที่รัน BOTR16104)
 

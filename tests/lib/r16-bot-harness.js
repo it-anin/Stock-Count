@@ -45,6 +45,8 @@ const HARNESS = `
 import os, io, re, json, tempfile, time, contextlib
 from datetime import datetime, timedelta
 
+os.environ['AUTO_R16_NOTIFY'] = '0'   # เทสห้ามยิง Telegram จริง (เครื่องพัฒนาอาจมี .env) — ดูเทสแจ้งเตือนที่ auto-r16-notify.spec.js
+
 def conv(v):
     if v == '__TODAY__': return m.S(m.thai_ts(datetime.now(m.BKK)))
     if v == '__YESTERDAY__': return m.S(m.thai_ts(datetime.now(m.BKK) - timedelta(days=1)))
