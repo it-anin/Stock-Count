@@ -53,6 +53,8 @@ import hashlib
 import random
 import time
 import uuid
+import threading
+import traceback
 from collections import Counter
 import urllib.request
 import urllib.error
@@ -131,8 +133,37 @@ MAX_CHUNK_KB = 950
 # ============================================================
 
 
+# บรรทัด ❌/⚠️ ของรอบนี้ (+ บรรทัดย่อหน้าต่อท้ายไม่เกิน NOTIFY_ALERT_CONTINUATION บรรทัด) — เก็บไว้ประกอบข้อความ Telegram (build_notice)
+# ไม่กระทบสิ่งที่พิมพ์ · main() ล้างทุกครั้งที่เริ่มรอบ
+_ALERT_LINES = []
+_ALERT_STATE = {"indent": None, "cont": 0}
+NOTIFY_ALERT_KEEP = 30
+NOTIFY_ALERT_CONTINUATION = 4
+
+
+def _remember_alert(msg):
+    raw = str(msg)
+    s = raw.strip()
+    if not s:
+        return
+    indent = len(raw) - len(raw.lstrip(" "))
+    if s.startswith(("❌", "⚠")):
+        _ALERT_STATE["indent"], _ALERT_STATE["cont"] = indent, 0
+        keep = True
+    elif (_ALERT_STATE["indent"] is not None and indent > _ALERT_STATE["indent"]
+          and _ALERT_STATE["cont"] < NOTIFY_ALERT_CONTINUATION):
+        _ALERT_STATE["cont"] += 1
+        keep = True
+    else:
+        _ALERT_STATE["indent"] = None
+        keep = False
+    if keep and len(_ALERT_LINES) < NOTIFY_ALERT_KEEP:
+        _ALERT_LINES.append(" ".join(x.strip() for x in s.splitlines() if x.strip()))   # ข้อความหลายบรรทัด → บรรทัดเดียว (เยื้องในข้อความ Telegram ไม่เพี้ยน)
+
+
 def log(msg):
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}", flush=True)
+    _remember_alert(msg)
 
 
 # ------------------------------------------------------------
@@ -1838,6 +1869,9 @@ USAGE = ("ใช้: python auto_r16_import.py [--dry-run|-n] [--force] [--folde
          "       --confirm-max-adj-ratio 0.5               เพดานสัดส่วน Stock Adj ที่บอทยอมเขียนเอง (เกิน = ไม่เขียน รอคนตรวจ)\n"
          "       --confirm-undo <journal.json>             ย้อนผล Confirm ของบอท (ใส่ --dry-run ดูก่อนได้)\n"
          "       --confirm-compare [--confirm-date YYYY-MM-DD]   เทียบผลโหมดเงากับสถานะจริงบน Cloud (อ่านอย่างเดียว)\n"
+         "     แจ้งเตือน Telegram (ตั้งค่าใน .env — ดู README · ไม่ได้ตั้ง = ไม่ส่ง):\n"
+         "       --notify-test                             ส่งข้อความทดสอบแล้วจบ (ใช้เดี่ยวๆ)\n"
+         "       --no-notify                               รอบนี้ไม่ส่งแจ้งเตือน (--dry-run / --confirm-compare / --confirm-undo ไม่ส่งอยู่แล้ว)\n"
          "     (flag อื่นจะถูกปฏิเสธ — กันตัวเก่าเมินแล้วเขียนจริง)")
 
 
@@ -1845,7 +1879,7 @@ def parse_args(argv):
     """คืน dict หรือโยน SystemExit(2) เมื่อเจอ flag ที่ไม่รู้จัก — เรียกจาก main() เท่านั้น (ห้ามเรียกตอน import)"""
     opts = {"dry_run": False, "force": False, "folder": None, "branches": list(BRANCHES),
             "confirm": False, "confirm_shadow": False, "confirm_branches": [], "max_adj_ratio": None,
-            "undo": None, "compare": False, "confirm_date": None}
+            "undo": None, "compare": False, "confirm_date": None, "notify_test": False, "no_notify": False}
     i = 0
 
     def value_of(a, name):
@@ -1872,6 +1906,10 @@ def parse_args(argv):
             opts["confirm_shadow"] = True
         elif a == "--confirm-compare":
             opts["compare"] = True
+        elif a == "--notify-test":
+            opts["notify_test"] = True
+        elif a == "--no-notify":
+            opts["no_notify"] = True
         elif value_of(a, "--folder")[0] is not False:
             v, extra = value_of(a, "--folder")
             if v is None:
@@ -1945,6 +1983,10 @@ def parse_args(argv):
         raise SystemExit(2)
     if opts["max_adj_ratio"] is not None and not (opts["confirm"] or opts["confirm_shadow"]):
         log("❌ --confirm-max-adj-ratio ใช้ได้เมื่อมี --confirm หรือ --confirm-shadow เท่านั้น")
+        raise SystemExit(2)
+    if opts["notify_test"] and (opts["confirm"] or opts["confirm_shadow"] or opts["confirm_branches"] or opts["undo"]
+                                or opts["compare"] or opts["dry_run"] or opts["no_notify"] or opts["force"]):
+        log("❌ --notify-test ใช้เดี่ยวๆ (ไม่รวมกับ flag Confirm / --dry-run / --force / --no-notify) — มันส่งข้อความทดสอบแล้วจบ ไม่ทำงานหลัก")
         raise SystemExit(2)
     return opts
 
@@ -2100,8 +2142,331 @@ def _confirm_summary(results):
     return " · ".join(out)
 
 
+# ------------------------------------------------------------
+#  แจ้งเตือน Telegram  (ต.ค. 2026 · ผู้ใช้สั่ง: "ถ้าบอทไม่ Confirm ให้ส่ง Telegram")
+# ------------------------------------------------------------
+# ทำไม: บอทนี้ Confirm แทนคนทุกคืน — คืนไหนไม่ Confirm (ตกด่าน/ล้ม/เครื่องดับ) รายการ scanning ของวันนั้นถูกรีเซ็ตเช้าวันถัดไป (ต้องนับใหม่)
+#       บอท auto-r* ไม่เคยมีแจ้งเตือน จึงต้องมีก่อนปิดปุ่ม Confirm ที่ Desktop (สวิตช์ PHARMACY_DESKTOP_CONFIRM_BY_BOT ใน index.html)
+# ส่ง "สรุปทุกคืน" แม้สำเร็จ ไม่ใช่เฉพาะตอนล้ม: เครื่องดับ/Task ไม่รัน = บอทไม่มีโอกาสส่งอะไร → ความเงียบคือสัญญาณเดียวที่เหลือ
+# ⛔ รหัสอยู่ใน env/.env เท่านั้น (repo PUBLIC — ห้าม commit) · ห้ามพิมพ์ token ลง log/ข้อความ/เหตุผลของ exception
+# ⛔ ส่งไม่ได้/ช้า/ตั้งค่าผิด ต้องไม่เปลี่ยน exit code และไม่ทำให้งานหลักล้ม (main() จับทุกอย่างที่นี่)
+# ปิดชั่วคราวโดยไม่แก้ Task: ตัวแปรระบบ AUTO_R16_NOTIFY=0 (เทสตั้งไว้เสมอ — ไม่ให้เทสเผลอยิง Telegram จริงถ้าเครื่องพัฒนามี .env)
+
+TELEGRAM_TIMEOUT_SECONDS = 10       # ต่อคำขอ
+TELEGRAM_TOTAL_SECONDS = 30         # เพดานรวมรวมการลองซ้ำ — ส่งใน thread แล้วทิ้งเมื่อเกิน (กัน DNS/เครือข่ายค้าง)
+TELEGRAM_RETRY_WAIT_SECONDS = 1.5
+TELEGRAM_MAX_CHARS = 3500           # เพดานจริงของ Telegram คือ 4096
+NOTIFY_ALERT_SHOW = 10              # บรรทัด ❌/⚠️ จาก log ที่ใส่ในข้อความ
+NOTIFY_LINE_CHARS = 260
+
+# ผลของรอบที่กำลังรัน (opts / results / confirm_results / ไฟล์) — ใช้ประกอบข้อความแจ้งเตือนเท่านั้น · main() ล้างทุกครั้ง
+_RUN = {}
+
+_EXIT_MEANING = {
+    1: "อ่าน/เขียน Firestore ล้ม หรือ Confirm เขียนไปแล้วบางส่วน",
+    2: "ไฟล์/โฟลเดอร์/flag ผิด",
+    4: "ตกด่านโดยไม่ได้เขียน (ไฟล์ไม่ใช่วันนี้/ยังไม่นิ่ง · Confirm ติดเวลา/lock/tripwire)",
+}
+_PUBLISH_TH = {"written": "เผยแพร่แล้ว", "unchanged": "เหมือนเดิม (ไม่เขียนซ้ำ)", "dry": "ซ้อม",
+               "skipped": "ตกด่าน ไม่ได้เขียน", "failed": "ล้ม"}
+_CONFIRM_STATE_TH = {"skipped": "ตกด่าน ไม่ได้เขียน", "aborted": "ข้อมูลเปลี่ยนระหว่างทำ", "locked": "มี lock ถืออยู่ ไม่ได้เขียน",
+                     "tripwire": "tripwire ไม่ได้เขียน", "failed": "ล้ม"}
+
+
+def _script_dir():
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _env_file_value(path, key):
+    """ค่าของ KEY ใน .env (KEY=value · ตัดเครื่องหมายคำพูด/คอมเมนต์ท้ายบรรทัด · ข้ามบรรทัดคอมเมนต์) — ไม่มีไฟล์/อ่านไม่ได้ = None"""
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for line in f:
+                mt = re.match(r"^\s*(?:export\s+)?" + re.escape(key) + r"\s*=\s*(.*?)\s*$", line)
+                if not mt:
+                    continue
+                v = mt.group(1)
+                if v[:1] in ("'", '"'):
+                    end = v.find(v[0], 1)   # "ค่า"  # คอมเมนต์ท้ายบรรทัด → เอาเฉพาะในเครื่องหมายคำพูด (ปิดไม่ครบ = ตกไปทางไม่มีคำพูด แล้วค่าจะไม่ผ่านด่านรูปแบบ)
+                    if end > 0:
+                        return v[1:end].strip() or None
+                v = re.split(r"\s+#", v, maxsplit=1)[0]
+                return v.strip() or None
+    except (OSError, UnicodeDecodeError):
+        pass
+    return None
+
+
+def _notify_disabled():
+    return (os.environ.get("AUTO_R16_NOTIFY") or "").strip().lower() in ("0", "false", "off", "no")
+
+
+def telegram_config_problem(token, chat_id):
+    """ปัญหาของค่าที่ตั้งไว้ (ว่าง = ใช้ได้) — ห้ามใส่ค่าจริงลงข้อความ"""
+    if not token and not chat_id:
+        return "ยังไม่ได้ตั้ง TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (ตัวแปรระบบ หรือ .env ข้างสคริปต์)"
+    if not token:
+        return "ไม่พบ TELEGRAM_BOT_TOKEN"
+    if not chat_id:
+        return "ไม่พบ TELEGRAM_CHAT_ID"
+    if token.startswith("<") or chat_id.startswith("<"):
+        return "ยังเป็นข้อความตัวอย่างในวงเล็บมุม ไม่ใช่ค่าจริง"
+    if not re.fullmatch(r"[0-9]{5,}:[A-Za-z0-9_-]{30,}", token):
+        return "TELEGRAM_BOT_TOKEN รูปแบบไม่ถูก (ต้องเป็น <ตัวเลข>:<อักขระ> ตามที่ BotFather ให้)"
+    if not re.fullmatch(r"-?[0-9]{3,}|@[A-Za-z0-9_]{4,}", chat_id):
+        return "TELEGRAM_CHAT_ID รูปแบบไม่ถูก (เลข เช่น 123456789 · กลุ่มขึ้นต้นด้วย - · หรือ @ชื่อช่อง)"
+    return ""
+
+
+def load_telegram_config(folder=None):
+    """คืน (token, chat_id, แหล่ง, ปัญหา) — ลำดับ: ตัวแปรระบบ → .env ข้างสคริปต์ → .env ในโฟลเดอร์ CSV · ปัญหาไม่ว่าง = ไม่ส่ง"""
+    if _notify_disabled():
+        return None, None, "", "AUTO_R16_NOTIFY ปิดอยู่"
+    if folder is None:
+        folder = resolve_watch_folder(None)[0]
+    got, src = {}, {}
+    for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        v, s = (os.environ.get(key) or "").strip(), f"ตัวแปรระบบ {key}"
+        if not v:
+            v, s = _env_file_value(os.path.join(_script_dir(), ".env"), key), ".env ข้างสคริปต์"
+        if not v and folder:
+            v, s = _env_file_value(os.path.join(folder, ".env"), key), ".env ในโฟลเดอร์ CSV"
+        got[key], src[key] = v or "", s
+    token, chat = got["TELEGRAM_BOT_TOKEN"], got["TELEGRAM_CHAT_ID"]
+    problem = telegram_config_problem(token, chat)
+    if problem:
+        return None, None, "", problem
+    return token, chat, src["TELEGRAM_BOT_TOKEN"], ""
+
+
+def _telegram_base():
+    return (os.environ.get("AUTO_R16_TELEGRAM_BASE") or "https://api.telegram.org").rstrip("/")
+
+
+def _telegram_post(text, token, chat_id):
+    """ส่ง 1 ครั้ง → (ok, เหตุผลสั้น) · ⛔ ห้ามใส่ str(e) ลงเหตุผล: ข้อความของ exception อาจมี URL ซึ่งมี token"""
+    url = f"{_telegram_base()}/bot{token}/sendMessage"
+    body = json.dumps({"chat_id": chat_id, "text": text, "disable_web_page_preview": True}).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json; charset=utf-8"})
+    try:
+        with urllib.request.urlopen(req, timeout=TELEGRAM_TIMEOUT_SECONDS) as r:
+            payload = json.loads(r.read().decode("utf-8", "replace") or "{}")
+        return (True, "") if payload.get("ok") is True else (False, "Telegram ตอบ ok=false")
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, type(e).__name__
+
+
+def _send_with_retry(text, token, chat_id):
+    """ลองซ้ำ 1 ครั้งเฉพาะที่ลองใหม่แล้วอาจหาย: เครือข่าย/timeout/5xx/429 (4xx อื่น = ค่าผิด ลองซ้ำก็ไม่หาย)"""
+    ok, reason = _telegram_post(text, token, chat_id)
+    if ok:
+        return True, ""
+    if reason.startswith("HTTP 4") and reason != "HTTP 429":
+        return False, reason
+    time.sleep(TELEGRAM_RETRY_WAIT_SECONDS)
+    return _telegram_post(text, token, chat_id)
+
+
+def send_telegram(text, token, chat_id):
+    """ส่งข้อความ → (ok, เหตุผลสั้น) · ไม่โยน exception · ไม่เกิน TELEGRAM_TOTAL_SECONDS"""
+    box = {}
+
+    def work():
+        try:
+            box["r"] = _send_with_retry(text, token, chat_id)
+        except Exception as e:
+            box["r"] = (False, type(e).__name__)
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(TELEGRAM_TOTAL_SECONDS)
+    if t.is_alive():
+        return False, f"เกิน {TELEGRAM_TOTAL_SECONDS} วินาที"
+    return box.get("r", (False, "ไม่ทราบสาเหตุ"))
+
+
+_RE_KEY_PARAM = re.compile(r"([?&]key=)[^&\s\"']+", re.IGNORECASE)
+_RE_TOKEN_SHAPE = re.compile(r"\b[0-9]{6,}:[A-Za-z0-9_-]{30,}\b")
+
+
+def _scrub(text, token=None):
+    """กันความลับหลุดลงข้อความ: token ที่ตั้งไว้ · รูปแบบ token ของ Telegram · พารามิเตอร์ key= ของ URL (เผื่อ exception ถูกพิมพ์ลง log)"""
+    text = _RE_KEY_PARAM.sub(r"\1***", text)
+    if token:
+        text = text.replace(token, "***")
+    return _RE_TOKEN_SHAPE.sub("***", text)
+
+
+def _confirm_part(r):
+    st = r.get("state", "?")
+    sk = r.get("skipped") or {}
+    skip_n = sum(sk.values()) if isinstance(sk, dict) else 0
+    skip_txt = f" · ⚠️ ข้าม {skip_n} ({_skip_text(sk)}) ยังเป็น scanning" if skip_n else ""
+    if st == "confirmed":
+        return f"Confirm {r.get('written', 0)} รายการ (Pass {r.get('pass', 0)} · Stock Adj {r.get('adj', 0)}){skip_txt}"
+    if st == "nothing":
+        if r.get("candidates"):
+            return f"Confirm 0 รายการ (ผ่านตัวคัดกรอง 0 จาก {r['candidates']}){skip_txt}"
+        return "Confirm: ไม่มีรายการ scanning"
+    if st in ("shadow", "dry"):   # dry ไม่ถึงตรงนี้ในการใช้งานจริง (--dry-run ไม่ส่งแจ้งเตือน) — กันแสดงเป็น "❌ Confirm dry"
+        return (f"{'เงา' if st == 'shadow' else 'ซ้อม'} (ไม่เขียน): ทำนาย {r.get('evaluated', 0)} รายการ "
+                f"(Pass {r.get('pass', 0)} · Stock Adj {r.get('adj', 0)}){skip_txt}")
+    if st == "tripwire":
+        return (f"❌ tripwire: Stock Adj {r.get('adj', 0)}/{r.get('evaluated', 0)} = {r.get('ratio', 0) * 100:.0f}% "
+                f"เกินเพดาน — ไม่ได้เขียน (ตรวจ R01/R16 แล้วปรับ --confirm-max-adj-ratio)")
+    txt = f"❌ Confirm {_CONFIRM_STATE_TH.get(st, st)}"
+    if r.get("written"):
+        txt += f" (เขียนไปแล้ว {r['written']} รายการ)"
+    if r.get("candidates"):
+        txt += f" · รอ Confirm {r['candidates']} รายการ"
+    return txt
+
+
+def _leftover(cres):
+    """รายการ scanning ที่สาขาสั่งเขียนจริง "ควรถูก Confirm" แต่ยังไม่ถูก → (จำนวนที่รู้, มีสาขาที่ไม่รู้จำนวนไหม)"""
+    n, unknown = 0, False
+    for r in cres.values():
+        if not r.get("real") or r.get("state") in ("shadow", "dry"):
+            continue
+        st = r.get("state")
+        if st in ("confirmed", "nothing"):
+            sk = r.get("skipped") or {}
+            n += sum(sk.values()) if isinstance(sk, dict) else 0
+        elif isinstance(r.get("candidates"), int):
+            n += r["candidates"] - (r.get("written") or 0)
+        else:
+            unknown = True
+    return n, unknown
+
+
+def build_notice(rc, run, alerts, now_bkk):
+    """ข้อความแจ้งเตือน (ไทย) — rc = 0 สรุปทุกคืน · rc ≠ 0 บอกสาเหตุ + วิธีแก้เร็ว"""
+    opts = run.get("opts") or {}
+    results = run.get("results") or {}
+    cres = run.get("confirm_results") or {}
+    host = os.environ.get("COMPUTERNAME", "?")
+    stamp = f"{now_bkk:%H:%M %d/%m/%Y}"
+    if rc == 0:
+        lines = [f"✅ auto-r16 · {stamp} · {host} — เรียบร้อย"]
+    else:
+        lines = [f"❌ auto-r16 · {stamp} · {host} — ไม่สำเร็จ (exit {rc}: {_EXIT_MEANING.get(rc, 'ผิดปกติ')})"]
+    if run.get("file"):
+        mt = run.get("mtime_bkk")
+        lines.append(f"ไฟล์ {run['file']}" + (f" (export {mt:%H:%M %d/%m})" if mt else ""))
+    for b in (opts.get("branches") or list(BRANCHES)):
+        parts = []
+        if b in results:
+            parts.append("R16 " + _PUBLISH_TH.get(results[b], str(results[b])))
+        if b in cres:
+            parts.append(_confirm_part(cres[b]))
+        if parts:
+            lines.append(f"{b}: " + " · ".join(parts))
+    if results and not (opts.get("confirm") or opts.get("confirm_shadow")):
+        lines.append("⚠️ Confirm โดยบอทปิดอยู่ (Task ไม่มี --confirm) — ต้องกด Confirm ที่ Desktop เอง")
+    left, unknown = _leftover(cres)
+    if left or unknown:
+        amount = f"{left}{'+' if unknown else ''} รายการ" if left else "ไม่ทราบจำนวน"   # unknown = สาขาที่ตกด่านก่อนนับ candidate
+        lines.append(f"⚠️ รายการ scanning ที่ยังไม่ถูก Confirm: {amount} — จะถูกรีเซ็ตเช้าพรุ่งนี้ (ต้องนับใหม่)")
+    shown = list(alerts)[:NOTIFY_ALERT_SHOW]
+    if shown:
+        lines.append("จาก log:" if rc != 0 else "คำเตือนใน log:")
+        lines.extend("  " + a[:NOTIFY_LINE_CHARS] for a in shown)
+        if len(alerts) > len(shown):
+            lines.append(f"  … อีก {len(alerts) - len(shown)} บรรทัด (ดู auto_r16.log)")
+    if rc != 0:
+        lines.append(f"แก้เร็ว: ดู log บน {host}:  Get-Content .\\auto_r16.log -Tail 60 -Encoding UTF8")
+        if opts.get("confirm") and opts.get("confirm_branches"):
+            lines.append("รันซ้ำคืนนี้ก่อนเที่ยงคืน (หลังแก้สาเหตุ):  .\\run_auto_r16.bat --confirm --confirm-branch "
+                         + ",".join(opts["confirm_branches"]))
+            lines.append("ถ้าไม่ทัน รายการ scanning ของวันนี้จะถูกรีเซ็ตเช้าพรุ่งนี้")
+        elif rc == 2 and not opts:
+            lines.append("ตรวจ -Argument ของ Task AutoR16Import (flag ผิด)")
+        else:
+            lines.append("กด Confirm ที่ Desktop เองได้ถ้าปุ่มยังไม่ถูกซ่อน · หรืออัป R16 มือที่การ์ด R16.104")
+    text = "\n".join(lines)
+    if len(text) > TELEGRAM_MAX_CHARS:
+        text = text[:TELEGRAM_MAX_CHARS - 20] + "\n… (ตัดข้อความ)"
+    return text
+
+
+def _notify_after_run(rc):
+    """ส่งแจ้งเตือนหลังรอบจบ — ไม่ส่งเมื่อ --help / --dry-run / --confirm-compare / --confirm-undo / --no-notify / --notify-test"""
+    opts = _RUN.get("opts")
+    if opts is None:
+        if rc == 0:   # --help
+            return
+    elif (opts.get("no_notify") or opts.get("dry_run") or opts.get("undo") or opts.get("compare") or opts.get("notify_test")):
+        return
+    token, chat, _src, problem = load_telegram_config(_RUN.get("folder"))
+    if problem:
+        if not _notify_disabled():
+            log(f"แจ้งเตือน Telegram: ไม่ได้ส่ง — {problem}")
+        return
+    text = _scrub(build_notice(rc, _RUN, list(_ALERT_LINES), _now_bkk()), token)
+    ok, reason = send_telegram(text, token, chat)
+    if ok:
+        log("แจ้งเตือน Telegram: ส่งแล้ว")
+    else:
+        log(f"⚠️ ส่ง Telegram ไม่สำเร็จ ({reason}) — งานหลักไม่กระทบ")
+
+
+def run_notify_test(opts):
+    """--notify-test: ส่งข้อความทดสอบแล้วจบ · 0 = ส่งแล้ว · 2 = ตั้งค่าไม่ครบ/ผิด · 1 = ส่งไม่สำเร็จ"""
+    folder = resolve_watch_folder(opts.get("folder"))[0]
+    token, chat, src, problem = load_telegram_config(folder)
+    if problem:
+        log(f"❌ ส่งข้อความทดสอบไม่ได้ — {problem}")
+        log("   ตั้ง TELEGRAM_BOT_TOKEN และ TELEGRAM_CHAT_ID ในไฟล์ .env ข้าง auto_r16_import.py (หรือตัวแปรระบบ) ดู README.md §แจ้งเตือน Telegram")
+        return 2
+    log(f"Telegram: ใช้ค่าจาก {src} · chat ***{chat[-3:]}")
+    text = _scrub(f"🔔 ทดสอบแจ้งเตือน auto-r16 · {os.environ.get('COMPUTERNAME', '?')} · {_now_bkk():%H:%M %d/%m/%Y}\n"
+                  "ถ้าเห็นข้อความนี้ แปลว่าการแจ้งเตือนใช้ได้", token)
+    ok, reason = send_telegram(text, token, chat)
+    if ok:
+        log("✅ ส่งข้อความทดสอบแล้ว — ตรวจในแชท")
+        return 0
+    log(f"❌ ส่ง Telegram ไม่สำเร็จ ({reason})")
+    return 1
+
+
+def _exit_code_of(e):
+    c = e.code
+    if c is None:
+        return 0
+    return c if isinstance(c, int) else 1
+
+
 def main(argv=None):
+    """ตัวห่อของ _run(): รันงานจริงแล้วส่ง Telegram ตามผล — คง SystemExit(rc) เดิมทุกกรณี
+    (เทสเรียก m.main([...]) แล้วจับ SystemExit · Task Scheduler อ่าน exit code · traceback ยังพิมพ์ลง stderr/log เหมือนเดิม)"""
+    _RUN.clear()
+    del _ALERT_LINES[:]
+    _ALERT_STATE.update({"indent": None, "cont": 0})
+    pending = None
+    try:
+        _run(argv)
+    except SystemExit as e:
+        pending = e
+    except Exception:
+        traceback.print_exc()
+        log("❌ ผิดพลาดที่ไม่คาดคิด — ดู traceback ด้านบน")
+        pending = SystemExit(1)
+    rc = _exit_code_of(pending) if pending is not None else 0
+    try:
+        _notify_after_run(rc)
+    except Exception as e:   # แจ้งเตือนห้ามเปลี่ยนผลของงานหลัก
+        log(f"⚠️ แจ้งเตือน Telegram ผิดพลาด ({type(e).__name__}) — งานหลักไม่กระทบ")
+    if pending is not None:
+        raise pending
+
+
+def _run(argv=None):
     opts = parse_args(sys.argv[1:] if argv is None else argv)
+    _RUN["opts"] = opts
+    if opts["notify_test"]:
+        sys.exit(run_notify_test(opts))
     if opts["undo"]:
         sys.exit(run_undo(opts))
     if opts["compare"]:
@@ -2109,6 +2474,7 @@ def main(argv=None):
     dry_run, force = opts["dry_run"], opts["force"]
     want_confirm = opts["confirm"] or opts["confirm_shadow"]
     folder, folder_src = resolve_watch_folder(opts["folder"])
+    _RUN["folder"] = folder
 
     log(f"เริ่มงาน auto R16.104 import  (dry_run={dry_run}, force={force}, สาขา={','.join(opts['branches'])})")
     log(f"เครื่อง: {os.environ.get('COMPUTERNAME', '?')} · ผู้ใช้: {os.environ.get('USERNAME', '?')}")
@@ -2136,6 +2502,7 @@ def main(argv=None):
 
     mtime = os.path.getmtime(path)
     mtime_bkk = datetime.fromtimestamp(mtime, BKK)
+    _RUN["file"], _RUN["mtime_bkk"] = os.path.basename(path), mtime_bkk
     now_bkk = _now_bkk()
     today = now_bkk.date()
     log(f"ไฟล์ล่าสุด: {os.path.basename(path)}  (แก้ไขล่าสุด {mtime_bkk:%Y-%m-%d %H:%M:%S} เวลาไทย · {os.path.getsize(path):,} ไบต์)")
@@ -2224,6 +2591,7 @@ def main(argv=None):
             res["real"] = real
             confirm_results[branch] = res
 
+    _RUN["results"], _RUN["confirm_results"] = results, confirm_results
     summary = " · ".join(f"{b} {r}" for b, r in results.items())
     if confirm_results:
         summary += " · " + _confirm_summary(confirm_results)

@@ -38,7 +38,9 @@ auto-adj/auto_adj.log
 auto-adj/auto_adj.log.1
 auto-adj/__pycache__/
 
-# auto-r16: log เฉพาะเครื่อง (ตัวบอทไม่ใช้ .env/service key — เขียน Firestore ด้วย API key สาธารณะชุดเดียวกับบอทตัวอื่น)
+# auto-r16: log เฉพาะเครื่อง (ตัวบอทเขียน Firestore ด้วย API key สาธารณะชุดเดียวกับบอทตัวอื่น ไม่ใช้ service key)
+# ⛔ แต่ .env ของบอทนี้เก็บ TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (ใครมี token ส่งข้อความในนามบอทได้) — repo นี้เป็น PUBLIC ห้ามเข้า repo เด็ดขาด
+auto-r16/.env
 auto-r16/auto_r16.log
 auto-r16/auto_r16.log.1
 auto-r16/__pycache__/

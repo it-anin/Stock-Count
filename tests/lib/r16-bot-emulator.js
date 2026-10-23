@@ -47,6 +47,7 @@ from datetime import datetime
 os.environ['AUTO_R16_FIRESTORE_BASE'] = p['base']
 os.environ['AUTO_R16_PROJECT_ID'] = p['project']
 os.environ['AUTO_R16_STATE_DIR'] = p['stateDir']
+os.environ['AUTO_R16_NOTIFY'] = '0'   # เทสห้ามยิง Telegram จริง (เครื่องพัฒนาอาจมี .env) — ดูเทสแจ้งเตือนที่ auto-r16-notify.spec.js
 m._now_bkk = lambda: datetime.fromisoformat(p['now'])
 for k, v in (p.get('consts') or {}).items(): setattr(m, k, v)
 folder = tempfile.mkdtemp(prefix='r16e2e')

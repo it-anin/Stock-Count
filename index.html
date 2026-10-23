@@ -885,11 +885,11 @@
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">4</span>
-        <span>อัพโหลด <strong>R16.104</strong> ก่อนกด Confirm (ยอดขาย/รับเข้าระหว่างนับ)</span>
+        <span id="guideStep4">อัพโหลด <strong>R16.104</strong> ก่อนกด Confirm (ยอดขาย/รับเข้าระหว่างนับ)</span>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">5</span>
-        <span>กด <strong>✔ Confirm</strong> → ระบบเปรียบเทียบกับ System Qty อัตโนมัติ</span>
+        <span id="guideStep5">กด <strong>✔ Confirm</strong> → ระบบเปรียบเทียบกับ System Qty อัตโนมัติ</span>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--yellow);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">6</span>
@@ -1442,7 +1442,7 @@
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:var(--text3);">ชื่อสินค้า</span><strong id="noStockName" style="color:var(--text);font-size:0.78rem;text-align:right;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</strong></div>
       <div style="display:flex;justify-content:space-between;"><span style="color:var(--text3);">สต็อคในระบบ</span><strong id="noStockSysQty" style="color:var(--red);">—</strong></div>
     </div>
-    <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;">หลังกด Confirm รายการนี้จะเข้าเอกสารปรับสต็อก (ขาด) ทันที</div>
+    <div id="noStockModalNote" style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;">หลังกด Confirm รายการนี้จะเข้าเอกสารปรับสต็อก (ขาด) ทันที</div>
     <div style="display:flex;gap:10px;">
       <button onclick="closeNoStockModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">✕ ยกเลิก</button>
       <button onclick="confirmNoStock()" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--red),#c0392b);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;line-height:1.3;">🚫 ไม่มีของจริง<br><span style="font-size:0.72rem;font-weight:600;">บันทึกนับ 0</span></button>
@@ -6594,6 +6594,13 @@ function _backorderTabOn(){return PHARMACY_BACKORDER_TAB&&_isPharmacyBranch();}
 // ตัดสินด้วย User-Agent (_isPdaApp) ไม่ใช่ความกว้างจอ — กติกาเดียวกับด่าน Confirm สาขายา · Desktop/WH ไม่แตะ
 // ปิด = แถวกลับมาพร้อม ✕ ซ่อนรายการ (ป้ายถูกลบโค้ดแล้ว) · ⛔ ด่านกัน Confirm บน PDA (validateAndProcess/updateConfirmBtn/CSS ซ่อน #btnConfirm) ห้ามลบ
 let PHARMACY_PDA_HIDE_CONFIRM_ROW=true;
+// ── สาขายา Desktop: ซ่อนปุ่ม ✓ Confirm — บอท auto-r16 Confirm ให้ทุกคืน 21:10 แทน (23 ต.ค. 2026 · ผู้ใช้สั่ง "ตัดปุ่ม Confirm ที่ Desktop ออก") ──
+// ⚠️ ค่าเริ่มต้น "ปิด" โดยตั้งใจ: ส่งมอบพร้อมบอท (แจ้งเตือน Telegram) แล้วพลิกเป็น true ก็ต่อเมื่อบอทเขียนจริงผ่านเกณฑ์ (CLAUDE.md §🤖 Confirm โดยบอท → ซ่อนปุ่ม) · ปิด = ปุ่ม/ข้อความเท่าเดิมทุกตัวอักษร
+// ซ่อนเฉพาะปุ่ม #btnConfirm (ไม่ซ่อนทั้งแถว — ✕ ซ่อนรายการยังอยู่) · ⛔ ไม่แตะ validateAndProcess/_confirmPharmacyBatched/evaluatePendingScans: เรียกจาก Console ได้ = ทางสำรองของ IT
+// ⛔ ซ่อนปุ่ม = หน้างานไม่มีทางสำรองเมื่อบอทพลาด: รายการ scanning ที่ไม่ถูก Confirm ถูกรีเซ็ตเช้าวันถัดไป (runStaleGuard) และ R16 ถูก auto-r01 ล้าง → ต้องมีแจ้งเตือน Telegram ของบอทก่อนพลิก
+// ข้อความวิธีใช้ที่เคยบอกให้ "กด Confirm" เปลี่ยนตามสวิตช์นี้ (applyAuditTerminology · guideHtml · noStock · ↺ สแกนใหม่) — WH ไม่แตะ
+let PHARMACY_DESKTOP_CONFIRM_BY_BOT=false;
+function _confirmByBotOn(){return PHARMACY_DESKTOP_CONFIRM_BY_BOT&&_isPharmacyBranch();}
 function _legacyAuditCount(){let n=0;for(const[,sd] of state.scanData.entries())if(sd&&sd.status==='audit')n++;return n;}
 // แท็บ 📦 ค้างส่งเปิดอยู่ = ไม่ idle (โหมดซ่อนเดิมนับแค่ audit=0 แล้วซ่อนปุ่ม #avBtnAudit ซึ่งตอนนี้คือแท็บค้างส่ง · PHARMACIST_STOCKADJ_ONLY ปิดอยู่แล้ว)
 function _pharmAuditIdle(nAudit){return PHARMACIST_STOCKADJ_ONLY&&!_backorderTabOn()&&_isPharmacyBranch()&&currentRole==='pharmacist'&&nAudit===0;}
@@ -7157,8 +7164,13 @@ function applyAuditTerminology(){
     :_pharmTxt('รายการ <strong style="color:var(--yellow);">⚠️ Audit</strong> → เภสัชเปิด <strong>Audit Verify</strong> → สแกนนับซ้ำ → กด <strong>ยืนยันทั้งหมด</strong>',
       _rescanToPendingOn()
         // ↺ สแกนใหม่ → ⏳ รอนับ (PHARMACY_RESCAN_TO_PENDING) — ผู้ช่วยสแกนนับใหม่แล้ว Confirm ไม่ผ่านรีเช็ค · "รอรีเช็ค" เหลือเฉพาะที่ค้างจากรอบก่อน
-        ?'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong> ที่ค้างจากรอบก่อน) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong>⏳ รอนับ</strong> → ผู้ช่วยสแกนนับใหม่ → กด <strong>Confirm</strong> บน Desktop'
+        ?'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong> ที่ค้างจากรอบก่อน) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong>⏳ รอนับ</strong> → ผู้ช่วยสแกนนับใหม่ → '+(_confirmByBotOn()?'<strong>บอท Confirm ให้คืนนั้น 21:10</strong>':'กด <strong>Confirm</strong> บน Desktop')
         :'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong>) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong style="color:var(--yellow);">รอรีเช็ค</strong> → สแกนนับใหม่ → กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'));
+  // ปุ่ม Confirm ที่ Desktop ถูกซ่อนเมื่อบอท Confirm ให้ (PHARMACY_DESKTOP_CONFIRM_BY_BOT) → วิธีใช้ที่เคยบอกให้ "กด Confirm" ต้องตรงกับหน้าจอ · ปิดสวิตช์/WH = ข้อความเดิมทุกตัวอักษร
+  const _bot=!isWh&&_confirmByBotOn();
+  setHtml('guideStep4',_bot?'<strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน 21:10 (อัพมือที่การ์ด R16.104 เฉพาะเมื่อบอทพลาด)':'อัพโหลด <strong>R16.104</strong> ก่อนกด Confirm (ยอดขาย/รับเข้าระหว่างนับ)');
+  setHtml('guideStep5',_bot?'<strong>บอท Confirm ให้ 21:10</strong> → ระบบเปรียบเทียบกับ System Qty อัตโนมัติ (เห็นผล Pass / Stock Adj เช้าวันถัดไป)':'กด <strong>✔ Confirm</strong> → ระบบเปรียบเทียบกับ System Qty อัตโนมัติ');
+  set('noStockModalNote',_bot?'บอท Confirm 21:10 แล้วรายการนี้จะเข้าเอกสารปรับสต็อก (ขาด)':'หลังกด Confirm รายการนี้จะเข้าเอกสารปรับสต็อก (ขาด) ทันที');
   set('guideRulePill',isWh?'Pass / Recheck / Stock Adj':_pharmTxt('Pass / Audit / Stock Adj','Pass / รอรีเช็ค / Stock Adj'));
   setHtml('guideQtyRule','ราคาบาร์โค้ด (R05.106 คอลัมน์ B) &lt; 1,000 บาท → แก้ Qty ได้ · ตั้งแต่ 1,000 บาทหรือไม่มีราคา → สแกนทีละชิ้น');
   set('guideAuditPill',isWh?'⚠️ Recheck':_pharmTxt('⚠️ Audit','⚠️ รอรีเช็ค'));
@@ -7391,14 +7403,15 @@ function exportExcel(){
 
 // คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
 function guideHtml(isWh){
+  const bot=!isWh&&_confirmByBotOn();   // PHARMACY_DESKTOP_CONFIRM_BY_BOT: ปุ่ม Confirm ที่ Desktop ถูกซ่อน บอทตัดสินให้ทุกคืน 21:10 · ปิดสวิตช์/WH = ข้อความเดิมทุกตัวอักษร
   return ''
   +'<div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">'
     +'<strong style="color:var(--accent);display:block;margin-bottom:5px;">⚡ ขั้นตอนการนับสต็อก'+(isWh?' (คลัง WH)':' (สาขา)')+'</strong>'
     +'<ol style="padding-left:18px;margin:0;line-height:1.8;">'
       +'<li>'+(isWh&&WH_KEEP_R01_ON_NEW_COUNT?'<strong>R01.102</strong> — บอทอัปให้ทุกเช้า ไม่ต้องอัปเอง (กด "เริ่มนับใหม่" ไม่ล้าง R01)':'อัพโหลด <strong>R01.102</strong> '+(isWh?'ตอนเริ่มรอบนับ':'ทุกวันก่อน Confirm (หลัง restock)'))+'</li>'
       +'<li>สแกนสินค้า</li>'
-      +'<li>ก่อนกด Confirm → อัพโหลด <strong>R16.104</strong>'+(isWh?' + <strong>R16.103</strong>':'')+'</li>'
-      +'<li>กด <strong>Confirm</strong> → ระบบตรวจสอบสินค้า</li>'
+      +(bot?'<li><strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน 21:10 (อัพมือเฉพาะเมื่อบอทพลาด)</li>':'<li>ก่อนกด Confirm → อัพโหลด <strong>R16.104</strong>'+(isWh?' + <strong>R16.103</strong>':'')+'</li>')
+      +(bot?'<li><strong>บอท Confirm ให้ 21:10</strong> → ระบบตรวจสอบสินค้า</li>':'<li>กด <strong>Confirm</strong> → ระบบตรวจสอบสินค้า</li>')
       +'<li>'+(isWh?'รายการไม่ตรง → พนักงานรีเช็ค → หัวหน้างานยืนยัน':_pharmTxt('Audit (ไม่ตรง) → เภสัช Login PDA สแกนสินค้ารีเช็ค','ไม่ตรง → Stock Adj ทันที → เภสัชออกใบที่ 📦 ปรับปรุงสินค้า (สงสัยรายการไหน กด ↺ สแกนใหม่ '+(_rescanToPendingOn()?'แล้วให้ผู้ช่วยนับใหม่':'แล้วรีเช็ค')+')'))+'</li>'
     +'</ol>'
   +'</div>'
@@ -7411,8 +7424,9 @@ function guideHtml(isWh){
         +'<li style="margin-top:3px;color:var(--red);">⚠️ ถ้ายังต้องรีเช็ค อย่าอัพ R01 ใหม่ (สินค้าคงเหลือเลื่อน → รีเช็ค/Confirm เพี้ยน)</li>'
       :'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพทุกเช้าก่อนเริ่มนับ</li>'
         +'<li style="margin-top:3px;color:var(--orange);">รายการ <strong>'+_pharmTxt('Audit ที่เภสัชยังไม่ยืนยัน','รอรีเช็ค ที่เภสัชยังไม่ยืนยัน')+'</strong> ให้เภสัชสแกนรีเช็ค</li>'
-        +'<li style="margin-top:3px;color:var(--orange);">อัพ R16 ก่อนกด Confirm <strong>R16 ต้องดึงรายงานจากแอพม่วงล่าสุดเท่านั้น</strong> → อัพ R16 ของวันใหม่ก่อนถึงจะ Confirm ได้</li>'
-        +'<li style="margin-top:3px;">หลังอัพ R01 → สแกนนับ → อัพ R16 เย็น → Confirm</li>')
+        +(bot?'<li style="margin-top:3px;color:var(--orange);">R16 บอทอัปให้ทุกคืน 21:10 · ถ้าบอทพลาด (มีข้อความแจ้งเตือน) ให้อัพมือ: <strong>R16 ต้องดึงรายงานจากแอพม่วงล่าสุดเท่านั้น</strong></li>'
+          :'<li style="margin-top:3px;color:var(--orange);">อัพ R16 ก่อนกด Confirm <strong>R16 ต้องดึงรายงานจากแอพม่วงล่าสุดเท่านั้น</strong> → อัพ R16 ของวันใหม่ก่อนถึงจะ Confirm ได้</li>')
+        +(bot?'<li style="margin-top:3px;">หลังอัพ R01 → สแกนนับ → 21:10 บอทอัป R16 และ Confirm ให้</li>':'<li style="margin-top:3px;">หลังอัพ R01 → สแกนนับ → อัพ R16 เย็น → Confirm</li>'))
     +'</ul>'
   +'</div>'
   +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
@@ -7423,9 +7437,9 @@ function guideHtml(isWh){
         +'<li style="margin-top:3px;"><strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS'+(WH_R16_OTFI_OUT&&WH_R16_SKIP_FRONT_STORE?'':'/OTFI')+' (รับเข้าคลัง) · <strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM'+(WH_R16_OTFI_OUT?' + OTFI <strong>Col A=0</strong> (คลังโอนออก)':'')+(WH_R16_SKIP_FRONT_STORE?' <span style="color:var(--text3);font-size:0.92em;">— เฉพาะของคลัง · ข้ามแถว Col A=1 (หน้าร้าน) ทั้งขายและโอนออก</span>':'')+'</li>'
         +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY)</li>'
         +'</ul>'
-      :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ (อัพก่อน Confirm)</strong>'
+      :'<strong style="color:var(--orange);display:block;margin-bottom:5px;">2. R16.104 — ยอดขาย/รับเข้าระหว่างนับ ('+(bot?'บอทอัปให้ทุกคืน · อัพมือเฉพาะเมื่อบอทพลาด':'อัพก่อน Confirm')+')</strong>'
         +'<ul style="padding-left:16px;margin:0;">'
-        +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · อัพใหม่ทุกครั้งก่อน Confirm</li>'
+        +'<li>รายงาน R16.104 → <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · '+(bot?'(อัพมือเฉพาะเมื่อบอทพลาด)':'อัพใหม่ทุกครั้งก่อน Confirm')+'</li>'
         +'<li style="margin-top:3px;"><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— SRC: OTFB/OTFI Col A=0 ข้าม (คลังชากค้อส่ง) / Col A=1 บวกกลับ</span></li>'
         +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>'
         +'</ul>')
@@ -8794,7 +8808,7 @@ async function restartPharmacyScan(sku){
   if(_restartScanBusy.has(sku))return;
   const sd=state.scanData.get(sku);const si=state.skuMap.get(sku);
   if(!sd||sd.status!=='stock_adjustment'){beepWarn();toast('รายการนี้สแกนใหม่ไม่ได้','warn');return;}
-  if(!confirm(`เริ่มนับใหม่: ${sku}\n${si?.productName||''}\n\nสแกนสินค้าใหม่และกด Confirm`))return;
+  if(!confirm(`เริ่มนับใหม่: ${sku}\n${si?.productName||''}\n\nสแกนสินค้าใหม่${_confirmByBotOn()?' — บอท Confirm ให้คืนนี้ 21:10':'และกด Confirm'}`))return;
   // ตรวจหลัง confirm (กล่องโต้ตอบหยุด event loop — flush ที่ค้างอาจเริ่มทันทีที่กลับมา) · เขียนค้างอยู่ = ผลอาจฟื้นเอกสารหลังเราลบ
   if(_scanItemInFlight.has(sku)){beepWarn();toast('กำลังบันทึกรายการนี้ — รอสักครู่แล้วกดใหม่','warn');return;}
   const epoch=_countResetAt||'';const knownRev=_scanItemRev.get(sku)||0;
@@ -9187,6 +9201,7 @@ function updateScanInputMode(){
   if(hideWh)hideWh.style.display=_whSup?'block':'none';
   const cfBtn=document.getElementById('btnConfirm');
   if(cfBtn)cfBtn.innerHTML=_whSup?'✓ Confirm ทั้งหมด':'✓ Confirm';
+  if(cfBtn)cfBtn.style.display=_confirmByBotOn()?'none':'';   // PHARMACY_DESKTOP_CONFIRM_BY_BOT: ซ่อนเฉพาะปุ่ม (แถว/✕ ซ่อนรายการคงเดิม) · ปิดสวิตช์/WH = ไม่มี inline display เหมือนเดิม
   // WH PDA: ซ่อนทั้งแถว Confirm/Clear — Confirm ถูกซ่อนบน PDA อยู่แล้ว เหลือแต่ Clear ที่พนักงานเผลอกดโดนง่าย
   // (Clear ลบแค่มุมมอง RESULT ไม่ลบ scanData แต่กันความสับสน) — Desktop WH ยังมีปุ่มครบ
   const _whPda=window.innerWidth<=600&&currentBranch==='WH';

@@ -61,7 +61,7 @@ function world(opts = {}) {
 
 // Python ฝั่งเทส: ประกอบโลก → รัน main() ตามลำดับ runs → คืนผลทุกอย่างที่เทสต้องตรวจ
 const HARNESS = `
-import os, io, json, time, tempfile, contextlib, importlib.util
+import os, io, json, time, tempfile, contextlib, importlib.util, threading, http.server
 from datetime import datetime, timezone
 
 spec2 = importlib.util.spec_from_file_location('fake_firestore', p['fake'])
@@ -79,6 +79,38 @@ for k, v in (p.get('consts') or {}).items(): setattr(m, k, v)
 
 state_dir = tempfile.mkdtemp(prefix='r16conf')
 os.environ['AUTO_R16_STATE_DIR'] = state_dir
+os.environ['AUTO_R16_NOTIFY'] = '0'   # เทสห้ามยิง Telegram จริง (เครื่องพัฒนาอาจมี .env) — ดูเทสแจ้งเตือนที่ auto-r16-notify.spec.js
+for k in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'AUTO_R16_TELEGRAM_BASE'): os.environ.pop(k, None)
+script_dir = tempfile.mkdtemp(prefix='r16script')   # แทนโฟลเดอร์ข้างสคริปต์ (หา .env) — ไม่ให้ .env จริงของเครื่องพัฒนาเข้ามาปน
+m._script_dir = lambda: script_dir
+
+# เซิร์ฟเวอร์ Telegram จำลอง (เปิดเมื่อเทสสั่ง op 'telegram') — บล็อกด้วย threading.Event ไม่ใช่ time.sleep (ถูกแทนเป็น no-op ด้านบน)
+tg = {'reqs': [], 'script': [], 'base': None}
+def start_tg():
+    if tg['base']:
+        os.environ['AUTO_R16_TELEGRAM_BASE'] = tg['base']   # เทสอาจลบตัวแปรนี้ไประหว่างรอบ (op env) — เรียก op telegram อีกครั้ง = ชี้เซิร์ฟเวอร์จำลองใหม่
+        return
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_POST(self):
+            n = int(self.headers.get('Content-Length') or 0)
+            raw = self.rfile.read(n).decode('utf-8')
+            try: body = json.loads(raw)
+            except Exception: body = None
+            tg['reqs'].append({'path': self.path, 'body': body, 'ctype': self.headers.get('Content-Type')})
+            step = tg['script'].pop(0) if tg['script'] else {}
+            if step.get('hang'): threading.Event().wait(step['hang'])
+            status = step.get('status', 200)
+            out = json.dumps(step.get('json', {'ok': status == 200})).encode('utf-8')
+            try:
+                self.send_response(status); self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out))); self.end_headers(); self.wfile.write(out)
+            except Exception: pass
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H); srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    tg['base'] = 'http://127.0.0.1:%d' % srv.server_address[1]
+    os.environ['AUTO_R16_TELEGRAM_BASE'] = tg['base']
+
 if p.get('breakJournal'):
     open(os.path.join(state_dir, 'confirm_journal'), 'w').write('x')   # มีไฟล์ชื่อโฟลเดอร์ journal อยู่แล้ว → สร้างโฟลเดอร์ไม่ได้
 folder = tempfile.mkdtemp(prefix='r16csv')
@@ -102,6 +134,18 @@ def apply_ops(ops):
         elif o['op'] == 'script': ff.script = o['script']
         elif o['op'] == 'const': setattr(m, o['name'], o['value'])
         elif o['op'] == 'unlink_csv': os.remove(csv_path)
+        elif o['op'] == 'env':   # ตั้ง/ลบตัวแปรระบบ (ใช้กับเทสแจ้งเตือน: AUTO_R16_NOTIFY · TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID)
+            for k, v in (o.get('set') or {}).items(): os.environ[k] = v
+            for k in o.get('unset') or []: os.environ.pop(k, None)
+        elif o['op'] == 'dotenv':   # วางไฟล์ .env ข้างสคริปต์ (script) หรือในโฟลเดอร์ CSV (folder)
+            open(os.path.join(script_dir if o['where'] == 'script' else folder, '.env'), 'w', encoding='utf-8').write(o['content'])
+        elif o['op'] == 'telegram':   # เปิดเซิร์ฟเวอร์ Telegram จำลอง + กำหนดคำตอบทีละคำขอ [{status, json, hang}]
+            start_tg(); tg['script'] = o.get('script', [])
+        elif o['op'] == 'break':   # ทำให้ฟังก์ชันของบอทพัง (ZeroDivisionError) — ไว้ทดสอบทางออกที่ไม่คาดคิด
+            setattr(m, o['name'], lambda *a, **k: 1 / 0)
+        elif o['op'] == 'urlopen_raises':   # urlopen โยน exception ที่ "ข้อความมี URL เต็ม" (รวม token) — ไว้ตรวจว่าเหตุผลที่บอทเก็บเป็นแค่ชื่อชนิด error
+            def _boom(req, timeout=None): raise RuntimeError('boom while calling ' + req.full_url)
+            m.urllib.request.urlopen = _boom
         elif o['op'] == 'statefile':   # วางไฟล์/โฟลเดอร์ในโฟลเดอร์สถานะของบอท (ageDays = ให้ดูเก่ากี่วัน · dir = สร้างเป็นโฟลเดอร์)
             fp = os.path.join(state_dir, o['rel'])
             os.makedirs(os.path.dirname(fp), exist_ok=True)
@@ -119,12 +163,13 @@ for spec in p['runs']:
     # ค่าเริ่มต้นของ --branch = สาขาที่มีในโลกจำลอง (บอทจริงดูแลทั้ง 3 สาขา แต่สาขาที่ไม่มีแถวในไฟล์จะตกด่าน exit 4 ซึ่งไม่ใช่สิ่งที่เทสส่วนใหญ่ต้องการ)
     if not any(a == '--branch' or a.startswith('--branch=') for a in args) and not any(a in ('--confirm-undo', '--confirm-compare') for a in args):
         args = ['--branch', ','.join(p['branches'])] + args
-    n_req, n_wr = len(ff.requests), len(ff.writes)
-    buf = io.StringIO(); code = 0
-    with contextlib.redirect_stdout(buf):
+    n_req, n_wr, n_tg = len(ff.requests), len(ff.writes), len(tg['reqs'])
+    buf = io.StringIO(); code = 0; t0 = time.time()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):   # stderr รวมเข้า log ด้วย (traceback ของ "ผิดพลาดที่ไม่คาดคิด" ไม่ไปรกหน้าจอเทส)
         try: m.main(['--folder', folder] + args)
         except SystemExit as e: code = e.code if isinstance(e.code, int) else 0
-    runs.append({'code': code, 'log': buf.getvalue(), 'requests': ff.requests[n_req:], 'writes': ff.writes[n_wr:], 'sleeps': list(sleeps), 'store': ff.snapshot()})
+    runs.append({'code': code, 'log': buf.getvalue(), 'requests': ff.requests[n_req:], 'writes': ff.writes[n_wr:], 'sleeps': list(sleeps), 'store': ff.snapshot(),
+                 'telegram': tg['reqs'][n_tg:], 'elapsed': time.time() - t0})
     del sleeps[:]
 
 files = {}
