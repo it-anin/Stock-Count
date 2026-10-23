@@ -20,6 +20,7 @@ async function bootPda(browser) {
 async function rowUi(page, { branch, role, on = true }) {
   return page.evaluate(({ branch, role, on }) => {
     PHARMACY_PDA_HIDE_CONFIRM_ROW = on;
+    PHARMACY_DESKTOP_CONFIRM_BY_BOT = false;   // เทสนี้ตรึงแถวปุ่มของ PDA เท่านั้น — กันค่าเริ่มต้นของสวิตช์ซ่อนปุ่ม Desktop (ถ้าพลิกเป็น true) มาปนผล (ดู pharmacy-desktop-confirm-hidden.spec.js)
     currentBranch = branch; currentRole = role; currentUser = 'T';
     updateScanInputMode();
     const disp = (id) => { const e = document.getElementById(id); return e ? getComputedStyle(e).display : 'missing'; };
