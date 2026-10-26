@@ -4,6 +4,7 @@
 //      แม้ marker apply ซ้ำ + reconcile + flush + login เครื่องใหม่ (เส้นทางที่ทำให้รีเซ็ตหายเงียบถ้าลบแต่ item)
 //   C. transaction ล้ม → Cloud/local เท่าเดิม → กดใหม่สำเร็จ
 //   D. แก้ในใบ (dirty) แล้วกด ↺ ขณะ flush ตัดหน้า → ต้องไม่ถูกเขียนทับกลับ
+//   E. flush ที่เริ่มระหว่างรอ transaction เขียนเอกสารเดิมฟื้นหลังลบ → flush ลบซ้ำต้องลบจริง (ธง _forceDelSkus · ไม่ถูกด่าน FLUSH_DEL_KEEP_CONFIRMED เก็บเศษกลับ)
 // logic ล้วน (guards · รูป transaction · ข้อความ) อยู่ที่ specs/logic/pharmacy-stockadj-rescan.spec.js
 const { test, expect, closeApp, requireEmulator, armDialog } = require('../../lib/hooks');
 const { bootFreshCount, bootJoinCount, armR16, PROJECT_ID } = require('../../lib/scenario');
@@ -188,6 +189,36 @@ test.describe('↺ สแกนใหม่ → ⏳ รอนับ', () => {
     await desk.page.evaluate(async () => { _reconcileScanItems(); await _flushDirtySkus(); });
     expect(await getDoc(PROJECT_ID, ITEM)).toBeNull();           // ไม่ถูกฟื้น
     expect(await desk.page.evaluate(() => { const s = state.scanData.get('S-F05'); return [s.status, s.adjQty, s.directAdj]; })).toEqual(['pending', undefined, undefined]);
+    await closeApp(desk);
+  });
+
+  test('E. ★ flush ที่เริ่มระหว่างรอ transaction เขียนเอกสารเดิม "ไปถึง server หลังเราลบ" (ฟื้น) → flush ลบซ้ำต้องลบจริง ไม่ถูกด่านรับผล Confirm (FLUSH_DEL_KEEP_CONFIRMED) เก็บเศษ Stock Adj กลับ', async ({ browser }) => {
+    const desk = await bootWithDirectAdj(browser);
+    await quiet(desk.page);
+    await desk.page.evaluate(() => {
+      // เขียนของ flush ไปถึง server ช้า 600 ms (หลัง transaction ของ ↺ ลบเอกสารแล้ว) = ฟื้นเอกสารเดิม rev+1
+      const realBatch = _db.batch.bind(_db);
+      _db.batch = () => { const b = realBatch(); const rc = b.commit.bind(b); b.commit = async () => { await new Promise((r) => setTimeout(r, 600)); return rc(); }; return b; };
+      const real = _db.runTransaction.bind(_db);
+      _db.runTransaction = async (fn) => {
+        const s = state.scanData.get('S-F05'); s.adjQty = 2; s.adjBase = 2; s.adjBy = 'Pharm'; s.adjAt = new Date().toISOString();
+        _markSkuDirty('S-F05');                                    // แก้จำนวนในใบระหว่างรอ → flush เริ่ม (local ยังเป็น Stock Adj) → เขียนเอกสารเดิม
+        clearTimeout(_scanItemFlushTimer); _scanItemFlushTimer = null;
+        window.__flushP = _flushDirtySkus();
+        return real(fn);
+      };
+    });
+    armDialog(desk.page, 'y');
+    await desk.page.evaluate(() => restartPharmacyScan('S-F05'));
+    // 1) ↺ ลบเอกสารสำเร็จ → 2) เขียนค้างของ flush ฟื้นเอกสารเดิม (พิสูจน์ว่าจังหวะแข่งเกิดจริง) → 3) flush ลบซ้ำต้องลบจริง
+    await waitForDoc(PROJECT_ID, ITEM, (d) => d === null, { timeout: 20000 });
+    const resurrected = await waitForDoc(PROJECT_ID, ITEM, (d) => d && d.status === 'stock_adjustment' && d.rev === 2, { timeout: 20000 });
+    expect(resurrected.directAdj).toBe(true);
+    await waitForDoc(PROJECT_ID, ITEM, (d) => d === null, { timeout: 30000 });
+    await quiet(desk.page);
+    expect(await getDoc(PROJECT_ID, ITEM)).toBeNull();
+    expect(await desk.page.evaluate(() => { const s = state.scanData.get('S-F05'); return [s.status, s.directAdj, typeof _forceDelSkus === 'undefined' ? 0 : _forceDelSkus.size]; })).toEqual(['pending', undefined, 0]);   // typeof: ข้อนี้เป็นเทสพฤติกรรม (ผ่านกับโค้ดก่อนมีธงด้วย — ล้มเฉพาะเมื่อมีด่านแต่ไม่มีธง)
+    expect(await sheetSkus(desk.page)).not.toContain('S-F05');
     await closeApp(desk);
   });
 });
