@@ -4390,6 +4390,7 @@ const _dirtySkus=new Set();
 const _scanItemRev=new Map();   // sku → rev ล่าสุดที่เครื่องนี้เขียน/เห็น (ใช้ตรวจ "เปลี่ยนกลางงาน" ใน Confirm)
 const _scanItemSynced=new Map();// sku → JSON ของ payload ที่ sync แล้ว (ใช้ reconcile หา SKU ที่ลืม mark)
 const _scanItemInFlight=new Set();// sku ที่กำลังเขียนอยู่ — listener ต้องไม่รับ echo ทับระหว่างนี้
+const _forceDelSkus=new Map();    // sku → หมดอายุ (ms) · "ลบจริง" ตอน flush โดยไม่ผ่านด่าน FLUSH_DEL_KEEP_CONFIRMED — ใช้เฉพาะ restartPharmacyScan (ลบซ้ำเศษที่เขียนฟื้นหลัง ↺: Stock Adj ที่เห็นบน Cloud ตอนนั้นคือเศษของเครื่องนี้เอง ไม่ใช่ผล Confirm ของคนอื่น) · มีอายุกันธงค้าง
 let _scanItemFlushTimer=null;
 let _scanItemFlushing=false;
 let _scanItemReconcileTimer=null;
@@ -4452,6 +4453,61 @@ async function _whItemOpIsGhost(tx,doc,epoch){
   const op=opSnap.exists?(opSnap.data()||{}):null;
   return !(op&&op.state==='committed'&&String(op.countResetAt||'')===epoch);
 }
+// FLUSH_DEL_KEEP_CONFIRMED (26 ต.ค. 2026 · เหตุการณ์ SRC 25–26 ต.ค. · ผู้ใช้อนุมัติแผนข้อ 1 ตามกฎ 1 — รายละเอียดเต็มใน CLAUDE.md §🛡️ รีเซ็ตของค้างข้ามวันห้ามลบผล Confirm):
+//   บอท auto-r16 Confirm 64 รายการตอน 21:10 (Pass 59 · Stock Adj 5) แต่ 09:03 เช้าวันถัดไป "เครื่องที่ล็อกอินค้างข้ามคืนและหลับตอนบอทเขียน" ตื่นขึ้นมา
+//   → runStaleGuard (visibilitychange) เห็นรายการเมื่อวานยังเป็น scanning ในเครื่อง → ตั้ง pending → _flushDirtySkus ส่ง batch.delete โดยไม่เช็ค server
+//   = ลบผลที่ Confirm แล้วทั้ง 64 เอกสารในนาทีเดียว (blob v1 เคยมีด่าน "ไม่ทับ status ของ cloud ด้วย local pending" — v2 ไม่มี · บอท Confirm ตอนกลางคืนทำให้เกิดได้ทุกคืนที่มีเครื่องหลับ)
+//   เปิดสวิตช์ (สาขายาเท่านั้น): pending → ลบด้วย transaction ที่อ่านก่อนลบ — server Confirm แล้วในรอบนี้ = ไม่ลบ + รับค่า server เข้าเครื่อง
+//   ยังไม่ Confirm / ไม่มีเอกสาร / เป็นเศษรอบเก่า = ลบตามเดิม · เอกสารของรอบที่ใหม่กว่า = ไม่แตะ · ถามไม่ได้ (ออฟไลน์/ล้ม) = requeue + backoff (ห้ามกลับไปลบแบบไม่มีเงื่อนไข)
+//   WH ไม่แตะ (ผลยืนยันเป็น op ที่ materialize กลับได้) · ✕ (removeScanItem → _removeSkuFromFirestore) ไม่แตะ — ผู้ใช้กดเองตรงๆ และมีด่านสถานะในเครื่องอยู่แล้ว
+// rollback = ตั้ง false แล้ว deploy (กลับเป็น batch.delete เดิมทุกไบต์) · let เพื่อให้เทสสลับเทียบได้ · ขนาดชุดเป็น let ให้เทสปรับได้
+let FLUSH_DEL_KEEP_CONFIRMED=true;
+let FLUSH_DEL_CHECK_CHUNK=50;
+// ลบเอกสาร item ของ SKU ที่ local เป็น pending — เฉพาะที่ "ยังไม่ Confirm" บน server (อ่าน+ลบใน transaction เดียว = เทียบแล้วลบแบบ atomic)
+// คืน {kept,moved}: kept = [{sku,data}] ที่ Confirm แล้วในรอบนี้ (ไม่ลบ) · moved = รอบนับของเครื่องนี้เปลี่ยนระหว่างรอ (ไม่ลบอะไรเลย)
+async function _deleteScanItemsKeepConfirmed(itemsRef,skus,epoch){
+  let kept=[],moved=false;
+  await _db.runTransaction(async tx=>{
+    kept=[];moved=false;   // transaction ถูกรันซ้ำได้เมื่อชน — เริ่มนับใหม่ทุกรอบ
+    const snaps=await Promise.all(skus.map(s=>tx.get(itemsRef.doc(s))));
+    // SCAN_FLUSH_EPOCH_GUARD: รอบเปลี่ยนระหว่างรอ tx.get → เป็นของรอบที่ไม่มีอยู่แล้ว ห้ามลบ (เช็คก่อน tx.delete ทันที ไม่มี await คั่น)
+    if(_flushEpochMoved(epoch)){moved=true;return;}
+    snaps.forEach((snap,i)=>{
+      if(!snap.exists)return;
+      const d=snap.data()||{};const de=String(d.countResetAt||'');
+      if(de>epoch)return;   // เครื่องอื่นเริ่มนับใหม่แล้ว — เอกสารนี้เป็นของรอบใหม่ ห้ามแตะ (เครื่องนี้จะรับรอบใหม่ทางตัวฟัง session เอง)
+      if(de===epoch&&_CONFIRMED_STATUSES.has(d.status)){kept.push({sku:skus[i],data:d});return;}   // Confirm แล้ว → เก็บไว้
+      tx.delete(itemsRef.doc(skus[i]));   // ยังไม่ Confirm / เศษรอบเก่า (query ของรอบนี้ไม่เห็นอยู่แล้ว) → ลบตามเดิม
+    });
+  });
+  return{kept,moved};
+}
+// รับผล Confirm จาก server เข้าเครื่องแทนการลบ (รูปเดียวกับ _writeScanningItem เมื่อ abort:'confirmed')
+// ไม่ทับ SKU ที่ผู้ใช้เพิ่งสแกน/แก้ระหว่างที่ transaction รอ (ไม่ใช่ pending แล้ว) — ยอดสแกนนั้นไปต่อทาง _writeScanningItem ซึ่งรับผล Confirm เองอยู่แล้ว
+// ส่วนปรับ state ไม่โยน error ได้ · ส่วนรีเฟรชจอห่อ try/catch — error ตรงนี้ห้ามไหลเข้า catch ของ flush (จะ requeue SKU ที่รับแล้วแล้วเขียนทับ updatedBy/rev ของผล Confirm)
+function _adoptKeptConfirmedItems(kept){
+  let n=0;
+  for(const{sku,data}of kept){
+    const cur=state.scanData.get(sku);
+    if(cur&&cur.status!=='pending')continue;
+    state.scanData.set(sku,_scanItemToLocal(data,cur));
+    _scanItemRev.set(sku,Number(data.rev)||0);
+    _scanItemSynced.set(sku,_scanItemFingerprint(state.scanData.get(sku)));
+    n++;
+  }
+  if(!n)return 0;
+  try{
+    // เหมือนตัวฟัง items เมื่อสถานะเปลี่ยน — แถว RESULT / การ์ดสถิติ / ตัวกรอง ต้องตามค่าที่รับมา
+    invalidatePopupRowsCache();
+    if(!_listCleared){rebuildScanListMap(true);renderScanList();}
+    updateStats();renderTable();updateConfirmBtn();updatePharmacistAuditConfirmBtn();
+    if(document.getElementById('auditVerifyPopupOverlay')?.style.display==='flex')renderAuditVerifyTable();
+    scheduleSave();
+    toast(`🔄 ${n} รายการ Confirm แล้ว — ไม่ต้องนับใหม่`,'info',4000);   // ตามหลัง toast "รีเซ็ตของค้างข้ามวัน … กรุณานับใหม่" ของ runStaleGuard — บอกให้ชัดว่ารายการเหล่านี้ไม่ต้องนับซ้ำ
+  }catch(e){console.warn('[stale guard] รีเฟรชจอหลังรับผล Confirm ไม่สำเร็จ:',e.message);}
+  console.warn(`[stale guard] ${n} รายการ Confirm แล้วบน Cloud — ไม่ลบ รับผลมาแทน`);
+  return n;
+}
 async function _flushDirtySkus(){
   if(_scanItemFlushing||_adminMode||!_db||!currentBranch||!_isScanSchemaV2())return;
   if(!_dirtySkus.size)return;
@@ -4469,9 +4525,17 @@ async function _flushDirtySkus(){
   try{
     const plain=[];   // เขียนตรงได้ (ลบ / สถานะที่ Confirm แล้ว)
     const contended=[];// ต้อง transaction (scanning — ยอดสะสมจากหลายเครื่อง)
+    const guardedDel=[];// FLUSH_DEL_KEEP_CONFIRMED (สาขายา): local เป็น pending → ลบเฉพาะที่ server ยังไม่ Confirm (transaction อ่านก่อนลบ)
+    const guardDel=FLUSH_DEL_KEEP_CONFIRMED&&_isPharmacyBranch();
     for(const sku of skus){
       const sd=state.scanData.get(sku);
-      if(!sd||sd.status==='pending'){plain.push({sku,del:true});continue;}
+      if(!sd||sd.status==='pending'){
+        // _forceDelSkus: ↺ สแกนใหม่ (restartPharmacyScan) สั่งให้ลบซ้ำเศษที่ flush ค้างเขียนฟื้นหลังลบ — ต้องลบจริง ห้ามถือว่าเป็นผล Confirm ของคนอื่น
+        let force=false;const fd=_forceDelSkus.get(sku);
+        if(fd!==undefined){if(fd>Date.now())force=true;else _forceDelSkus.delete(sku);}   // ธงหมดอายุ = ทิ้ง (ไม่ปล่อยค้าง)
+        if(guardDel&&!force)guardedDel.push(sku);else plain.push({sku,del:true});
+        continue;
+      }
       if(sd.status==='scanning')contended.push(sku);
       else plain.push({sku,sd});
     }
@@ -4490,9 +4554,23 @@ async function _flushDirtySkus(){
         batch.set(itemsRef.doc(job.sku),_scanItemPayload(job.sku,job.sd,rev),{merge:false});
         _scanItemSynced.set(job.sku,_scanItemFingerprint(job.sd));
       }
-      try{await batch.commit();}
+      try{await batch.commit();for(const j of jobs)if(j.del)_forceDelSkus.delete(j.sku);}
       catch(e){for(const j of jobs)requeue.push(j.sku);sawError=true;if(_isRateLimitError(e))sawRateLimit=true;console.warn('[scanItem batch]',e.code||e.message);}
     }
+    // FLUSH_DEL_KEEP_CONFIRMED: ลบ pending แบบมีเงื่อนไข ชุดละ FLUSH_DEL_CHECK_CHUNK — Confirm แล้วบน server = ไม่ลบ รับผลเข้าเครื่อง (ดูคอมเมนต์เหนือ _deleteScanItemsKeepConfirmed)
+    const keptConfirmed=[];
+    for(let i=0;i<guardedDel.length;i+=FLUSH_DEL_CHECK_CHUNK){
+      const chunk=guardedDel.slice(i,i+FLUSH_DEL_CHECK_CHUNK);
+      if(_flushEpochMoved(epoch)){epochDropped+=guardedDel.length-i;break;}
+      if(sawError){for(const s of chunk)requeue.push(s);continue;}
+      try{
+        const res=await _deleteScanItemsKeepConfirmed(itemsRef,chunk,epoch);
+        if(res.moved){epochDropped+=guardedDel.length-i;break;}
+        for(const s of chunk){_scanItemRev.delete(s);_scanItemSynced.delete(s);}
+        keptConfirmed.push(...res.kept);
+      }catch(e){for(const s of chunk)requeue.push(s);sawError=true;if(_isRateLimitError(e))sawRateLimit=true;console.warn('[scanItem del]',e.code||e.message);}
+    }
+    if(keptConfirmed.length)_adoptKeptConfirmedItems(keptConfirmed);
     // ทยอยเขียน scanning ทีละไม่เกิน N รายการต่อรอบ + เว้นจังหวะ 40ms กัน burst
     let done=0;
     for(const sku of contended){
@@ -8849,7 +8927,8 @@ async function restartPharmacyScan(sku){
   state.scanData.set(sku,{countedQty:0,status:'pending',retries:0,timestamp:'',scannedBy:'',auditor:'',auditStatus:'pending',barcode:'',location:sd.location||'',scans:[]});
   _dirtySkus.delete(sku);_scanItemRev.delete(sku);_scanItemSynced.delete(sku);
   // แก้ในใบ/เขียนที่เริ่มระหว่างรอ transaction อาจฟื้นเอกสารหลังเราลบ → ให้ flush ลบซ้ำ (sd เป็น pending = batch.delete)
-  if(_scanItemInFlight.has(sku)){_dirtySkus.add(sku);_scheduleScanFlush(SCAN_ITEM_FLUSH_MS);}
+  // เศษที่ฟื้นขึ้นมาเป็นของเครื่องนี้เอง (Stock Adj เดิม) — ต้องลบจริง ไม่ใช่ผ่านด่านรับผล Confirm ของ _flushDirtySkus (FLUSH_DEL_KEEP_CONFIRMED) · ธงมีอายุ 5 นาที
+  if(_scanItemInFlight.has(sku)){_dirtySkus.add(sku);_forceDelSkus.set(sku,Date.now()+300000);_scheduleScanFlush(SCAN_ITEM_FLUSH_MS);}
   scanListMap.delete(sku);
   console.info('[restart scan]',sku,{countedQty:sd.countedQty,recheckQty:sd.recheckQty,directAdj:sd.directAdj===true,initialStatus:sd.initialStatus,by:currentUser||''});
   invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();updateStats();renderTable();

@@ -293,10 +293,14 @@ test('แก้ที่ยังไม่ flush: ถูกทิ้งไปก
   await app.page.evaluate(() => { window.__fail = null; _dirtySkus.clear(); window.__duringTx = () => { _scanItemInFlight.add('SA0'); }; });
   await app.page.evaluate(() => restartPharmacyScan('SA0'));
   expect(await app.page.evaluate(() => [state.scanData.get('SA0').status, _dirtySkus.has('SA0')])).toEqual(['pending', true]);
-  // ไม่มีเขียนระหว่างรอ → ไม่ค้าง dirty
+  // FLUSH_DEL_KEEP_CONFIRMED: เศษที่ฟื้นเป็นของเครื่องนี้เอง → ต้องติดธง "ลบจริง" (มีอายุ) ไม่ให้ flush ถือเป็นผล Confirm ของคนอื่นแล้วรับกลับ
+  expect(await app.page.evaluate(() => (_forceDelSkus.get('SA0') || 0) > Date.now())).toBe(true);
+  await app.page.evaluate(() => _forceDelSkus.clear());
+  // ไม่มีเขียนระหว่างรอ → ไม่ค้าง dirty · ไม่ติดธง
   await prime(app.page);
   await app.page.evaluate(() => restartPharmacyScan('SA0'));
   expect(await app.page.evaluate(() => _dirtySkus.has('SA0'))).toBe(false);
+  expect(await app.page.evaluate(() => _forceDelSkus.has('SA0'))).toBe(false);
   await closeApp(app);
 });
 
