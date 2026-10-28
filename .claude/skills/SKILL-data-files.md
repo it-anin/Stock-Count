@@ -96,7 +96,7 @@ Re-upload R01 บน**สาขายา** (`_isPharmacyBranch()` → SRC/KKL/SS
 
 - สคริปต์ **แตะ session doc ไม่ได้** เพราะ `scanData` ฝังรวมอยู่ในก้อน `session_data_json` (schema v1) จึงพา baseline ผ่าน master doc แทน
 - ส่ง `data` (doc ที่ listener ได้มาแล้ว) เป็น param ที่ 2 เพื่อไม่ต้อง `.get()` ซ้ำ — doc ใหญ่ (SRC ~540 KB) การอ่านซ้ำคือ read เปล่า
-- `_adoptedMasterBaselineAt` จำค่าที่ adopt แล้วใน page session นี้ · **ห้ามลบ** — `startNewCount()` ตั้ง `_r01BaselineAt=''` ถ้าไม่มีตัวจำ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
+- `_adoptedMasterBaselineAt` จำค่าที่ adopt แล้วใน page session นี้ · **ห้ามลบ** — `startNewCount()` (โหมดล้าง R01: สวิตช์ `PHARMACY_KEEP_R01_ON_NEW_COUNT` ปิด / เครื่องรุ่นเก่า) ตั้ง `_r01BaselineAt=''` ถ้าไม่มีตัวจำ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี · ตั้งแต่ 28 ต.ค. 2026 โหมดคง R01 (ค่าเริ่มต้น) **ไม่รีเซ็ต baseline** แล้ว (ห้ามกลับไปรีเซ็ต — ดู CLAUDE.md §สาขายาเริ่มนับใหม่ไม่ล้าง R01)
 - **toast ของเส้นทางออโต้เหลือแค่ `กำลังโหลดข้อมูล..` (ก.ย. 2026)** — เดิมอธิบายยาวว่า R16 ถูกล้างและต้องอัปใหม่ก่อน Confirm (ผู้ใช้ขอให้สั้นลงเพราะเห็นทุกเช้าที่บอทรัน)
   - ⛔→ **15 ต.ค. 2026 (ผู้ใช้สั่ง): ปิด toast นี้ทั้งหมดแล้ว** — สวิตช์ `R01_BASELINE_TOAST` (ค่าเริ่มต้น `false`) · แทรกขึ้นระหว่างล็อกอินที่มีหน้าโหลดเต็มจอแจ้งสถานะอยู่แล้ว · ปิดเฉพาะตัวข้อความ: baseline/ล้าง R16/badge ทำงานทุกรอบเหมือนเดิม (สถานะยังบอกผู้ใช้ที่ badge R16 "ยังไม่โหลด" + ปุ่ม Confirm ถูก disable) · ทางถอย `let R01_BASELINE_TOAST=true;` · เทส `r01-baseline-toast.spec.js`
   ตัดได้เพราะสถานะยังบอกอยู่ 2 จุด: **badge R16 เปลี่ยนเป็น "ยังไม่โหลด"** และ **ปุ่ม Confirm ถูก disable** (`updateConfirmBtn` อิง `state.r16Loaded`) · กดยังไงก็ติด toast `กรุณาโหลดไฟล์ R16.104 ก่อนยืนยัน`
@@ -447,7 +447,7 @@ Panel-card `#adjustDocPanel` + popup `#adjustDocPopupOverlay` — แสดง�
 Strip เฉพาะ: `retries`, `scans`
 
 ⚠️ **ไม่มี history snapshot** — Export Excel ก่อนกด "เริ่มนับใหม่"
-⚠️ `startNewCount()` ลบ `${branch}_r01` (ล้าง `r16UploadedAt`/`r16Loaded` อัตโนมัติ) **+ `${branch}_adjlot`** (LOT/ราคารอบเก่า) + ล้าง `_lotMap`/`_lotSelected`/`_priceMap` local — ไม่ลบ `global_r05` (shared ทุกสาขา) · **ยกเว้น WH (15 ต.ค. 2026): ไม่ลบ `WH_r01`** — คง R01 ของบอทไว้ เคลียร์เฉพาะ field R16 ของ doc นั้น (ดู CLAUDE.md §WH เริ่มนับใหม่ไม่ล้าง R01)
+⚠️ `startNewCount()` ลบ `${branch}_r01` (ล้าง `r16UploadedAt`/`r16Loaded` อัตโนมัติ) **+ `${branch}_adjlot`** (LOT/ราคารอบเก่า) + ล้าง `_lotMap`/`_lotSelected`/`_priceMap` local — ไม่ลบ `global_r05` (shared ทุกสาขา) · **ยกเว้น WH (15 ต.ค. 2026): ไม่ลบ `WH_r01`** — คง R01 ของบอทไว้ เคลียร์เฉพาะ field R16 ของ doc นั้น (ดู CLAUDE.md §WH เริ่มนับใหม่ไม่ล้าง R01) · **และสาขายา SRC/KKL/SSS (28 ต.ค. 2026): ไม่ลบ `{branch}_r01` เช่นกัน** (`PHARMACY_KEEP_R01_ON_NEW_COUNT` — ดู CLAUDE.md §สาขายาเริ่มนับใหม่ไม่ล้าง R01) — `${branch}_adjlot` ยังถูกลบ
 ⚠️ `clearAllData()` (admin PIN) ก็**ไม่ลบ** `global_r05` และ `${branch}_pm` — ล้างแค่ local state, resync กลับจาก cloud ตอน reload
 ⚠️ `global_pm` เดิมเป็น **legacy read-only** ไม่มีโค้ดอ่าน/เขียนแล้ว **ห้ามลบบน cloud** (เส้นชีวิตของ rollback) และ **ห้ามใส่ fallback กลับไปอ่าน** — สาขาที่ยังไม่อัป PBM ต้องเห็น badge "ยังไม่โหลด"
 ⚠️ ลำดับ: `syncToFirestore(true)` → `rebuildMaps()` (scanData ว่างก่อน)

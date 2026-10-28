@@ -82,9 +82,12 @@ test.describe('auto-r01 → app adoption', () => {
     await autoR01Write('SRC', [{ colE: 'S-NORM', productName: 'ของวันนี้', systemQty: 4242 }], iso);
     await app.page.waitForFunction((v) => _r01BaselineAt === v, iso, { timeout: 20000, polling: 100 });
 
-    // startNewCount() resets the baseline to '' (it moves backwards by design — countResetAt is the
-    // forward-only epoch). The master doc still holds this morning's value, so without the
-    // _adoptedMasterBaselineAt memo the listener would re-fire on the next snapshot.
+    // Blank the baseline by hand to reproduce the state the memo guards against. startNewCount() used to
+    // do this for pharmacy branches; since 28 Oct 2026 it keeps the baseline while PHARMACY_KEEP_R01_ON_NEW_COUNT
+    // is on (see pharmacy-new-count-keeps-r01.spec.js) — but the blanking still happens with the switch off
+    // and on devices still running older code, so the memo must keep working.
+    // The master doc still holds this morning's value, so without the _adoptedMasterBaselineAt memo
+    // the listener would re-fire on the next snapshot.
     await app.page.evaluate(() => {
       _r01BaselineAt = '';
       state.r16Loaded = true;
