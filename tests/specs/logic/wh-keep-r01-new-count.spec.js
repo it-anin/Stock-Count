@@ -2,6 +2,8 @@
 // เดิม startNewCount ลบ WH_r01 + ล้าง R01 ในเครื่อง → ต้องอัปมือ (7/10 08:51 เริ่มนับใหม่ → 08:53 อัปมือ → ยอดไม่ตรง ProMaxx)
 // ตรึงที่ระดับ logic (ไม่ใช้ emulator): ค่าเริ่มต้นสวิตช์ · helper รับ epoch ใหม่ · toast บอกเวลา R01 · ข้อความช่วยเหลือ
 // ส่วน Cloud + สองเครื่องอยู่ที่ tests/specs/e2e/wh-new-count-keeps-r01.spec.js
+// ⚠️ 28 ต.ค. 2026: สาขายามีสวิตช์ของตัวเอง (PHARMACY_KEEP_R01_ON_NEW_COUNT · ค่าเริ่มต้นเปิด) — ดู pharmacy-keep-r01-new-count.spec.js
+//    กรณี "สาขายา" ในไฟล์นี้จึงตั้งสวิตช์ของสาขายาเป็น false เพื่อตรึง 2 อย่าง: (1) ทางถอยของสาขายา = ล้างเหมือนเดิม (2) สวิตช์ WH เปิดอย่างเดียวไม่ทำให้สาขายาคง R01
 const { test, expect, bootBare, closeApp } = require('../../lib/hooks');
 
 const SEED_R01 = [{ colE: 'S-1', productName: 'x', systemQty: 5 }, { colE: 'S-2', productName: 'y', systemQty: 7 }];
@@ -24,7 +26,7 @@ test('ค่าเริ่มต้นที่ส่งมอบ — WH_KEEP_R
   await closeApp(app);
 });
 
-test('เครื่องที่รับ epoch ใหม่: WH ไม่ล้าง R01 · สวิตช์ปิด/สาขายา = ล้างเหมือนเดิม · ล้างตรง (doc ถูกลบจริง) ยังล้างได้', async ({ browser }) => {
+test('เครื่องที่รับ epoch ใหม่: WH ไม่ล้าง R01 · สวิตช์ปิด/สาขายา(ปิดสวิตช์ของตัวเอง) = ล้างเหมือนเดิม · ล้างตรง (doc ถูกลบจริง) ยังล้างได้', async ({ browser }) => {
   const app = await bootBare(browser);
 
   await seedR01(app.page, 'WH');
@@ -34,10 +36,10 @@ test('เครื่องที่รับ epoch ใหม่: WH ไม่�
   await app.page.evaluate(() => { WH_KEEP_R01_ON_NEW_COUNT = false; _resetLocalR01OnNewEpoch(); });
   expect(await snap(app.page)).toEqual({ n: 0, v: '', badge: 'ยังไม่โหลด' });                       // สวิตช์ปิด = ก่อนแก้
 
-  await app.page.evaluate(() => { WH_KEEP_R01_ON_NEW_COUNT = true; });
+  await app.page.evaluate(() => { WH_KEEP_R01_ON_NEW_COUNT = true; PHARMACY_KEEP_R01_ON_NEW_COUNT = false; });
   await seedR01(app.page, 'SRC');
   await app.page.evaluate(() => _resetLocalR01OnNewEpoch());
-  expect(await snap(app.page)).toEqual({ n: 0, v: '', badge: 'ยังไม่โหลด' });                       // สาขายาไม่เปลี่ยน
+  expect(await snap(app.page)).toEqual({ n: 0, v: '', badge: 'ยังไม่โหลด' });                       // สาขายา + สวิตช์สาขายาปิด = ล้างเหมือนเดิม (สวิตช์ WH เปิดไม่ลามมา)
 
   await seedR01(app.page, 'WH');                           // ทางล้างตรง: listener doc ถูกลบจริงต้องยังล้างได้ แม้ WH + สวิตช์เปิด
   await app.page.evaluate(() => _resetLocalR01ToEmpty());
@@ -47,14 +49,14 @@ test('เครื่องที่รับ epoch ใหม่: WH ไม่�
 
 // จุดรับ epoch ใหม่ที่เรียกได้โดยไม่ต้องมี Firestore: _applyCloudSessionMeta (listener v2) · _applyCloudScanData (blob v1 — ไว้ rollback)
 // จุดที่เหลือ (_syncSessionMetaToFirestore → e2e · syncToFirestore v1 / restoreFromFirestore → ใช้ helper ตัวเดียวกัน ไม่มีเทสตรงที่จุดเรียก)
-test('จุดรับ epoch ใหม่ (_applyCloudSessionMeta · _applyCloudScanData): WH คง R01 · สวิตช์ปิด/สาขายาล้างเหมือนเดิม', async ({ browser }) => {
+test('จุดรับ epoch ใหม่ (_applyCloudSessionMeta · _applyCloudScanData): WH คง R01 · สวิตช์ปิด/สาขายา(ปิดสวิตช์ของตัวเอง)ล้างเหมือนเดิม', async ({ browser }) => {
   const NEWER = '2099-01-01T00:00:00.000Z';
   const app = await bootBare(browser);
   for (const fn of ['_applyCloudSessionMeta', '_applyCloudScanData']) {
     const adopt = async (branch, { keep = true } = {}) => {
       await seedR01(app.page, branch);
       return app.page.evaluate(([fn, newer, keep, role]) => {
-        WH_KEEP_R01_ON_NEW_COUNT = keep; currentRole = role; _countResetAt = '2026-10-15T01:00:00.000Z';
+        WH_KEEP_R01_ON_NEW_COUNT = keep; PHARMACY_KEEP_R01_ON_NEW_COUNT = false; currentRole = role; _countResetAt = '2026-10-15T01:00:00.000Z';
         window[fn]({ countResetAt: newer, scanData: {} });
         return { epoch: _countResetAt, n: state.r01Data.length, v: state.r01Version, badge: document.getElementById('badgeR01').textContent };
       }, [fn, NEWER, keep, branch === 'WH' ? 'warehouse' : 'pharmacist']);
@@ -68,14 +70,14 @@ test('จุดรับ epoch ใหม่ (_applyCloudSessionMeta · _applyClo
 
 // จุดที่ต้องมี Firestore: syncToFirestore (blob v1) · restoreFromFirestore (login) — ใช้ Firestore จำลองที่ตอบแค่ session doc ที่ epoch ใหม่กว่า
 // restoreMasterFromFirestore ถูกปิดไว้ (ไม่งั้นมันโหลด R01 กลับจาก Cloud ทับ ทำให้แยกไม่ออกว่า "จุดรับ epoch" ล้างหรือไม่)
-test('จุดรับ epoch ใหม่ที่ต้องมี Firestore (syncToFirestore v1 · restoreFromFirestore): WH คง R01 · สวิตช์ปิด/สาขายาล้างเหมือนเดิม', async ({ browser }) => {
+test('จุดรับ epoch ใหม่ที่ต้องมี Firestore (syncToFirestore v1 · restoreFromFirestore): WH คง R01 · สวิตช์ปิด/สาขายา(ปิดสวิตช์ของตัวเอง)ล้างเหมือนเดิม', async ({ browser }) => {
   const NEWER = '2099-01-01T00:00:00.000Z';
   const app = await bootBare(browser);
   const adopt = async (fn, branch, { keep = true } = {}) => {
     await seedR01(app.page, branch);
     return app.page.evaluate(async ([fn, newer, keep, role]) => {
       restoreMasterFromFirestore = async () => {};
-      WH_KEEP_R01_ON_NEW_COUNT = keep; currentRole = role; _countResetAt = '2026-10-15T01:00:00.000Z'; _schemaVersion = 1; _adminMode = false;
+      WH_KEEP_R01_ON_NEW_COUNT = keep; PHARMACY_KEEP_R01_ON_NEW_COUNT = false; currentRole = role; _countResetAt = '2026-10-15T01:00:00.000Z'; _schemaVersion = 1; _adminMode = false;
       state.r05Data = [['B-1', 'S-1']]; state.scanData.clear();
       state.scanData.set('S-1', { countedQty: 0, status: 'pending', retries: 0, timestamp: '', scannedBy: '', auditor: '', auditStatus: 'pending', barcode: '', location: '', scans: [] });
       const session = { exists: true, data: () => ({ session_data_json: JSON.stringify({ countResetAt: newer, scanData: {} }) }) };
@@ -122,7 +124,7 @@ test('toast หลังเริ่มนับใหม่ — บอกเว
   await closeApp(app);
 });
 
-test('ข้อความช่วยเหลือในแอป (guideHtml) — WH บอกว่าบอทอัปให้ · สวิตช์ปิด = ข้อความเดิม · สาขายาไม่เปลี่ยน', async ({ browser }) => {
+test('ข้อความช่วยเหลือในแอป (guideHtml) — WH บอกว่าบอทอัปให้ · สวิตช์ปิด = ข้อความเดิม · สาขายา(ปิดสวิตช์ของตัวเอง)ไม่เปลี่ยน', async ({ browser }) => {
   const app = await bootBare(browser);
   const on = await app.page.evaluate(() => guideHtml(true));
   expect(on).toContain('บอทอัปให้ทุกเช้า');
@@ -134,7 +136,7 @@ test('ข้อความช่วยเหลือในแอป (guideHtml
   expect(off).toContain('อัพครั้งเดียวตอนเริ่มรอบ');
   expect(off).not.toContain('บอทอัปให้ทุกเช้า');
 
-  const branch = await app.page.evaluate(() => { WH_KEEP_R01_ON_NEW_COUNT = true; return guideHtml(false); });
+  const branch = await app.page.evaluate(() => { WH_KEEP_R01_ON_NEW_COUNT = true; PHARMACY_KEEP_R01_ON_NEW_COUNT = false; return guideHtml(false); });
   expect(branch).toContain('ทุกวันก่อน Confirm (หลัง restock)');
   expect(branch).not.toContain('บอทอัปให้ทุกเช้า');
   await closeApp(app);

@@ -1585,7 +1585,7 @@ let _whSupFilter = 'all'; // WH supervisor Desktop: filter ตาราง RESUL
 let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
 let _r01BaselineAt = ''; // ISO timestamp ล่าสุดที่อัพ R01 (สาขายา) — sync ข้ามเครื่องเพื่อรีเซ็ต Audit
 // baseline ที่ adopt มาจาก master doc {branch}_r01 (เส้นทาง auto-r01) แล้วใน page session นี้
-// จำเป็นเพราะ startNewCount() ตั้ง _r01BaselineAt='' → ถ้าไม่จำไว้ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
+// จำเป็นเพราะ startNewCount() (โหมดล้าง R01 — สวิตช์ปิด/เครื่องรุ่นเก่า) ตั้ง _r01BaselineAt='' → ถ้าไม่จำไว้ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
 let _adoptedMasterBaselineAt = '';
 // กัน toast ซ้ำตอนโหลดหน้า (ก.ย. 2026): session doc เก็บ "สำเนา" r01BaselineAt ที่ค้างเก่ากว่า
 // master doc {branch}_r01 ได้ (session อัปเดตต่อเมื่อมีเครื่องบนสาขานั้น sync จริง)
@@ -1921,10 +1921,20 @@ let WH_R16_103_BEFORE_R01_ONLY=true;
 //   เดิม startNewCount ของ WH ลบ WH_r01 บน Cloud + ล้าง R01 ในเครื่อง → ต้องอัปมือใหม่ · ช่วง "R01 ว่าง" ทำ Total SKU/Progress เป็น 0 และเปิดช่องให้อัปไฟล์ที่ไม่ใช่ของบอท
 //   (7/10 08:51 เริ่มนับใหม่ → 08:53 อัปมือ → ได้ยอดไม่ตรงกับ ProMaxx ของใบรับ 6/10) · เปิดสวิตช์: WH เริ่มนับใหม่ = ล้างยอดนับ/R16/LOT แต่ "คง R01 ของบอทไว้" ทั้ง Cloud และทุกเครื่อง
 //   - Cloud: ไม่ลบ master doc · เคลียร์เฉพาะ field R16 ของ doc นั้น (ชุดเดียวกับที่บอทเขียนทุกเช้า) กันเครื่องอื่นเห็น R16 รอบเก่ายัง Ready
-//   - เครื่องที่รับ epoch ใหม่ (5 จุด) ไม่ล้าง R01 ในเครื่อง — ผ่าน _resetLocalR01OnNewEpoch (ดู _whKeepsR01OnNewCount)
+//   - เครื่องที่รับ epoch ใหม่ (5 จุด) ไม่ล้าง R01 ในเครื่อง — ผ่าน _resetLocalR01OnNewEpoch (ดู _keepsR01OnNewCount)
 //   ⚠️ ถ้าบอทพลาดวันไหน รอบนับจะใช้ R01 เก่าเงียบๆ → หลังเริ่มนับใหม่ toast บอกเวลา R01 + เตือนเมื่อไม่ใช่ของวันนี้ · ปุ่มอัป R01 ด้วยมือยังเปิดทุกคน (ผู้ใช้เลือก)
-//   ไม่เปลี่ยน: สาขายา · clearAllData (Admin) · false = เหมือนก่อนแก้ (rollback) · let เพื่อให้เทสสลับเทียบได้
+//   ไม่เปลี่ยน: clearAllData (Admin) · สาขายามีสวิตช์ของตัวเอง (PHARMACY_KEEP_R01_ON_NEW_COUNT ด้านล่าง) · false = เหมือนก่อนแก้ (rollback) · let เพื่อให้เทสสลับเทียบได้
 let WH_KEEP_R01_ON_NEW_COUNT=true;
+// PHARMACY_KEEP_R01_ON_NEW_COUNT (28 ต.ค. 2026 · ผู้ใช้สั่ง: บอท auto-r01 อัป R01 ~07:30 ทุกวัน แต่ต้องกดเริ่มนับใหม่ระหว่างวัน ไม่ต้องการให้ R01 ที่บอทอัปหาย · อนุมัติแผนตามกฎ 1):
+//   ขยายแนวเดียวกับ WH_KEEP_R01_ON_NEW_COUNT ให้สาขายา (SRC/KKL/SSS) — เดิมสาขายาลบ {branch}_r01 ตอนเริ่มนับใหม่ ⇒ Total SKU = 0 และบอท auto-r16 (21:10) ข้ามสาขา
+//   ("ไม่มี R01 ของสาขา") ⇒ ไม่มี timeline R16 ไม่ Confirm ให้ ของที่สแกนค้างถูกรีเซ็ตเช้าวันถัดไป
+//   เปิดสวิตช์: เริ่มนับใหม่ = ล้างยอดนับ/R16/LOT/marker แต่ "คง R01 ของบอทไว้" ทั้ง Cloud และทุกเครื่อง (ผ่าน _keepsR01OnNewCount ตัวเดียวกับ WH)
+//   ⚠️ ต่างจาก WH ข้อเดียว: ไม่รีเซ็ต _r01BaselineAt ตอนเริ่มนับใหม่ — baseline เป็นของสาขายา (session blob + localStorage เก็บไว้ และคืนค่าเฉพาะเมื่อไม่ว่าง)
+//      ถ้าเซ็ตว่างทั้งที่ master ยังมี r01BaselineAt ของบอท ⇒ baseline ถูก adopt ซ้ำโดยไม่จำเป็น: (ก) ระหว่าง startNewCount เอง — _syncSessionMetaToFirestore เห็น session.r01BaselineAt ใหม่กว่า ''
+//      แล้วเรียก _applyR01BaselineUpdate (โหลด R01 จาก master ซ้ำ + rebuildMaps + ล้าง R16) (ข) หลังรีโหลด — session/localStorage เก็บค่าว่าง listener จึง adopt ซ้ำแล้ว _clearR16ForNewBaseline() ล้าง R16 ฟรี
+//      (_adoptedMasterBaselineAt จำได้แค่ใน page session เดียว)
+//   false = เหมือนก่อนแก้ทุกจุด (rollback) · let เพื่อให้เทสสลับเทียบได้ · ดู CLAUDE.md §สาขายาเริ่มนับใหม่ไม่ล้าง R01
+let PHARMACY_KEEP_R01_ON_NEW_COUNT=true;
 // PHARMACY_R16_CLOUD_TIMELINE (ต.ค. 2026 · ผู้ใช้สั่ง — บอท auto-r16 อัป R16.104 ให้ SRC/KKL/SSS ทุกวัน 21:00)
 //   สาขายาไม่เคยมี raw timeline (r16RawMap) บน Cloud — อยู่ในหน่วยความจำของ Desktop ที่อัปไฟล์เองเท่านั้น · เครื่องที่ได้ R16 ผ่าน session sync มีแค่ยอดรวมต่อ SKU
 //   → getSoldQtyBefore บวกยอดขายทั้งวันโดยไม่กรองเวลาสแกน = Stock Adj ปลอมลง ERP · และ state.r16Loaded ไม่ได้มาจาก master ⇒ บอทเขียน Firestore อย่างเดียวไม่ปลดล็อก Confirm
@@ -3104,7 +3114,7 @@ function _applyCloudSessionMeta(s){
   if(s.countResetAt&&s.countResetAt>_countResetAt){
     _countResetAt=s.countResetAt;
     _resetLocalScanDataToPending();
-    _resetLocalR01OnNewEpoch();   // WH ไม่ล้าง R01 (Cloud ยังมี) — ดู WH_KEEP_R01_ON_NEW_COUNT
+    _resetLocalR01OnNewEpoch();   // WH/สาขายาที่คง R01 ไม่ล้าง (Cloud ยังมี) — ดู _keepsR01OnNewCount
     _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
     startScanItemsListener(); // epoch เปลี่ยน → query เดิมชี้ epoch เก่า ต้อง restart
     startWhConfirmOpsListener();
@@ -4211,8 +4221,8 @@ const CLEAR_PIN = 'gut22190';
 async function startNewCount(){
   // ข้อความเดิม "บันทึกประวัติและเริ่มนับใหม่" ชวนเข้าใจผิดว่ากดแล้วระบบเซฟให้ — ปุ่มนี้ "ไม่บันทึกอะไรเลย"
   // ประวัติมีจริงแต่ถูกเขียนสะสมตอน Confirm แต่ละครั้ง (saveAuditLogToFirestore → stock_audit_log) ซึ่งรอดจากการล้าง
-  const _keepR01=_whKeepsR01OnNewCount();   // WH: คง R01 ของบอทไว้ (WH_KEEP_R01_ON_NEW_COUNT) — ล้างเฉพาะยอดนับ/R16/LOT
-  const pin=prompt('🔒 เริ่มนับใหม่ — '+(_keepR01?'ล้างยอดที่นับ, R16 และ LOT ที่แนบไว้ ของคลังนี้ (R01 ใช้ของบอทต่อ ไม่ล้าง)':'ล้างยอดที่นับ, R01 และ LOT ที่แนบไว้ ของสาขานี้ทั้งหมด')+'\n(ปุ่มนี้ไม่ได้สำรองอะไรให้ · '+_pharmTxt('ประวัติการ Confirm ใน Audit Log ยังอยู่','ประวัติการ Confirm ยังอยู่')+')\n\nกรุณาใส่รหัส PIN:');
+  const _keepR01=_keepsR01OnNewCount();   // WH (WH_KEEP_R01_ON_NEW_COUNT) / สาขายา (PHARMACY_KEEP_R01_ON_NEW_COUNT): คง R01 ของบอทไว้ — ล้างเฉพาะยอดนับ/R16/LOT
+  const pin=prompt('🔒 เริ่มนับใหม่ — '+(_keepR01?'ล้างยอดที่นับ, R16 และ LOT ที่แนบไว้ ของ'+(currentBranch==='WH'?'คลัง':'สาขา')+'นี้ (R01 ใช้ของบอทต่อ ไม่ล้าง)':'ล้างยอดที่นับ, R01 และ LOT ที่แนบไว้ ของสาขานี้ทั้งหมด')+'\n(ปุ่มนี้ไม่ได้สำรองอะไรให้ · '+_pharmTxt('ประวัติการ Confirm ใน Audit Log ยังอยู่','ประวัติการ Confirm ยังอยู่')+')\n\nกรุณาใส่รหัส PIN:');
   if(pin===null)return;
   if(pin!==CLEAR_PIN){toast('รหัส PIN ไม่ถูกต้อง','error');return;}
   // ทุกสาขาที่ใช้ branch lock (สาขายา + WH) — เดิมเช็คเฉพาะ WH ทำให้สาขายากดเริ่มนับใหม่ชน Confirm ของ Desktop อื่นได้
@@ -4250,7 +4260,9 @@ async function startNewCount(){
   if(!_keepR01)_setR01Ts('');_setR16Ts('');
   const _prevEpoch=_countResetAt;
   _countResetAt=new Date().toISOString();
-  _r01BaselineAt='';
+  // คง R01 = คง baseline ด้วย (สาขายา) — เซ็ตว่างทั้งที่ master ยังมี r01BaselineAt ของบอท ⇒ adopt ซ้ำโดยไม่จำเป็น: ระหว่างซิงก์ epoch ด้านล่าง (_syncSessionMetaToFirestore เทียบ session.r01BaselineAt > '')
+  // และหลังรีโหลด (session blob + localStorage เก็บค่าว่าง · _adoptedMasterBaselineAt จำได้แค่ใน page session เดียว) → โหลด R01 ซ้ำ + ล้าง R16 ฟรี · ดู PHARMACY_KEEP_R01_ON_NEW_COUNT
+  if(!_keepR01)_r01BaselineAt='';
   _pharmacyAuditMarkerData={branch:currentBranch,countResetAt:_countResetAt,items:{}};
   // เตรียม local รอบใหม่ก่อน แต่ยังห้ามลบข้อมูล authoritative รอบเก่าจนกว่า epoch ใหม่ขึ้น Cloud สำเร็จ
   _dirtySkus.clear();_scanItemRev.clear();_scanItemSynced.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
@@ -4290,10 +4302,11 @@ async function startNewCount(){
   // ล้าง master doc R01 (stock_sessions/${id}_r01) ด้วย — ไม่งั้น restoreMasterFromFirestore จะกู้ R01 + timestamp
   // กลับมาตอน reload/re-login (badge เด้งเป็น Ready, เวลาอัพเก่าโผล่). _r05 ไม่ลบ — barcode mapping คงไว้
   // ล้าง _r01 + _adjlot (LOT/ราคาที่บันทึก sync ไว้) — เริ่มนับใหม่ = LOT รอบเก่าใช้ไม่ได้แล้ว. _r05 ไม่ลบ
-  // WH (WH_KEEP_R01_ON_NEW_COUNT): ไม่ลบ master doc R01 ของบอท — เคลียร์เฉพาะ field R16 ของ doc นั้น (ชุดเดียวกับที่บอทเขียนทุกเช้า) ให้เครื่องอื่นไม่เห็น R16 รอบเก่ายัง Ready
+  // WH / สาขายา (WH_KEEP_R01_ON_NEW_COUNT / PHARMACY_KEEP_R01_ON_NEW_COUNT): ไม่ลบ master doc R01 ของบอท — เคลียร์เฉพาะ field R16 ของ doc นั้น (ชุดเดียวกับที่บอทเขียนทุกเช้า) ให้เครื่องอื่นไม่เห็น R16 รอบเก่ายัง Ready
+  // (_applyR16MetaFromDoc อ่าน field r16* ของ master ตอน login — ไม่เคลียร์ = เครื่องที่ล็อกอินใหม่เห็น R16 รอบเก่าเป็น Ready · ห้ามถอด field ออกจาก update() นี้)
   // update() ไม่สร้าง doc ว่างขึ้นมาถ้ายังไม่มี (not-found = ไม่มีอะไรต้องเคลียร์)
   if(_db&&currentBranch&&!_adminMode){try{const _r01Ref=_db.collection('stock_sessions').doc(getSessionId()+'_r01');const deletes=[_keepR01?_r01Ref.update({r16Loaded:false,r16UploadedAt:'',r16DetailVersion:'',r16_103Loaded:false,r16_103UploadedAt:'',r16_103DetailVersion:''}).catch(e=>{if(e&&e.code!=='not-found')throw e;}):_r01Ref.delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(_isPharmacyBranch())deletes.push(getPharmacyAuditMarkerRef().delete());if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/workflow markers:',e.message);}}
-  // WH คง R01 บน Cloud: เครื่องนี้ยังไม่มี R01 ในหน่วยความจำ (เช่นเพิ่งล็อกอิน) → โหลดจาก Cloud ก่อน rebuildMaps ไม่งั้นหลังเริ่มนับใหม่เห็น R01 ว่างทั้งที่ Cloud มี
+  // WH / สาขายา คง R01 บน Cloud: เครื่องนี้ยังไม่มี R01 ในหน่วยความจำ (เช่นเพิ่งล็อกอิน) → โหลดจาก Cloud ก่อน rebuildMaps ไม่งั้นหลังเริ่มนับใหม่เห็น R01 ว่างทั้งที่ Cloud มี
   if(_keepR01&&_db&&!state.r01Data.length){try{await restoreMasterFromFirestore(true);}catch(e){console.warn('[startNewCount] restore R01 ที่คงไว้บน Cloud:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
   renderScanList();updateStats();renderTable();invalidatePopupRowsCache();updateConfirmBtn();
@@ -7482,11 +7495,12 @@ function exportExcel(){
 // คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
 function guideHtml(isWh){
   const bot=!isWh&&_confirmByBotOn();   // PHARMACY_DESKTOP_CONFIRM_BY_BOT: ปุ่ม Confirm ที่ Desktop ถูกซ่อน บอทตัดสินให้ทุกคืน 21:10 · ปิดสวิตช์/WH = ข้อความเดิมทุกตัวอักษร
+  const keepR01=isWh?WH_KEEP_R01_ON_NEW_COUNT:PHARMACY_KEEP_R01_ON_NEW_COUNT;   // เริ่มนับใหม่ไม่ล้าง R01 (บอทอัปให้ทุกเช้า) · ปิดสวิตช์ = ข้อความเดิมทุกตัวอักษร
   return ''
   +'<div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">'
     +'<strong style="color:var(--accent);display:block;margin-bottom:5px;">⚡ ขั้นตอนการนับสต็อก'+(isWh?' (คลัง WH)':' (สาขา)')+'</strong>'
     +'<ol style="padding-left:18px;margin:0;line-height:1.8;">'
-      +'<li>'+(isWh&&WH_KEEP_R01_ON_NEW_COUNT?'<strong>R01.102</strong> — บอทอัปให้ทุกเช้า ไม่ต้องอัปเอง (กด "เริ่มนับใหม่" ไม่ล้าง R01)':'อัพโหลด <strong>R01.102</strong> '+(isWh?'ตอนเริ่มรอบนับ':'ทุกวันก่อน Confirm (หลัง restock)'))+'</li>'
+      +'<li>'+(keepR01?'<strong>R01.102</strong> — บอทอัปให้ทุกเช้า ไม่ต้องอัปเอง (กด "เริ่มนับใหม่" ไม่ล้าง R01)':'อัพโหลด <strong>R01.102</strong> '+(isWh?'ตอนเริ่มรอบนับ':'ทุกวันก่อน Confirm (หลัง restock)'))+'</li>'
       +'<li>สแกนสินค้า</li>'
       +(bot?'<li><strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน 21:10 (อัพมือเฉพาะเมื่อบอทพลาด)</li>':'<li>ก่อนกด Confirm → อัพโหลด <strong>R16.104</strong>'+(isWh?' + <strong>R16.103</strong>':'')+'</li>')
       +(bot?'<li><strong>บอท Confirm ให้ 21:10</strong> → ระบบตรวจสอบสินค้า</li>':'<li>กด <strong>Confirm</strong> → ระบบตรวจสอบสินค้า</li>')
@@ -7500,7 +7514,7 @@ function guideHtml(isWh){
       +(isWh
       ?(WH_KEEP_R01_ON_NEW_COUNT?'<li style="margin-top:3px;color:var(--green);font-weight:600;">บอทอัป R01 ให้ทุกเช้า — กด "เริ่มนับใหม่" ไม่ล้าง R01 · อัปเองเฉพาะเมื่อบอทพัง (ระวังไฟล์เก่าทับของบอท)</li>':'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพครั้งเดียวตอนเริ่มรอบ (= baseline systemQty) — ไม่ลบข้อมูลที่นับไว้</li>')
         +'<li style="margin-top:3px;color:var(--red);">⚠️ ถ้ายังต้องรีเช็ค อย่าอัพ R01 ใหม่ (สินค้าคงเหลือเลื่อน → รีเช็ค/Confirm เพี้ยน)</li>'
-      :'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพทุกเช้าก่อนเริ่มนับ</li>'
+      :(keepR01?'<li style="margin-top:3px;color:var(--green);font-weight:600;">บอทอัป R01 ให้ทุกเช้า — กด "เริ่มนับใหม่" ไม่ล้าง R01 · อัปเองเฉพาะเมื่อบอทพัง (ระวังไฟล์เก่าทับของบอท)</li>':'<li style="margin-top:3px;color:var(--green);font-weight:600;">อัพทุกเช้าก่อนเริ่มนับ</li>')
         +'<li style="margin-top:3px;color:var(--orange);">รายการ <strong>'+_pharmTxt('Audit ที่เภสัชยังไม่ยืนยัน','รอรีเช็ค ที่เภสัชยังไม่ยืนยัน')+'</strong> ให้เภสัชสแกนรีเช็ค</li>'
         +(bot?'<li style="margin-top:3px;color:var(--orange);">R16 บอทอัปให้ทุกคืน 21:10 · ถ้าบอทพลาด (มีข้อความแจ้งเตือน) ให้อัพมือ: <strong>R16 ต้องดึงรายงานจากแอพม่วงล่าสุดเท่านั้น</strong></li>'
           :'<li style="margin-top:3px;color:var(--orange);">อัพ R16 ก่อนกด Confirm <strong>R16 ต้องดึงรายงานจากแอพม่วงล่าสุดเท่านั้น</strong> → อัพ R16 ของวันใหม่ก่อนถึงจะ Confirm ได้</li>')
@@ -7907,7 +7921,7 @@ async function syncToFirestore(overwrite=false){
         if(s&&s.countResetAt&&s.countResetAt>_countResetAt){
           _countResetAt=s.countResetAt;
           _resetLocalScanDataToPending();
-          _resetLocalR01OnNewEpoch();   // WH ไม่ล้าง R01 (Cloud ยังมี) — ดู WH_KEEP_R01_ON_NEW_COUNT
+          _resetLocalR01OnNewEpoch();   // WH/สาขายาที่คง R01 ไม่ล้าง (Cloud ยังมี) — ดู _keepsR01OnNewCount
           saveSession();
           if(!_listCleared){rebuildScanListMap(true);renderScanList();}
           invalidatePopupRowsCache();updateStats();renderTable();updateConfirmBtn();
@@ -8031,7 +8045,7 @@ async function _syncSessionMetaToFirestore(ref){
     if(s&&s.countResetAt&&s.countResetAt>_countResetAt){
       _countResetAt=s.countResetAt;
       _resetLocalScanDataToPending();
-      _resetLocalR01OnNewEpoch();   // WH ไม่ล้าง R01 (Cloud ยังมี) — ดู WH_KEEP_R01_ON_NEW_COUNT
+      _resetLocalR01OnNewEpoch();   // WH/สาขายาที่คง R01 ไม่ล้าง (Cloud ยังมี) — ดู _keepsR01OnNewCount
       _scanItemRev.clear();_scanItemSynced.clear();_dirtySkus.clear();_scanItemInFlight.clear();_scanItemFailStreak=0;_scanItemBackoffUntil=0;
       saveSession();
       startScanItemsListener();
@@ -8290,7 +8304,7 @@ function _readSchemaVersion(doc){
   return sv;
 }
 // ล้าง R01 ในเครื่องนี้เมื่อรับสัญญาณ "เริ่มนับใหม่" จากเครื่องอื่น (เกาะ epoch countResetAt เดียวกับ scanData)
-// เหตุผลที่ไม่ใช้ _r01BaselineAt: startNewCount() รีเซ็ต baseline เป็นค่าว่าง (ไม่ใช่ timestamp ใหม่กว่า)
+// เหตุผลที่ไม่ใช้ _r01BaselineAt: startNewCount() (โหมดล้าง R01) รีเซ็ต baseline เป็นค่าว่าง (ไม่ใช่ timestamp ใหม่กว่า) — โหมดคง R01 ไม่รีเซ็ต แต่ก็ไม่ขยับไปข้างหน้าเช่นกัน
 // เครื่องอื่นเทียบ '>' แล้วเห็นว่า "ไม่ใหม่กว่า" ของเก่าที่ตัวเองมี เลยไม่ sync ตาม — countResetAt เดินหน้าทางเดียวจริงเสมอ ใช้แทนได้
 function _resetLocalR01ToEmpty(){
   state.r01Data=[];state.r01Version='';
@@ -8298,11 +8312,12 @@ function _resetLocalR01ToEmpty(){
   _setR01Ts('');
   rebuildMaps();
 }
-// WH เริ่มนับใหม่ไม่ล้าง R01 บน Cloud แล้ว (WH_KEEP_R01_ON_NEW_COUNT) → เครื่องที่ "รับ epoch ใหม่" ต้องไม่ล้าง R01 ในเครื่องด้วย
-// ไม่งั้น PDA/Desktop เครื่องอื่นเห็น R01 ว่าง (Total SKU 0) จนกว่าจะ reload — ใช้เฉพาะ 5 จุดรับ epoch ใหม่
+// เริ่มนับใหม่ไม่ล้าง R01 บน Cloud แล้ว (WH: WH_KEEP_R01_ON_NEW_COUNT · สาขายา: PHARMACY_KEEP_R01_ON_NEW_COUNT) → เครื่องที่ "รับ epoch ใหม่" ต้องไม่ล้าง R01 ในเครื่องด้วย
+// ไม่งั้น PDA/Desktop เครื่องอื่นเห็น R01 ว่าง (Total SKU 0) จนกว่าจะ reload — ใช้เฉพาะ 5 จุดรับ epoch ใหม่ (startNewCount ของเครื่องที่กดเองใช้ _keepsR01OnNewCount ตรง)
 // ⛔ การล้างเพราะ doc R01 ถูกลบจริง (listener master) ยังต้องเรียก _resetLocalR01ToEmpty() ตรงๆ — ห้ามเปลี่ยนไปใช้ตัวนี้
-function _whKeepsR01OnNewCount(){return WH_KEEP_R01_ON_NEW_COUNT&&currentBranch==='WH';}
-function _resetLocalR01OnNewEpoch(){if(_whKeepsR01OnNewCount())return;_resetLocalR01ToEmpty();}
+// ⛔ จุดรับ epoch ใหม่จุดใหม่ต้องเรียก _resetLocalR01OnNewEpoch() ห้ามเรียก _resetLocalR01ToEmpty() ตรง (สาขา/คลังที่คง R01 จะเห็น R01 ว่างจนกว่า reload เพราะ Cloud ไม่ได้ลบแล้ว)
+function _keepsR01OnNewCount(){return(WH_KEEP_R01_ON_NEW_COUNT&&currentBranch==='WH')||(PHARMACY_KEEP_R01_ON_NEW_COUNT&&_isPharmacyBranch());}
+function _resetLocalR01OnNewEpoch(){if(_keepsR01OnNewCount())return;_resetLocalR01ToEmpty();}
 function _applyCloudScanData(s){
   const UNCONFIRMED=new Set(['pending','scanning']);
   const CONFIRMED=new Set(['pass','audit','audit_check','stock_adjustment']);
@@ -8312,7 +8327,7 @@ function _applyCloudScanData(s){
   if(s.countResetAt&&s.countResetAt>_countResetAt){
     _countResetAt=s.countResetAt;
     _resetLocalScanDataToPending();
-    _resetLocalR01OnNewEpoch();   // WH ไม่ล้าง R01 (Cloud ยังมี) — ดู WH_KEEP_R01_ON_NEW_COUNT
+    _resetLocalR01OnNewEpoch();   // WH/สาขายาที่คง R01 ไม่ล้าง (Cloud ยังมี) — ดู _keepsR01OnNewCount
   }
   // WH Supervisor ใช้ Firestore เป็น base ทุก snapshot: localStorage เป็น cache เท่านั้น
   // หลังวาง session base แล้ว caller จะ overlay ตามลำดับ count marker → WH_counts → recheck marker → WH_rechecks
@@ -8485,7 +8500,7 @@ async function restoreFromFirestore(force=false){
       if(s.countResetAt&&s.countResetAt>_countResetAt){
         _countResetAt=s.countResetAt;
         _resetLocalScanDataToPending();
-        _resetLocalR01OnNewEpoch();   // WH ไม่ล้าง R01 (Cloud ยังมี) — ดู WH_KEEP_R01_ON_NEW_COUNT
+        _resetLocalR01OnNewEpoch();   // WH/สาขายาที่คง R01 ไม่ล้าง (Cloud ยังมี) — ดู _keepsR01OnNewCount
         saveSession();
       }
       // [ขอบเขตข้อ 2 — สาขายาเท่านั้น] refresh ยอด R16 จาก cloud แม้เครื่องนี้ r16Loaded แล้ว

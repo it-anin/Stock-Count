@@ -341,7 +341,7 @@ if (SCAN_INCREMENTAL_ROW && scanListMap.size === prevSize + 1 && _pendingPatches
 
 **กลไกปัจจุบัน — `_isPreBaselineItem(sd)`:** item ที่ `timestamp||firstScanAt` เก่ากว่า `_r01BaselineAt` เกิน 5 นาที (`_R01_STALE_TOL_MS`)
 - เทียบผ่าน Date object เท่านั้น (`replace(' ','T')` ก่อน — iOS) **ห้ามเทียบ string** (timestamp = local 'YYYY-MM-DD HH:mm:ss', baseline = UTC ISO)
-- gate `_isPharmacyBranch() && _r01BaselineAt` → WH + baseline ว่าง (startNewCount) = inert
+- gate `_isPharmacyBranch() && _r01BaselineAt` → WH + baseline ว่าง (startNewCount โหมดล้าง R01) = inert · ตั้งแต่ 28 ต.ค. 2026 สาขายาโหมดคง R01 **ไม่ล้าง baseline** ตอนเริ่มนับใหม่ (`if(!_keepR01)_r01BaselineAt=''`) — item ของรอบใหม่เกิดหลัง baseline ของบอทเสมอจึงไม่ถูก freeze (ผลเท่าเดิม)
 - **2 จุดที่ใช้:**
   1. `reEvaluateAuditItems` — `continue` (freeze: audit เก่าไม่ flip ตอนอัพ R16 วันใหม่, **pass เก่าที่ไม่มี auditor คง pass ถาวร** — behavior change ที่จงใจ กัน audit ผี pollute คิวเภสัชทุกเย็น)
   2. `getPharmacistAuditEffectiveQty` — คืน `effectiveQty=rawQty` ตรงๆ (sold/inbound/r16103 = 0) — R01 ใหม่รวมยอดขายเก่าแล้ว + กัน `getSoldQtyBefore` fallback คืนยอดรวมบนเครื่องที่ไม่มี rawMap
@@ -450,6 +450,7 @@ Shared function ใช้โดย `pullFromCloud()` และ `startScanSession
 await db.doc(getSessionId()+'_r01').delete(); // หลัง syncToFirestore(true)
 ```
 ⚠️ **ยกเว้น WH (15 ต.ค. 2026 · `WH_KEEP_R01_ON_NEW_COUNT`):** ไม่ลบ `WH_r01` — เปลี่ยนเป็น `update()` เคลียร์เฉพาะ field R16 (`r16Loaded/UploadedAt/DetailVersion` + `r16_103*` — ชุดเดียวกับที่บอทเขียนทุกเช้า) แล้วคง R01 ไว้ทั้ง Cloud และในเครื่อง · เครื่องที่รับ epoch ใหม่ต้องไม่ล้าง R01 ด้วย → **5 จุดรับ epoch ใหม่เรียก `_resetLocalR01OnNewEpoch()` ไม่ใช่ `_resetLocalR01ToEmpty()`** (`_applyCloudSessionMeta` · `syncToFirestore` v1 · `_syncSessionMetaToFirestore` · `_applyCloudScanData` v1 · `restoreFromFirestore`) · ⛔ listener ที่เจอ doc R01 ถูกลบจริงยังเรียก `_resetLocalR01ToEmpty()` ตรงๆ · รายละเอียด/ข้อห้าม/ทางถอย: CLAUDE.md §WH เริ่มนับใหม่ไม่ล้าง R01
+⚠️ **และสาขายา SRC/KKL/SSS (28 ต.ค. 2026 · `PHARMACY_KEEP_R01_ON_NEW_COUNT`):** ใช้โค้ดชุดเดียวกัน — ตัวตัดสินกลาง `_keepsR01OnNewCount()` (เดิม `_whKeepsR01OnNewCount`) ครอบทั้ง WH และสาขายา ⇒ `_keepR01` ใน `startNewCount` + `_resetLocalR01OnNewEpoch()` ตามสวิตช์ของแต่ละฝั่ง · **ต่างจาก WH ข้อเดียว: ห้ามรีเซ็ต `_r01BaselineAt`** ในโหมดคง R01 (ไม่งั้น baseline ถูก adopt ซ้ำ → โหลด R01 ซ้ำ + ล้าง R16 ฟรี) · `{branch}_adjlot` · `{branch}_pharmacy_audit_markers` ยังถูกลบเหมือนเดิม · รายละเอียด/ข้อห้าม/ทางถอย: CLAUDE.md §สาขายาเริ่มนับใหม่ไม่ล้าง R01
 
 **เศษรอบเก่าหลังเริ่มนับใหม่ (schema v2 · SRC ก.ย. 2026):**
 - `startNewCount()` เขียน epoch ใหม่ก่อน แล้วค่อยลบของรอบเก่า — เดิมลบแค่ `_prevEpoch` แบบ best-effort ไม่มีแถบความคืบหน้า **รีเฟรช/ปิดหน้าระหว่างนั้น = เศษรอบเก่าค้าง** (SRC 22 ก.ย.)

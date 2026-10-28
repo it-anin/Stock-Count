@@ -3,7 +3,8 @@
 //   สวิตช์เปิด (ค่าเริ่มต้น): master doc WH_r01 ยังอยู่ · data_json/r01Version เท่าเดิม · field R16 ถูกเคลียร์ (กัน R16 รอบเก่ายัง "Ready")
 //                            · Desktop และ PDA (ที่รับ epoch ใหม่) ยังเห็น R01 + catalog ครบ · Total SKU ไม่เป็น 0
 //   canary (สวิตช์ปิด)       : เหมือนก่อนแก้ — doc ถูกลบ · R01 ในเครื่องทั้งสองถูกล้าง · Total SKU = 0
-//   สาขายา                   : ไม่เปลี่ยน (ลบ doc + ล้างในเครื่องเหมือนเดิม)
+//   สาขายา                   : มีสวิตช์ของตัวเอง PHARMACY_KEEP_R01_ON_NEW_COUNT (28 ต.ค. 2026 — เทสอยู่ที่ pharmacy-new-count-keeps-r01.spec.js)
+//                              ข้อสุดท้ายของไฟล์นี้ตรึงว่า "สวิตช์ WH เปิดอย่างเดียว" ไม่ลากสาขายาไปด้วย (สองสวิตช์อิสระต่อกัน)
 const { test, expect, closeApp, requireEmulator } = require('../../lib/hooks');
 const { bootFreshCount, bootJoinCount, PROJECT_ID } = require('../../lib/scenario');
 const { adminDb, getDoc, waitForDoc } = require('../../lib/emulator');
@@ -132,10 +133,13 @@ test.describe('WH เริ่มนับใหม่ × R01 ของบอท
     await closeApp(desk);
   });
 
-  test('สาขายา (SRC) ไม่เปลี่ยน — เริ่มนับใหม่ยังลบ R01 บน Cloud และล้างในเครื่อง', async ({ browser }) => {
+  test('สวิตช์ของสาขายาปิดอยู่ (สวิตช์ WH เปิด) → SRC ยังลบ R01 บน Cloud และล้างในเครื่อง — สองสวิตช์อิสระต่อกัน', async ({ browser }) => {
     const desk = await bootFreshCount(browser, { branch: 'SRC', role: 'pharmacist', user: 'เภสัช', mode: 'desktop' });
     expect(await getDoc(PROJECT_ID, 'stock_sessions/SRC_r01')).toBeTruthy();
     expect((await localR01(desk.page)).n).toBeGreaterThan(5);
+    // ตั้งแต่ 28 ต.ค. 2026 สาขายามีสวิตช์ของตัวเอง (ค่าเริ่มต้นเปิด) — ข้อนี้ปิดสวิตช์ของสาขายาเพื่อตรึงว่า
+    // WH_KEEP_R01_ON_NEW_COUNT=true อย่างเดียวไม่พอที่จะทำให้สาขายาคง R01 (ทางถอยของสาขายาต้องไม่กระทบ WH และกลับกัน)
+    await desk.page.evaluate(() => { WH_KEEP_R01_ON_NEW_COUNT = true; PHARMACY_KEEP_R01_ON_NEW_COUNT = false; });
     await resetFromDesk(desk);
     expect(await desk.page.evaluate(() => window.__lastPrompt)).toContain('ล้างยอดที่นับ, R01 และ LOT');   // ข้อความเดิมของสาขายา
     expect(await getDoc(PROJECT_ID, 'stock_sessions/SRC_r01'), 'สาขายายังต้องลบ R01').toBeFalsy();
