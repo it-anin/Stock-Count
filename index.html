@@ -1585,7 +1585,7 @@ let _whSupFilter = 'all'; // WH supervisor Desktop: filter ตาราง RESUL
 let _countResetAt = ''; // timestamp ล่าสุดที่ startNewCount ถูกเรียก — ใช้ detect reset จากเครื่องอื่น
 let _r01BaselineAt = ''; // ISO timestamp ล่าสุดที่อัพ R01 (สาขายา) — sync ข้ามเครื่องเพื่อรีเซ็ต Audit
 // baseline ที่ adopt มาจาก master doc {branch}_r01 (เส้นทาง auto-r01) แล้วใน page session นี้
-// จำเป็นเพราะ startNewCount() ตั้ง _r01BaselineAt='' → ถ้าไม่จำไว้ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
+// จำเป็นเพราะ startNewCount() (โหมดล้าง R01 — สวิตช์ปิด/เครื่องรุ่นเก่า) ตั้ง _r01BaselineAt='' → ถ้าไม่จำไว้ listener จะ adopt ค่าเดิมซ้ำแล้ว toast หลอก + ล้าง R16 ฟรี
 let _adoptedMasterBaselineAt = '';
 // กัน toast ซ้ำตอนโหลดหน้า (ก.ย. 2026): session doc เก็บ "สำเนา" r01BaselineAt ที่ค้างเก่ากว่า
 // master doc {branch}_r01 ได้ (session อัปเดตต่อเมื่อมีเครื่องบนสาขานั้น sync จริง)
