@@ -307,26 +307,37 @@ class WinAdapter:
             pass
 
     def focus(self, hwnd):
-        """บังคับ foreground (AttachThreadInput) — คัดลอกจาก force_foreground ของบอทเดิม (ต่างตรงที่ไม่ย่อหน้าต่างที่ขยายเต็มจอ)"""
-        g = self.gui
+        """ดึงหน้าต่างขึ้นหน้าสุด (foreground) — ตรวจจริง 3 พ.ย. 2026: Windows บล็อก SetForegroundWindow จากโปรเซสที่ไม่ใช่ foreground
+        (ปุ่มบน taskbar กะพริบแทน) ทั้งตอนทดสอบ (Claude อยู่หน้า) และตอนใช้งานจริง (เบราว์เซอร์อยู่หน้า) → ต้องผูกคิวอินพุตกับเธรด
+        foreground เดิมและเธรดเป้าก่อน แล้ว BringWindowToTop + SetForegroundWindow (ลองแล้วได้ผล) · ไม่ได้ผลค่อย SwitchToThisWindow
+          1) กู้เฉพาะหน้าต่างที่ถูกย่อ (SW_RESTORE กับหน้าต่างที่ขยายเต็มจอจะย่อมันกลับเป็นขนาดปกติ)
+          2) ไม่เรียก SetForegroundWindow ก่อนผูกเธรด (ถูกบล็อกอยู่แล้วและทำให้ taskbar กะพริบ)
+          3) ปลดการผูกเธรดใน finally เสมอ (เดิมถ้าขั้นกลางล้ม การผูกค้างอยู่)
+        ไม่ส่งคีย์/คลิกใดๆ — เปลี่ยนแค่หน้าต่างที่อยู่ด้านหน้า"""
+        g, u = self.gui, ctypes.windll.user32
+        cur, attached = ctypes.windll.kernel32.GetCurrentThreadId(), []
         try:
             self._restore_if_iconic(hwnd)
-            g.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
-        try:
-            cur = ctypes.windll.kernel32.GetCurrentThreadId()
             fg = g.GetForegroundWindow()
-            fgt = self.proc.GetWindowThreadProcessId(fg)[0]
-            tgt = self.proc.GetWindowThreadProcessId(hwnd)[0]
-            ctypes.windll.user32.AttachThreadInput(cur, fgt, True)
-            ctypes.windll.user32.AttachThreadInput(cur, tgt, True)
-            self._restore_if_iconic(hwnd)
-            g.SetForegroundWindow(hwnd)
-            ctypes.windll.user32.AttachThreadInput(cur, fgt, False)
-            ctypes.windll.user32.AttachThreadInput(cur, tgt, False)
+            threads = {self.proc.GetWindowThreadProcessId(fg)[0] if fg else 0, self.proc.GetWindowThreadProcessId(hwnd)[0]}
+            for t in threads:
+                if t and t != cur and u.AttachThreadInput(cur, t, True):
+                    attached.append(t)
+            for step in (g.BringWindowToTop, g.SetForegroundWindow):
+                try:
+                    step(hwnd)
+                except Exception:
+                    pass
+            if self.foreground_pid() != self._pid_of(hwnd):
+                u.SwitchToThisWindow(hwnd, True)
         except Exception:
             pass
+        finally:
+            for t in attached:
+                try:
+                    u.AttachThreadInput(cur, t, False)
+                except Exception:
+                    pass
         time.sleep(0.5)
 
     # ── input ────────────────────────────────────────────────────

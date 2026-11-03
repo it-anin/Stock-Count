@@ -41,7 +41,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #   2026-11-03.1  รุ่นแรก: โครง + เซิร์ฟเวอร์ + เครื่องมือตรวจ (--find/--inspect) · ขั้นตอนคลิกยังไม่มี locator (รอตรวจหน้าต่างจริง)
 #   2026-11-03.2  เพิ่ม UIA (promaxx_uia.py · kind:"uia" · เงื่อนไข uia/uia_gone · action await) + เติม STEP_SPECS จากการตรวจจริง (ยังไม่เคยคลิกจริง)
 #   2026-11-03.3  focus() ไม่ย่อหน้าต่างที่ขยายเต็มจอ (SW_RESTORE เฉพาะตอนหน้าต่างถูกย่ออยู่)
-VERSION = "2026-11-03.3"
+#   2026-11-03.4  focus() ดึงขึ้นหน้าสุดได้จริงเมื่อโปรเซสอื่น (เบราว์เซอร์/Claude) อยู่หน้า: ผูกเธรด + BringWindowToTop · ปลดการผูกใน finally
+VERSION = "2026-11-03.4"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"

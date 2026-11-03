@@ -173,23 +173,30 @@ test('4c. focus() ของ WinAdapter — ไม่ย่อหน้าต่�
   const r = runPy(`
 import promaxx_win as w, types
 class G:
-    def __init__(self, iconic): self.iconic, self.calls = iconic, []
+    def __init__(self, iconic, boom=False): self.iconic, self.boom, self.calls = iconic, boom, []
     def IsIconic(self, h): return self.iconic
     def ShowWindow(self, h, cmd): self.calls.append(('ShowWindow', cmd))
-    def SetForegroundWindow(self, h): self.calls.append(('SetForegroundWindow',))
+    def BringWindowToTop(self, h):
+        self.calls.append(('BringWindowToTop',))
+        if self.boom: raise RuntimeError('blocked')
+    def SetForegroundWindow(self, h):
+        self.calls.append(('SetForegroundWindow',))
+        if self.boom: raise RuntimeError('blocked')
     def GetForegroundWindow(self): return 1
 class P:
     def GetWindowThreadProcessId(self, h): return (1, 2)
-def run(iconic):
+def run(iconic, boom=False):
     a = object.__new__(w.WinAdapter)
-    a.gui, a.proc, a.con = G(iconic), P(), types.SimpleNamespace(SW_RESTORE=9, SW_SHOW=5)
+    a.gui, a.proc, a.con = G(iconic, boom), P(), types.SimpleNamespace(SW_RESTORE=9, SW_SHOW=5)
     import time; orig = time.sleep; time.sleep = lambda s: None
     try: a.focus(12345)
     finally: time.sleep = orig
     return a.gui.calls
-print(json.dumps(dict(maximized=run(False), minimized=run(True))))`);
+print(json.dumps(dict(maximized=run(False), minimized=run(True), blocked=run(False, True))))`);
   expect(r.maximized.filter((c) => c[0] === 'ShowWindow'), 'หน้าต่างที่ไม่ได้ถูกย่อ ห้ามเรียก ShowWindow (SW_RESTORE จะย่อหน้าต่างที่ขยายเต็มจอ)').toEqual([]);
-  expect(r.maximized.some((c) => c[0] === 'SetForegroundWindow'), 'ยังดึงขึ้นหน้าตามเดิม').toBe(true);
+  expect(r.maximized.map((c) => c[0]), 'BringWindowToTop แล้วค่อย SetForegroundWindow (ไม่เรียก SetForegroundWindow ก่อนผูกเธรด — ถูกบล็อกและทำให้ taskbar กะพริบ)')
+    .toEqual(['BringWindowToTop', 'SetForegroundWindow']);
+  expect(r.blocked, 'API ถูกบล็อก/ล้มกลางทาง ต้องไม่โยนข้อผิดพลาดออกมา (เรียกครบทั้งสองขั้นต่อไป)').toEqual([['BringWindowToTop'], ['SetForegroundWindow']]);
   expect(r.minimized.filter((c) => c[0] === 'ShowWindow').every((c) => c[1] === 9) && r.minimized.some((c) => c[0] === 'ShowWindow'), 'หน้าต่างที่ถูกย่อต้องถูกกู้ (SW_RESTORE)').toBe(true);
 });
 
