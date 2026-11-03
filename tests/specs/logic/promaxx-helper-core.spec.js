@@ -63,11 +63,16 @@ print(json.dumps(dict(verified=m.LOCATORS_VERIFIED, specs=m.STEP_SPECS, proto=m.
   docs=m.DOC_TYPES, proc=m.PROC_NAME, order=list(m.STEP_ORDER), imp=m.IMPORT_STEP, block=list(m.DEFAULT_BLOCK_PROCS), body=m.MAX_BODY,
   ver=m.VERSION), ensure_ascii=False))`);
   expect(r.verified, 'LOCATORS_VERIFIED ต้องเป็น False จนกว่าจะตรวจหน้าต่างจริงครบ (แก้เป็น True ต้องมีผลตรวจ + อัปเดตเทสนี้)').toBe(false);
-  expect(r.specs, 'STEP_SPECS ที่ส่งมอบต้องว่าง — ห้ามใส่ class/พิกัดที่เดา (รอ Gate 0)').toEqual({});
+  // 3 พ.ย. 2026: เติม STEP_SPECS จากการตรวจจริง (UIA) แล้ว — ตรึงโครงที่ส่งมอบ (รายละเอียดด่านกันพลาดอยู่ใน promaxx-helper-uia.spec.js ข้อ 5)
+  expect(Object.keys(r.specs), 'STEP_SPECS ต้องครบทุกขั้นตามลำดับขั้นตอน').toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
+  expect(r.specs['import-button'].allow_dialogs, 'ขั้นสุดท้ายอนุญาตเฉพาะกล่อง Select File').toEqual(['^Select File\\b']);
   expect(r.proto).toBe(1);
   expect(r.port).toBe(47831);
   expect(r.prod).toBe('https://anin-stock-count.vercel.app');
-  expect(r.docs).toEqual({ ORDS: { letter: 'O', menu_th: 'เอกสารจ่าย' }, IRPS: { letter: 'I', menu_th: 'เอกสารรับ' } });
+  expect(r.docs).toEqual({
+    ORDS: { letter: 'O', menu_th: 'เอกสารจ่าย', menu_cls: 'ui_mainmenu_tranout_style2', form_cls: 'pn_trans_out' },
+    IRPS: { letter: 'I', menu_th: 'เอกสารรับ', menu_cls: 'ui_mainmenu_tranin_style2', form_cls: 'pn_trans_in' },
+  });
   expect(r.proc).toBe('ssmaxx.exe');
   expect(r.order).toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
   expect(r.imp).toBe('import-button');
@@ -255,11 +260,11 @@ test('4. ด่าน preflight — ปฏิเสธทุกแบบโด�
   // ข้ามด่านได้เฉพาะที่ตั้งใจให้ข้าม (เครื่องทดสอบ) — Scaling เท่านั้น
   const fd = scen({ fake: { dpi: 125 }, opts: { force_dpi: true } });
   expect(fd.status).toBe(200);
-  // force_unverified + STEP_SPECS ที่ส่งมอบ (ว่าง) = ไม่มี locator ให้ใช้ → ต้องหยุดที่ขั้นแรกโดยไม่ลงมือ (ไม่คลิกสุ่ม)
+  // force_unverified + STEP_SPECS ที่ส่งมอบ (แบบ UIA) กับตัวต่อปลอมแบบ Win32 (ไม่มีหน้าต่าง WPF/UIA ให้เจอ) → เปิดโปรแกรมแล้วหา "หน้า Login"
+  // ไม่เจอ → หยุดที่ขั้น launch โดยไม่คลิก/พิมพ์อะไรเลย (ไม่คลิกสุ่มเมื่อหน้าจอไม่ตรงกับที่ตรวจไว้)
   const sh = scen({ verified: false, specs: 'shipped', opts: { force_unverified: true } });
-  expect([sh.status, sh.obj.code, sh.obj.step]).toEqual([500, 'LOCATOR_MISSING', 'launch']);
-  expect(sh.acts, 'ไม่มี spec = ไม่ launch ไม่คลิก').toEqual([]);
-  expect(sh.obj.message).toContain('รอตรวจหน้าต่าง');
+  expect([sh.status, sh.obj.code, sh.obj.step]).toEqual([500, 'LAUNCH_FAILED', 'launch']);
+  expect(sh.acts, 'เปิดโปรแกรมครั้งเดียว ไม่คลิก/พิมพ์').toEqual(['launch']);
   const sh2 = scen({ verified: false, specs: 'shipped' });
   expect([sh2.status, sh2.obj.code]).toEqual([422, 'UNVERIFIED']);
 });

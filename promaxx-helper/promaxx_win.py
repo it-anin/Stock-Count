@@ -51,7 +51,7 @@ def _norm_menu(text):
 
 
 class WinAdapter:
-    def __init__(self, win_cls, menu_cls, log):
+    def __init__(self, win_cls, menu_cls, log, uia_cls=None):
         import win32api
         import win32con
         import win32gui
@@ -60,7 +60,27 @@ class WinAdapter:
         self.api, self.con, self.gui, self.proc, self.ps = win32api, win32con, win32gui, win32process, psutil
         self.WinInfo, self.MenuItem, self.log = win_cls, menu_cls, log
         self._mutex = {}
+        self._uia_cls = uia_cls
+        self._uia = None
         self._init_ctypes()
+
+    # ── UIA (ssmaxx.exe เป็น WPF — อ่านผ่าน promaxx_uia.PsUia · อ่านอย่างเดียว) ──
+    def _uia_backend(self):
+        if self._uia is None:
+            if self._uia_cls is None:
+                raise RuntimeError("ไม่ได้ส่ง uia_cls ให้ WinAdapter")
+            import promaxx_uia
+            self._uia = promaxx_uia.PsUia(self._uia_cls, self.log)
+        return self._uia
+
+    def uia_find(self, hwnd, ids=(), ctype="", name=""):
+        return self._uia_backend().find(hwnd, ids=ids, ctype=ctype, name=name)
+
+    def uia_dump(self, hwnd, max_nodes=1500):
+        return self._uia_backend().dump(hwnd, max_nodes=max_nodes)
+
+    def uia_stats(self):
+        return self._uia.stats() if self._uia else None
 
     # ── ctypes ─────────────────────────────────────────────────
     def _init_ctypes(self):
@@ -276,11 +296,21 @@ class WinAdapter:
         except Exception:
             return None
 
-    def focus(self, hwnd):
-        """บังคับ foreground (AttachThreadInput) — คัดลอกจาก force_foreground ของบอทเดิม"""
+    def _restore_if_iconic(self, hwnd):
+        """กู้หน้าต่างกลับมาแสดง "เฉพาะเมื่อถูกย่ออยู่" — SW_RESTORE กับหน้าต่างที่ขยายเต็มจออยู่จะย่อมันกลับเป็นขนาดปกติ
+        (บั๊กเดิมของ focus(): ProMaxx ที่ขยายเต็มจอถูกย่อทุกครั้งที่ต้องดึงขึ้นหน้า · แก้ 3 พ.ย. 2026 ผู้ใช้อนุญาต)"""
         g, c = self.gui, self.con
         try:
-            g.ShowWindow(hwnd, c.SW_RESTORE)
+            if g.IsIconic(hwnd):
+                g.ShowWindow(hwnd, c.SW_RESTORE)
+        except Exception:
+            pass
+
+    def focus(self, hwnd):
+        """บังคับ foreground (AttachThreadInput) — คัดลอกจาก force_foreground ของบอทเดิม (ต่างตรงที่ไม่ย่อหน้าต่างที่ขยายเต็มจอ)"""
+        g = self.gui
+        try:
+            self._restore_if_iconic(hwnd)
             g.SetForegroundWindow(hwnd)
         except Exception:
             pass
@@ -291,7 +321,7 @@ class WinAdapter:
             tgt = self.proc.GetWindowThreadProcessId(hwnd)[0]
             ctypes.windll.user32.AttachThreadInput(cur, fgt, True)
             ctypes.windll.user32.AttachThreadInput(cur, tgt, True)
-            g.ShowWindow(hwnd, c.SW_RESTORE)
+            self._restore_if_iconic(hwnd)
             g.SetForegroundWindow(hwnd)
             ctypes.windll.user32.AttachThreadInput(cur, fgt, False)
             ctypes.windll.user32.AttachThreadInput(cur, tgt, False)
@@ -519,4 +549,9 @@ class WinAdapter:
             except Exception:
                 continue
         info["โปรเซสที่เกี่ยวกับ ProMaxx"] = " | ".join(rel) if rel else "(ไม่มี)"
+        try:                                    # ตรวจว่าตัวอ่าน UIA (PowerShell) ใช้ได้บนเครื่องนี้ — อ่านอย่างเดียว ไม่แตะ ProMaxx
+            r = self._uia_backend().ping()
+            info["UIA (PowerShell)"] = "ใช้ได้ · PowerShell %s · %d ms" % (r.get("ps"), r.get("ms", 0))
+        except Exception as e:      # noqa: BLE001
+            info["UIA (PowerShell)"] = "ใช้ไม่ได้: %s %s" % (type(e).__name__, str(e)[:120])
         return info

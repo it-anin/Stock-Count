@@ -9,7 +9,7 @@ a = Analysis(
     binaries=[],
     datas=[],
     # promaxx_win.py ถูก import ใน main() แบบ lazy · win32*/psutil/PIL ถูก import ภายใน WinAdapter → ระบุไว้กัน PyInstaller มองไม่เห็น
-    hiddenimports=['promaxx_win', 'win32api', 'win32con', 'win32gui', 'win32process', 'win32security', 'psutil',
+    hiddenimports=['promaxx_win', 'promaxx_uia', 'win32api', 'win32con', 'win32gui', 'win32process', 'win32security', 'psutil',
                    'PIL.Image', 'PIL.ImageDraw', 'PIL.ImageGrab'],
     hookspath=[],
     hooksconfig={},

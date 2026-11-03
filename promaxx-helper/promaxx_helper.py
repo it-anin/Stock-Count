@@ -18,8 +18,11 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
   6. LOCATORS_VERIFIED = False → ปฏิเสธคลิกจริงจากเว็บ (UNVERIFIED) · จะเป็น True ได้ต่อเมื่อตรวจกับหน้าต่าง ssmaxx.exe จริงครบแล้วเท่านั้น
   7. หลังคลิกปุ่ม "นำเข้าไฟล์เอกสาร" ห้ามส่ง input เพิ่ม (ขั้นถัดไปต้องขออนุมัติ)
   8. ไม่ขับ ProMaxx ซ้อนกับบอทอื่นที่แย่งเมาส์/คีย์บอร์ด (BLOCK_PROCS)
+  9. ssmaxx.exe เป็นแอป WPF (ไม่มี HWND/HMENU ข้างใน) → หาเป้าด้วย UIA (promaxx_uia.py) เท่านั้น · เป้าต้อง "พบ 1 รายการพอดี" ที่
+     มองเห็นอยู่จริง (ไม่ใช่แค่ IsOffscreen=False — ปุ่มที่เลื่อนไปนอกกรอบหน้าต่างยังรายงาน False) · ต้องตรวจคลาสของหน้าแม่และ HelpText
+     ก่อนคลิกปุ่มที่ id ซ้ำข้ามหน้าได้ (ปุ่มนำเข้าไฟล์มีทั้งฟอร์มเอกสารรับ/จ่ายและฟอร์มโอนสินค้า) · พิมพ์ได้เมื่อช่องที่ถูกต้องรับโฟกัสแล้วเท่านั้น
 
-ไฟล์นี้ไม่ import win32*/psutil เลย (ตัวต่อ Windows อยู่ promaxx_win.py) ⇒ เทสบน Linux ได้ด้วยตัวต่อปลอม
+ไฟล์นี้ไม่ import win32*/psutil เลย (ตัวต่อ Windows อยู่ promaxx_win.py + promaxx_uia.py) ⇒ เทสบน Linux ได้ด้วยตัวต่อปลอม
 
 exit code: 0 สำเร็จ · 1 ไม่สำเร็จ · 2 ตัวเลือกผิด/ตั้งค่าไม่ครบ · 3 ไม่ได้ทำอะไร (มีตัวช่วยอื่น/ProMaxx เปิดอยู่/พอร์ตถูกใช้)
 """
@@ -36,7 +39,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ประวัติรุ่น (แก้โค้ดแล้วเปลี่ยนเลขนี้ทุกครั้ง — ใช้ตรวจด้วย --version ว่าวางไฟล์ถูกรุ่น)
 #   2026-11-03.1  รุ่นแรก: โครง + เซิร์ฟเวอร์ + เครื่องมือตรวจ (--find/--inspect) · ขั้นตอนคลิกยังไม่มี locator (รอตรวจหน้าต่างจริง)
-VERSION = "2026-11-03.1"
+#   2026-11-03.2  เพิ่ม UIA (promaxx_uia.py · kind:"uia" · เงื่อนไข uia/uia_gone · action await) + เติม STEP_SPECS จากการตรวจจริง (ยังไม่เคยคลิกจริง)
+#   2026-11-03.3  focus() ไม่ย่อหน้าต่างที่ขยายเต็มจอ (SW_RESTORE เฉพาะตอนหน้าต่างถูกย่ออยู่)
+VERSION = "2026-11-03.3"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"
@@ -57,10 +62,13 @@ EXE_CANDIDATES = (
 EXIT_OK, EXIT_FAILED, EXIT_CONFIG, EXIT_BUSY = 0, 1, 2, 3
 
 # ชนิดเอกสาร → ข้อความไทย/อักษรปุ่ม (ผู้ใช้ระบุ 3 พ.ย. 2026: IRPS = เอกสารรับ = อักษร I · ORDS = เอกสารจ่าย = อักษร O)
+#   menu_cls = คลาสของหน้าเมนูย่อยที่ปุ่ม I/O อยู่ · form_cls = คลาสของฟอร์มเอกสารที่เปิดหลังกดปุ่ม (ตรวจจริง 3 พ.ย. 2026 — UIA ClassName)
+#   ⚠️ ค่าทุกตัวต้องไม่มีอักขระพิเศษของ regex (เทสตรึง re.escape(v)==v) เพราะถูกแทนเข้า spec ผ่าน _fmt ที่ escape ให้
 DOC_TYPES = {
-    "ORDS": {"letter": "O", "menu_th": "เอกสารจ่าย"},
-    "IRPS": {"letter": "I", "menu_th": "เอกสารรับ"},
+    "ORDS": {"letter": "O", "menu_th": "เอกสารจ่าย", "menu_cls": "ui_mainmenu_tranout_style2", "form_cls": "pn_trans_out"},
+    "IRPS": {"letter": "I", "menu_th": "เอกสารรับ", "menu_cls": "ui_mainmenu_tranin_style2", "form_cls": "pn_trans_in"},
 }
+UIA_MAX_ERRORS = 3          # อ่าน UIA ล้มติดกันกี่ครั้งในลูปรอเงื่อนไขก่อนยอมแพ้ (ครั้งเดียวอาจเป็นช่วงโปรแกรมกำลังเปิด)
 
 STEP_ORDER = ("launch", "login", "menu", "doc-button", "import-button")   # ลำดับขั้นตอนจริง (preflight ทำก่อนเสมอ)
 IMPORT_STEP = STEP_ORDER[-1]                                              # ขั้นสุดท้าย — หลังขั้นนี้ห้ามมี input เพิ่ม
@@ -104,6 +112,23 @@ class MenuItem:
     id: int = 0                      # รหัสคำสั่ง (WM_COMMAND) · 0 = หัวข้อที่มีเมนูย่อย/เส้นคั่น
     enabled: bool = True
     submenu: bool = False
+
+
+@dataclass(frozen=True)
+class UiaEl:
+    """องค์ประกอบหนึ่งชิ้นจาก UIA (promaxx_uia.PsUia.find) — ไม่มี 'ค่าที่พิมพ์ในช่อง' โดยตั้งใจ"""
+    id: str = ""                     # AutomationId
+    type: str = ""                   # ControlType เช่น Button / ListItem / Custom / Edit / TabItem
+    name: str = ""
+    help: str = ""                   # HelpText (WPF เปิดเผยข้อความ tooltip ผ่านช่องนี้)
+    cls: str = ""                    # ClassName
+    rect: tuple | None = None        # (ซ้าย, บน, ขวา, ล่าง) พิกัดหน้าจอ · None = ไม่มีพิกัด
+    enabled: bool = True
+    offscreen: bool = False          # ⚠️ ไม่น่าเชื่อถือคนเดียว: องค์ประกอบที่เลื่อนไปนอกกรอบหน้าต่างยังรายงาน False → ต้องเช็คพิกัดด้วย
+    focusable: bool = False
+    focused: bool = False
+    password: bool = False
+    parents: tuple = ()              # ((AutomationId, ClassName), …) ใกล้ → ไกล (สูงสุด 8 ชั้น)
 
 
 class HelperError(Exception):
@@ -259,23 +284,93 @@ def load_settings(base_dir=None, environ=None, warn=None):
 
 
 # ─────────────────────────────────────────────────────────────
-# ข้อกำหนดขั้นตอน (STEP_SPECS) — ⛔ ว่างจนกว่าจะตรวจกับหน้าต่าง ssmaxx.exe จริง (Gate 0) ห้ามเดา class/พิกัด
+# ข้อกำหนดขั้นตอน (STEP_SPECS) — ค่าทุกตัวมาจากการตรวจหน้าต่าง ssmaxx.exe จริง 3 พ.ย. 2026 (UIA · อ่านอย่างเดียว) ห้ามเดา id/คลาส/พิกัด
 # ─────────────────────────────────────────────────────────────
-# รูปแบบ (เทสใช้ชุดตัวอย่างเต็มใน tests/lib/fake_ssmaxx.py):
+# รูปแบบ (เทสใช้ชุดตัวอย่างเต็มของ Win32 ใน tests/lib/fake_ssmaxx.py และของ UIA ใน tests/lib/fake_ssmaxx_uia.py):
 #   STEP_SPECS = {
 #     "launch":  {"post": COND, "post_timeout": 60},
 #     "login":   {"pre": COND, "actions": [ACTION, ...], "post": COND},
 #     "menu" | "doc-button" | "import-button": {"pre": COND, "actions": [...], "post": COND, "allow_dialogs": [regex]}
 #   }
-#   W      = {"cls": "ชื่อ class (ไม่สนตัวพิมพ์)" | None, "title": "regex ของข้อความหน้าต่าง" | None}      หน้าต่างระดับบนของ ssmaxx เท่านั้น
+#   W      = {"cls": "ชื่อ class (ไม่สนตัวพิมพ์)" | None, "cls_re": "regex ของ class" | None, "title": "regex ของข้อความหน้าต่าง" | None}
+#            หน้าต่างระดับบนของ ssmaxx เท่านั้น (WPF: class = HwndWrapper[ssmaxx.exe;;<GUID ที่เปลี่ยนทุกครั้ง>] → ต้องใช้ cls_re)
 #   COND   = {"win": W} | {"gone": W} | {"ctl": {"within": W, "cls": .., "text": regex}} | {"all": [COND..]} | {"any": [COND..]}
+#          | {"uia": SEL}        มีองค์ประกอบตรง SEL ที่ "มองเห็นอยู่จริง" อย่างน้อย 1 ชิ้น (และโฟกัสอยู่ถ้า SEL.focused)
+#          | {"uia_gone": SEL}   ไม่มีองค์ประกอบตรง SEL ที่มองเห็นอยู่ (หายไป/ซ่อน/นอกกรอบหน้าต่าง)
+#   SEL    = {"within": W, "id": "AutomationId" | ["id1","id2"(สูงสุด 4)], "type": "Button|ListItem|Custom|Edit|TabItem|List|…",
+#             "name": "ชื่อตรงตัว", "cls": "ClassName ตรงตัว", "help": "HelpText ตรงตัว",
+#             "ancestor": {"id": "AutomationId ของหน้าแม่", "cls": "ClassName ของหน้าแม่"}  (อย่างน้อยหนึ่งชั้นในสายแม่ต้องตรงทุกคีย์ที่ระบุ),
+#             "focused": True}    ต้องมี id/type/name อย่างน้อยหนึ่งอย่าง · ห้ามใช้ id ที่เป็นตัวเลข (เปลี่ยนทุกครั้งที่โหลดหน้า)
 #   ACTION = {"do": "click", "target": T} | {"do": "type", "what": "username"|"password", "within": W}
 #          | {"do": "key", "key": "enter"|"tab", "within": W} | {"do": "wait", "sec": 0.5}
+#          | {"do": "await", "cond": COND, "timeout": 6, "what": "ข้อความเมื่อไม่ตรง"}   รอเงื่อนไข (เช่น ช่องรับโฟกัส) ก่อนทำต่อ · dry-run ข้าม
 #   T      = {"kind": "menu",    "within": W, "path": [regex, ...]}                              คลิกเมนูด้วย WM_COMMAND (ไม่ใช้เมาส์)
 #          | {"kind": "control", "within": W, "cls": "Button", "text": regex, "via": "message"|"mouse"}
 #          | {"kind": "point",   "within": W, "child_cls": None|"pbdw125", "index": n, "x": 0..1, "y": 0..1}   เมาส์จริง · เศษส่วนของ rect
-#   ข้อความ/regex ใน spec ใส่ {menu_th} และ {letter} ได้ (แทนด้วยค่าของชนิดเอกสาร · re.escape ให้)
-STEP_SPECS = {}
+#          | {"kind": "uia", ...SEL, "reverify": True}   เมาส์จริงที่กึ่งกลางพิกัดที่ UIA ให้ · reverify = อ่านซ้ำก่อนกด ถ้าเป้าขยับ >2px หยุด
+#   ข้อความ/regex ใน spec ใส่ {menu_th} {letter} {menu_cls} {form_cls} ได้ (แทนด้วยค่าของชนิดเอกสาร · re.escape ให้)
+#
+# ที่มาของค่า (ตรวจจริง · README §ผลตรวจจริง): หน้า Login = uo_login_panel · ช่องชื่อผู้ใช้/รหัสผ่านสลับชนิดตามโฟกัส
+# (cf_empid=TextBox ↔ cf_empid:1=DWTextBlock · cf_pass=PasswordBox ↔ cf_pass:1=DWTextBlock) · เมนูซ้าย = ListBox lbx_manumain (ListItem ไม่มี id → ใช้ชื่อ)
+# · ปุ่ม I/O = Button id I/O ใต้หน้าเมนูคลาส ui_mainmenu_tranin/tranout_style2 · ฟอร์มเอกสารคลาส pn_trans_in/pn_trans_out ใต้แท็บ MDI_TAB
+# · ปุ่มนำเข้า = uo_tran_bt_import (HelpText "นำเข้าไฟล์เอกสาร") — id นี้มีในฟอร์มโอนสินค้า pn_trans_tb_out ด้วย จึงต้องเช็คคลาสฟอร์ม
+# · หลังกดปุ่มนำเข้า = กล่อง #32770 "Select File" (หน้าต่างหลักถูกล็อก)
+_MAIN = {"cls_re": r"^HwndWrapper\[ssmaxx\.exe;;", "title": r"^SeniorSoft ProMaxx$"}
+_LOGIN_PANEL = {"within": _MAIN, "id": "uo_login_panel", "type": "Custom"}
+_UNDER_LOGIN = {"id": "uo_login_panel"}
+_USER_CELL = {"within": _MAIN, "id": ["cf_empid", "cf_empid:1"], "ancestor": _UNDER_LOGIN}
+_USER_EDIT = {"within": _MAIN, "id": "cf_empid", "type": "Edit", "cls": "TextBox", "focused": True, "ancestor": _UNDER_LOGIN}
+_PASS_CELL = {"within": _MAIN, "id": ["cf_pass", "cf_pass:1"], "ancestor": _UNDER_LOGIN}
+_PASS_EDIT = {"within": _MAIN, "id": "cf_pass", "type": "Edit", "cls": "PasswordBox", "focused": True, "ancestor": _UNDER_LOGIN}
+_LOGIN_BTN = {"within": _MAIN, "id": "cb_Login", "type": "Button", "ancestor": _UNDER_LOGIN}
+_MAIN_MENU_ANY = {"within": _MAIN, "type": "ListItem", "name": "เอกสารรับ", "ancestor": {"id": "lbx_manumain"}}
+_MENU_ITEM = {"within": _MAIN, "type": "ListItem", "name": "{menu_th}", "ancestor": {"id": "lbx_manumain"}}
+_MENU_BTN = {"within": _MAIN, "id": "{letter}", "type": "Button", "ancestor": {"cls": "{menu_cls}"}}
+_DOC_TAB = {"within": _MAIN, "type": "TabItem", "name": "{menu_th}", "ancestor": {"id": "MDI_TAB"}}
+_IMPORT_BTN = {"within": _MAIN, "id": "uo_tran_bt_import", "type": "Button", "help": "นำเข้าไฟล์เอกสาร", "ancestor": {"cls": "{form_cls}"}}
+_FILE_DIALOG = {"cls": "#32770", "title": r"^Select File$"}
+
+
+def _uia(sel, **extra):
+    return dict(sel, kind="uia", **extra)
+
+
+STEP_SPECS = {
+    "launch": {"post": {"uia": _LOGIN_PANEL}, "post_timeout": 90},
+    "login": {
+        "pre": {"uia": _LOGIN_PANEL},
+        "actions": [
+            {"do": "click", "target": _uia(_USER_CELL)},
+            {"do": "await", "cond": {"uia": _USER_EDIT}, "timeout": 8, "what": "ช่องชื่อผู้ใช้ยังไม่รับโฟกัส — ไม่พิมพ์"},
+            {"do": "type", "what": "username", "within": _MAIN},
+            {"do": "click", "target": _uia(_PASS_CELL)},
+            {"do": "await", "cond": {"uia": _PASS_EDIT}, "timeout": 8, "what": "ช่องรหัสผ่านยังไม่รับโฟกัส — ไม่พิมพ์"},
+            {"do": "type", "what": "password", "within": _MAIN},
+            {"do": "click", "target": _uia(_LOGIN_BTN)},
+        ],
+        "post": {"all": [{"uia_gone": _LOGIN_PANEL}, {"uia": _MAIN_MENU_ANY}]},
+        "post_timeout": 40,
+    },
+    "menu": {
+        "pre": {"uia": _MENU_ITEM},
+        "actions": [{"do": "click", "target": _uia(_MENU_ITEM)}],
+        "post": {"uia": _MENU_BTN},
+        "post_timeout": 15,
+    },
+    "doc-button": {
+        "pre": {"uia": _MENU_BTN},
+        "actions": [{"do": "click", "target": _uia(_MENU_BTN)}],
+        "post": {"all": [{"uia": _DOC_TAB}, {"uia": _IMPORT_BTN}]},
+        "post_timeout": 40,
+    },
+    "import-button": {
+        "pre": {"uia": _IMPORT_BTN},
+        "actions": [{"do": "click", "target": _uia(_IMPORT_BTN, reverify=True)}],
+        "allow_dialogs": [r"^Select File\b"],
+        "post": {"win": _FILE_DIALOG},
+        "post_timeout": 20,
+    },
+}
 
 
 def _fmt(obj, tokens):
@@ -299,9 +394,51 @@ def _match_win(w, spec):
     spec = spec or {}
     if spec.get("cls") and (w.cls or "").lower() != spec["cls"].lower():
         return False
+    if spec.get("cls_re") and not re.search(spec["cls_re"], w.cls or "", re.I):
+        return False
     if spec.get("title") and not re.search(spec["title"], w.text or "", re.I):
         return False
     return True
+
+
+def _sel_ids(sel):
+    i = sel.get("id")
+    if not i:
+        return []
+    return [i] if isinstance(i, str) else [str(x) for x in i]
+
+
+def _sel_label(sel):
+    parts = []
+    ids = _sel_ids(sel)
+    if ids:
+        parts.append("id=" + "|".join(ids))
+    for k in ("type", "name", "cls", "help"):
+        if sel.get(k):
+            parts.append("%s=%s" % (k, sel[k]))
+    anc = sel.get("ancestor") or {}
+    if anc:
+        parts.append("ใต้ " + ",".join("%s=%s" % (k, v) for k, v in anc.items() if v))
+    return "UIA[" + " ".join(parts) + "]"
+
+
+def _visible_in(rect, top_rect, min_visible=0.8, min_size=4):
+    """องค์ประกอบ 'มองเห็นอยู่จริง' ในกรอบหน้าต่างหรือไม่ — กึ่งกลางต้องอยู่ในกรอบ และส่วนที่อยู่ในกรอบ ≥ min_visible ของพื้นที่
+    (IsOffscreen ของ UIA เชื่อไม่ได้: ปุ่มที่ถูกเลื่อนไปนอกกรอบหน้าต่างยังรายงาน False — เจอจริงกับปุ่ม I/O หลังเปิดฟอร์ม)"""
+    if not rect:
+        return False
+    l, t, r, b = rect
+    w, h = r - l, b - t
+    if w < min_size or h < min_size:
+        return False
+    cx, cy = (l + r) / 2.0, (t + b) / 2.0
+    tl, tt, tr, tb = top_rect
+    if not (tl <= cx <= tr and tt <= cy <= tb):
+        return False
+    iw, ih = min(r, tr) - max(l, tl), min(b, tb) - max(t, tt)
+    if iw <= 0 or ih <= 0:
+        return False
+    return (iw * ih) / float(w * h) >= min_visible
 
 
 def _center(rect):
@@ -355,6 +492,7 @@ class Runner:
         self._typed_creds = False
         self._after_import = False       # True หลังคลิกปุ่มนำเข้า — ห้ามมี input อีก (ตรวจใน _guard_no_input)
         self.actions_after_import = 0
+        self._uia_errs = 0               # อ่าน UIA ล้มติดกันกี่ครั้ง (ใช้ในลูปรอเงื่อนไข — ดู UIA_MAX_ERRORS)
 
     # ── ตัวช่วย: หน้าต่างของ ssmaxx ──────────────────────────────
     def _pids(self):
@@ -395,6 +533,32 @@ class Runner:
             raise HelperError("LOCATOR_NOT_UNIQUE", "พบหน้าต่าง %s %d อัน — ไม่คลิกเดา" % (label, len(found)), step)
         return found[0]
 
+    # ── UIA (ssmaxx.exe เป็น WPF — ข้างในไม่มี HWND) ─────────────
+    def _uia_matches(self, top, sel, step):
+        """คืน (ตรงตัวตน, มองเห็นอยู่, หมายเหตุว่าทำไมบางชิ้นถูกตัด)
+        ตัวตน = id/type/name (ถามที่ UIA) + cls + HelpText + หน้าแม่ · มองเห็น = ไม่ offscreen และอยู่ในกรอบหน้าต่างจริง (_visible_in)"""
+        try:
+            els = list(self.adapter.uia_find(top.hwnd, ids=_sel_ids(sel), ctype=sel.get("type") or "", name=sel.get("name") or ""))
+        except HelperError:
+            raise
+        except Exception as e:      # noqa: BLE001
+            raise HelperError("UIA_ERROR", "อ่านโครงหน้าต่าง ProMaxx (UIA) ไม่ได้: %s %s" % (type(e).__name__, self._scrub(str(e))[:140]), step)
+        anc = sel.get("ancestor") or {}
+        ident, notes = [], []
+        for e in els:
+            if sel.get("cls") and e.cls != sel["cls"]:
+                notes.append("ClassName=%r" % e.cls)
+                continue
+            if sel.get("help") is not None and e.help != sel["help"]:
+                notes.append("HelpText=%r" % e.help)
+                continue
+            if anc and not any((not anc.get("id") or pid == anc["id"]) and (not anc.get("cls") or pcls == anc["cls"]) for pid, pcls in e.parents):
+                notes.append("หน้าแม่=%s" % ",".join(c or i for i, c in e.parents[:3]))
+                continue
+            ident.append(e)
+        vis = [e for e in ident if not e.offscreen and _visible_in(e.rect, top.rect)]
+        return ident, vis, notes
+
     # ── เงื่อนไข ─────────────────────────────────────────────────
     def _cond(self, c, step):
         if not c:
@@ -410,6 +574,25 @@ class Runner:
         if "ctl" in c:
             spec = c["ctl"]
             return any(self._children(top, spec) for top in self._find_tops(spec.get("within")))
+        if "uia" in c or "uia_gone" in c:
+            gone = "uia_gone" in c
+            sel = c["uia_gone" if gone else "uia"]
+            seen = False
+            for top in self._find_tops(sel.get("within")):
+                try:
+                    _, vis, _ = self._uia_matches(top, sel, step)
+                except HelperError as e:
+                    if e.code != "UIA_ERROR":
+                        raise
+                    self._uia_errs += 1          # ช่วงโปรแกรมกำลังเปิดอาจอ่านล้มชั่วคราว — ทนได้ UIA_MAX_ERRORS ครั้งติดกัน
+                    if self._uia_errs > UIA_MAX_ERRORS:
+                        raise
+                    return False
+                self._uia_errs = 0
+                if sel.get("focused"):
+                    vis = [e for e in vis if e.focused]
+                seen = seen or bool(vis)
+            return (not seen) if gone else seen
         raise HelperError("LOCATOR_MISSING", "เงื่อนไขของขั้น %s ไม่รู้จัก: %r" % (step, sorted(c)), step)
 
     def _wait_cond(self, cond, timeout, step, code, what, allow=None, each=None):
@@ -499,6 +682,21 @@ class Runner:
             x = rect[0] + float(t["x"]) * (rect[2] - rect[0])
             y = rect[1] + float(t["y"]) * (rect[3] - rect[1])
             return Resolved("point", "mouse", top, hwnd, rect, (int(round(x)), int(round(y))), None, label)
+        if kind == "uia":
+            if not top.enabled:
+                raise HelperError("UNEXPECTED_DIALOG", "หน้าต่างหลักของ ProMaxx ถูกล็อก (มีกล่องโมดัลเปิดอยู่) — ไม่คลิก", step)
+            label = _sel_label(t)
+            ident, vis, notes = self._uia_matches(top, t, step)
+            if not ident:
+                raise HelperError("LOCATOR_NOT_FOUND", "ไม่พบ %s%s" % (label, (" (ตัดทิ้ง: " + "; ".join(notes[:3]) + ")") if notes else ""), step)
+            if not vis:
+                raise HelperError("LOCATOR_NOT_FOUND", "พบ %s แต่ไม่ได้อยู่ในหน้าจอ (ซ่อน/นอกกรอบหน้าต่าง) — ไม่คลิก" % label, step)
+            if len(vis) > 1:
+                raise HelperError("LOCATOR_NOT_UNIQUE", "พบ %s %d รายการ — ไม่คลิกเดา" % (label, len(vis)), step)
+            e = vis[0]
+            if not e.enabled:
+                raise HelperError("LOCATOR_NOT_FOUND", "%s ใช้งานไม่ได้ (disabled)" % label, step)
+            return Resolved("uia", "mouse", top, top.hwnd, e.rect, _center(e.rect), None, label)
         raise HelperError("LOCATOR_MISSING", "ชนิดเป้าหมายไม่รู้จัก: %r" % kind, step)
 
     def _mark(self, res, step):
@@ -517,7 +715,7 @@ class Runner:
         if not self.opts.dry_run:
             self._guard_no_input(step)
             self._guard_dialogs(step, allow)
-            if t.get("via") == "mouse" or t.get("kind") == "point":
+            if t.get("via") == "mouse" or t.get("kind") in ("point", "uia"):       # uia = เมาส์จริงที่กึ่งกลางพิกัดจาก UIA เสมอ
                 self._ensure_focus(top, step)
         res = self._resolve(t, step)                     # อ่านพิกัดหลังโฟกัส (หน้าต่างอาจถูกกู้จากย่อ → rect เปลี่ยน)
         if self.opts.dry_run:
@@ -527,6 +725,12 @@ class Runner:
             if self.opts.hover_ms > 0:
                 self.adapter.move_to(*res.point)
                 self.sleep(self.opts.hover_ms / 1000.0)
+            if t.get("reverify"):
+                # ปุ่มอันตรายอยู่ติดกัน (ลบ/ยกเลิกรายการห่าง 4px) — อ่านเป้าซ้ำก่อนกด ถ้าขยับเกิน 2px = หยุด ไม่กดเดา
+                again = self._resolve(t, step)
+                if abs(again.point[0] - res.point[0]) > 2 or abs(again.point[1] - res.point[1]) > 2:
+                    raise HelperError("INTERFERENCE", "เป้า %s ขยับระหว่างเตรียมคลิก (%s → %s) — ไม่คลิก" % (res.label, res.point, again.point), step)
+                res = again
             ok, why = self.adapter.click_at(res.point[0], res.point[1], self._pids())
             if not ok:
                 raise HelperError("INTERFERENCE", "คลิกไม่ได้: %s — ยกเลิก (อย่าแตะเมาส์ระหว่างทำงาน)" % why, step)
@@ -544,6 +748,12 @@ class Runner:
         if do == "wait":
             if not self.opts.dry_run:
                 self.sleep(float(a.get("sec", 0.5)))
+            return
+        if do == "await":
+            # รอเงื่อนไขก่อนทำต่อ (เช่น ช่องรหัสผ่านรับโฟกัสแล้ว) — ไม่ตรง = หยุดก่อนพิมพ์ · dry-run ไม่คลิกจริงจึงข้าม
+            if not self.opts.dry_run:
+                self._wait_cond(a.get("cond"), float(a.get("timeout", 6)), step, "PRECONDITION_FAILED",
+                                a.get("what") or "เงื่อนไขก่อนทำต่อไม่ตรง", allow)
             return
         if do == "click":
             return self._click(a.get("target") or {}, step, allow)
@@ -589,6 +799,7 @@ class Runner:
             dump = self.adapter.dump(self._pids())
             write_dump(d, dump, self._scrub)
             self.adapter.screenshot(os.path.join(d, "screen.png"))
+            write_uia_dumps(self.adapter, d, self._pids(), self._scrub, self.log)
             result = {"code": err.code, "step": err.step, "message": err.message, "steps": self.steps,
                       "dialogs": [[t, list(x)] for t, x in self.dialogs_seen]}
             with open(os.path.join(d, "result.json"), "w", encoding="utf-8") as f:
@@ -704,12 +915,28 @@ class Runner:
             raise
         self.steps.append({"name": name, "ok": True, "ms": int((self.clock() - t0) * 1000)})
 
+    def _log_uia_stats(self):
+        st = getattr(self.adapter, "uia_stats", None)
+        if st:
+            try:
+                s = st()
+                if s and s.get("calls"):
+                    self.log("UIA: %d ครั้ง รวม %.1f วินาที (เฉลี่ย %d ms · ช้าสุด %d ms)" % (s["calls"], s["totalMs"] / 1000.0, s["avgMs"], s["maxMs"]))
+            except Exception:       # noqa: BLE001
+                pass
+
     def run(self, doc_type, only_step=None):
         """คืน (http_status, dict) — เส้นทางเดียวกันทั้ง HTTP และ CLI"""
+        try:
+            return self._run(doc_type, only_step)
+        finally:
+            self._log_uia_stats()
+
+    def _run(self, doc_type, only_step=None):
         t0 = self.clock()
         self.doc_type = doc_type
         info = DOC_TYPES[doc_type]
-        self.tokens = {"menu_th": info["menu_th"], "letter": info["letter"]}
+        self.tokens = dict(info)         # letter · menu_th · menu_cls · form_cls (ทุกคีย์ใน DOC_TYPES แทนเข้า spec ได้)
         try:
             self._preflight(only_step)
             names = (only_step,) if only_step else STEP_ORDER
@@ -770,6 +997,32 @@ def write_dump(folder, dump, scrub=None):
         f.write(scrub(render_dump_text(dump)))
 
 
+def write_uia_dumps(adapter, folder, pids, scrub=None, log=None):
+    """UIA dump ของหน้าต่างระดับบนที่มองเห็นอยู่ทุกใบของ ssmaxx → uia_<n>_<hwnd>.txt (อ่านอย่างเดียว · ไม่อ่านค่าในช่องกรอก)
+    ล้มได้โดยไม่กระทบงานหลัก (หลักฐานเป็นของเสริม) · scrub = ปิดรหัสผ่านเหมือนไฟล์หลักฐานอื่น"""
+    if not hasattr(adapter, "uia_dump"):
+        return 0
+    scrub = scrub or str
+    n = 0
+    try:
+        for w in adapter.top_windows(pids):
+            if not w.visible or w.w < 10 or w.h < 10:
+                continue
+            try:
+                lines = adapter.uia_dump(w.hwnd)
+            except Exception as e:      # noqa: BLE001
+                if log:
+                    log("UIA dump ของหน้าต่าง %s ไม่สำเร็จ (%s)" % (w.hwnd, type(e).__name__))
+                continue
+            n += 1
+            with open(os.path.join(folder, "uia_%d_%s.txt" % (n, w.hwnd)), "w", encoding="utf-8") as f:
+                f.write(scrub("\n".join(lines) + "\n"))
+    except Exception as e:      # noqa: BLE001
+        if log:
+            log("UIA dump ไม่สำเร็จ (%s)" % type(e).__name__)
+    return n
+
+
 def prune_runs(runs_dir, keep=30):
     """เก็บโฟลเดอร์หลักฐานล่าสุด keep อัน — กันดิสก์เต็ม"""
     try:
@@ -798,8 +1051,9 @@ def run_inspect(adapter, settings, log, label=""):
     dump = adapter.dump(pids)
     write_dump(folder, dump, getattr(log, "scrub", None))
     shot = adapter.screenshot(os.path.join(folder, "screen.png"))
-    log("บันทึกผลตรวจ (อ่านอย่างเดียว ไม่คลิก): %s · หน้าต่างระดับบน %d · ภาพหน้าจอ %s" % (
-        folder, len(dump.get("windows", [])), "ได้" if shot else "ไม่ได้"))
+    n_uia = write_uia_dumps(adapter, folder, pids, getattr(log, "scrub", None), log)
+    log("บันทึกผลตรวจ (อ่านอย่างเดียว ไม่คลิก): %s · หน้าต่างระดับบน %d · ภาพหน้าจอ %s · UIA %d หน้าต่าง" % (
+        folder, len(dump.get("windows", [])), "ได้" if shot else "ไม่ได้", n_uia))
     prune_runs(settings.runs_dir)
     return folder
 
@@ -1040,7 +1294,7 @@ def main(argv=None, adapter_factory=None, settings=None, log=None, clock=None, s
             print("ไม่พบ promaxx_win.py")
             return EXIT_CONFIG
         try:
-            adapter_factory = lambda: promaxx_win.WinAdapter(WinInfo, MenuItem, log)   # noqa: E731
+            adapter_factory = lambda: promaxx_win.WinAdapter(WinInfo, MenuItem, log, uia_cls=UiaEl)   # noqa: E731
             adapter = adapter_factory()
         except ImportError as e:
             print("ต้องรันบน Windows และติดตั้ง pywin32 / psutil / pillow (%s)" % e)
