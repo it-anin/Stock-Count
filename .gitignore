@@ -50,6 +50,19 @@ auto-r16/auto_r16_confirm_shadow.jsonl
 auto-r16/auto_r16_confirm_shadow.jsonl.1
 tests/lib/__pycache__/
 
+# promaxx-helper (ตัวช่วยของปุ่ม "บันทึกลง PROMAXX" — รันบนเครื่อง ProMaxx แต่ละเครื่อง)
+# ⛔ .env เก็บรหัสผ่าน ProMaxx — repo นี้เป็น PUBLIC ห้ามเข้า repo เด็ดขาด
+promaxx-helper/.env
+# exe build เองจาก promaxx-helper/ (build_exe.bat) + โฟลเดอร์ชั่วคราวของ PyInstaller
+promaxx-helper/PromaxxHelper.exe
+promaxx-helper/build/
+promaxx-helper/__pycache__/
+# log เฉพาะเครื่อง
+promaxx-helper/promaxx_helper.log
+promaxx-helper/promaxx_helper.log.1
+# หลักฐานตอนตรวจ/ล้ม (dump หน้าต่าง + screenshot ของ ProMaxx) — อาจมีข้อมูลธุรกิจของสาขา ห้ามเข้า repo
+promaxx-helper/runs/
+
 # automated tests (tests/.gitignore คุมรายละเอียดอีกชั้น)
 tests/node_modules/
 tests/vendor/
