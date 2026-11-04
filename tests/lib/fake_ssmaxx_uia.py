@@ -23,11 +23,47 @@ DIALOG_HWND = 300
 LIST_ITEMS = ["Dashboard", "ตั้งค่า", "คลังสินค้า", "บุคคล", "เอกสารรับ", "เอกสารจ่าย", "Utility"]
 SHIFT = 1900                      # หน้าเมนูถูกเลื่อนไปทางขวาเท่านี้หลังเปิดฟอร์ม
 IMPORT_HELP = "นำเข้าไฟล์เอกสาร"
+PICKER_HWND = 400
+PICKER_CLS = "HwndWrapper[ssmaxx.exe;;d89a72ff-dc5b-4af7-a4b7-e38be0bcee7e]"
+PICKER_TITLE = "sfw_winrespond"
+# รายการในหน้าต่างเลือกตามที่ตรวจจริง (D2/D6/E1) — ORDS: 13 แถว (ไม่มีแถบเลื่อน) · IRPS: 15 แถวขึ้นไป · คลัง: 2 แถว
+TYPE_ROWS = {
+    "O": ["ORDS ใบปรับปรุงลดสินค้า", "ORCM ใบเสร็จรับเงิน(เงินสด)", "OCTM •••• ภาษี7%(เงินสด) ••••", "OCTC ใบเสร็จรับเงิน/ใบกำกับภาษี(เงินเชื่อ...",
+          "OBNM ใบเสร็จรับเงิน(จากใบวางบิล)", "OOQ *****ใบเสนอราคา", "OORD ใบสั่งจอง", "ORNC ใบส่งสินค้า (เงินเชื่อ)", "BYUSE สินค้าใช้ภายในร้าน",
+          "LOST สินค้าหมดอายุ/เสียหาย", "BYITD ใบจ่ายสินค้าภายใน", "ONL Online Order", "BKK BKK Transfer"],
+    "I": ["IRBS ใบยืมสินค้าเข้า", "IRPS ใบปรับปรุงเพิ่มสินค้า", "IRNC ใบรับสินค้าเข้า(เงินเชื่อ) IRNC", "IRVC ใบรับสินค้า/ใบกำกับภาษี(เงินเชื่อ) ...",
+          "IRNM ใบรับสินค้าเข้า/ใบเสร็จรับเงิน(เงิน...", "IRVM ใบรับสินค้า/ใบเสร็จรับเงิน/ใบกำกับภ...", "IRCM ใบเสร็จรับเงิน(เงินสด)", "IRCC ใบเสร็จรับเงิน(เงินเชื่อ) IRCC",
+          "PV ใบสำคัญจ่าย", "IBNV ใบเสร็จรับเงิน/ใบกำกับภาษี(จากใบวาง...", "IVVS ใบกำกับภาษีซื้อ", "IPOS ใบสั่งซื้อ", "ICS ใบนับสินค้าเข้าสต็อก",
+          "ICSM ใบรับสินค้าเข้า(ของแถม)", "IRDP ใบส่งคืนสินค้าฝาก"],
+}
+WH_ROWS = ["Warehouse", "Front Store"]
+# ค่าเริ่มต้นของฟอร์มที่เปิดใหม่ (ตรวจจริง): ORDS เปิดมาเป็นประเภทไหนก็ได้ (ตอน 20:55 เป็น ORCM · ภายหลังเป็น ORDS) คลัง Front Store · IRPS เปิดมาเป็น IRPS คลัง Warehouse
+DEFAULTS = {"O": ("ORCM ใบเสร็จรับเงิน(เงินสด)", "Front Store"), "I": ("IRPS ใบปรับปรุงเพิ่มสินค้า", "Warehouse")}
 
 UFLAGS = dict(uia_fail_first=0, uia_always_fail=False, dup_login_btn=False, import_help=IMPORT_HELP, form_cls_override=None,
               top_disabled=False, focus_never=False, drift_on_move=False, start_focus_field="username", list_hidden=False,
               edit_unfocused=False,   # ช่องกรอกถูกสร้างแล้วแต่ไม่ได้รับโฟกัสแป้นพิมพ์ (เช่นหน้าต่างไม่ใช่ foreground)
-              pass_plain=False)       # ช่อง cf_pass เป็น TextBox ธรรมดา ไม่ใช่ PasswordBox (พิมพ์รหัสลงช่องที่ไม่ปิดบังไม่ได้)
+              pass_plain=False,       # ช่อง cf_pass เป็น TextBox ธรรมดา ไม่ใช่ PasswordBox (พิมพ์รหัสลงช่องที่ไม่ปิดบังไม่ได้)
+              # ── หน้าต่างเลือกประเภทเอกสาร/คลัง ──
+              start_type=None, start_wh=None,     # ค่าตั้งต้นของฟอร์มที่เปิดแล้ว (ชื่อแถวเต็ม เช่น "ORDS ใบปรับปรุงลดสินค้า") · None = ค่าเริ่มต้นตามชนิดฟอร์ม
+              picker_open=None,                   # "type" | "wh" = เริ่มโดยมีหน้าต่างรายการเปิดค้าง
+              rows_missing=False,                 # รายการประเภทไม่มีแถวเป้า (ORDS/IRPS) · wh_missing = รายการคลังไม่มี Front Store
+              wh_missing=False,
+              rows_dup=False,                     # แถวเป้าซ้ำ 2 แถว
+              rows_decoy=False,                   # มีแถวชื่อ "ขึ้นต้นเหมือนเป้าแต่ไม่ตรงทั้งชื่อ" (ORDS ...(เก่า) / Front Store 2) — ต้องไม่ถูกนับเป็นเป้า
+              pick_no_effect=False,               # คลิกแถวแล้วเครื่องหมายเลือกแถวไม่ย้าย
+              pick_wrong_row=False,               # คลิกแถวหนึ่งแต่ระบบเลือกอีกแถว (คลิกพลาด) → ตกลงแล้วได้ค่าอื่น
+              ok_no_effect=False,                 # กด ตกลง แล้วไม่มีอะไรเปลี่ยน/หน้าต่างไม่ปิด
+              ok_wrong_value=False,               # เครื่องหมายอยู่ถูกแถว แต่ ตกลง ใส่ค่าของแถวอื่น
+              ok_keeps_open=False,                # ตกลง ใส่ค่าถูก แต่หน้าต่างรายการไม่ปิด
+              picker_wrong_title=False,           # หัวข้อหน้าต่างรายการไม่ตรง (คนละรายการ)
+              wh_resets_type=False,               # เปลี่ยนคลังแล้วประเภทถูกรีเซ็ตกลับค่าเริ่มต้น (ต้องจับได้ที่ด่านก่อนนำเข้า)
+              type_resets_wh=False,               # เปลี่ยนประเภทแล้วคลังถูกรีเซ็ตกลับค่าเริ่มต้น
+              picker_scrolled=False,              # แถวเป้าอยู่นอกกรอบรายการ (ถูกเลื่อนออก) แต่ UIA ยังรายงาน IsOffscreen=False
+              two_pickers=False,                  # มีหน้าต่างรายการสองใบ (ซ้ำ)
+              number_stuck=None,                  # เลขที่เอกสารขึ้นต้นด้วยรหัสนี้เสมอ แม้ประเภทเปลี่ยนแล้ว (เช่น "ORCM") — ด่านเลขที่ต้องจับได้
+              row_drift=False,                    # เมาส์ขยับไปที่แถวแล้วแถวในรายการเลื่อนตำแหน่ง (reverify ต้องจับได้)
+              header_decoy=False)                 # มีฟิลด์ id เดียวกันอีกชุดใต้ "ฟอร์มคนละคลาส" (ฟอร์มโอนสินค้า) ที่หน้าตาเหมือนค่าที่ต้องการ
 
 
 def _contains(r, x, y):
@@ -52,18 +88,31 @@ class FakeWpfUI(FakeUI):
         self.misfires = []              # พิมพ์ลงช่องที่ไม่ได้โฟกัส · กดปุ่มทูลบาร์ที่ไม่ใช่ปุ่มนำเข้า
         self.drifted = False
         self.login_clicks = 0
+        self.vtype = None               # ชื่อแถวเต็มของประเภทเอกสารที่ตั้งอยู่ในฟอร์ม (เช่น "ORDS ใบปรับปรุงลดสินค้า")
+        self.wh = None                  # ชื่อคลังที่ตั้งอยู่ในฟอร์ม
+        self.picker = None              # None | {"kind": "type"|"wh", "sel": แถวที่มีเครื่องหมายเลือก, "edit": แถวที่ถูกคลิกจนกลายเป็นช่อง Edit}
+        self.row_shift = False          # row_drift: แถวในรายการเลื่อนหลังเมาส์ขยับมาที่แถว
+        self.picker_log = []            # ประวัติ ("open", kind) | ("row", kind, ชื่อแถว) | ("ok", kind, sel) | ("exit", kind)
+        if self.stage == "form":
+            self._open_form_defaults()
+            if self.u["picker_open"]:
+                self._open_picker(self.u["picker_open"])
 
     # ── สถานะ → หน้าต่าง Win32 ──────────────────────────────────
     def _model(self):
         self._tick()
         s, tops = self.state, []
         if s in ("login", "logging", "main", "doc", "import"):
-            en = not (s == "import" or self.u["top_disabled"])
+            en = not (s == "import" or self.u["top_disabled"] or self.picker)
             tops.append((self.W(MAIN_HWND, MAIN_CLS, TITLE, WIN, True, en, 0, self.PID, 0), []))
             tops.append((self.W(101, "HwndWrapper[ssmaxx.exe;;213f64ff]", "", (0, 0, 136, 39), False, True, 0, self.PID, 0), []))
             tops.append((self.W(102, "HwndWrapper[ssmaxx.exe;;8de39fac]", "MediaContextNotificationWindow", (0, 0, 0, 0), False, True, 0, self.PID, 0), []))
         if s == "import":
             tops.append((self.W(DIALOG_HWND, "#32770", "Select File", (482, 203, 1865, 962), True, True, 0, self.PID, 0), []))
+        if self.picker:                  # หน้าต่างรายการเป็นหน้าต่างระดับบนใหม่ (เต็มจอ) ของโปรเซสเดียวกัน
+            tops.append((self.W(PICKER_HWND, PICKER_CLS, PICKER_TITLE, (-7, -7, 1927, 1087), True, True, 0, self.PID, 0), []))
+            if self.u["two_pickers"]:
+                tops.append((self.W(PICKER_HWND + 1, PICKER_CLS.replace("d89a72ff", "aaaaaaaa"), PICKER_TITLE, (-7, -7, 1927, 1087), True, True, 0, self.PID, 0), []))
         return tops
 
     def _tick(self):
@@ -135,7 +184,97 @@ class FakeWpfUI(FakeUI):
                                            ("uo_tran_bt_reference", "ดูรายละเอียดอ้างอิง")]):
                 x0 = 1591 + 24 * i + (dxi if bid == "uo_tran_bt_import" else 0)
                 els.append(E(bid, "Button", (x0, 256, x0 + 20, 276), name="Contactus", cls="Button", help=hp, parents=fp))
+            els += self._header_els()
         return els
+
+    # ── ฟอร์ม: ค่าเริ่มต้น · ส่วนหัว · หน้าต่างรายการ ───────────────
+    def _open_form_defaults(self):
+        d_type, d_wh = DEFAULTS[self.letter_choice]
+        self.vtype = self.u["start_type"] or d_type
+        self.wh = self.u["start_wh"] or d_wh
+
+    def _target_prefix(self):
+        return "ORDS " if self.letter_choice == "O" else "IRPS "
+
+    def _rows(self, kind):
+        if kind == "wh":
+            rows = list(WH_ROWS)
+            if self.u["wh_missing"]:
+                rows = [r for r in rows if r != "Front Store"]
+            if self.u["rows_decoy"]:
+                rows.insert(0, "Front Store 2")
+            return rows
+        rows = list(TYPE_ROWS[self.letter_choice])
+        if self.u["rows_missing"]:
+            rows = [r for r in rows if not r.startswith(self._target_prefix())]
+        if self.u["rows_decoy"]:
+            tgt = [r for r in TYPE_ROWS[self.letter_choice] if r.startswith(self._target_prefix())][0]
+            rows.insert(0, tgt + " (เก่า)")
+        if self.u["rows_dup"]:
+            rows.insert(5, [r for r in TYPE_ROWS[self.letter_choice] if r.startswith(self._target_prefix())][0])
+        return rows
+
+    def _open_picker(self, kind):
+        rows = self._rows(kind)
+        cur = self.vtype if kind == "type" else self.wh
+        self.picker = {"kind": kind, "sel": rows.index(cur) if cur in rows else None, "edit": None}
+        self.picker_log.append(("open", kind))
+
+    def _type_name(self):
+        return (self.vtype or "").split(" ", 1)[-1]
+
+    def _number(self):
+        code = self.u["number_stuck"] or (self.vtype or "").split(" ", 1)[0]
+        return "%sBY0012611%05d" % (code, 872 if code == "ORCM" else 1)
+
+    def _row_rect(self, i):
+        y = 409 + 25 * i + (400 if self.u["picker_scrolled"] else 0)
+        x = 30 if self.row_shift else 0
+        return (798 + x, y, 1101 + x, y + 20)
+
+    def _picker_els(self):
+        if not self.picker:
+            return []
+        E, kind = self._e, self.picker["kind"]
+        rows = self._rows(kind)
+        bar = (("UOSV", "ScrollViewer"), ("7", "sfw_buttonbar_ui"), ("UOSV", "ScrollViewer"), ("uo_popupdw_uo_buttonbar", "UserObject"),
+               ("UOSV", "ScrollViewer"), ("uo_popupdw", "UserObject"))
+        lst = (("uo_popupdw_dw_datatmp", "DataWindow"), ("UOSV", "ScrollViewer"), ("uo_popupdw", "UserObject"))
+        title = "ประเภทเอกสาร" if kind == "type" else "คลังสินค้า"
+        if self.u["picker_wrong_title"]:
+            title = "คลังสินค้า" if kind == "type" else "ประเภทเอกสาร"
+        els = [E("cb_ok", "Button", (777, 299, 847, 327), cls="Button", parents=bar),
+               E("cb_exit", "Button", (1075, 299, 1145, 327), cls="Button", parents=bar),
+               E("cb_search", "Button", (847, 299, 917, 327), cls="Button", off=True, parents=bar),
+               E("", "Text", (781, 340, 1141, 361), name=title, cls="TextBlock", parents=(("uo_popupdw_st_title", "Text"),) + lst[1:]),
+               E("input1", "Edit", (864, 373, 1094, 395), cls="TextBox", focused=True, parents=(("uo_popupdw_dw_search", "DataWindow"),) + lst[1:]),
+               E("uo_popupdw_dw_datatmp", "Custom", (780, 405, 1140, 780), cls="DataWindow", parents=lst[1:])]
+        for i, nm in enumerate(rows):
+            r = self._row_rect(i)
+            if self.picker["edit"] == i:
+                els.append(E("col1", "Edit", r, cls="TextBox", focused=True, parents=lst))          # แถวที่ถูกคลิกกลายเป็นช่อง Edit ชื่อว่าง (ตรวจจริง D3a)
+            else:
+                els.append(E("col1:%d" % (i + 1), "Custom", r, name=nm, cls="DWTextBlock", parents=lst))
+            els.append(E("p_1:%d" % (i + 1), "Image", (1103, r[1] + 2, 1112, r[1] + 13), cls="Image", off=self.picker["sel"] != i, parents=lst))
+        return els
+
+    def _header_els(self):
+        E = self._e
+        hp = (("uo_tran_dw_newmaster", "DataWindow"), ("UOSV", "ScrollViewer"), ("23", self._form_cls()), ("UOSV", "ScrollViewer"),
+              ("MDI_SHEET_CLIENT", "UserObject"), ("", "TabItem"), ("MDI_TAB", "TabControl"))
+        decoy = []
+        if self.u["header_decoy"]:
+            # ฟอร์มโอนสินค้า (pn_trans_tb_out) ที่ซ่อนอยู่ มีฟิลด์ id เดียวกัน — ชื่อเหมือนค่าที่ต้องการ ต้องไม่ถูกเอามาตัดสินแทนฟอร์มจริง
+            dp = (("uo_tran_dw_newmaster", "DataWindow"), ("UOSV", "ScrollViewer"), ("23", "pn_trans_tb_out"), ("UOSV", "ScrollViewer"))
+            decoy = [E("SYSVOUCHERID:1", "Custom", (122, 177, 290, 197), name="ใบปรับปรุงลดสินค้า", cls="DWTextBlock", parents=dp),
+                     E("SYSWAREHOUSEID:1", "Custom", (978, 200, 1154, 220), name="Front Store", cls="DWTextBlock", parents=dp),
+                     E("TRANNO:1", "Custom", (122, 200, 290, 220), name="ORDSBY001261100001", cls="DWTextBlock", parents=dp)]
+        return decoy + [E("TRANNO:1", "Custom", (122, 200, 290, 220), name=self._number(), cls="DWTextBlock", parents=hp),
+                E("SYSBRANCHID:1", "Custom", (122, 154, 290, 174), name="อนิน สาขาแยกชากค้อ", cls="DWTextBlock", parents=hp),
+                E("SYSVOUCHERID:1", "Custom", (122, 177, 290, 197), name=self._type_name(), cls="DWTextBlock", parents=hp),
+                E("SYSWAREHOUSEID:1", "Custom", (978, 200, 1154, 220), name=self.wh or "", cls="DWTextBlock", parents=hp),
+                # ตัวกรองที่ซ่อนอยู่ใช้ id ตัวพิมพ์เล็ก — ต้องไม่ถูกเข้าใจผิดว่าเป็นช่องหัวฟอร์ม
+                E("sysvoucherid_t:1", "Custom", (12, 320, 210, 342), name="", cls="DWTextBlock", off=True, parents=hp)]
 
     # ── adapter: UIA ────────────────────────────────────────────
     def uia_find(self, hwnd, ids=(), ctype="", name=""):
@@ -144,10 +283,14 @@ class FakeWpfUI(FakeUI):
         if self.u["uia_always_fail"] or self.uia_calls <= self.u["uia_fail_first"]:
             raise RuntimeError("UIA ล้ม (ฉีดโดยเทส)")
         self._tick()
-        if hwnd != MAIN_HWND:
+        if hwnd == MAIN_HWND:
+            pool = self._els()
+        elif hwnd == PICKER_HWND and self.picker:
+            pool = self._picker_els()
+        else:
             return []
         out = []
-        for e in self._els():
+        for e in pool:
             if ids and e.id not in ids:
                 continue
             if ctype and e.type != ctype:
@@ -158,7 +301,8 @@ class FakeWpfUI(FakeUI):
         return out
 
     def uia_dump(self, hwnd, max_nodes=1500):
-        return ["%s id=%s name=%r rect=%s off=%s" % (e.type, e.id, e.name, e.rect, e.offscreen) for e in self._els()][:max_nodes]
+        pool = self._picker_els() if (hwnd == PICKER_HWND and self.picker) else self._els()
+        return ["%s id=%s name=%r rect=%s off=%s" % (e.type, e.id, e.name, e.rect, e.offscreen) for e in pool][:max_nodes]
 
     def uia_stats(self):
         return {"calls": self.uia_calls, "totalMs": self.uia_calls * 10, "avgMs": 10, "maxMs": 10}
@@ -175,6 +319,8 @@ class FakeWpfUI(FakeUI):
         self._act("move_to", int(x), int(y))
         if self.u["drift_on_move"] and self.stage == "form":
             self.drifted = True          # ผู้ใช้ขยับหน้าต่าง/เป้าเลื่อนระหว่างเตรียมคลิก
+        if self.u["row_drift"] and self.picker:
+            self.row_shift = True        # รายการเลื่อนหลังเมาส์ขยับมาที่แถว
         return True, ""
 
     def click_at(self, x, y, pids=None):
@@ -186,6 +332,8 @@ class FakeWpfUI(FakeUI):
             return False, "ใต้เมาส์เป็นหน้าต่างของโปรแกรมอื่น"
         if self.state == "import":
             return True, ""              # หน้าต่างหลักถูกล็อกด้วยกล่องโมดัล — คลิกไม่มีผล
+        if self.picker:
+            return self._click_picker(x, y)
         hits = [e for e in self._els() if not e.offscreen and _contains(e.rect, x, y) and e.type in ("Button", "ListItem", "Custom", "Edit")
                 and e.id not in ("uo_login_panel",)]
         if not hits:
@@ -209,11 +357,53 @@ class FakeWpfUI(FakeUI):
             self.state, self.stage, self.menu_choice, self.letter_choice = "doc", "menu", e.name, None
         elif i in ("I", "O") and self.state == "doc" and self.stage == "menu":
             self.stage, self.letter_choice = "form", i
+            self._open_form_defaults()
+        elif i == "SYSVOUCHERID:1" and self.stage == "form":
+            self._open_picker("type")
+        elif i == "SYSWAREHOUSEID:1" and self.stage == "form":
+            self._open_picker("wh")
         elif i == "uo_tran_bt_import":
             self.state = "import"
             self.dialogs_now = [("Select File", ("File &name:", "Files of &type:"))]
         elif i.startswith("uo_tran_bt_"):
             self.misfires.append(i)
+        return True, ""
+
+    def _click_picker(self, x, y):
+        """คลิกในหน้าต่างรายการ (หน้าต่างหลักถูกล็อก — คลิกนอกปุ่ม/แถวไม่มีผล)"""
+        rows = self._rows(self.picker["kind"])
+        hits = [e for e in self._picker_els() if not e.offscreen and _contains(e.rect, x, y) and e.type in ("Button", "Custom", "Edit")
+                and e.id not in ("uo_popupdw_dw_datatmp",)]
+        if not hits:
+            return True, ""
+        e = min(hits, key=lambda h: (h.rect[2] - h.rect[0]) * (h.rect[3] - h.rect[1]))
+        self.clicked.append(e.id or "%s:%s" % (e.type, e.name))
+        if e.id.startswith("col1"):
+            i = self.picker["edit"] if e.id == "col1" else int(e.id.split(":")[1]) - 1
+            self.picker_log.append(("row", self.picker["kind"], rows[i]))
+            if not self.u["pick_no_effect"]:
+                j = (i + 1) % len(rows) if self.u["pick_wrong_row"] else i
+                self.picker["sel"], self.picker["edit"] = j, j
+        elif e.id == "cb_ok":
+            self.picker_log.append(("ok", self.picker["kind"], self.picker["sel"]))
+            if self.u["ok_no_effect"] or self.picker["sel"] is None:
+                return True, ""
+            val = rows[self.picker["sel"]]
+            if self.u["ok_wrong_value"]:
+                val = rows[0] if self.picker["sel"] != 0 else rows[1]
+            if self.picker["kind"] == "type":
+                self.vtype = val
+                if self.u["type_resets_wh"]:
+                    self.wh = DEFAULTS[self.letter_choice][1]
+            else:
+                self.wh = val
+                if self.u["wh_resets_type"]:
+                    self.vtype = DEFAULTS[self.letter_choice][0]
+            if not self.u["ok_keeps_open"]:
+                self.picker = None
+        elif e.id == "cb_exit":
+            self.picker_log.append(("exit", self.picker["kind"]))
+            self.picker = None
         return True, ""
 
 

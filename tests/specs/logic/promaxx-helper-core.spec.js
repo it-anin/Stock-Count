@@ -64,17 +64,17 @@ print(json.dumps(dict(verified=m.LOCATORS_VERIFIED, specs=m.STEP_SPECS, proto=m.
   ver=m.VERSION), ensure_ascii=False))`);
   expect(r.verified, 'LOCATORS_VERIFIED ต้องเป็น False จนกว่าจะตรวจหน้าต่างจริงครบ (แก้เป็น True ต้องมีผลตรวจ + อัปเดตเทสนี้)').toBe(false);
   // 3 พ.ย. 2026: เติม STEP_SPECS จากการตรวจจริง (UIA) แล้ว — ตรึงโครงที่ส่งมอบ (รายละเอียดด่านกันพลาดอยู่ใน promaxx-helper-uia.spec.js ข้อ 5)
-  expect(Object.keys(r.specs), 'STEP_SPECS ต้องครบทุกขั้นตามลำดับขั้นตอน').toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
+  expect(Object.keys(r.specs), 'STEP_SPECS ต้องครบทุกขั้นตามลำดับขั้นตอน').toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
   expect(r.specs['import-button'].allow_dialogs, 'ขั้นสุดท้ายอนุญาตเฉพาะกล่อง Select File').toEqual(['^Select File\\b']);
   expect(r.proto).toBe(1);
   expect(r.port).toBe(47831);
   expect(r.prod).toBe('https://anin-stock-count.vercel.app');
   expect(r.docs).toEqual({
-    ORDS: { letter: 'O', menu_th: 'เอกสารจ่าย', menu_cls: 'ui_mainmenu_tranout_style2', form_cls: 'pn_trans_out' },
-    IRPS: { letter: 'I', menu_th: 'เอกสารรับ', menu_cls: 'ui_mainmenu_tranin_style2', form_cls: 'pn_trans_in' },
+    ORDS: { letter: 'O', menu_th: 'เอกสารจ่าย', menu_cls: 'ui_mainmenu_tranout_style2', form_cls: 'pn_trans_out', code: 'ORDS', type_name: 'ใบปรับปรุงลดสินค้า' },
+    IRPS: { letter: 'I', menu_th: 'เอกสารรับ', menu_cls: 'ui_mainmenu_tranin_style2', form_cls: 'pn_trans_in', code: 'IRPS', type_name: 'ใบปรับปรุงเพิ่มสินค้า' },
   });
   expect(r.proc).toBe('ssmaxx.exe');
-  expect(r.order).toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
+  expect(r.order).toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
   expect(r.imp).toBe('import-button');
   expect(r.block).toEqual(['seniorsoftexport.exe', 'autor01export.exe']);
   expect(r.body).toBe(2048);
@@ -273,7 +273,7 @@ for (const [type, menu, letter] of [['ORDS', 'เอกสารจ่าย', '
   test(`5. ★ เส้นทางปกติ ${type} — เมนู${menu} · ปุ่ม ${letter} · ลำดับ action เป๊ะ · พิมพ์รหัสครั้งเดียว · หยุดหลังปุ่มนำเข้า`, async () => {
     const r = scen({ type });
     expect([r.status, r.obj.ok, r.obj.type, r.obj.reached, r.obj.dryRun, r.obj.proto]).toEqual([200, true, type, 'import-button', false, 1]);
-    expect(r.obj.steps.map((s) => s.name)).toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
+    expect(r.obj.steps.map((s) => s.name)).toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
     expect(r.obj.steps.every((s) => s.ok && Number.isInteger(s.ms))).toBe(true);
     expect(Number.isInteger(r.obj.elapsedMs)).toBe(true);
     expect(r.acts, 'ลำดับ action จริง').toEqual(HAPPY_ACTS);
@@ -465,7 +465,7 @@ test('10. HTTP จริงผ่าน socket — health · preflight · POST �
     const h0 = await srv.request({ path: '/v1/health' });
     expect(h0.status).toBe(200);
     expect(h0.json).toMatchObject({ ok: true, proto: 1, ssmaxxRunning: false, busy: false, locatorsVerified: true });
-    expect(h0.json.stepsConfigured).toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
+    expect(h0.json.stepsConfigured).toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
     expect(h0.headers['access-control-allow-origin']).toBeUndefined();
     const pre = await srv.request({ method: 'OPTIONS', path: '/v1/open-import', headers: { Origin: PROD, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Private-Network': 'true' } });
     expect([pre.status, pre.headers['access-control-allow-origin'], pre.headers['access-control-allow-private-network']]).toEqual([204, PROD, 'true']);
@@ -729,4 +729,81 @@ print(json.dumps(dict(bound=bound, first=first, rc_busy=rc_busy, after_dup=after
   expect(r.hv).toEqual({ False: false, True: true });
   expect(r.left, 'prune ค่าเริ่มต้นเก็บ 30 โฟลเดอร์ล่าสุด').toHaveLength(30);
   expect(r.left[0]).toBe('20200106_000000_x');
+});
+
+test('16. ★ launch เปิดผ่าน ProMaxx.exe + ด่านโปรเซสหาย 2 แบบ (4 พ.ย. 2026: เปิด ssmaxx.exe ตรงๆ → ProMaxx แจ้ง "Application to the program is open to change." แล้วไม่ไปหน้า Login)', async () => {
+  const r = runPy(String.raw`
+import copy
+D = os.path.join(tmp, 'pmx')
+EXE, LAUNCHER, EXE_UP = os.path.join(D, 'ssmaxx.exe'), os.path.join(D, 'ProMaxx.exe'), os.path.join(D, 'SSMAXX.EXE')
+n = [0]
+def go(settings_kw=None, fs=None, **fake):
+    n[0] += 1
+    specs = copy.deepcopy(fk.SPECS)
+    specs['launch']['post_timeout'] = 90        # ค่าจริงของ STEP_SPECS (ชุดปลอมใช้ 20 วินาที — สั้นเกินกว่าจะทดสอบ "ตัวเปิดโปรแกรมช้า")
+    svc, ui, log, st = fk.make(m, os.path.join(tmp, 's%d' % n[0]), verified=True, specs=specs, settings_kw=settings_kw, fs=fs, **fake)
+    status, obj = svc.run_job('ORDS', m.JobOpts())
+    return dict(status=status, code=obj.get('code'), step=obj.get('step'), msg=obj.get('message', ''),
+        launch=[[str(x) for x in c] for c in ui.calls if c[0] == 'launch'], acts=ui.acts(), t=ui.t, log='\n'.join(log.lines))
+out = dict(D=D, EXE=EXE, LAUNCHER=LAUNCHER, EXE_UP=EXE_UP)
+out['a'] = go(dict(exe_path=EXE, exe_args=('/s', '-x')), [EXE, LAUNCHER])
+out['b'] = go(dict(exe_path=EXE, launch_direct=True), [EXE, LAUNCHER])
+out['c'] = go(dict(exe_path=EXE), [EXE])
+out['d'] = go(dict(exe_path=LAUNCHER), [LAUNCHER])
+out['e'] = go(dict(exe_path=EXE_UP), [EXE_UP, LAUNCHER])
+out['f'] = go(dict(exe_path=EXE), [EXE], spawn_delay=20, launch_delay=24)
+out['g'] = go(dict(exe_path=EXE), [EXE], spawn_delay=999, launch_delay=999)
+out['h'] = go(dict(exe_path=EXE), [EXE], launch_delay=30, crash_after_launch=True)
+out['i'] = go(dict(exe_path=EXE), [EXE], launch_delay=10, pids_gap=(2, 5))
+out['j'] = go(dict(exe_path=EXE), [EXE], launch_delay=40, pids_gap=(2, 12))
+base = os.path.join(tmp, 'ld'); os.makedirs(base)
+envf = os.path.join(base, '.env')
+def ld(env, file=None):
+    if file is None:
+        if os.path.exists(envf): os.remove(envf)
+    else:
+        open(envf, 'w', encoding='utf-8').write(file)
+    return m.load_settings(base, environ=env).launch_direct
+out['ld'] = dict(default=ld({}), one=ld({'PROMAXX_LAUNCH_DIRECT': '1'}), true=ld({'PROMAXX_LAUNCH_DIRECT': 'TRUE'}), yes=ld({'PROMAXX_LAUNCH_DIRECT': ' yes '}),
+    on=ld({'PROMAXX_LAUNCH_DIRECT': 'on'}), zero=ld({'PROMAXX_LAUNCH_DIRECT': '0'}), junk=ld({'PROMAXX_LAUNCH_DIRECT': 'abc'}),
+    file=ld({}, 'PROMAXX_LAUNCH_DIRECT=1\n'), sys_beats_file=ld({'PROMAXX_LAUNCH_DIRECT': '0'}, 'PROMAXX_LAUNCH_DIRECT=1\n'))
+out['consts'] = dict(name=m.LAUNCHER_NAME, spawn=m.LAUNCH_SPAWN_GRACE, vanish=m.LAUNCH_VANISH_GRACE)
+print(json.dumps(out, ensure_ascii=False, default=str))`);
+  const launched = (x) => x.launch.map((c) => c[1]);
+  // ตัวเปิดโปรแกรม: ssmaxx.exe → ProMaxx.exe ในโฟลเดอร์เดียวกัน (ทางลัดของพนักงานชี้ ProMaxx.exe)
+  expect(r.a.status, r.a.msg).toBe(200);
+  expect(launched(r.a), 'ต้องเปิด ProMaxx.exe ไม่ใช่ ssmaxx.exe').toEqual([r.LAUNCHER]);
+  expect(r.a.launch[0][3], 'cwd = โฟลเดอร์ของโปรแกรม').toBe(r.D);
+  expect(r.a.launch[0][2], 'PROMAXX_EXE_ARGS ส่งต่อให้ตัวเปิดโปรแกรมด้วย').toBe("('/s', '-x')");
+  expect(r.a.log, 'log บอกว่าสลับเป็นตัวเปิดโปรแกรม').toContain('ตัวเปิดโปรแกรมของ ProMaxx');
+  expect(r.a.acts, 'ที่เหลือเดินตามปกติ').toEqual(HAPPY_ACTS);
+  expect(launched(r.b), 'PROMAXX_LAUNCH_DIRECT=1 = เปิดตรงตามเดิม').toEqual([r.EXE]);
+  expect(r.b.log).not.toContain('ตัวเปิดโปรแกรมของ ProMaxx');
+  expect(launched(r.c), 'ไม่มี ProMaxx.exe ข้างๆ = เปิดตามที่ตั้งไว้เหมือนเดิม').toEqual([r.EXE]);
+  expect(r.c.status).toBe(200);
+  expect(launched(r.d), 'ชี้ ProMaxx.exe เอง = เปิดตามนั้น ไม่สลับซ้ำ').toEqual([r.LAUNCHER]);
+  expect(r.d.status).toBe(200);
+  expect(launched(r.e), 'ชื่อไฟล์ตัวพิมพ์ใหญ่ SSMAXX.EXE ก็สลับ').toEqual([r.LAUNCHER]);
+  // ด่านโปรเซสหาย: ไม่เคยเห็นโปรเซส → รอตัวเปิดโปรแกรมได้ 30 วินาที (เดิมตัดที่ 6 วินาทีจึงล้มผิดๆ ถ้าตัวเปิดโปรแกรมช้า)
+  expect(r.f.status, r.f.msg).toBe(200);
+  expect(r.f.t, 'โปรเซสโผล่ที่วินาที 20 และหน้า Login ที่ 24 — ต้องรอได้จนถึงตอนนั้น').toBeGreaterThanOrEqual(24);
+  expect([r.g.status, r.g.code, r.g.step]).toEqual([500, 'LAUNCH_FAILED', 'launch']);
+  expect(r.g.msg).toContain('ไม่พบโปรเซส ssmaxx.exe ภายใน 30 วินาที');
+  expect(r.g.t, 'ตัดสินที่ ~30 วินาที ไม่ก่อนและไม่ช้ากว่านั้นมาก').toBeGreaterThanOrEqual(30);
+  expect(r.g.t).toBeLessThan(32);
+  expect(r.g.acts, 'เปิดโปรแกรมครั้งเดียว ไม่คลิก/พิมพ์').toEqual(['launch']);
+  // เห็นโปรเซสแล้วหาย → หยุดเมื่อหายเกิน 6 วินาที · กะพริบสั้นกว่านั้นไม่ถือว่าปิดตัวเอง
+  expect([r.h.status, r.h.code, r.h.step]).toEqual([500, 'LAUNCH_FAILED', 'launch']);
+  expect(r.h.msg).toContain('ปิดตัวเอง');
+  expect(r.h.t, 'ปิดที่วินาที 7 + เกณฑ์ 6 วินาที').toBeGreaterThanOrEqual(12.5);
+  expect(r.h.t).toBeLessThan(15);
+  expect(r.i.status, 'โปรเซสหาย 3 วินาทีแล้วกลับมา = ผ่าน ' + r.i.msg).toBe(200);
+  expect([r.j.status, r.j.code]).toEqual([500, 'LAUNCH_FAILED']);
+  expect(r.j.msg).toContain('ปิดตัวเอง');
+  expect(r.j.t, 'หายนาน 10 วินาที — หยุดหลังเกิน 6 วินาทีนับจากที่เห็นครั้งสุดท้าย').toBeGreaterThanOrEqual(7.5);
+  expect(r.j.t).toBeLessThan(10);
+  expect(r.j.acts).toEqual(['launch']);
+  // PROMAXX_LAUNCH_DIRECT: ค่าที่ถือว่าเปิด · ตัวแปรระบบชนะ .env
+  expect(r.ld).toEqual({ default: false, one: true, true: true, yes: true, on: true, zero: false, junk: false, file: true, sys_beats_file: false });
+  expect(r.consts).toEqual({ name: 'ProMaxx.exe', spawn: 30, vanish: 6 });
 });

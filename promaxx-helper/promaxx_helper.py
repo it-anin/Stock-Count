@@ -5,9 +5,11 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
 ทำไมต้องมี: หน้าเว็บ (เบราว์เซอร์) สั่งเปิด/คลิกโปรแกรม Windows โดยตรงไม่ได้ จึงมีโปรแกรมเล็กๆ นี้รันบนเครื่องเดียวกับ ProMaxx
 คอยฟังคำสั่งที่ 127.0.0.1 (เฉพาะในเครื่อง) แล้วขับหน้าต่าง ssmaxx.exe ตามขั้นตอน:
 
-    เปิด ssmaxx.exe → ล็อกอิน (ครั้งเดียว ไม่ retry) → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" → หยุด
+    เปิด ssmaxx.exe → ล็อกอิน (ครั้งเดียว ไม่ retry) → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O
+    → ตั้งประเภทเอกสาร (ORDS=ใบปรับปรุงลดสินค้า · IRPS=ใบปรับปรุงเพิ่มสินค้า) → ตั้งคลังสินค้าเป็น Front Store → ปุ่ม "นำเข้าไฟล์เอกสาร" → หยุด
 
 ขั้นที่ 1 (ไฟล์นี้) หยุดที่ปุ่ม "นำเข้าไฟล์เอกสาร" โดยตั้งใจ — ยังไม่เลือกไฟล์ ไม่นำเข้า ไม่บันทึก (ดู README.md และ CLAUDE.md §🖥️)
+ขั้น doc-type/warehouse (รุ่น .5) เลือกค่าลงในฟอร์มที่ "ยังไม่บันทึก" เท่านั้น (ผู้ใช้สั่ง 3 พ.ย. 2026) · คลังต้องเป็น Front Store เท่านั้น (ผู้ใช้สั่ง)
 
 ⛔ กติกาห้ามละเมิด (แก้โค้ดแล้วต้องไม่ทำให้ข้อใดหาย):
   1. หน้าเว็บส่งได้แค่ type = ORDS | IRPS — ไม่รับ path/คำสั่ง/รหัสผ่านจากเว็บ (field แปลกปลอม = 400)
@@ -17,6 +19,9 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
   5. ssmaxx.exe เปิดอยู่แล้ว = ปฏิเสธ ไม่แตะอะไร (โปรแกรมเปิดซ้อนไม่ได้อยู่แล้ว · ผู้ใช้เลือก 3 พ.ย. 2026)
   6. LOCATORS_VERIFIED = False → ปฏิเสธคลิกจริงจากเว็บ (UNVERIFIED) · จะเป็น True ได้ต่อเมื่อตรวจกับหน้าต่าง ssmaxx.exe จริงครบแล้วเท่านั้น
   7. หลังคลิกปุ่ม "นำเข้าไฟล์เอกสาร" ห้ามส่ง input เพิ่ม (ขั้นถัดไปต้องขออนุมัติ)
+  7b. ก่อนคลิกปุ่มนำเข้า ต้องอ่านกลับได้ครบ: ประเภทเอกสารตรงชื่อ · เลขที่เอกสารขึ้นต้นรหัสประเภท · คลัง = Front Store — ไม่ตรงข้อใด = หยุด
+      ห้ามเดา/ห้ามเชื่อค่าเริ่มต้นของฟอร์ม (ProMaxx เปิดฟอร์มมาเป็นประเภท/คลังต่างกันได้) · เลือกค่าในหน้าต่างรายการต้องเจอแถว "ชื่อตรงทุกตัวอักษร 1 แถวพอดี"
+      และเครื่องหมายเลือกแถวต้องย้ายมาที่แถวนั้นก่อนกด "ตกลง" · หน้าต่างรายการเป็นหน้าต่างระดับบนใหม่ทุกครั้ง (hwnd/GUID เปลี่ยน) หาจากชื่อ ไม่จำ hwnd
   8. ไม่ขับ ProMaxx ซ้อนกับบอทอื่นที่แย่งเมาส์/คีย์บอร์ด (BLOCK_PROCS)
   9. ssmaxx.exe เป็นแอป WPF (ไม่มี HWND/HMENU ข้างใน) → หาเป้าด้วย UIA (promaxx_uia.py) เท่านั้น · เป้าต้อง "พบ 1 รายการพอดี" ที่
      มองเห็นอยู่จริง (ไม่ใช่แค่ IsOffscreen=False — ปุ่มที่เลื่อนไปนอกกรอบหน้าต่างยังรายงาน False) · ต้องตรวจคลาสของหน้าแม่และ HelpText
@@ -42,7 +47,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #   2026-11-03.2  เพิ่ม UIA (promaxx_uia.py · kind:"uia" · เงื่อนไข uia/uia_gone · action await) + เติม STEP_SPECS จากการตรวจจริง (ยังไม่เคยคลิกจริง)
 #   2026-11-03.3  focus() ไม่ย่อหน้าต่างที่ขยายเต็มจอ (SW_RESTORE เฉพาะตอนหน้าต่างถูกย่ออยู่)
 #   2026-11-03.4  focus() ดึงขึ้นหน้าสุดได้จริงเมื่อโปรเซสอื่น (เบราว์เซอร์/Claude) อยู่หน้า: ผูกเธรด + BringWindowToTop · ปลดการผูกใน finally
-VERSION = "2026-11-03.4"
+#   2026-11-03.5  ขั้นใหม่ doc-type-*/warehouse-* (ตั้งประเภทเอกสารตามชนิด + คลัง Front Store ผ่านหน้าต่างรายการ) · skip_if · action pick_row/note
+#                 · name_re · โทเคนดิบ {=ชื่อ} · import-button ตรวจอ่านกลับก่อนคลิก (ยังไม่เคยคลิกจริง)
+#   2026-11-04.1  ขั้น launch เปิดผ่าน ProMaxx.exe (ตัวเปิดโปรแกรมที่ทางลัดของพนักงานใช้) แทน ssmaxx.exe ตรงๆ — เปิดตรงแล้ว ProMaxx แจ้ง
+#                 "Application to the program is open to change." ไม่ไปหน้า Login (เจอจริง 4 พ.ย. 2026) · PROMAXX_LAUNCH_DIRECT=1 = เปิดตรงตามเดิม
+#                 · ด่าน "โปรแกรมปิดตัวเอง" แยก 2 แบบ: ไม่เคยเห็นโปรเซส ssmaxx รอได้ 30 วินาที (ตัวเปิดโปรแกรมช้า) · เห็นแล้วหายเกิน 6 วินาที = หยุด
+VERSION = "2026-11-04.1"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"
@@ -52,6 +62,11 @@ MAX_BODY = 2048
 LOCATORS_VERIFIED = False
 
 PROC_NAME = "ssmaxx.exe"
+# ทางลัด "ProMaxx" ที่พนักงานใช้ชี้ไป ProMaxx.exe (ตัวเปิดโปรแกรม) ซึ่งเปิด ssmaxx.exe ต่อให้ · เปิด ssmaxx.exe ตรงๆ แล้วได้กล่อง
+# "Application to the program is open to change." (ตรวจจริง 4 พ.ย. 2026: 20/20 รอบเปิดผ่าน ProMaxx.exe ได้หน้า Login ใน ~8 วินาที)
+LAUNCHER_NAME = "ProMaxx.exe"
+LAUNCH_SPAWN_GRACE = 30      # วินาที: สั่งเปิดแล้วยังไม่เคยเห็นโปรเซส ssmaxx เลย — รอตัวเปิดโปรแกรมได้เท่านี้ก่อนตัดสินว่าล้ม
+LAUNCH_VANISH_GRACE = 6      # วินาที: เคยเห็นโปรเซส ssmaxx แล้วหายไปเกินนี้ = โปรแกรมปิดตัวเอง (เผื่อกะพริบตอนตัวเปิดโปรแกรมรีสตาร์ท)
 JOB_MUTEX = "Local\\AninPromaxxHelperJob"        # กันสองโปรเซสขับ ProMaxx พร้อมกัน (เช่น --open ระหว่างที่ --serve กำลังทำงาน)
 SERVE_MUTEX = "Local\\AninPromaxxHelperServe"    # กันเปิดตัวช่วยซ้อนกัน
 DEFAULT_BLOCK_PROCS = ("seniorsoftexport.exe", "autor01export.exe")   # บอทที่ใช้เมาส์/คีย์บอร์ดจริง — ห้ามแย่งกัน
@@ -64,14 +79,23 @@ EXIT_OK, EXIT_FAILED, EXIT_CONFIG, EXIT_BUSY = 0, 1, 2, 3
 
 # ชนิดเอกสาร → ข้อความไทย/อักษรปุ่ม (ผู้ใช้ระบุ 3 พ.ย. 2026: IRPS = เอกสารรับ = อักษร I · ORDS = เอกสารจ่าย = อักษร O)
 #   menu_cls = คลาสของหน้าเมนูย่อยที่ปุ่ม I/O อยู่ · form_cls = คลาสของฟอร์มเอกสารที่เปิดหลังกดปุ่ม (ตรวจจริง 3 พ.ย. 2026 — UIA ClassName)
+#   code/type_name = รหัสและชื่อประเภทเอกสารที่ต้องตั้งก่อนนำเข้า (ผู้ใช้ระบุ 3 พ.ย. 2026: IRPS=ใบปรับปรุงเพิ่มสินค้า · ORDS=ใบปรับปรุงลดสินค้า ·
+#   ชื่อ/รหัสในหน้าต่างรายการตรวจจริงแล้ว: แถวชื่อ "ORDS ใบปรับปรุงลดสินค้า" / "IRPS ใบปรับปรุงเพิ่มสินค้า")
 #   ⚠️ ค่าทุกตัวต้องไม่มีอักขระพิเศษของ regex (เทสตรึง re.escape(v)==v) เพราะถูกแทนเข้า spec ผ่าน _fmt ที่ escape ให้
+#      (ค่าที่มีช่องว่าง เช่นชื่อแถว "ORDS ใบปรับปรุงลดสินค้า" ไม่อยู่ที่นี่ — ประกอบใน Runner._run แล้วใช้โทเคนดิบ {=type_row})
 DOC_TYPES = {
-    "ORDS": {"letter": "O", "menu_th": "เอกสารจ่าย", "menu_cls": "ui_mainmenu_tranout_style2", "form_cls": "pn_trans_out"},
-    "IRPS": {"letter": "I", "menu_th": "เอกสารรับ", "menu_cls": "ui_mainmenu_tranin_style2", "form_cls": "pn_trans_in"},
+    "ORDS": {"letter": "O", "menu_th": "เอกสารจ่าย", "menu_cls": "ui_mainmenu_tranout_style2", "form_cls": "pn_trans_out",
+             "code": "ORDS", "type_name": "ใบปรับปรุงลดสินค้า"},
+    "IRPS": {"letter": "I", "menu_th": "เอกสารรับ", "menu_cls": "ui_mainmenu_tranin_style2", "form_cls": "pn_trans_in",
+             "code": "IRPS", "type_name": "ใบปรับปรุงเพิ่มสินค้า"},
 }
+WAREHOUSE_NAME = "Front Store"      # คลังเดียวที่ยอมให้นำเข้า (ผู้ใช้สั่ง 3 พ.ย. 2026 "เลือกเป็น Front Store เท่านั้น") — ห้ามเพิ่มทางเลือกอื่น
 UIA_MAX_ERRORS = 3          # อ่าน UIA ล้มติดกันกี่ครั้งในลูปรอเงื่อนไขก่อนยอมแพ้ (ครั้งเดียวอาจเป็นช่วงโปรแกรมกำลังเปิด)
 
-STEP_ORDER = ("launch", "login", "menu", "doc-button", "import-button")   # ลำดับขั้นตอนจริง (preflight ทำก่อนเสมอ)
+# ลำดับขั้นตอนจริง (preflight ทำก่อนเสมอ) · doc-type-* / warehouse-* = เปิดหน้าต่างรายการ → เลือกแถว → ตกลง (แยกขั้นเพื่อให้ --dry-run ดูเป้าของแต่ละคลิกได้)
+STEP_ORDER = ("launch", "login", "menu", "doc-button",
+              "doc-type-open", "doc-type-pick", "doc-type-ok", "warehouse-open", "warehouse-pick", "warehouse-ok",
+              "import-button")
 IMPORT_STEP = STEP_ORDER[-1]                                              # ขั้นสุดท้าย — หลังขั้นนี้ห้ามมี input เพิ่ม
 
 HTTP_STATUS = {
@@ -206,6 +230,7 @@ class Settings:
     password: str = ""
     exe_path: str = ""
     exe_args: tuple = ()
+    launch_direct: bool = False      # PROMAXX_LAUNCH_DIRECT=1 → เปิดไฟล์ที่ตั้งไว้ตรงๆ ไม่สลับเป็น ProMaxx.exe
     proc_name: str = PROC_NAME
     port: int = DEFAULT_PORT
     allowed_origins: tuple = (PROD_ORIGIN,)
@@ -260,6 +285,7 @@ def load_settings(base_dir=None, environ=None, warn=None):
             s.exe_args = tuple(shlex.split(args, posix=False))
         except ValueError:
             warn("PROMAXX_EXE_ARGS อ่านไม่ได้ — ไม่ส่ง argument ให้ ssmaxx.exe")
+    s.launch_direct = get("PROMAXX_LAUNCH_DIRECT").lower() in ("1", "true", "yes", "on")
     s.proc_name = get("SSMAXX_PROC_NAME") or PROC_NAME
     port = get("HELPER_PORT")
     if port:
@@ -291,7 +317,9 @@ def load_settings(base_dir=None, environ=None, warn=None):
 #   STEP_SPECS = {
 #     "launch":  {"post": COND, "post_timeout": 60},
 #     "login":   {"pre": COND, "actions": [ACTION, ...], "post": COND},
-#     "menu" | "doc-button" | "import-button": {"pre": COND, "actions": [...], "post": COND, "allow_dialogs": [regex]}
+#     "menu" | "doc-button" | "doc-type-*" | "warehouse-*" | "import-button":
+#               {"pre": COND, "actions": [...], "post": COND, "allow_dialogs": [regex], "skip_if": COND, "pre_what": "..", "pre_timeout": 15, "post_timeout": 20}
+#               skip_if = เงื่อนไขจริง ณ ตอนเริ่มขั้น → ข้ามขั้นนั้นทั้งขั้น (ค่าตรงที่ต้องการอยู่แล้ว ไม่แตะอะไร) · อ่านอย่างเดียว
 #   }
 #   W      = {"cls": "ชื่อ class (ไม่สนตัวพิมพ์)" | None, "cls_re": "regex ของ class" | None, "title": "regex ของข้อความหน้าต่าง" | None}
 #            หน้าต่างระดับบนของ ssmaxx เท่านั้น (WPF: class = HwndWrapper[ssmaxx.exe;;<GUID ที่เปลี่ยนทุกครั้ง>] → ต้องใช้ cls_re)
@@ -299,24 +327,34 @@ def load_settings(base_dir=None, environ=None, warn=None):
 #          | {"uia": SEL}        มีองค์ประกอบตรง SEL ที่ "มองเห็นอยู่จริง" อย่างน้อย 1 ชิ้น (และโฟกัสอยู่ถ้า SEL.focused)
 #          | {"uia_gone": SEL}   ไม่มีองค์ประกอบตรง SEL ที่มองเห็นอยู่ (หายไป/ซ่อน/นอกกรอบหน้าต่าง)
 #   SEL    = {"within": W, "id": "AutomationId" | ["id1","id2"(สูงสุด 4)], "type": "Button|ListItem|Custom|Edit|TabItem|List|…",
-#             "name": "ชื่อตรงตัว", "cls": "ClassName ตรงตัว", "help": "HelpText ตรงตัว",
+#             "name": "ชื่อตรงตัว", "name_re": "regex ของชื่อ (กรองฝั่งตัวช่วย · ต้องมี id/type/name คู่ด้วย)", "cls": "ClassName ตรงตัว", "help": "HelpText ตรงตัว",
 #             "ancestor": {"id": "AutomationId ของหน้าแม่", "cls": "ClassName ของหน้าแม่"}  (อย่างน้อยหนึ่งชั้นในสายแม่ต้องตรงทุกคีย์ที่ระบุ),
 #             "focused": True}    ต้องมี id/type/name อย่างน้อยหนึ่งอย่าง · ห้ามใช้ id ที่เป็นตัวเลข (เปลี่ยนทุกครั้งที่โหลดหน้า)
 #   ACTION = {"do": "click", "target": T} | {"do": "type", "what": "username"|"password", "within": W}
 #          | {"do": "key", "key": "enter"|"tab", "within": W} | {"do": "wait", "sec": 0.5}
 #          | {"do": "await", "cond": COND, "timeout": 6, "what": "ข้อความเมื่อไม่ตรง"}   รอเงื่อนไข (เช่น ช่องรับโฟกัส) ก่อนทำต่อ · dry-run ข้าม
+#          | {"do": "pick_row", "row": SEL, "list": "AutomationId ของ DataWindow ที่เก็บแถว"}   คลิกแถวในหน้าต่างรายการ (แถวต้องชื่อตรง 1 แถว ·
+#            อยู่ในกรอบรายการจริง · อ่านเป้าซ้ำก่อนกด) แล้วต้องเห็นเครื่องหมายเลือกแถว p_1:N ของแถวนั้น ไม่เห็น = หยุด ไม่กด "ตกลง"
+#          | {"do": "note", "sel": SEL, "label": "ป้าย"}   อ่านชื่อขององค์ประกอบลง log เท่านั้น (ไม่ตัดสินอะไร · ใช้กับ dry-run ได้)
 #   T      = {"kind": "menu",    "within": W, "path": [regex, ...]}                              คลิกเมนูด้วย WM_COMMAND (ไม่ใช้เมาส์)
 #          | {"kind": "control", "within": W, "cls": "Button", "text": regex, "via": "message"|"mouse"}
 #          | {"kind": "point",   "within": W, "child_cls": None|"pbdw125", "index": n, "x": 0..1, "y": 0..1}   เมาส์จริง · เศษส่วนของ rect
 #          | {"kind": "uia", ...SEL, "reverify": True}   เมาส์จริงที่กึ่งกลางพิกัดที่ UIA ให้ · reverify = อ่านซ้ำก่อนกด ถ้าเป้าขยับ >2px หยุด
-#   ข้อความ/regex ใน spec ใส่ {menu_th} {letter} {menu_cls} {form_cls} ได้ (แทนด้วยค่าของชนิดเอกสาร · re.escape ให้)
+#   ข้อความ/regex ใน spec ใส่ {menu_th} {letter} {menu_cls} {form_cls} {code} {type_name} ได้ (แทนด้วยค่าของชนิดเอกสาร · re.escape ให้)
+#   ช่องที่เทียบ "ตรงตัว" (name/help) แล้วค่ามีช่องว่าง ใช้โทเคนดิบ {=type_row} (ไม่ escape) — ห้ามใช้โทเคนดิบในช่อง regex
 #
 # ที่มาของค่า (ตรวจจริง · README §ผลตรวจจริง): หน้า Login = uo_login_panel · ช่องชื่อผู้ใช้/รหัสผ่านสลับชนิดตามโฟกัส
 # (cf_empid=TextBox ↔ cf_empid:1=DWTextBlock · cf_pass=PasswordBox ↔ cf_pass:1=DWTextBlock) · เมนูซ้าย = ListBox lbx_manumain (ListItem ไม่มี id → ใช้ชื่อ)
 # · ปุ่ม I/O = Button id I/O ใต้หน้าเมนูคลาส ui_mainmenu_tranin/tranout_style2 · ฟอร์มเอกสารคลาส pn_trans_in/pn_trans_out ใต้แท็บ MDI_TAB
 # · ปุ่มนำเข้า = uo_tran_bt_import (HelpText "นำเข้าไฟล์เอกสาร") — id นี้มีในฟอร์มโอนสินค้า pn_trans_tb_out ด้วย จึงต้องเช็คคลาสฟอร์ม
 # · หลังกดปุ่มนำเข้า = กล่อง #32770 "Select File" (หน้าต่างหลักถูกล็อก)
-_MAIN = {"cls_re": r"^HwndWrapper\[ssmaxx\.exe;;", "title": r"^SeniorSoft ProMaxx$"}
+# · ส่วนหัวฟอร์ม (ใต้ DataWindow uo_tran_dw_newmaster · เป็น DWTextBlock ชื่อ = ค่าที่เห็นบนจอ): SYSVOUCHERID:1 = ประเภทเอกสาร · TRANNO:1 = เลขที่เอกสาร ·
+#   SYSBRANCHID:1 = สาขา · SYSWAREHOUSEID:1 = คลังสินค้า (id ตัวพิมพ์ใหญ่ — ตัวพิมพ์เล็ก sysvoucherid_t:1 อยู่ในตัวกรองที่ซ่อนอยู่)
+# · คลิกช่องประเภท/คลัง → เปิดหน้าต่างระดับบนใหม่ (ชื่อ sfw_winrespond · UIA id w_popup_select_ddw) หน้าต่างหลักถูกล็อก · ในนั้น: หัวข้อ
+#   (Text ใต้ uo_popupdw_st_title) · แถว col1:N (DWTextBlock ใต้ uo_popupdw_dw_datatmp · ชื่อ "รหัส ชื่อไทย" ของประเภทเอกสาร / "Front Store" ของคลัง) ·
+#   เครื่องหมายเลือกแถว p_1:N (Image · เห็นเฉพาะแถวที่เลือก) · ปุ่ม cb_ok "ตกลง" / cb_exit "ออก" (ใต้ uo_popupdw_uo_buttonbar)
+#   คลิกแถวอย่างเดียวไม่เปลี่ยนค่าในฟอร์ม ต้องกด "ตกลง" (แถวที่คลิกจะกลายเป็นช่อง Edit id=col1 ชื่อว่าง) · ตรวจจริง D1–D6/E1–E2 3 พ.ย. 2026
+_MAIN ={"cls_re": r"^HwndWrapper\[ssmaxx\.exe;;", "title": r"^SeniorSoft ProMaxx$"}
 _LOGIN_PANEL = {"within": _MAIN, "id": "uo_login_panel", "type": "Custom"}
 _UNDER_LOGIN = {"id": "uo_login_panel"}
 _USER_CELL = {"within": _MAIN, "id": ["cf_empid", "cf_empid:1"], "ancestor": _UNDER_LOGIN}
@@ -331,9 +369,56 @@ _DOC_TAB = {"within": _MAIN, "type": "TabItem", "name": "{menu_th}", "ancestor":
 _IMPORT_BTN = {"within": _MAIN, "id": "uo_tran_bt_import", "type": "Button", "help": "นำเข้าไฟล์เอกสาร", "ancestor": {"cls": "{form_cls}"}}
 _FILE_DIALOG = {"cls": "#32770", "title": r"^Select File$"}
 
+# ── ส่วนหัวฟอร์ม + หน้าต่างรายการ (ประเภทเอกสาร / คลังสินค้า) ──
+_FORM = {"cls": "{form_cls}"}
+_TYPE_FIELD = {"within": _MAIN, "id": "SYSVOUCHERID:1", "type": "Custom", "ancestor": _FORM}
+_TYPE_IS_TARGET = dict(_TYPE_FIELD, name="{type_name}")
+_NUMBER_PREFIX = {"within": _MAIN, "id": "TRANNO:1", "type": "Custom", "name_re": "^{code}", "ancestor": _FORM}
+_BRANCH_FIELD = {"within": _MAIN, "id": "SYSBRANCHID:1", "type": "Custom", "ancestor": _FORM}
+_WH_FIELD = {"within": _MAIN, "id": "SYSWAREHOUSEID:1", "type": "Custom", "ancestor": _FORM}
+_WH_IS_TARGET = dict(_WH_FIELD, name=WAREHOUSE_NAME)
+# หน้าต่างรายการเป็นหน้าต่างระดับบนใบใหม่ทุกครั้ง (hwnd และ GUID ในชื่อคลาสเปลี่ยน) → หาจาก "ชื่อ" เท่านั้น
+_PICKER = {"cls_re": r"^HwndWrapper\[ssmaxx\.exe;;", "title": r"^sfw_winrespond$"}
+_PICKER_LIST = "uo_popupdw_dw_datatmp"
+_TYPE_PICKER_TITLE = {"within": _PICKER, "type": "Text", "name": "ประเภทเอกสาร", "ancestor": {"id": "uo_popupdw_st_title"}}
+_WH_PICKER_TITLE = {"within": _PICKER, "type": "Text", "name": "คลังสินค้า", "ancestor": {"id": "uo_popupdw_st_title"}}
+_TYPE_ROW = {"within": _PICKER, "type": "Custom", "name": "{=type_row}", "ancestor": {"id": _PICKER_LIST}}
+_WH_ROW = {"within": _PICKER, "type": "Custom", "name": WAREHOUSE_NAME, "ancestor": {"id": _PICKER_LIST}}
+_PICKER_OK = {"within": _PICKER, "id": "cb_ok", "type": "Button", "ancestor": {"id": "uo_popupdw_uo_buttonbar"}}
+
 
 def _uia(sel, **extra):
     return dict(sel, kind="uia", **extra)
+
+
+def _picker_steps(prefix, field, is_target, title, row):
+    """ตั้งค่าช่องหนึ่งช่องผ่านหน้าต่างรายการ 3 ขั้น (เปิด → เลือกแถว → ตกลง) · ทุกขั้นข้ามได้เมื่อ "ค่าตรงอยู่แล้วและไม่มีหน้าต่างรายการค้าง"
+    (ไม่แตะฟอร์มที่ถูกต้องอยู่แล้ว) · หน้าต่างรายการค้างอยู่ = ไม่ข้าม → ขั้น open จะหยุด (หน้าต่างหลักถูกล็อก) ไม่คลิกทะลุ"""
+    no_need = {"all": [{"uia": is_target}, {"gone": _PICKER}]}
+    ready = {"all": [{"uia": title}, {"uia": _PICKER_OK}]}
+    return {
+        prefix + "-open": {
+            "skip_if": no_need,
+            "pre": {"all": [{"uia": field}, {"uia": _IMPORT_BTN}]},
+            "actions": [{"do": "click", "target": _uia(field)}],
+            "post": {"uia": title},
+            "post_timeout": 15,
+        },
+        prefix + "-pick": {
+            "skip_if": no_need,
+            "pre": ready,
+            "actions": [{"do": "pick_row", "row": _uia(row, reverify=True), "list": _PICKER_LIST}],
+            "post": ready,
+            "post_timeout": 10,
+        },
+        prefix + "-ok": {
+            "skip_if": no_need,
+            "pre": ready,
+            "actions": [{"do": "click", "target": _uia(_PICKER_OK)}],
+            "post": {"all": [{"gone": _PICKER}, {"uia": is_target}]},
+            "post_timeout": 15,
+        },
+    }
 
 
 STEP_SPECS = {
@@ -364,9 +449,17 @@ STEP_SPECS = {
         "post": {"all": [{"uia": _DOC_TAB}, {"uia": _IMPORT_BTN}]},
         "post_timeout": 40,
     },
+    **_picker_steps("doc-type", _TYPE_FIELD, _TYPE_IS_TARGET, _TYPE_PICKER_TITLE, _TYPE_ROW),
+    **_picker_steps("warehouse", _WH_FIELD, _WH_IS_TARGET, _WH_PICKER_TITLE, _WH_ROW),
     "import-button": {
-        "pre": {"uia": _IMPORT_BTN},
-        "actions": [{"do": "click", "target": _uia(_IMPORT_BTN, reverify=True)}],
+        # ⛔ ด่านสุดท้ายก่อนคลิกจริง: อ่านกลับครบ 3 อย่างว่าถูกต้อง (ประเภท · เลขที่ขึ้นต้นรหัสประเภท · คลัง Front Store) ไม่ตรง = ไม่คลิกปุ่มนำเข้า
+        "pre": {"all": [{"uia": _IMPORT_BTN}, {"uia": _TYPE_IS_TARGET}, {"uia": _NUMBER_PREFIX}, {"uia": _WH_IS_TARGET}]},
+        "pre_timeout": 8,
+        "pre_what": "ฟอร์มยังไม่ใช่ประเภทเอกสาร/เลขที่/คลัง Front Store ที่ต้องการ (หรือไม่เห็นปุ่มนำเข้า) — ไม่คลิกปุ่มนำเข้า",
+        "actions": [
+            {"do": "note", "sel": _BRANCH_FIELD, "label": "สาขาในฟอร์ม"},        # บันทึกลง log เท่านั้น (ยังไม่ตัดสิน — รอสัญญา HTTP เฟส 2 ที่บอกสาขา)
+            {"do": "click", "target": _uia(_IMPORT_BTN, reverify=True)},
+        ],
         "allow_dialogs": [r"^Select File\b"],
         "post": {"win": _FILE_DIALOG},
         "post_timeout": 20,
@@ -375,9 +468,13 @@ STEP_SPECS = {
 
 
 def _fmt(obj, tokens):
+    """แทนโทเคนใน spec: {ชื่อ} = escape แบบ regex (ใช้ในช่อง regex และช่องเทียบตรงที่ค่าไม่มีอักขระพิเศษ) · {=ชื่อ} = ค่าดิบ ไม่ escape
+    (ใช้เฉพาะช่องที่เทียบ "ตรงตัว" เช่น name ที่มีช่องว่าง — re.escape ใส่ \\ หน้าช่องว่างแล้วเทียบตรงไม่ได้)"""
     if isinstance(obj, str):
         for k, v in tokens.items():
-            obj = obj.replace("{%s}" % k, re.escape(v))
+            obj = obj.replace("{=%s}" % k, str(v))
+        for k, v in tokens.items():
+            obj = obj.replace("{%s}" % k, re.escape(str(v)))
         return obj
     if isinstance(obj, list):
         return [_fmt(x, tokens) for x in obj]
@@ -414,7 +511,7 @@ def _sel_label(sel):
     ids = _sel_ids(sel)
     if ids:
         parts.append("id=" + "|".join(ids))
-    for k in ("type", "name", "cls", "help"):
+    for k in ("type", "name", "name_re", "cls", "help"):
         if sel.get(k):
             parts.append("%s=%s" % (k, sel[k]))
     anc = sel.get("ancestor") or {}
@@ -464,6 +561,7 @@ class Resolved:
     point: tuple | None = None
     menu_id: int | None = None
     label: str = ""
+    el_id: str = ""                  # AutomationId ขององค์ประกอบที่พบ (kind uia) — pick_row ใช้หาเครื่องหมายเลือกแถว p_1:N
 
 
 # ─────────────────────────────────────────────────────────────
@@ -552,6 +650,9 @@ class Runner:
                 continue
             if sel.get("help") is not None and e.help != sel["help"]:
                 notes.append("HelpText=%r" % e.help)
+                continue
+            if sel.get("name_re") and not re.search(sel["name_re"], e.name or ""):
+                notes.append("ชื่อ=%r" % e.name)
                 continue
             if anc and not any((not anc.get("id") or pid == anc["id"]) and (not anc.get("cls") or pcls == anc["cls"]) for pid, pcls in e.parents):
                 notes.append("หน้าแม่=%s" % ",".join(c or i for i, c in e.parents[:3]))
@@ -697,7 +798,7 @@ class Runner:
             e = vis[0]
             if not e.enabled:
                 raise HelperError("LOCATOR_NOT_FOUND", "%s ใช้งานไม่ได้ (disabled)" % label, step)
-            return Resolved("uia", "mouse", top, top.hwnd, e.rect, _center(e.rect), None, label)
+            return Resolved("uia", "mouse", top, top.hwnd, e.rect, _center(e.rect), None, label, e.id)
         raise HelperError("LOCATOR_MISSING", "ชนิดเป้าหมายไม่รู้จัก: %r" % kind, step)
 
     def _mark(self, res, step):
@@ -744,6 +845,45 @@ class Runner:
             self.log("[%s] กดปุ่ม %s" % (step, res.label))
         self.sleep(self.SETTLE)
 
+    def _note(self, a, step):
+        """อ่านชื่อขององค์ประกอบลง log เท่านั้น (ไม่คลิก/ไม่ตัดสิน) — ใช้บันทึกสิ่งที่เห็นไว้ให้คนตรวจทีหลัง"""
+        sel = a.get("sel") or {}
+        top = self._one_top(sel.get("within"), "(อ่านค่า)", step)
+        _, vis, _ = self._uia_matches(top, sel, step)
+        shown = vis[0].name if len(vis) == 1 else ("(อ่านไม่ได้)" if not vis else "(พบ %d ตัว)" % len(vis))
+        self.log("[%s] %s: %s" % (step, a.get("label") or _sel_label(sel), shown))
+
+    def _pick_row(self, a, step, allow):
+        """คลิกแถวในหน้าต่างรายการ แล้วต้องเห็นเครื่องหมายเลือกแถว (Image p_1:N) ของแถวนั้น — ยังไม่กด "ตกลง" (เป็นขั้นต่อไป)
+        ด่าน: แถวชื่อตรงทุกตัวอักษร 1 แถวพอดี (_resolve) · อยู่ในกรอบรายการจริง (แถวที่ถูกเลื่อนออกนอกกรอบไม่ถูกคลิก) · อ่านเป้าซ้ำก่อนกด (reverify)"""
+        sel = dict(a.get("row") or {}, kind="uia")
+        list_id = a.get("list") or ""
+        if not list_id:
+            raise HelperError("LOCATOR_MISSING", "pick_row ต้องระบุ list (id ของ DataWindow ที่เก็บแถว)", step)
+        top = self._one_top(sel.get("within"), "(หน้าต่างรายการ)", step)
+        res = self._resolve(sel, step)                                   # 0 แถว/หลายแถว/ซ่อน/ปิดใช้ = หยุดที่นี่ (ยังไม่คลิก)
+        m = re.match(r"^col1:(\d+)$", res.el_id or "")
+        if not m:
+            raise HelperError("LOCATOR_NOT_FOUND", "แถวที่พบไม่ใช่แถวรายการ (id=%r) — ไม่คลิก" % res.el_id, step)
+        _, lst, _ = self._uia_matches(top, {"id": list_id, "type": "Custom"}, step)
+        if len(lst) != 1 or not _visible_in(res.rect, lst[0].rect, min_visible=1.0):
+            raise HelperError("LOCATOR_NOT_FOUND", "แถว %s อยู่นอกกรอบรายการ (ถูกเลื่อนออก) — ไม่คลิก" % res.label, step)
+        self._click(sel, step, allow)                                    # dry-run: วาดกากบาทแล้วจบ · จริง: โฟกัส → hover → อ่านซ้ำ → คลิก
+        if self.opts.dry_run:
+            return
+        marker = {"within": sel.get("within"), "id": "p_1:%s" % m.group(1), "type": "Image"}
+        deadline = self.clock() + 6
+        while True:
+            top = self._one_top(sel.get("within"), "(หน้าต่างรายการ)", step)
+            _, vis, _ = self._uia_matches(top, marker, step)
+            if vis:
+                self.log("[%s] เครื่องหมายเลือกแถวย้ายมาที่แถว %s แล้ว" % (step, m.group(1)))
+                return
+            self._guard_dialogs(step, allow)
+            if self.clock() >= deadline:
+                raise HelperError("POSTCONDITION_FAILED", "คลิก %s แล้วเครื่องหมายเลือกแถวไม่ย้ายมาที่แถวนั้นภายใน 6 วินาที — ไม่กด ตกลง" % res.label, step)
+            self.sleep(self.POLL)
+
     def _act(self, a, step, allow):
         do = a.get("do")
         if do == "wait":
@@ -758,6 +898,10 @@ class Runner:
             return
         if do == "click":
             return self._click(a.get("target") or {}, step, allow)
+        if do == "note":
+            return self._note(a, step)
+        if do == "pick_row":
+            return self._pick_row(a, step, allow)
         if do in ("type", "key"):
             if self.opts.dry_run:
                 self.log("[%s] dry-run: ข้าม %s" % (step, do))
@@ -850,23 +994,42 @@ class Runner:
             raise HelperError("LOCATOR_MISSING", "ยังไม่ได้ตั้งค่าขั้น %s (รอตรวจหน้าต่าง ssmaxx.exe จริง)" % name, name)
         return _fmt(spec, self.tokens)
 
+    def _launch_target(self):
+        """ไฟล์ที่ต้องสั่งเปิดจริง · ssmaxx.exe → สลับเป็น ProMaxx.exe ในโฟลเดอร์เดียวกันถ้ามี (เหมือนทางลัดของพนักงาน)
+        PROMAXX_LAUNCH_DIRECT=1 หรือพาธที่ตั้งไว้ไม่ใช่ ssmaxx.exe (เช่นชี้ ProMaxx.exe เอง) = เปิดตามที่ตั้งไว้ ไม่สลับ"""
+        exe = self.exe
+        if self.settings.launch_direct or os.path.basename(exe).lower() != self.settings.proc_name.lower():
+            return exe
+        launcher = os.path.join(os.path.dirname(exe), LAUNCHER_NAME)
+        return launcher if self.adapter.file_exists(launcher) else exe
+
     def _step_launch(self, spec):
         if not spec.get("post"):
             raise HelperError("LOCATOR_MISSING", "ขั้น launch ไม่มี post (ต้องบอกว่าหน้า Login หน้าตาแบบไหน)", "launch")
         if self.opts.dry_run:
             self.log("[launch] dry-run: ไม่เปิดโปรแกรม")
             return
-        exe = self.exe
-        self.log("[launch] เปิด %s" % exe)
+        exe = self._launch_target()
+        self.log("[launch] เปิด %s%s" % (exe, "" if exe == self.exe else " (ตัวเปิดโปรแกรมของ ProMaxx — เปิด %s ตรงๆ แล้ว ProMaxx ไม่ไปหน้า Login)" % os.path.basename(self.exe)))
         try:
             self.adapter.launch(exe, self.settings.exe_args, os.path.dirname(exe))
         except Exception as e:      # noqa: BLE001
-            raise HelperError("LAUNCH_FAILED", "เปิด ssmaxx.exe ไม่ได้ (%s)" % type(e).__name__, "launch")
+            raise HelperError("LAUNCH_FAILED", "เปิด ProMaxx ไม่ได้ (%s)" % type(e).__name__, "launch")
         started = self.clock()
+        seen = {"any": False, "last": started}
 
         def vanished():
-            if self.clock() - started > 6 and not self._pids():
-                raise HelperError("LAUNCH_FAILED", "ProMaxx ปิดตัวเองหลังเปิด" + self._seen_hint(), "launch")
+            now = self.clock()
+            if self._pids():
+                seen["any"], seen["last"] = True, now
+            elif seen["any"]:
+                # เคยเห็นโปรเซส ssmaxx แล้วหายเกินเกณฑ์ = โปรแกรมปิดตัวเอง (กะพริบสั้นๆ ตอนตัวเปิดโปรแกรมรีสตาร์ทไม่นับ)
+                if now - seen["last"] > LAUNCH_VANISH_GRACE:
+                    raise HelperError("LAUNCH_FAILED", "ProMaxx ปิดตัวเองหลังเปิด" + self._seen_hint(), "launch")
+            elif now - started > LAUNCH_SPAWN_GRACE:
+                # ไม่เคยเห็นโปรเซสเลย: ตัวเปิดโปรแกรม (ProMaxx.exe) อาจใช้เวลาก่อนเปิด ssmaxx — รอได้ถึงเกณฑ์นี้เท่านั้น
+                raise HelperError("LAUNCH_FAILED", "สั่งเปิดแล้วแต่ไม่พบโปรเซส %s ภายใน %d วินาที" % (self.settings.proc_name, LAUNCH_SPAWN_GRACE)
+                                  + self._seen_hint(), "launch")
 
         try:
             self._wait_cond(spec["post"], float(spec.get("post_timeout", 60)), "launch", "LAUNCH_FAILED",
@@ -880,18 +1043,22 @@ class Runner:
         return " · กล่องที่เห็น: " + self._dialog_text(*self.dialogs_seen[-1]) if self.dialogs_seen else ""
 
     def _step_normal(self, name, spec):
+        """คืน True ถ้าข้ามทั้งขั้น (skip_if ตรง = ค่าที่ต้องการมีอยู่แล้ว ไม่แตะอะไร) — ตรวจอ่านอย่างเดียว"""
         allow = spec.get("allow_dialogs")
         if not spec.get("actions"):
             raise HelperError("LOCATOR_MISSING", "ขั้น %s ไม่มี actions (รอตรวจหน้าต่างจริง)" % name, name)
+        if spec.get("skip_if") and self._cond(spec["skip_if"], name):
+            self.log("[%s] ข้าม: ค่าในฟอร์มตรงที่ต้องการอยู่แล้ว (ไม่แตะอะไร)" % name)
+            return True
         self._wait_cond(spec.get("pre"), float(spec.get("pre_timeout", 15)), name, "PRECONDITION_FAILED",
-                        "ยังไม่พบหน้าจอที่ต้องใช้ในขั้นนี้", allow)
+                        spec.get("pre_what") or "ยังไม่พบหน้าจอที่ต้องใช้ในขั้นนี้", allow)
         for a in spec["actions"]:
             self._act(a, name, allow)
         if self.opts.dry_run:
             return
         try:
             self._wait_cond(spec.get("post"), float(spec.get("post_timeout", 20)), name, "POSTCONDITION_FAILED",
-                            "หน้าจอหลังคลิกไม่ขึ้นตามที่คาด", allow)
+                            spec.get("post_what") or "หน้าจอหลังคลิกไม่ขึ้นตามที่คาด", allow)
         except HelperError as e:
             if name == "login" and self._typed_creds and e.code in ("POSTCONDITION_FAILED", "UNEXPECTED_DIALOG"):
                 raise HelperError("LOGIN_FAILED", "เข้าสู่ระบบไม่สำเร็จ — ตรวจ PROMAXX_USERNAME/PASSWORD (ไม่ลองซ้ำ กันบัญชีถูกล็อก)"
@@ -899,22 +1066,27 @@ class Runner:
             raise
         if name == IMPORT_STEP:
             self._after_import = True
+        return False
 
     def run_step(self, name):
         t0 = self.clock()
         self.log("── ขั้น %s ──" % name)
+        skipped = False
         try:
             spec = self._spec(name)
             if name == "launch":
                 self._step_launch(spec)
             else:
-                self._step_normal(name, spec)
+                skipped = bool(self._step_normal(name, spec))
         except HelperError as e:
             if not e.step:
                 e.step = name
             self.steps.append({"name": name, "ok": False, "ms": int((self.clock() - t0) * 1000)})
             raise
-        self.steps.append({"name": name, "ok": True, "ms": int((self.clock() - t0) * 1000)})
+        item = {"name": name, "ok": True, "ms": int((self.clock() - t0) * 1000)}
+        if skipped:
+            item["skipped"] = True          # ค่าตรงที่ต้องการอยู่แล้ว ไม่ได้แตะฟอร์ม
+        self.steps.append(item)
 
     def _log_uia_stats(self):
         st = getattr(self.adapter, "uia_stats", None)
@@ -937,7 +1109,8 @@ class Runner:
         t0 = self.clock()
         self.doc_type = doc_type
         info = DOC_TYPES[doc_type]
-        self.tokens = dict(info)         # letter · menu_th · menu_cls · form_cls (ทุกคีย์ใน DOC_TYPES แทนเข้า spec ได้)
+        self.tokens = dict(info)         # letter · menu_th · menu_cls · form_cls · code · type_name (ทุกคีย์ใน DOC_TYPES แทนเข้า spec ได้)
+        self.tokens["type_row"] = "%s %s" % (info["code"], info["type_name"])   # ชื่อแถวในหน้าต่างรายการ (มีช่องว่าง → ใช้เป็นโทเคนดิบ {=type_row} เท่านั้น)
         try:
             self._preflight(only_step)
             names = (only_step,) if only_step else STEP_ORDER

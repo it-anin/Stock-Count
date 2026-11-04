@@ -51,6 +51,10 @@ SPECS = {
         "post": {"win": IMPORTWIN},
     },
 }
+# ขั้นตั้งประเภทเอกสาร/คลัง (promaxx_helper รุ่น .5) — ชุด Win32 ปลอมนี้ไม่มีช่องให้ตั้ง จึงเป็นขั้นที่ "ข้ามเสมอ" (skip_if ตรงตั้งแต่เริ่ม)
+# เพื่อให้เทสเดิมของตรรกะตัวรัน (ลำดับขั้น · ด่าน · หลักฐาน) ยังวิ่งครบ STEP_ORDER ได้ · ของจริงของขั้นเหล่านี้ตรวจใน promaxx-helper-doctype.spec.js
+for _n in ("doc-type-open", "doc-type-pick", "doc-type-ok", "warehouse-open", "warehouse-pick", "warehouse-ok"):
+    SPECS[_n] = {"skip_if": {"win": DOCWIN}, "actions": [{"do": "wait", "sec": 0}], "post": {"win": DOCWIN}}
 
 
 class FakeUI:
@@ -64,7 +68,8 @@ class FakeUI:
                  focus_fails=False, click_drift=False, import_no_effect=False, dialog_after_menu=None, external_mutexes=(),
                  real_delay=0.0, login_dialog_echo_password=False, start_state="closed", start_doc_menu=None, start_letter=None,
                  dup_top=False, disabled_button=False, disabled_menu=False, menu_decoys=False, window_decoys=False,
-                 rect_shift_until_focus=False, window_echo_password=False)
+                 rect_shift_until_focus=False, window_echo_password=False,
+                 spawn_delay=0.0, pids_gap=None)      # spawn_delay = ตัวเปิดโปรแกรมช้า: โปรเซส ssmaxx โผล่หลังสั่งเปิดกี่วินาที · pids_gap = (จาก, ถึง) วินาทีหลังสั่งเปิดที่โปรเซสหายชั่วคราว
         unknown = set(flags) - set(f)
         if unknown:
             raise TypeError("flag ไม่รู้จัก: %s" % sorted(unknown))
@@ -164,6 +169,12 @@ class FakeUI:
         if name != "ssmaxx.exe":
             return []
         if self.state in ("launching", "login", "logging", "main", "doc", "import", "blocked"):
+            dt = self.t - self.launch_at
+            if self.state == "launching" and dt < self.f["spawn_delay"]:
+                return list(self.f["existing_pids"])          # ตัวเปิดโปรแกรมยังไม่ได้เปิด ssmaxx
+            gap = self.f["pids_gap"]
+            if gap and gap[0] <= dt < gap[1]:
+                return list(self.f["existing_pids"])          # โปรเซสหายชั่วคราว (เช่นตัวเปิดโปรแกรมรีสตาร์ท ssmaxx)
             return [self.PID]
         return list(self.f["existing_pids"])
 

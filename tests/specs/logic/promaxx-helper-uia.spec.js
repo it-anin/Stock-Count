@@ -30,6 +30,7 @@ for root, _, files in os.walk(tmp):
             blob += open(os.path.join(root, fn), encoding='utf-8', errors='replace').read()
 out = dict(status=status, obj=obj, acts=ui.acts(), calls=[[str(x) for x in c] for c in ui.calls], clicked=ui.clicked, misfires=ui.misfires,
     fields=ui.fields, state=ui.state, stage=ui.stage, after_import=ui.acts_after_import, ev=ev, shots=ui.shots,
+    vtype=ui.vtype, wh=ui.wh, picker=ui.picker, picker_log=ui.picker_log,
     leak=bool(p.get('password', 's3cret!pw') in blob), uia_calls=ui.uia_calls, login_clicks=ui.login_clicks, log='\n'.join(log.lines))
 print(json.dumps(out, ensure_ascii=False, default=str))
 `;
@@ -37,23 +38,39 @@ const scen = (payload = {}) => runPy(SCEN, payload);
 const count = (acts, n) => acts.filter((a) => a === n).length;
 const FORM = (menu, letter) => ({ start_state: 'doc', start_doc_menu: menu, start_letter: letter });   // เริ่มที่ฟอร์มที่เปิดแล้ว (เมนูถูกเลื่อนออกนอกกรอบ)
 const MENU = (menu) => ({ start_state: 'doc', start_doc_menu: menu });                                  // เริ่มที่หน้าเมนูย่อย
+// ฟอร์มที่ประเภทเอกสาร+คลังถูกต้องแล้ว (ด่านก่อนปุ่มนำเข้าผ่าน) — ตรวจเฉพาะส่วนปุ่มนำเข้าได้โดยไม่ติดด่านประเภท/คลัง
+const ORDS_OK = { start_type: 'ORDS ใบปรับปรุงลดสินค้า', start_wh: 'Front Store' };
+const IRPS_OK = { start_type: 'IRPS ใบปรับปรุงเพิ่มสินค้า', start_wh: 'Front Store' };
 
-for (const [type, menu, letter] of [['ORDS', 'เอกสารจ่าย', 'O'], ['IRPS', 'เอกสารรับ', 'I']]) {
-  test(`1. ★ เส้นทางปกติ ${type} ตาม STEP_SPECS ที่ส่งมอบ — คลิกเป้าถูกตัว · พิมพ์ลงช่องที่โฟกัสแล้ว · รหัสครั้งเดียว · หยุดที่กล่อง Select File ไม่มี input เพิ่ม`, async () => {
+// ค่าเริ่มต้นของฟอร์มที่เปิดใหม่ (ตรวจจริง): ORDS เปิดมาเป็น ORCM + Front Store (ต้องเปลี่ยนประเภท) · IRPS เปิดมาเป็น IRPS + Warehouse (ต้องเปลี่ยนคลัง)
+const FLOW = {
+  ORDS: { menu: 'เอกสารจ่าย', letter: 'O', skipped: ['warehouse-open', 'warehouse-pick', 'warehouse-ok'],
+    form: ['SYSVOUCHERID:1', 'col1:1', 'cb_ok'], vtype: 'ORDS ใบปรับปรุงลดสินค้า' },
+  IRPS: { menu: 'เอกสารรับ', letter: 'I', skipped: ['doc-type-open', 'doc-type-pick', 'doc-type-ok'],
+    form: ['SYSWAREHOUSEID:1', 'col1:2', 'cb_ok'], vtype: 'IRPS ใบปรับปรุงเพิ่มสินค้า' },
+};
+for (const [type, { menu, letter, skipped, form, vtype }] of Object.entries(FLOW)) {
+  test(`1. ★ เส้นทางปกติ ${type} ตาม STEP_SPECS ที่ส่งมอบ — คลิกเป้าถูกตัว · ตั้งประเภท/คลังให้ถูกก่อนนำเข้า (ข้ามขั้นที่ตรงอยู่แล้ว) · รหัสครั้งเดียว · หยุดที่กล่อง Select File ไม่มี input เพิ่ม`, async () => {
     const r = scen({ type });
     expect([r.status, r.obj.ok, r.obj.reached]).toEqual([200, true, 'import-button']);
-    expect(r.obj.steps.map((s) => s.name)).toEqual(['launch', 'login', 'menu', 'doc-button', 'import-button']);
-    expect(r.acts, 'ลำดับลงมือเป๊ะ: เปิด → โฟกัส → คลิกช่องชื่อ → พิมพ์ → คลิกช่องรหัส → พิมพ์ → คลิก SIGN IN → เมนู → ปุ่ม I/O → ปุ่มนำเข้า')
-      .toEqual(['launch', 'focus', 'click_at', 'type_text', 'click_at', 'type_text', 'click_at', 'click_at', 'click_at', 'click_at']);
-    expect(r.clicked, 'องค์ประกอบที่ถูกคลิกจริงตามลำดับ').toEqual(['cf_empid:1', 'cf_pass:1', 'cb_Login', `ListItem:${menu}`, letter, 'uo_tran_bt_import']);
+    expect(r.obj.steps.map((s) => s.name)).toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok',
+      'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
+    expect(r.obj.steps.filter((s) => s.skipped).map((s) => s.name), 'ขั้นที่ค่าตรงอยู่แล้วต้องถูกข้าม (ไม่แตะฟอร์ม)').toEqual(skipped);
+    expect(r.acts, 'ลำดับลงมือเป๊ะ: เปิด → โฟกัส → ล็อกอิน → เมนู → ปุ่ม I/O → (คลิกช่อง → คลิกแถว → ตกลง) → ปุ่มนำเข้า')
+      .toEqual(['launch', 'focus', 'click_at', 'type_text', 'click_at', 'type_text', 'click_at', 'click_at', 'click_at',
+        'click_at', 'click_at', 'click_at', 'click_at']);
+    expect(r.clicked, 'องค์ประกอบที่ถูกคลิกจริงตามลำดับ').toEqual(['cf_empid:1', 'cf_pass:1', 'cb_Login', `ListItem:${menu}`, letter, ...form, 'uo_tran_bt_import']);
     expect(r.misfires, 'ไม่พิมพ์ลงช่องที่ไม่ได้โฟกัส · ไม่กดปุ่มข้างเคียง (แทรก/ลบ/ยกเลิก/อ้างอิง)').toEqual([]);
     expect(r.fields).toEqual({ username: 'somchai', password: 's3cret!pw' });
     expect(count(r.acts, 'type_text'), 'พิมพ์รหัสครั้งเดียว').toBe(2);
+    expect([r.vtype, r.wh], 'ฟอร์มตอนกดนำเข้าต้องเป็นประเภทที่ต้องการ + Front Store').toEqual([vtype, 'Front Store']);
+    expect(r.picker, 'ไม่มีหน้าต่างรายการค้าง').toBeNull();
     const last = r.calls.filter((c) => c[0] === 'click_at').pop();
     expect(last.slice(1), 'คลิกปุ่มนำเข้าที่กึ่งกลางพิกัดจาก UIA (1591..1611, 256..276)').toEqual(['1601', '266']);
     expect([r.state, r.stage, r.after_import], 'จบที่กล่อง Select File · ไม่มี input หลังนั้น').toEqual(['import', 'form', 0]);
     expect(r.leak, 'รหัสผ่านไม่หลุดลง log/ผลลัพธ์/หลักฐาน').toBe(false);
     expect(r.uia_calls).toBeGreaterThan(8);
+    expect(r.log, 'บันทึกสาขาในฟอร์มลง log (ยังไม่ตัดสิน)').toContain('สาขาในฟอร์ม: อนิน สาขาแยกชากค้อ');
   });
 }
 
@@ -83,11 +100,11 @@ test('2. ★ ด่านกันพลาด — หยุดโดยไม�
   stop(outside, 'PRECONDITION_FAILED', 'doc-button');
   expect(outside.acts, 'ไม่คลิกลงไปนอกหน้าต่าง').toEqual([]);
   // หน้าต่างหลักถูกล็อก (มีกล่องโมดัลแต่ไม่ใช่ #32770) → ไม่คลิก
-  const modal = scen({ only: 'import-button', fake: FORM('เอกสารจ่าย', 'O'), uia: { top_disabled: true } });
+  const modal = scen({ only: 'import-button', fake: FORM('เอกสารจ่าย', 'O'), uia: { ...ORDS_OK, top_disabled: true } });
   stop(modal, 'UNEXPECTED_DIALOG', 'import-button');
   expect(modal.acts).toEqual([]);
   // เป้าขยับระหว่างเตรียมคลิก (reverify) → INTERFERENCE ไม่คลิกที่เดิม
-  const drift = scen({ only: 'import-button', fake: FORM('เอกสารจ่าย', 'O'), uia: { drift_on_move: true }, opts: { hover_ms: 100 } });
+  const drift = scen({ only: 'import-button', fake: FORM('เอกสารจ่าย', 'O'), uia: { ...ORDS_OK, drift_on_move: true }, opts: { hover_ms: 100 } });
   stop(drift, 'INTERFERENCE', 'import-button');
   expect(drift.acts, 'ขยับเมาส์ไปที่เป้าแต่ไม่กดปุ่ม').toEqual(['move_to']);
   expect(drift.obj.message).toContain('ขยับ');
@@ -126,7 +143,7 @@ test('3. ★ รหัสผ่าน/โฟกัส — ไม่พิมพ�
 });
 
 test('4. dry-run — ไม่ลงมือ · วาดกากบาทที่กึ่งกลางเป้าจาก UIA · และหลักฐานตอนล้มมี UIA dump', async () => {
-  const d = scen({ only: 'import-button', fake: FORM('เอกสารจ่าย', 'O'), opts: { dry_run: true } });
+  const d = scen({ only: 'import-button', fake: FORM('เอกสารจ่าย', 'O'), uia: ORDS_OK, opts: { dry_run: true } });
   expect([d.status, d.obj.dryRun]).toEqual([200, true]);
   expect(d.acts, 'dry-run ไม่คลิก/พิมพ์/โฟกัส').toEqual([]);
   expect(d.shots).toHaveLength(1);
@@ -152,11 +169,12 @@ def tryres(sel):
     except m.HelperError as e:
         return dict(ok=False, code=e.code, msg=e.message)
 sp = m._fmt(m.STEP_SPECS, run.tokens)
+IMP = [a for a in sp['import-button']['actions'] if a['do'] == 'click'][0]['target']
 print(json.dumps(dict(
   shifted=tryres(sp['doc-button']['actions'][0]['target']),
-  wronghelp=tryres(dict(sp['import-button']['actions'][0]['target'], help='ไม่ตรง')),
-  wrongparent=tryres(dict(sp['import-button']['actions'][0]['target'], ancestor={'cls': 'pn_trans_tb_out'})),
-  good=tryres(sp['import-button']['actions'][0]['target']),
+  wronghelp=tryres(dict(IMP, help='ไม่ตรง')),
+  wrongparent=tryres(dict(IMP, ancestor={'cls': 'pn_trans_tb_out'})),
+  good=tryres(IMP),
 ), ensure_ascii=False))`);
   expect(r.shifted.ok, 'ปุ่ม O ถูกเลื่อนไปนอกกรอบหน้าต่าง (IsOffscreen=False) → ห้ามได้พิกัดให้คลิก').toBe(false);
   expect([r.shifted.code, r.shifted.msg]).toEqual(['LOCATOR_NOT_FOUND', expect.stringContaining('ไม่ได้อยู่ในหน้าจอ')]);
