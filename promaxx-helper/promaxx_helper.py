@@ -17,6 +17,9 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
   3. ขับเฉพาะหน้าต่างของ process ssmaxx.exe · foreground ต้องเป็นของ ssmaxx ก่อนพิมพ์/คลิกทุกครั้ง · พบ control ต้อง "1 รายการพอดี" ไม่เดา
   4. ล็อกอินครั้งเดียว ห้าม retry อัตโนมัติ (กันบัญชีถูกล็อก) · รหัสผ่านห้ามลง log/ผลลัพธ์/screenshot
   5. ssmaxx.exe เปิดอยู่แล้ว = ปฏิเสธ ไม่แตะอะไร (โปรแกรมเปิดซ้อนไม่ได้อยู่แล้ว · ผู้ใช้เลือก 3 พ.ย. 2026)
+     ★ ข้อยกเว้น (รุ่น .5 · ผู้ใช้สั่ง 4 พ.ย. 2026 · PROMAXX_ATTACH_EXISTING เปิดเป็นค่าเริ่มต้น): ใช้ ProMaxx ที่เปิดค้างต่อได้ "เฉพาะเมื่อปลอดภัย" =
+       ล็อกอินแล้วและไม่มีแท็บฟอร์ม/ฟอร์มเอกสาร/กล่อง/หน้าต่างอื่นเปิดอยู่ (หรือค้างที่หน้า Login) — มีฟอร์มค้างหรือสถานะไม่ชัด = ปฏิเสธ SESSION_NOT_READY
+       ไม่แตะงานของพนักงาน (ห้ามเปลี่ยนหน้าเองเมื่อมีฟอร์มเปิดอยู่) · ปิดได้ที่ .env = กลับเป็นปฏิเสธทุกกรณีที่เปิดอยู่
   6. LOCATORS_VERIFIED = False → ปฏิเสธคลิกจริงจากเว็บ (UNVERIFIED) · จะเป็น True ได้ต่อเมื่อตรวจกับหน้าต่าง ssmaxx.exe จริงครบแล้วเท่านั้น
      (ตั้งเป็น True แล้วตั้งแต่รุ่น 2026-11-04.4 — แก้ STEP_SPECS/ProMaxx อัปเดตหน้าตา = ตั้ง False ระหว่างตรวจใหม่)
   7. หลังคลิกปุ่ม "นำเข้าไฟล์เอกสาร" ห้ามส่ง input เพิ่ม (ขั้นถัดไปต้องขออนุมัติ)
@@ -24,6 +27,11 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
       ห้ามเดา/ห้ามเชื่อค่าเริ่มต้นของฟอร์ม (ProMaxx เปิดฟอร์มมาเป็นประเภท/คลังต่างกันได้) · เลือกค่าในหน้าต่างรายการต้องเจอแถว "ชื่อตรงทุกตัวอักษร 1 แถวพอดี"
       และเครื่องหมายเลือกแถวต้องย้ายมาที่แถวนั้นก่อนกด "ตกลง" · หน้าต่างรายการเป็นหน้าต่างระดับบนใหม่ทุกครั้ง (hwnd/GUID เปลี่ยน) หาจากชื่อ ไม่จำ hwnd
   8. ไม่ขับ ProMaxx ซ้อนกับบอทอื่นที่แย่งเมาส์/คีย์บอร์ด (BLOCK_PROCS)
+  8b. ★ โหมดซ่อนหน้าต่าง (รุ่น .5 · PROMAXX_HIDE_AFTER_LOGIN เปิดเป็นค่าเริ่มต้น · เฉพาะการทำงานเต็ม --open/HTTP ไม่ใช่ --step/--dry-run):
+      ล็อกอินด้วยเมาส์/คีย์จริงตามเดิม (ช่องรหัสผ่านไม่มี ValuePattern) แล้วซ่อนหน้าต่างหลัก (SW_HIDE) และสั่งเมนู/ปุ่ม O,I/ปุ่มนำเข้าด้วย UIA
+      (Invoke/Select — ไม่ใช้เมาส์/คีย์บอร์ด) ด้วยกติกาหาเป้าเดิมทุกข้อ (พบ 1 รายการพอดี · อ่านกลับประเภท/คลัง/สาขาก่อนกดนำเข้า)
+      · ขั้นที่ต้องใช้เมาส์จริง (หน้าต่างรายการประเภท/คลัง) = แสดงหน้าต่างกลับก่อนแล้วใช้เส้นทางเดิม · ⛔ ต้องแสดงหน้าต่างกลับเสมอ
+      ทุกทางออก (สำเร็จ/ล้ม/ข้อผิดพลาดที่ไม่คาดคิด) และตอนตัวช่วยเริ่มทำงาน/--reveal-ssmaxx (กันหน้าต่างหายค้าง) · แสดงกลับไม่นับเป็น input
   9. ssmaxx.exe เป็นแอป WPF (ไม่มี HWND/HMENU ข้างใน) → หาเป้าด้วย UIA (promaxx_uia.py) เท่านั้น · เป้าต้อง "พบ 1 รายการพอดี" ที่
      มองเห็นอยู่จริง (ไม่ใช่แค่ IsOffscreen=False — ปุ่มที่เลื่อนไปนอกกรอบหน้าต่างยังรายงาน False) · ต้องตรวจคลาสของหน้าแม่และ HelpText
      ก่อนคลิกปุ่มที่ id ซ้ำข้ามหน้าได้ (ปุ่มนำเข้าไฟล์มีทั้งฟอร์มเอกสารรับ/จ่ายและฟอร์มโอนสินค้า) · พิมพ์ได้เมื่อช่องที่ถูกต้องรับโฟกัสแล้วเท่านั้น
@@ -58,7 +66,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #   2026-11-04.3  ตัวรับคำขอ HTTP ไม่ตัดการเชื่อมต่อที่ว่างเร็วเกินไป (15 → 200 วินาที): เบราว์เซอร์ถือการเชื่อมต่อรอคนกด Allow ของ Local Network Access
 #                 ถ้ากดช้ากว่า 15 วินาที คำขอแรกล้ม (Failed to fetch) ทั้งที่สิทธิ์เป็น granted — เจอจากการทดสอบ Chrome/Edge จริง
 #   2026-11-04.4  LOCATORS_VERIFIED = True (ผู้ใช้ยืนยัน 4 พ.ย. 2026 หลัง Gate 0 + สายเต็มเบราว์เซอร์→ProMaxx บน Chrome/Edge จริง) — ไม่แก้ตรรกะอื่น
-VERSION = "2026-11-04.4"
+#   2026-11-04.5  (ผู้ใช้สั่ง 4 พ.ย. 2026 "A/B ร่วมกัน") ส่วน A: ใช้ ProMaxx ที่เปิด/ล็อกอินค้างต่อได้เมื่อปลอดภัย (ไม่มีฟอร์ม/กล่องค้าง) มิฉะนั้น SESSION_NOT_READY
+#                 ส่วน B: ซ่อนหน้าต่างหลังล็อกอินแล้วสั่งผ่าน UIA (op act ใน promaxx_uia.py) · แสดงกลับเสมอ · --reveal-ssmaxx · ปิดได้ทาง .env
+#                 (PROMAXX_ATTACH_EXISTING / PROMAXX_HIDE_AFTER_LOGIN) · ตรวจจริงแล้วว่าซ่อนหน้าต่างแล้ว UIA ยังอ่านพิกัด/สั่งปุ่มได้
+VERSION = "2026-11-04.5"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"
@@ -81,6 +92,11 @@ MINIMIZED_LEFT = -30000     # พิกัดซ้ายของหน้า�
 LAUNCHER_NAME = "ProMaxx.exe"
 LAUNCH_SPAWN_GRACE = 30      # วินาที: สั่งเปิดแล้วยังไม่เคยเห็นโปรเซส ssmaxx เลย — รอตัวเปิดโปรแกรมได้เท่านี้ก่อนตัดสินว่าล้ม
 LAUNCH_VANISH_GRACE = 6      # วินาที: เคยเห็นโปรเซส ssmaxx แล้วหายไปเกินนี้ = โปรแกรมปิดตัวเอง (เผื่อกะพริบตอนตัวเปิดโปรแกรมรีสตาร์ท)
+ACT_PATTERN = {"Button": "invoke", "ListItem": "select", "TabItem": "select"}     # ชนิดองค์ประกอบที่สั่งแบบไม่ใช้เมาส์ได้ (ตรงกับ promaxx_uia.ACT_PATTERNS)
+# ข้อความปฏิเสธเมื่อเซสชันที่เปิดค้างไม่ปลอดภัยพอจะใช้ต่อ — ต้องสั้น: หน้าเว็บโชว์ "ไม่สำเร็จที่ขั้น … — <ข้อความ ≤45 ตัวอักษร>" (รายละเอียดอยู่ใน log)
+NOT_READY_FORM = "มีฟอร์มเอกสารค้างใน ProMaxx — ปิดก่อนแล้วกดใหม่"
+NOT_READY_WINDOW = "ProMaxx มีหน้าต่างหรือกล่องค้าง — ปิดก่อนแล้วกดใหม่"
+NOT_READY_WAIT = "ProMaxx ยังไม่พร้อม — รอสักครู่แล้วกดใหม่"
 JOB_MUTEX = "Local\\AninPromaxxHelperJob"        # กันสองโปรเซสขับ ProMaxx พร้อมกัน (เช่น --open ระหว่างที่ --serve กำลังทำงาน)
 SERVE_MUTEX = "Local\\AninPromaxxHelperServe"    # กันเปิดตัวช่วยซ้อนกัน
 DEFAULT_BLOCK_PROCS = ("seniorsoftexport.exe", "autor01export.exe")   # บอทที่ใช้เมาส์/คีย์บอร์ดจริง — ห้ามแย่งกัน
@@ -115,7 +131,7 @@ IMPORT_STEP = STEP_ORDER[-1]                                              # ข�
 HTTP_STATUS = {
     "BAD_REQUEST": 400, "PROTO_MISMATCH": 400, "FORBIDDEN_HOST": 403, "FORBIDDEN_ORIGIN": 403, "FORBIDDEN_HEADER": 403,
     "NOT_FOUND": 404, "METHOD_NOT_ALLOWED": 405, "PAYLOAD_TOO_LARGE": 413, "UNSUPPORTED_MEDIA": 415,
-    "BUSY": 409, "ALREADY_RUNNING": 409, "OTHER_BOT_RUNNING": 409, "NOT_RUNNING": 409,
+    "BUSY": 409, "ALREADY_RUNNING": 409, "SESSION_NOT_READY": 409, "OTHER_BOT_RUNNING": 409, "NOT_RUNNING": 409,
     "NOT_CONFIGURED": 422, "UNSUPPORTED_DPI": 422, "UNVERIFIED": 422, "NO_DESKTOP": 422,
 }   # รหัสอื่น (LAUNCH_FAILED · LOGIN_FAILED · STEP_FAILED · LOCATOR_* · …) = 500
 
@@ -245,6 +261,8 @@ class Settings:
     exe_path: str = ""
     exe_args: tuple = ()
     launch_direct: bool = False      # PROMAXX_LAUNCH_DIRECT=1 → เปิดไฟล์ที่ตั้งไว้ตรงๆ ไม่สลับเป็น ProMaxx.exe
+    attach_existing: bool = False    # PROMAXX_ATTACH_EXISTING (ค่าเริ่มต้นของ .env = เปิด · dataclass = ปิดเพื่อให้โค้ด/เทสที่สร้าง Settings เองได้พฤติกรรมเดิม)
+    hide_after_login: bool = False   # PROMAXX_HIDE_AFTER_LOGIN (เหมือนข้างบน)
     proc_name: str = PROC_NAME
     port: int = DEFAULT_PORT
     allowed_origins: tuple = (PROD_ORIGIN,)
@@ -279,6 +297,16 @@ def _csv(text):
     return tuple(x.strip() for x in str(text or "").split(",") if x.strip())
 
 
+def _flag(text, default):
+    """ค่าเปิด/ปิดจาก .env: 1/true/yes/on = เปิด · 0/false/no/off = ปิด · ว่าง/อื่นๆ = ค่าเริ่มต้น"""
+    t = str(text or "").strip().lower()
+    if t in ("1", "true", "yes", "on"):
+        return True
+    if t in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
 def load_settings(base_dir=None, environ=None, warn=None):
     """ลำดับ: ตัวแปรระบบ → .env ข้าง exe/สคริปต์ · ค่าที่อ่านไม่ได้ใช้ค่าเริ่มต้น (แจ้งผ่าน warn)"""
     base_dir = base_dir or app_dir()
@@ -300,6 +328,8 @@ def load_settings(base_dir=None, environ=None, warn=None):
         except ValueError:
             warn("PROMAXX_EXE_ARGS อ่านไม่ได้ — ไม่ส่ง argument ให้ ssmaxx.exe")
     s.launch_direct = get("PROMAXX_LAUNCH_DIRECT").lower() in ("1", "true", "yes", "on")
+    s.attach_existing = _flag(get("PROMAXX_ATTACH_EXISTING"), True)
+    s.hide_after_login = _flag(get("PROMAXX_HIDE_AFTER_LOGIN"), True)
     s.proc_name = get("SSMAXX_PROC_NAME") or PROC_NAME
     port = get("HELPER_PORT")
     if port:
@@ -377,6 +407,11 @@ _PASS_CELL = {"within": _MAIN, "id": ["cf_pass", "cf_pass:1"], "ancestor": _UNDE
 _PASS_EDIT = {"within": _MAIN, "id": "cf_pass", "type": "Edit", "cls": "PasswordBox", "focused": True, "ancestor": _UNDER_LOGIN}
 _LOGIN_BTN = {"within": _MAIN, "id": "cb_Login", "type": "Button", "ancestor": _UNDER_LOGIN}
 _MAIN_MENU_ANY = {"within": _MAIN, "type": "ListItem", "name": "เอกสารรับ", "ancestor": {"id": "lbx_manumain"}}
+# ตัวบอกว่ามีฟอร์มเปิดค้าง (ตรวจจริง 4 พ.ย. 2026: หลังล็อกอิน/หลังเปิดเมนูย่อยยังไม่มีแท็บเลย · เปิดฟอร์มแล้วมีแท็บใต้ MDI_TAB + ปุ่มนำเข้า + หัวฟอร์ม)
+# อ่านจาก "ตัวตน" (ไม่ต้องมองเห็น) — conservative: พบแม้ซ่อนอยู่ก็นับว่ามีฟอร์มค้าง
+_OPEN_TABS = {"within": _MAIN, "type": "TabItem", "ancestor": {"id": "MDI_TAB"}}
+_ANY_IMPORT_BTN = {"within": _MAIN, "id": "uo_tran_bt_import", "type": "Button"}
+_ANY_TYPE_FIELD = {"within": _MAIN, "id": "SYSVOUCHERID:1"}
 _MENU_ITEM = {"within": _MAIN, "type": "ListItem", "name": "{menu_th}", "ancestor": {"id": "lbx_manumain"}}
 _MENU_BTN = {"within": _MAIN, "id": "{letter}", "type": "Button", "ancestor": {"cls": "{menu_cls}"}}
 _DOC_TAB = {"within": _MAIN, "type": "TabItem", "name": "{menu_th}", "ancestor": {"id": "MDI_TAB"}}
@@ -576,6 +611,7 @@ class Resolved:
     menu_id: int | None = None
     label: str = ""
     el_id: str = ""                  # AutomationId ขององค์ประกอบที่พบ (kind uia) — pick_row ใช้หาเครื่องหมายเลือกแถว p_1:N
+    el: object = None                # UiaEl ที่พบ (kind uia) — โหมดซ่อนหน้าต่างใช้ชนิด/พิกัดสั่งแบบไม่ใช้เมาส์
 
 
 # ─────────────────────────────────────────────────────────────
@@ -606,6 +642,10 @@ class Runner:
         self._after_import = False       # True หลังคลิกปุ่มนำเข้า — ห้ามมี input อีก (ตรวจใน _guard_no_input)
         self.actions_after_import = 0
         self._uia_errs = 0               # อ่าน UIA ล้มติดกันกี่ครั้ง (ใช้ในลูปรอเงื่อนไข — ดู UIA_MAX_ERRORS)
+        self.resume_from = ""            # "" = เปิดโปรแกรมเอง · "login"/"ready" = ใช้ ProMaxx ที่เปิดค้าง (ข้าม launch / launch+login)
+        self._hidden = set()             # hwnd หน้าต่างที่ตัวช่วยซ่อนไว้ (ต้องแสดงกลับเสมอ)
+        self._hide_tried = False
+        self._was_hidden = False
 
     # ── ตัวช่วย: หน้าต่างของ ssmaxx ──────────────────────────────
     def _pids(self):
@@ -614,7 +654,7 @@ class Runner:
     def _tops(self):
         out = []
         for w in self.adapter.top_windows(self._pids()):
-            if not w.visible:
+            if not w.visible and w.hwnd not in self._hidden:       # หน้าต่างที่ "เราซ่อนเอง" ยังเป็นเป้าของ UIA (พิกัดคงเดิม — ตรวจจริง 4 พ.ย. 2026)
                 continue
             if (w.w >= 50 and w.h >= 30) or w.rect[0] <= MINIMIZED_LEFT:     # -32000 = ย่อหน้าต่างอยู่
                 out.append(w)
@@ -828,7 +868,7 @@ class Runner:
             e = vis[0]
             if not e.enabled:
                 raise HelperError("LOCATOR_NOT_FOUND", "%s ใช้งานไม่ได้ (disabled)" % label, step)
-            return Resolved("uia", "mouse", top, top.hwnd, e.rect, _center(e.rect), None, label, e.id)
+            return Resolved("uia", "mouse", top, top.hwnd, e.rect, _center(e.rect), None, label, e.id, e)
         raise HelperError("LOCATOR_MISSING", "ชนิดเป้าหมายไม่รู้จัก: %r" % kind, step)
 
     def _mark(self, res, step):
@@ -844,15 +884,18 @@ class Runner:
 
     def _click(self, t, step, allow):
         top = self._one_top(t.get("within"), "(%s)" % t.get("kind"), step)
+        bg = (not self.opts.dry_run) and t.get("kind") == "uia" and top.hwnd in self._hidden      # หน้าต่างถูกซ่อน → สั่งผ่าน UIA ไม่ใช้เมาส์/โฟกัส
         if not self.opts.dry_run:
             self._guard_no_input(step)
             self._guard_dialogs(step, allow)
-            if t.get("via") == "mouse" or t.get("kind") in ("point", "uia"):       # uia = เมาส์จริงที่กึ่งกลางพิกัดจาก UIA เสมอ
+            if not bg and (t.get("via") == "mouse" or t.get("kind") in ("point", "uia")):       # uia = เมาส์จริงที่กึ่งกลางพิกัดจาก UIA เสมอ
                 self._ensure_focus(top, step)
         res = self._resolve(t, step)                     # อ่านพิกัดหลังโฟกัส (หน้าต่างอาจถูกกู้จากย่อ → rect เปลี่ยน)
         if self.opts.dry_run:
             self._mark(res, step)
             return
+        if bg:
+            return self._act_uia(t, res, step)
         if res.via == "mouse":
             if self.opts.hover_ms > 0:
                 self.adapter.move_to(*res.point)
@@ -957,6 +1000,90 @@ class Runner:
             return
         raise HelperError("LOCATOR_MISSING", "action ไม่รู้จัก: %r" % do, step)
 
+    # ── โหมดซ่อนหน้าต่าง (รุ่น .5) ──────────────────────────────
+    @staticmethod
+    def _hidden_capable(spec):
+        """ขั้นนี้ทำแบบไม่ใช้เมาส์ได้ไหม: ทุก action ต้องเป็น wait/await/note หรือ click ที่เป้าเป็น UIA ชนิดปุ่ม/รายการที่สั่ง Invoke/Select ได้
+        (พิมพ์ · กดคีย์ · คลิกพิกัด · คลิกช่องข้อความ/แถวในหน้าต่างรายการ ต้องใช้เมาส์/คีย์จริง → ไม่ผ่าน)"""
+        for a in spec.get("actions") or []:
+            do = a.get("do")
+            if do in ("wait", "await", "note"):
+                continue
+            if do == "click":
+                t = a.get("target") or {}
+                if t.get("kind") == "uia" and ACT_PATTERN.get(t.get("type") or ""):
+                    continue
+            return False
+        return True
+
+    def _act_uia(self, t, res, step):
+        """กดปุ่ม (Invoke) / เลือกรายการ (Select) ของหน้าต่างที่ถูกซ่อน — ไม่ใช้เมาส์/คีย์บอร์ด · เป้าเป็นตัวเดียวกับที่ _resolve เลือกแล้ว (พิกัดตรง)"""
+        e = res.el
+        pattern = ACT_PATTERN.get(e.type if e else "")
+        if not pattern:
+            raise HelperError("STEP_FAILED", "%s สั่งแบบไม่ใช้เมาส์ไม่ได้ (ชนิด %s)" % (res.label, e.type if e else "?"), step)
+        if t.get("reverify"):
+            again = self._resolve(t, step)
+            if abs(again.rect[0] - res.rect[0]) > 2 or abs(again.rect[1] - res.rect[1]) > 2:
+                raise HelperError("INTERFERENCE", "เป้า %s ขยับระหว่างเตรียมกด (%s → %s) — ไม่กด" % (res.label, res.rect, again.rect), step)
+            res, e = again, again.el
+        ok, why = self.adapter.uia_act(res.top.hwnd, ids=_sel_ids(t), ctype=e.type, name=t.get("name") or "", rect=e.rect, pattern=pattern)
+        if not ok:
+            raise HelperError("STEP_FAILED", "สั่ง %s ไม่สำเร็จ: %s" % (res.label, self._scrub(str(why))[:140]), step)
+        self.log("[%s] %s %s (เบื้องหลัง — ไม่ใช้เมาส์)" % (step, "กด" if pattern == "invoke" else "เลือก", res.label))
+        self.sleep(self.SETTLE)
+
+    def _hide_main(self, step):
+        """ซ่อนหน้าต่างหลักครั้งเดียวหลังล็อกอิน (หรือก่อนขั้นแรกเมื่อใช้เซสชันที่ล็อกอินค้างอยู่) · ซ่อนไม่สำเร็จ = ทำต่อแบบเห็นหน้าต่าง ไม่ล้ม"""
+        if self._hide_tried or self.opts.dry_run or not self.settings.hide_after_login:
+            return
+        self._hide_tried = True
+        if not (hasattr(self.adapter, "hide_window") and hasattr(self.adapter, "uia_act")):
+            return
+        mains = self._find_tops(_MAIN)
+        if len(mains) != 1:
+            self.log("[%s] ไม่ซ่อนหน้าต่าง: พบหน้าต่างหลัก %d อัน (ทำงานแบบเห็นหน้าต่างตามเดิม)" % (step, len(mains)))
+            return
+        w = mains[0]
+        try:
+            self.adapter.hide_window(w.hwnd)
+        except Exception as e:      # noqa: BLE001
+            self.log("[%s] ซ่อนหน้าต่างไม่สำเร็จ (%s) — ทำงานแบบเห็นหน้าต่างตามเดิม" % (step, type(e).__name__))
+            return
+        self.sleep(0.4)
+        if any(x.hwnd == w.hwnd and x.visible for x in self.adapter.top_windows(self._pids())):
+            self.log("[%s] ซ่อนหน้าต่าง ProMaxx ไม่สำเร็จ (ยังมองเห็นอยู่) — ทำงานแบบเห็นหน้าต่างตามเดิม" % step)
+            return
+        self._hidden.add(w.hwnd)
+        self._was_hidden = True
+        self.log("[%s] ซ่อนหน้าต่าง ProMaxx แล้ว — สั่งเมนู/ปุ่มผ่านโครงสร้างภายใน (ไม่ใช้เมาส์/คีย์บอร์ด) จนถึงปุ่มนำเข้า" % step)
+
+    def _reveal(self, why, focus_dialog=False):
+        """แสดงหน้าต่างที่ซ่อนไว้กลับมา (ไม่ส่งคีย์/คลิก) · ไม่โยนข้อผิดพลาด · focus_dialog = ดึงกล่อง Select File ขึ้นหน้าสุดต่อ"""
+        if not self._hidden:
+            return
+        hs, self._hidden = list(self._hidden), set()
+        for h in hs:
+            try:
+                self.adapter.show_window(h)
+            except Exception as e:      # noqa: BLE001
+                self.log("แสดงหน้าต่าง ProMaxx กลับไม่สำเร็จ (%s) — ใช้ --reveal-ssmaxx" % type(e).__name__)
+        self.log("แสดงหน้าต่าง ProMaxx กลับมาแล้ว (%s)" % why)
+        self.sleep(0.3)
+        if focus_dialog:
+            try:
+                dlg = self._find_tops(_FILE_DIALOG)
+                if len(dlg) == 1:
+                    self.adapter.focus(dlg[0].hwnd)
+            except Exception as e:      # noqa: BLE001
+                self.log("ดึงกล่อง Select File ขึ้นหน้าไม่สำเร็จ (%s)" % type(e).__name__)
+
+    def _reveal_quietly(self):
+        try:
+            self._reveal("สิ้นสุดงาน")
+        except Exception:      # noqa: BLE001
+            pass
+
     # ── หลักฐานตอนล้ม ───────────────────────────────────────────
     def _ensure_run_dir(self, label):
         if not self.run_dir:
@@ -1008,14 +1135,63 @@ class Runner:
         if dpi not in (None, 100) and not self.opts.force_dpi:
             raise HelperError("UNSUPPORTED_DPI", "Display Scaling ต้องเป็น 100%% (ตอนนี้ %s%%)" % dpi, "preflight")
         running = bool(self._pids())
+        attach = False
         if only_step and only_step != "launch":
             if not running:
                 raise HelperError("NOT_RUNNING", "--step %s ต้องเปิด ssmaxx.exe ไว้ที่หน้าที่ถูกต้องก่อน" % only_step, "preflight")
         elif running:
-            raise HelperError("ALREADY_RUNNING", "ProMaxx เปิดอยู่แล้ว — ปิด ssmaxx.exe ก่อนแล้วกดใหม่", "preflight")
+            if st.attach_existing and not only_step and not self.opts.dry_run:
+                attach = True          # ตัดสินว่าใช้ต่อได้ไหมหลังด่านบอทอื่น (ด้านล่าง)
+            else:
+                raise HelperError("ALREADY_RUNNING", "ProMaxx เปิดอยู่แล้ว — ปิด ssmaxx.exe ก่อนแล้วกดใหม่", "preflight")
         others = self.adapter.running_names(st.block_procs)
         if others:
             raise HelperError("OTHER_BOT_RUNNING", "มีบอทอื่นกำลังใช้ ProMaxx (%s) — รอให้จบก่อน" % ", ".join(others), "preflight")
+        if attach:
+            if reveal_stray(self.adapter, st):
+                self.log("[preflight] แสดงหน้าต่าง ProMaxx ที่ถูกซ่อนค้างกลับมา")
+            self.resume_from = self._classify_session()
+            self.log("[preflight] ใช้ ProMaxx ที่เปิดค้างอยู่ต่อ (%s)" % ("ค้างที่หน้า Login — จะล็อกอินต่อ" if self.resume_from == "login" else "ล็อกอินแล้ว ไม่มีฟอร์มค้าง — ข้ามเปิดโปรแกรมและล็อกอิน"))
+
+    def _classify_session(self):
+        """ProMaxx เปิดค้างอยู่ — ใช้ต่อได้ไหม (อ่านอย่างเดียว) → "login" (ค้างที่หน้า Login) | "ready" (ล็อกอินแล้ว ไม่มีอะไรค้าง)
+        ไม่ปลอดภัย/ไม่ชัดเจน = SESSION_NOT_READY (ไม่แตะอะไร): มีหน้าต่างอื่น/กล่องข้อความ · หน้าต่างหลักถูกล็อก · มีแท็บฟอร์ม (MDI_TAB) หรือฟอร์มเอกสารเปิดอยู่ ·
+        ยังไม่เห็นทั้งหน้า Login และเมนู (กำลังเปิด) · อ่าน UIA ไม่ได้ — ห้ามเปลี่ยนหน้า/ปิดฟอร์มของพนักงานเอง"""
+        step = "preflight"
+        self._restore_minimized(step)
+        dlgs = self.adapter.dialogs(self._pids())
+        tops = self._tops()
+        mains = [w for w in tops if _match_win(w, _MAIN)]
+        others = [w for w in tops if not _match_win(w, _MAIN)]
+        if dlgs or others:
+            self.log("[preflight] ใช้ ProMaxx ที่เปิดอยู่ไม่ได้: มีหน้าต่าง/กล่องอื่น — %s" % "; ".join(
+                [("กล่อง %s" % d[0]) for d in dlgs] + [("%s %s" % (w.cls[:18], w.text)) for w in others])[:200])
+            raise HelperError("SESSION_NOT_READY", NOT_READY_WINDOW, step)
+        if len(mains) != 1:
+            self.log("[preflight] ใช้ ProMaxx ที่เปิดอยู่ไม่ได้: พบหน้าต่างหลัก %d อัน" % len(mains))
+            raise HelperError("SESSION_NOT_READY", NOT_READY_WAIT, step)
+        if not mains[0].enabled:
+            self.log("[preflight] ใช้ ProMaxx ที่เปิดอยู่ไม่ได้: หน้าต่างหลักถูกล็อก (มีกล่องโมดัล)")
+            raise HelperError("SESSION_NOT_READY", NOT_READY_WINDOW, step)
+        top = mains[0]
+        try:
+            if self._cond({"uia": _LOGIN_PANEL}, step):
+                return "login"
+            # ตรวจฟอร์มค้าง "ก่อน" ดูเมนู: เมื่อเปิดฟอร์มแล้วรายการเมนูซ้ายถูกเลื่อนออกนอกกรอบ (ตรวจจริง 4 พ.ย. 2026) จึงไม่ใช้ "เห็นเมนู" เป็นตัวบอกว่าว่าง
+            for what, sel in (("แท็บฟอร์ม", _OPEN_TABS), ("ปุ่มนำเข้าของฟอร์ม", _ANY_IMPORT_BTN), ("หัวฟอร์มเอกสาร", _ANY_TYPE_FIELD)):
+                ident, _, _ = self._uia_matches(top, sel, step)
+                if ident:
+                    self.log("[preflight] ใช้ ProMaxx ที่เปิดอยู่ไม่ได้: มีฟอร์มเปิดค้าง (พบ%s %d รายการ) — ไม่แตะงานที่ค้างอยู่" % (what, len(ident)))
+                    raise HelperError("SESSION_NOT_READY", NOT_READY_FORM, step)
+            if not self._cond({"uia": _MAIN_MENU_ANY}, step):
+                self.log("[preflight] ใช้ ProMaxx ที่เปิดอยู่ไม่ได้: ยังไม่เห็นทั้งหน้า Login และเมนูหลัก")
+                raise HelperError("SESSION_NOT_READY", NOT_READY_WAIT, step)
+        except HelperError as e:
+            if e.code == "UIA_ERROR":
+                self.log("[preflight] ใช้ ProMaxx ที่เปิดอยู่ไม่ได้: อ่านโครงหน้าต่างไม่ได้ (%s)" % e.message[:100])
+                raise HelperError("SESSION_NOT_READY", NOT_READY_WAIT, step)
+            raise
+        return "ready"
 
     # ── ขั้นตอน ─────────────────────────────────────────────────
     def _spec(self, name):
@@ -1081,6 +1257,8 @@ class Runner:
         if spec.get("skip_if") and self._cond(spec["skip_if"], name):
             self.log("[%s] ข้าม: ค่าในฟอร์มตรงที่ต้องการอยู่แล้ว (ไม่แตะอะไร)" % name)
             return True
+        if self._hidden and not self._hidden_capable(spec):
+            self._reveal("ขั้น %s ต้องใช้เมาส์จริง" % name)      # ถูกต้องก่อน ซ่อนทีหลัง: แสดงหน้าต่างกลับแล้วใช้เส้นทางเดิม (เมาส์จริง) ที่เหลือของงาน
         self._wait_cond(spec.get("pre"), float(spec.get("pre_timeout", 15)), name, "PRECONDITION_FAILED",
                         spec.get("pre_what") or "ยังไม่พบหน้าจอที่ต้องใช้ในขั้นนี้", allow)
         for a in spec["actions"]:
@@ -1134,6 +1312,7 @@ class Runner:
         try:
             return self._run(doc_type, only_step)
         finally:
+            self._reveal_quietly()          # หน้าต่างที่ซ่อนไว้ต้องกลับมาเสมอ แม้เกิดข้อผิดพลาดที่ไม่คาดคิด
             self._log_uia_stats()
 
     def _run(self, doc_type, only_step=None):
@@ -1145,13 +1324,26 @@ class Runner:
         try:
             self._preflight(only_step)
             names = (only_step,) if only_step else STEP_ORDER
+            if not only_step and self.resume_from:
+                skip = ("launch",) if self.resume_from == "login" else ("launch", "login")
+                names = tuple(n for n in names if n not in skip)
             for n in names:
+                if not only_step and n not in ("launch", "login"):
+                    self._hide_main(n)          # ครั้งเดียว: หลังล็อกอิน (หรือก่อนขั้นแรกเมื่อใช้เซสชันที่ล็อกอินค้างอยู่)
                 self.run_step(n)
-            return 200, {"ok": True, "proto": PROTO, "version": VERSION, "type": doc_type, "dryRun": self.opts.dry_run,
-                         "reached": names[-1], "elapsedMs": int((self.clock() - t0) * 1000), "steps": self.steps}
+            hid = self._was_hidden
+            self._reveal("พร้อมให้เลือกไฟล์", focus_dialog=True)
+            body = {"ok": True, "proto": PROTO, "version": VERSION, "type": doc_type, "dryRun": self.opts.dry_run,
+                    "reached": names[-1], "elapsedMs": int((self.clock() - t0) * 1000), "steps": self.steps}
+            if self.resume_from:
+                body["attached"] = self.resume_from
+            if hid:
+                body["hidden"] = True
+            return 200, body
         except HelperError as e:
             self.log("✗ [%s] %s: %s" % (e.step or "?", e.code, e.message))
-            if e.code not in ("BUSY", "UNVERIFIED", "NOT_CONFIGURED", "ALREADY_RUNNING", "OTHER_BOT_RUNNING", "NOT_RUNNING",
+            self._reveal_quietly()              # ก่อนเก็บหลักฐาน: ภาพหน้าจอ/dump ต้องเห็นหน้าต่าง ProMaxx
+            if e.code not in ("BUSY", "UNVERIFIED", "NOT_CONFIGURED", "ALREADY_RUNNING", "SESSION_NOT_READY", "OTHER_BOT_RUNNING", "NOT_RUNNING",
                               "UNSUPPORTED_DPI", "NO_DESKTOP") and not self.opts.dry_run:
                 self._evidence(e)
             return e.http, error_body(e, self.log, self.steps)
@@ -1245,6 +1437,17 @@ def prune_runs(runs_dir, keep=30):
                 pass
     except OSError:
         pass
+
+
+def reveal_stray(adapter, settings):
+    """แสดงหน้าต่างหลักของ ProMaxx ที่ถูกซ่อนค้าง (ตัวช่วยเดิมถูกปิดกลางงานตอนซ่อนอยู่) → จำนวนที่แสดงกลับ · ไม่โยนข้อผิดพลาด"""
+    fn = getattr(adapter, "reveal_hidden", None)
+    if not fn:
+        return 0
+    try:
+        return int(fn(adapter.pids(settings.proc_name)) or 0)
+    except Exception:      # noqa: BLE001
+        return 0
 
 
 def run_inspect(adapter, settings, log, label=""):
@@ -1428,7 +1631,7 @@ def make_server(service, host="127.0.0.1", port=None):
 
 def exit_code_for(obj):
     code = (obj or {}).get("code")
-    if code in ("BUSY", "ALREADY_RUNNING", "OTHER_BOT_RUNNING", "NOT_RUNNING"):
+    if code in ("BUSY", "ALREADY_RUNNING", "SESSION_NOT_READY", "OTHER_BOT_RUNNING", "NOT_RUNNING"):
         return EXIT_BUSY
     if code in ("NOT_CONFIGURED", "UNVERIFIED", "UNSUPPORTED_DPI", "NO_DESKTOP"):
         return EXIT_CONFIG
@@ -1444,6 +1647,7 @@ def build_parser():
     g.add_argument("--open", choices=["ords", "irps"], help="ทำทั้งขั้นตอนครั้งเดียว (เส้นทางเดียวกับปุ่มบนเว็บ)")
     g.add_argument("--step", choices=list(STEP_ORDER), help="ทำเฉพาะขั้นเดียวจากหน้าที่เปิดค้างไว้ (ใช้ปรับจูน)")
     g.add_argument("--close-ssmaxx", action="store_true", help="ปิด ssmaxx.exe (ใช้ตอนทดสอบซ้ำเท่านั้น ต้องใส่ --allow-close)")
+    g.add_argument("--reveal-ssmaxx", action="store_true", help="แสดงหน้าต่าง ProMaxx ที่ถูกซ่อนค้างกลับมา (กรณีตัวช่วยถูกปิดกลางงานตอนซ่อนหน้าต่าง)")
     g.add_argument("--version", action="store_true", help="พิมพ์รุ่นแล้วจบ")
     p.add_argument("--type", choices=["ords", "irps"], help="ชนิดเอกสาร (ใช้กับ --step)")
     p.add_argument("--label", default="", help="ชื่อกำกับโฟลเดอร์ของ --inspect เช่น S3-menu")
@@ -1521,6 +1725,10 @@ def main(argv=None, adapter_factory=None, settings=None, log=None, clock=None, s
         log("ปิด ssmaxx.exe แล้ว %d โปรเซส" % n)
         return EXIT_OK
 
+    if args.reveal_ssmaxx:
+        log("แสดงหน้าต่าง ProMaxx ที่ซ่อนค้างกลับมา %d หน้าต่าง" % reveal_stray(adapter, st))
+        return EXIT_OK
+
     svc = Service(st, adapter, log, clock=clock, sleep=sleep)
     if args.open or args.step:
         doc = (args.open or args.type or "ords").upper()
@@ -1533,6 +1741,9 @@ def main(argv=None, adapter_factory=None, settings=None, log=None, clock=None, s
     if not adapter.acquire_mutex(SERVE_MUTEX):
         log("มี PromaxxHelper อีกตัวเปิดอยู่แล้ว — ไม่ทำอะไร")
         return EXIT_BUSY
+    n_stray = reveal_stray(adapter, st)
+    if n_stray:
+        log("แสดงหน้าต่าง ProMaxx ที่ถูกซ่อนค้าง (จากตัวช่วยรอบก่อนที่หยุดกลางงาน) กลับมา %d หน้าต่าง" % n_stray)
     try:
         srv = make_server(svc, "127.0.0.1", st.port)
     except OSError as e:
@@ -1543,6 +1754,8 @@ def main(argv=None, adapter_factory=None, settings=None, log=None, clock=None, s
     log("อนุญาตเว็บ: %s" % ", ".join(st.allowed_origins))
     log("ค่าตั้ง .env: %s" % (st.env_file or "(ตัวแปรระบบ / ไม่พบ .env)"))
     log("ตั้ง PROMAXX_USERNAME/PASSWORD แล้ว: %s" % ("ใช่" if st.username and st.password else "ยังไม่ครบ"))
+    log("ใช้ ProMaxx ที่เปิดค้างต่อ (เมื่อไม่มีฟอร์มค้าง): %s · ซ่อนหน้าต่างหลังล็อกอิน: %s" % (
+        "เปิด" if st.attach_existing else "ปิด", "เปิด" if st.hide_after_login else "ปิด"))
     if not LOCATORS_VERIFIED:
         log("⚠ ยังไม่ผ่านการตรวจหน้าต่าง ssmaxx.exe จริง — ปุ่มบนเว็บจะถูกปฏิเสธ (UNVERIFIED) · ใช้ --inspect/--find เพื่อตรวจ")
     log("ปิดหน้าต่างนี้ = ตัวช่วยหยุดทำงาน")

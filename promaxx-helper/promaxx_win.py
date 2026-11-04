@@ -45,6 +45,9 @@ class _INPUT(ctypes.Structure):
     _fields_ = [("type", ctypes.c_ulong), ("u", _INPUTUNION)]
 
 
+MAIN_TITLE = "SeniorSoft ProMaxx"      # ชื่อหน้าต่างหลักของ ssmaxx.exe (ตรวจจริง) — ใช้หาหน้าต่างที่ถูกซ่อนค้าง
+
+
 def _norm_menu(text):
     text = (text or "").split("\t", 1)[0].replace("&", "")
     return " ".join(text.split())
@@ -81,6 +84,15 @@ class WinAdapter:
 
     def uia_stats(self):
         return self._uia.stats() if self._uia else None
+
+    def uia_act(self, hwnd, ids=(), ctype="", name="", rect=None, pattern=""):
+        """สั่งปุ่ม (Invoke) / รายการ (Select) แบบไม่ใช้เมาส์ — ใช้เฉพาะตอนหน้าต่างถูกซ่อน (รุ่น 2026-11-04.5) · คืน (สำเร็จ, เหตุผล)
+        สั่งได้เฉพาะชนิด/pattern ที่ promaxx_uia.ACT_PATTERNS อนุญาต และต้องพบเป้า 1 รายการพอดีที่พิกัดตรง"""
+        try:
+            self._uia_backend().act(hwnd, ids=ids, ctype=ctype, name=name, rect=rect, pattern=pattern)
+            return True, ""
+        except Exception as e:      # noqa: BLE001  (UiaError และข้อผิดพลาดอื่น — ผู้เรียกหยุด ไม่ลองซ้ำ)
+            return False, "%s: %s" % (type(e).__name__, str(e)[:160])
 
     # ── ctypes ─────────────────────────────────────────────────
     def _init_ctypes(self):
@@ -305,6 +317,27 @@ class WinAdapter:
                 g.ShowWindow(hwnd, c.SW_RESTORE)
         except Exception:
             pass
+
+    def hide_window(self, hwnd):
+        """ซ่อนหน้าต่าง (SW_HIDE) — โปรเซสยังทำงานต่อ · UIA ยังอ่านพิกัดและสั่งปุ่มได้ผ่าน hwnd (ตรวจจริง 4 พ.ย. 2026) · ไม่ส่งคีย์/คลิก"""
+        self.gui.ShowWindow(hwnd, self.con.SW_HIDE)
+
+    def show_window(self, hwnd):
+        """แสดงหน้าต่างที่ถูกซ่อนกลับมา (ย่ออยู่ = SW_RESTORE) · ไม่ส่งคีย์/คลิก"""
+        g, c = self.gui, self.con
+        g.ShowWindow(hwnd, c.SW_RESTORE if g.IsIconic(hwnd) else c.SW_SHOW)
+
+    def reveal_hidden(self, pids):
+        """กู้หน้าต่างหลักของ ProMaxx ที่ถูกซ่อนค้าง (เช่นตัวช่วยถูกปิดกลางงานตอนซ่อนอยู่) → คืนจำนวนหน้าต่างที่แสดงกลับ"""
+        n = 0
+        for w in self.top_windows(pids):
+            if not w.visible and (w.text or "") == MAIN_TITLE and "ssmaxx" in (w.cls or "").lower():
+                try:
+                    self.show_window(w.hwnd)
+                    n += 1
+                except Exception:      # noqa: BLE001
+                    pass
+        return n
 
     def focus(self, hwnd):
         """ดึงหน้าต่างขึ้นหน้าสุด (foreground) — ตรวจจริง 3 พ.ย. 2026: Windows บล็อก SetForegroundWindow จากโปรเซสที่ไม่ใช่ foreground

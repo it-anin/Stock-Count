@@ -686,7 +686,7 @@ uD.dpi_percent = boom
 m.STEP_SPECS = fk.SPECS
 rc_cli = m.main(['--open', 'ords'], adapter_factory=lambda: uD, settings=stD, log=lD, clock=uD.clock, sleep=uD.sleep)
 # exit code ของทุกรหัส (Task Scheduler/สคริปต์อ่านค่านี้)
-codes = {c: m.exit_code_for({'code': c}) for c in ['BUSY', 'ALREADY_RUNNING', 'OTHER_BOT_RUNNING', 'NOT_RUNNING', 'NOT_CONFIGURED', 'UNVERIFIED',
+codes = {c: m.exit_code_for({'code': c}) for c in ['BUSY', 'ALREADY_RUNNING', 'SESSION_NOT_READY', 'OTHER_BOT_RUNNING', 'NOT_RUNNING', 'NOT_CONFIGURED', 'UNVERIFIED',
     'UNSUPPORTED_DPI', 'NO_DESKTOP', 'LOGIN_FAILED', 'LAUNCH_FAILED', 'INTERNAL', 'POSTCONDITION_FAILED']}
 codes['ok'] = m.exit_code_for(None)
 # flag ที่ผิดรูป/ขัดกัน → exit 2 และไม่ทำอะไรกับ ProMaxx
@@ -723,7 +723,7 @@ print(json.dumps(dict(bound=bound, first=first, rc_busy=rc_busy, after_dup=after
   expect(r.rc_cli, 'CLI: ข้อผิดพลาดภายใน = exit 1 ไม่ crash').toBe(1);
   expect(r.mutex_cli).toEqual([]);
   expect(r.log_cli).not.toContain('SECRET-DETAIL-xyz');
-  expect(r.codes).toEqual({ BUSY: 3, ALREADY_RUNNING: 3, OTHER_BOT_RUNNING: 3, NOT_RUNNING: 3, NOT_CONFIGURED: 2, UNVERIFIED: 2, UNSUPPORTED_DPI: 2, NO_DESKTOP: 2,
+  expect(r.codes).toEqual({ BUSY: 3, ALREADY_RUNNING: 3, SESSION_NOT_READY: 3, OTHER_BOT_RUNNING: 3, NOT_RUNNING: 3, NOT_CONFIGURED: 2, UNVERIFIED: 2, UNSUPPORTED_DPI: 2, NO_DESKTOP: 2,
     LOGIN_FAILED: 1, LAUNCH_FAILED: 1, INTERNAL: 1, POSTCONDITION_FAILED: 1, ok: 1 });
   expect(Object.values(r.rc_flags), 'flag ผิดรูป/ขัดกัน = exit 2 ทุกแบบ').toEqual([2, 2, 2, 2, 2]);
   expect(r.acts_flags, 'flag ผิดรูปต้องไม่ลงมือกับ ProMaxx').toEqual([]);
