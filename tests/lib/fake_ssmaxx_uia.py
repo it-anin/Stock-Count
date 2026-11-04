@@ -11,6 +11,7 @@
 
 ค่าในไฟล์นี้ (ต่างจาก fake_ssmaxx.py) มาจากข้อมูลจริง — แต่ยังเป็น "แบบจำลอง": ไม่พิสูจน์ว่าการคลิก/พิมพ์จริงบน ssmaxx.exe ได้ผลตามนี้
 """
+import dataclasses
 import os
 
 from fake_ssmaxx import FakeUI
@@ -18,6 +19,7 @@ from fake_ssmaxx import FakeUI
 MAIN_CLS = "HwndWrapper[ssmaxx.exe;;1cfdec26-319d-446c-96b1-0854e2680fe1]"
 TITLE = "SeniorSoft ProMaxx"
 WIN = (-8, -8, 1928, 1040)
+MINI_WIN = (-32000, -32000, -31840, -31972)     # หน้าต่างที่ถูกย่อ (ตรวจจริง 4 พ.ย. 2026)
 MAIN_HWND = 100
 DIALOG_HWND = 300
 LIST_ITEMS = ["Dashboard", "ตั้งค่า", "คลังสินค้า", "บุคคล", "เอกสารรับ", "เอกสารจ่าย", "Utility"]
@@ -43,6 +45,8 @@ DEFAULTS = {"O": ("ORCM ใบเสร็จรับเงิน(เงิน�
 UFLAGS = dict(uia_fail_first=0, uia_always_fail=False, dup_login_btn=False, import_help=IMPORT_HELP, form_cls_override=None,
               top_disabled=False, focus_never=False, drift_on_move=False, start_focus_field="username", list_hidden=False,
               edit_unfocused=False,   # ช่องกรอกถูกสร้างแล้วแต่ไม่ได้รับโฟกัสแป้นพิมพ์ (เช่นหน้าต่างไม่ใช่ foreground)
+              minimized=False,        # หน้าต่างหลักถูกย่ออยู่จนกว่า focus() จะกู้ — ตามที่ตรวจจริง 4 พ.ย. 2026: ทั้งหน้าต่างและทุกองค์ประกอบมีพิกัด ≈ -32000
+                                      # แต่ foreground_pid ยังเป็น ProMaxx (หน้าต่างที่ถูกย่อยังนับเป็น foreground) · focus_fails=True = กู้ไม่ได้
               pass_plain=False,       # ช่อง cf_pass เป็น TextBox ธรรมดา ไม่ใช่ PasswordBox (พิมพ์รหัสลงช่องที่ไม่ปิดบังไม่ได้)
               # ── หน้าต่างเลือกประเภทเอกสาร/คลัง ──
               start_type=None, start_wh=None,     # ค่าตั้งต้นของฟอร์มที่เปิดแล้ว (ชื่อแถวเต็ม เช่น "ORDS ใบปรับปรุงลดสินค้า") · None = ค่าเริ่มต้นตามชนิดฟอร์ม
@@ -78,6 +82,7 @@ class FakeWpfUI(FakeUI):
         if bad:
             raise TypeError("uia flag ไม่รู้จัก: %s" % sorted(bad))
         self.u.update(uia or {})
+        self.minimized = bool(self.u["minimized"])
         super().__init__(W, M, **flags)
         self.focus_field = self.u["start_focus_field"] if self.state == "login" else None
         # menu | form (ใช้เมื่อ state=doc/import) — start_letter ใส่ = เริ่มที่ฟอร์มที่เปิดแล้ว
@@ -104,7 +109,7 @@ class FakeWpfUI(FakeUI):
         s, tops = self.state, []
         if s in ("login", "logging", "main", "doc", "import"):
             en = not (s == "import" or self.u["top_disabled"] or self.picker)
-            tops.append((self.W(MAIN_HWND, MAIN_CLS, TITLE, WIN, True, en, 0, self.PID, 0), []))
+            tops.append((self.W(MAIN_HWND, MAIN_CLS, TITLE, MINI_WIN if self.minimized else WIN, True, en, 0, self.PID, 0), []))
             tops.append((self.W(101, "HwndWrapper[ssmaxx.exe;;213f64ff]", "", (0, 0, 136, 39), False, True, 0, self.PID, 0), []))
             tops.append((self.W(102, "HwndWrapper[ssmaxx.exe;;8de39fac]", "MediaContextNotificationWindow", (0, 0, 0, 0), False, True, 0, self.PID, 0), []))
         if s == "import":
@@ -285,6 +290,8 @@ class FakeWpfUI(FakeUI):
         self._tick()
         if hwnd == MAIN_HWND:
             pool = self._els()
+            if self.minimized:          # ทุกองค์ประกอบถูกย้ายไปมุม -32000 พร้อมหน้าต่าง (IsOffscreen ยังเป็น False — เชื่อไม่ได้)
+                pool = [dataclasses.replace(e, rect=(e.rect[0] - 32000, e.rect[1] - 32000, e.rect[2] - 32000, e.rect[3] - 32000)) for e in pool]
         elif hwnd == PICKER_HWND and self.picker:
             pool = self._picker_els()
         else:
@@ -323,9 +330,16 @@ class FakeWpfUI(FakeUI):
             self.row_shift = True        # รายการเลื่อนหลังเมาส์ขยับมาที่แถว
         return True, ""
 
+    def focus(self, hwnd):
+        super().focus(hwnd)
+        if not self.f["focus_fails"]:
+            self.minimized = False       # SW_RESTORE เฉพาะหน้าต่างที่ถูกย่อ (WinAdapter.focus)
+
     def click_at(self, x, y, pids=None):
         self._act("click_at", int(x), int(y))
         self._tick()
+        if self.minimized:
+            return False, "ใต้เมาส์เป็นหน้าต่างของโปรแกรมอื่น"       # หน้าต่างอยู่มุม -32000 — ใต้เมาส์ไม่ใช่ ProMaxx
         if self.f["click_drift"]:
             return False, "เมาส์ถูกขยับก่อนคลิก"
         if not _contains(WIN, x, y):

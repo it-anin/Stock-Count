@@ -52,7 +52,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #   2026-11-04.1  ขั้น launch เปิดผ่าน ProMaxx.exe (ตัวเปิดโปรแกรมที่ทางลัดของพนักงานใช้) แทน ssmaxx.exe ตรงๆ — เปิดตรงแล้ว ProMaxx แจ้ง
 #                 "Application to the program is open to change." ไม่ไปหน้า Login (เจอจริง 4 พ.ย. 2026) · PROMAXX_LAUNCH_DIRECT=1 = เปิดตรงตามเดิม
 #                 · ด่าน "โปรแกรมปิดตัวเอง" แยก 2 แบบ: ไม่เคยเห็นโปรเซส ssmaxx รอได้ 30 วินาที (ตัวเปิดโปรแกรมช้า) · เห็นแล้วหายเกิน 6 วินาที = หยุด
-VERSION = "2026-11-04.1"
+#   2026-11-04.2  กู้หน้าต่าง ProMaxx ที่ถูกย่อ (พิกัด ≈ -32000) ก่อนตรวจเงื่อนไขของทุกขั้น — เดิมด่านก่อนเริ่มอ่านปุ่มไม่เห็นแล้วล้ม PRECONDITION_FAILED
+#                 และ _ensure_focus ข้ามเพราะหน้าต่างที่ถูกย่อยังนับเป็น foreground · dry-run ไม่กู้ (แจ้งข้อความชัดเจน) · กู้ไม่สำเร็จ = FOCUS_LOST ไม่คลิก
+VERSION = "2026-11-04.2"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"
@@ -64,6 +66,7 @@ LOCATORS_VERIFIED = False
 PROC_NAME = "ssmaxx.exe"
 # ทางลัด "ProMaxx" ที่พนักงานใช้ชี้ไป ProMaxx.exe (ตัวเปิดโปรแกรม) ซึ่งเปิด ssmaxx.exe ต่อให้ · เปิด ssmaxx.exe ตรงๆ แล้วได้กล่อง
 # "Application to the program is open to change." (ตรวจจริง 4 พ.ย. 2026: 20/20 รอบเปิดผ่าน ProMaxx.exe ได้หน้า Login ใน ~8 วินาที)
+MINIMIZED_LEFT = -30000      # พิกัดซ้ายของหน้าต่างที่ถูกย่อ (Windows ให้ -32000 ทั้ง Win32 และ UIA) — ไม่ใช่หน้าต่างที่มองเห็นได้จริง
 LAUNCHER_NAME = "ProMaxx.exe"
 LAUNCH_SPAWN_GRACE = 30      # วินาที: สั่งเปิดแล้วยังไม่เคยเห็นโปรเซส ssmaxx เลย — รอตัวเปิดโปรแกรมได้เท่านี้ก่อนตัดสินว่าล้ม
 LAUNCH_VANISH_GRACE = 6      # วินาที: เคยเห็นโปรเซส ssmaxx แล้วหายไปเกินนี้ = โปรแกรมปิดตัวเอง (เผื่อกะพริบตอนตัวเปิดโปรแกรมรีสตาร์ท)
@@ -602,7 +605,7 @@ class Runner:
         for w in self.adapter.top_windows(self._pids()):
             if not w.visible:
                 continue
-            if (w.w >= 50 and w.h >= 30) or w.rect[0] <= -30000:     # -32000 = ย่อหน้าต่างอยู่
+            if (w.w >= 50 and w.h >= 30) or w.rect[0] <= MINIMIZED_LEFT:     # -32000 = ย่อหน้าต่างอยู่
                 out.append(w)
         return out
 
@@ -729,8 +732,24 @@ class Runner:
         return blob[:160] + hint
 
     # ── โฟกัส/คลิก/พิมพ์ ────────────────────────────────────────
+    def _restore_minimized(self, step):
+        """หน้าต่างของ ProMaxx ถูกย่ออยู่ (พิกัด ≈ -32000) → UIA อ่านปุ่ม/ช่องไม่เห็นจนด่านก่อนเริ่มล้ม และขั้นโฟกัสก็ไม่กู้ให้
+        (หน้าต่างที่ถูกย่อยังนับเป็น foreground ได้ — เจอจริง 4 พ.ย. 2026) ⇒ กู้กลับมาแสดงก่อนตรวจเงื่อนไขของขั้น
+        · โหมดจริงเท่านั้น: dry-run ไม่ลงมือ จึงแจ้งอย่างเดียว · กู้ไม่สำเร็จ = หยุดโดยไม่คลิก/พิมพ์ · เปลี่ยนแค่หน้าต่างที่อยู่ด้านหน้า (focus() ไม่ส่งคีย์/คลิก)"""
+        mins = [w for w in self._tops() if w.rect[0] <= MINIMIZED_LEFT]
+        if not mins:
+            return
+        if self.opts.dry_run:
+            raise HelperError("PRECONDITION_FAILED", "หน้าต่าง ProMaxx ถูกย่ออยู่ — dry-run ไม่กู้ให้ (โหมดจริงจะกู้กลับมาเอง)", step)
+        self.log("[%s] หน้าต่าง ProMaxx ถูกย่ออยู่ — กู้กลับมาแสดง" % step)
+        for w in mins:
+            self.adapter.focus(w.hwnd)
+        self.sleep(0.4)
+        if any(w.rect[0] <= MINIMIZED_LEFT for w in self._tops()):
+            raise HelperError("FOCUS_LOST", "หน้าต่าง ProMaxx ถูกย่ออยู่และกู้กลับมาไม่ได้ — ไม่คลิก/พิมพ์", step)
+
     def _ensure_focus(self, top, step):
-        if self.adapter.foreground_pid() in self._pids():
+        if self.adapter.foreground_pid() in self._pids() and top.rect[0] > MINIMIZED_LEFT:      # ย่ออยู่ = ยังต้องกู้ แม้เป็น foreground
             return
         self.adapter.focus(top.hwnd)
         self.sleep(0.4)
@@ -1047,6 +1066,7 @@ class Runner:
         allow = spec.get("allow_dialogs")
         if not spec.get("actions"):
             raise HelperError("LOCATOR_MISSING", "ขั้น %s ไม่มี actions (รอตรวจหน้าต่างจริง)" % name, name)
+        self._restore_minimized(name)          # ก่อนอ่านอะไรทั้งนั้น — หน้าต่างที่ถูกย่ออ่านพิกัดไม่ได้
         if spec.get("skip_if") and self._cond(spec["skip_if"], name):
             self.log("[%s] ข้าม: ค่าในฟอร์มตรงที่ต้องการอยู่แล้ว (ไม่แตะอะไร)" % name)
             return True

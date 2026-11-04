@@ -31,7 +31,8 @@ for root, _, files in os.walk(tmp):
 out = dict(status=status, obj=obj, acts=ui.acts(), calls=[[str(x) for x in c] for c in ui.calls], clicked=ui.clicked, misfires=ui.misfires,
     fields=ui.fields, state=ui.state, stage=ui.stage, after_import=ui.acts_after_import, ev=ev, shots=ui.shots,
     vtype=ui.vtype, wh=ui.wh, picker=ui.picker, picker_log=ui.picker_log,
-    leak=bool(p.get('password', 's3cret!pw') in blob), uia_calls=ui.uia_calls, login_clicks=ui.login_clicks, log='\n'.join(log.lines))
+    leak=bool(p.get('password', 's3cret!pw') in blob), uia_calls=ui.uia_calls, login_clicks=ui.login_clicks, log='\n'.join(log.lines),
+    minimized=getattr(ui, 'minimized', None))
 print(json.dumps(out, ensure_ascii=False, default=str))
 `;
 const scen = (payload = {}) => runPy(SCEN, payload);
@@ -262,4 +263,51 @@ print(json.dumps(dict(
   expect(r.imp_allow, 'อนุญาตเฉพาะกล่อง Select File').toEqual(['^Select File\\b']);
   expect(r.imp_sel.help).toBe('นำเข้าไฟล์เอกสาร');
   expect(r.imp_sel.ancestor).toEqual({ cls: '{form_cls}' });
+});
+
+test('6. ★ หน้าต่าง ProMaxx ถูกย่อ — กู้กลับมาก่อนตรวจเงื่อนไขของขั้น (เดิมล้ม PRECONDITION_FAILED) · กู้ไม่ได้ = หยุดไม่คลิก · dry-run ไม่กู้ · ด่านซ้ำใน _ensure_focus', async () => {
+  // ตรวจจริง 4 พ.ย. 2026: หน้าต่างที่ถูกย่ออ่านพิกัดได้ ≈ -32000 ทั้งหน้าต่างและทุกองค์ประกอบ แต่ยังนับเป็น foreground — ขั้นโฟกัสเดิมจึงข้ามและด่านก่อนเริ่มมองไม่เห็นปุ่ม
+  const MIN = { minimized: true };
+  const ok = scen({ type: 'ORDS', only: 'doc-button', fake: MENU('เอกสารจ่าย'), uia: MIN });
+  expect([ok.status, ok.obj.reached], JSON.stringify(ok.obj)).toEqual([200, 'doc-button']);
+  expect(ok.acts, 'กู้ก่อน แล้วคลิกครั้งเดียว (หลังกู้ไม่ต้องโฟกัสซ้ำ)').toEqual(['focus', 'click_at']);
+  expect(ok.calls[0][0], 'ไม่มีการคลิก/พิมพ์ก่อนกู้หน้าต่าง').toBe('focus');
+  expect(ok.clicked, 'คลิกปุ่ม O หลังกู้ (พิกัดอ่านใหม่หลังโฟกัส)').toEqual(['O']);
+  expect([ok.minimized, ok.stage]).toEqual([false, 'form']);
+  expect(ok.log).toContain('หน้าต่าง ProMaxx ถูกย่ออยู่ — กู้กลับมาแสดง');
+  // กู้ก่อนอ่าน skip_if ด้วย: ฟอร์มถูกต้องอยู่แล้ว + ถูกย่อ → กู้แล้วข้าม (ไม่ใช่ล้มที่ด่านก่อนเริ่ม)
+  const sk = scen({ type: 'ORDS', only: 'doc-type-open', fake: FORM('เอกสารจ่าย', 'O'), uia: { ...MIN, ...ORDS_OK } });
+  expect([sk.status, sk.obj.steps.map((s) => !!s.skipped)], JSON.stringify(sk.obj)).toEqual([200, [true]]);
+  expect(sk.acts, 'กู้แล้วข้าม ไม่คลิกอะไร').toEqual(['focus']);
+  // กู้ไม่สำเร็จ → หยุด ไม่คลิก/พิมพ์
+  const bad = scen({ type: 'ORDS', only: 'doc-button', fake: { ...MENU('เอกสารจ่าย'), focus_fails: true }, uia: MIN });
+  expect([bad.status, bad.obj.code, bad.obj.step], JSON.stringify(bad.obj)).toEqual([500, 'FOCUS_LOST', 'doc-button']);
+  expect(bad.obj.message).toContain('กู้กลับมาไม่ได้');
+  expect(bad.acts, 'พยายามกู้ครั้งเดียวแล้วหยุด').toEqual(['focus']);
+  expect(bad.clicked).toEqual([]);
+  // dry-run ไม่ลงมือ: ไม่กู้ — แจ้งข้อความชัดเจนแทน (ไม่ใช่ข้อความทั่วไป "ยังไม่พบหน้าจอ")
+  const dry = scen({ type: 'ORDS', only: 'doc-button', fake: MENU('เอกสารจ่าย'), uia: MIN, opts: { dry_run: true } });
+  expect([dry.status, dry.obj.code, dry.obj.step]).toEqual([500, 'PRECONDITION_FAILED', 'doc-button']);
+  expect(dry.obj.message).toContain('dry-run ไม่กู้ให้');
+  expect(dry.acts, 'dry-run ไม่โฟกัส/ไม่คลิกอะไรเลย').toEqual([]);
+  expect(dry.minimized, 'หน้าต่างยังถูกย่ออยู่ (ไม่ถูกแตะ)').toBe(true);
+  // ไม่ถูกย่อ: พฤติกรรมเดิมทุกอย่าง (ไม่โฟกัสซ้ำ ไม่มีข้อความกู้)
+  const plain = scen({ type: 'ORDS', only: 'doc-button', fake: MENU('เอกสารจ่าย') });
+  expect([plain.status, plain.acts]).toEqual([200, ['click_at']]);
+  expect(plain.log).not.toContain('ถูกย่อ');
+  // ด่านซ้ำ: ถูกย่อกลางขั้น (ผ่านด่านก่อนเริ่มมาแล้ว) แต่ยังเป็น foreground → _ensure_focus ต้องกู้ ไม่ใช่ข้ามเพราะ foreground ตรง
+  const u = runPy(String.raw`
+import fake_ssmaxx_uia as fu
+def go(mini):
+    svc, ui, log, st = fu.make_uia(m, tmp + ('m' if mini else 'p'), verified=True, uia={'minimized': mini}, start_state='doc', start_doc_menu='เอกสารจ่าย')
+    r = m.Runner(ui, st, log, specs=svc.specs, opts=m.JobOpts(), clock=ui.clock, sleep=ui.sleep)
+    top = r._tops()[0]
+    fg_before = ui.foreground_pid() in r._pids()
+    r._ensure_focus(top, 'x')
+    return dict(acts=ui.acts(), minimized=ui.minimized, fg_before=fg_before, left=top.rect[0])
+print(json.dumps(dict(mini=go(True), plain=go(False))))`);
+  expect(u.mini.fg_before, 'ถูกย่อแต่ยังเป็น foreground (ตามที่ตรวจจริง)').toBe(true);
+  expect(u.mini.left).toBeLessThanOrEqual(-30000);
+  expect([u.mini.acts, u.mini.minimized], 'ถูกย่ออยู่ต้องโฟกัส/กู้แม้ foreground ตรง').toEqual([['focus'], false]);
+  expect(u.plain.acts, 'ไม่ถูกย่อ + foreground ตรง = ไม่ต้องโฟกัสซ้ำ').toEqual([]);
 });
