@@ -4,12 +4,15 @@ r"""
 
 ทำไมต้องมี: ssmaxx.exe เป็นแอป WPF (.NET) ข้างในไม่มี HWND/HMENU ให้ Win32 มองเห็น (ตรวจจริง 3 พ.ย. 2026 · README §ผลตรวจจริง)
 แต่ WPF เปิดเผยทุกปุ่ม/ช่อง/รายการผ่าน UIA พร้อม AutomationId ที่คงที่ → ใช้หาเป้า + อ่านพิกัด/สถานะ
-(การคลิกยังใช้เมาส์จริงของ promaxx_win.py ที่กึ่งกลางพิกัดที่ UIA ให้ — ไม่ใช้ Invoke)
+(การคลิกปกติใช้เมาส์จริงของ promaxx_win.py ที่กึ่งกลางพิกัดที่ UIA ให้ · ยกเว้นโหมด "ซ่อนหน้าต่าง" (รุ่น 2026-11-04.5) ที่ใช้ op act ด้านล่าง)
 
 ⛔ กติกา (แก้โค้ดแล้วต้องไม่ทำให้ข้อใดหาย):
   1. สคริปต์ PowerShell เป็นค่าคงที่ในไฟล์นี้เท่านั้น · ไม่รับสคริปต์/คำสั่งจากภายนอก · ส่งเฉพาะ "ข้อมูลคำถาม" เป็น JSON→base64
      ห้ามต่อสตริงจากข้อมูลภายนอกเข้าไปในตัวสคริปต์ (ไม่มี Invoke-Expression/ไม่มี -Command)
-  2. อ่านอย่างเดียว: ไม่ Invoke/SetValue/SetFocus/คลิก · ไม่อ่านค่าที่พิมพ์ในช่องกรอก (ไม่ใช้ ValuePattern) · ตัดชื่อที่ 80 ตัวอักษร
+  2. op ping/find/dump อ่านอย่างเดียว: ไม่ Invoke/SetValue/SetFocus/คลิก · ไม่อ่านค่าที่พิมพ์ในช่องกรอก (ไม่ใช้ ValuePattern) · ตัดชื่อที่ 80 ตัวอักษร
+     ★ op act (เพิ่ม 4 พ.ย. 2026 รุ่น .5) สั่งได้เพียง 2 อย่างเท่านั้น: Button → InvokePattern.Invoke() · ListItem/TabItem → SelectionItemPattern.Select()
+       ไม่มี SetValue/SendKeys/SetFocus/ValuePattern · ต้องระบุพิกัดเป้า และต้องพบเป้า "1 รายการพอดี" ที่พิกัดตรง (±2px) และเปิดใช้งานอยู่ ไม่งั้นไม่สั่ง
+       (ใช้เฉพาะตอนหน้าต่างถูกซ่อน — ช่องรหัสผ่านไม่มี ValuePattern จึงล็อกอินต้องใช้เมาส์/คีย์จริงเสมอ)
   3. สคริปต์ต้องเป็น ASCII ล้วน (เทสตรึง) — Windows PowerShell 5.1 อ่านไฟล์ .ps1 ที่ไม่มี BOM เป็นรหัสเดิมของเครื่อง ภาษาไทยจะพังและ
      บางไบต์ถอดเป็นเครื่องหมายคำพูดโค้งทำให้สตริงขาดกลางคัน · ข้อความไทยส่งเข้าเป็น base64 (UTF-8) และผลลัพธ์ escape เป็น \uXXXX
   4. ผลลัพธ์ล้มเหลว/หมดเวลา/ไม่ใช่ JSON = UiaError (ไม่เดา · ผู้เรียกต้องหยุดไม่คลิก)
@@ -26,6 +29,7 @@ import time
 
 CREATE_NO_WINDOW = 0x08000000
 MAX_IDS = 4
+ACT_PATTERNS = {"Button": "invoke", "ListItem": "select", "TabItem": "select"}   # ชนิดองค์ประกอบ → pattern ที่ op act ยอมสั่ง (ห้ามขยายโดยไม่ขออนุมัติ)
 
 # ─────────────────────────────────────────────────────────────
 # สคริปต์ PowerShell (ASCII ล้วน — เทสตรึง) · ops: ping | find | dump
@@ -98,6 +102,29 @@ function Join-Conds($kind, $list) {
   return New-Object System.Windows.Automation.AndCondition -ArgumentList (, $arr)
 }
 
+function Build-Cond($q) {
+  $conds = New-Object System.Collections.ArrayList
+  $ids = New-Object System.Collections.ArrayList
+  if ($null -ne $q['ids']) { foreach ($x in $q['ids']) { if ([string]$x -ne '') { [void]$ids.Add([string]$x) } } }
+  if ($ids.Count -gt 4) { throw 'too many ids' }
+  if ($ids.Count -gt 0) {
+    $idc = New-Object System.Collections.ArrayList
+    foreach ($i in $ids) { [void]$idc.Add((New-PropCond ([System.Windows.Automation.AutomationElement]::AutomationIdProperty) $i)) }
+    [void]$conds.Add((Join-Conds 'or' $idc))
+  }
+  $tname = [string]$q['type']
+  if ($tname -ne '') {
+    if ($tname -notmatch '^[A-Za-z]{2,24}$') { throw 'bad control type' }
+    $fld = [System.Windows.Automation.ControlType].GetField($tname)
+    if ($null -eq $fld) { throw 'unknown control type' }
+    [void]$conds.Add((New-PropCond ([System.Windows.Automation.AutomationElement]::ControlTypeProperty) ($fld.GetValue($null))))
+  }
+  $nm = [string]$q['name']
+  if ($nm -ne '') { [void]$conds.Add((New-PropCond ([System.Windows.Automation.AutomationElement]::NameProperty) $nm)) }
+  if ($conds.Count -eq 0) { throw 'empty query' }
+  return (Join-Conds 'and' $conds)
+}
+
 $script:count = 0
 $script:lines = $null
 $script:maxNodes = 1500
@@ -144,29 +171,18 @@ try {
     exit 0
   }
 
+  if ($op -eq 'act') {
+    # validate the (control type, pattern) pair BEFORE touching any window: only Button->invoke and ListItem/TabItem->select are allowed
+    $pat = [string]$q['pattern']
+    $ct = [string]$q['type']
+    $okPair = (($pat -eq 'invoke') -and ($ct -eq 'Button')) -or (($pat -eq 'select') -and (($ct -eq 'ListItem') -or ($ct -eq 'TabItem')))
+    if (-not $okPair) { throw 'pattern not allowed for this control type' }
+  }
+
   $root = $AE::FromHandle([IntPtr][int64]$q['hwnd'])
 
   if ($op -eq 'find') {
-    $conds = New-Object System.Collections.ArrayList
-    $ids = New-Object System.Collections.ArrayList
-    if ($null -ne $q['ids']) { foreach ($x in $q['ids']) { if ([string]$x -ne '') { [void]$ids.Add([string]$x) } } }
-    if ($ids.Count -gt 4) { throw 'too many ids' }
-    if ($ids.Count -gt 0) {
-      $idc = New-Object System.Collections.ArrayList
-      foreach ($i in $ids) { [void]$idc.Add((New-PropCond ($AE::AutomationIdProperty) $i)) }
-      [void]$conds.Add((Join-Conds 'or' $idc))
-    }
-    $tname = [string]$q['type']
-    if ($tname -ne '') {
-      if ($tname -notmatch '^[A-Za-z]{2,24}$') { throw 'bad control type' }
-      $fld = [System.Windows.Automation.ControlType].GetField($tname)
-      if ($null -eq $fld) { throw 'unknown control type' }
-      [void]$conds.Add((New-PropCond ($AE::ControlTypeProperty) ($fld.GetValue($null))))
-    }
-    $nm = [string]$q['name']
-    if ($nm -ne '') { [void]$conds.Add((New-PropCond ($AE::NameProperty) $nm)) }
-    if ($conds.Count -eq 0) { throw 'empty query' }
-    $cond = Join-Conds 'and' $conds
+    $cond = Build-Cond $q
     $found = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
     $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
     $limit = 40
@@ -175,6 +191,29 @@ try {
     $n = $found.Count
     for ($i = 0; $i -lt [math]::Min($n, $limit); $i++) { [void]$els.Add((Describe $found.Item($i) $walker 8)) }
     Write-Result @{ ok = $true; ms = [int]$sw.ElapsedMilliseconds; total = $n; els = $els.ToArray() }
+    exit 0
+  }
+
+  if ($op -eq 'act') {
+    $want = @($q['rect'])
+    if ($want.Count -ne 4) { throw 'rect required' }
+    $cond = Build-Cond $q
+    $found = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    $hits = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $found.Count; $i++) {
+      $el = $found.Item($i)
+      $r = Get-Rect $el
+      if ($null -eq $r) { continue }
+      $same = $true
+      for ($k = 0; $k -lt 4; $k++) { if ([math]::Abs([long]$r[$k] - [long]$want[$k]) -gt 2) { $same = $false } }
+      if ($same) { [void]$hits.Add($el) }
+    }
+    if ($hits.Count -ne 1) { throw ('target count ' + $hits.Count) }
+    $tgt = $hits[0]
+    if (-not $tgt.Current.IsEnabled) { throw 'target disabled' }
+    if ($pat -eq 'invoke') { $tgt.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+    else { $tgt.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() }
+    Write-Result @{ ok = $true; acted = $pat; ms = [int]$sw.ElapsedMilliseconds }
     exit 0
   }
 
@@ -313,6 +352,21 @@ class PsUia:
                 password=bool(e.get("password", False)),
                 parents=tuple((str(p.get("id", "")), str(p.get("cls", ""))) for p in (e.get("parents") or []))))
         return out
+
+    def act(self, hwnd, ids=(), ctype="", name="", rect=None, pattern=""):
+        """สั่งองค์ประกอบ "ตัวเดียว" โดยไม่ใช้เมาส์: Button → invoke · ListItem/TabItem → select · ต้องระบุพิกัดที่อ่านมาจาก find (กันสั่งผิดตัว)
+        UiaError เมื่อไม่พบ/พบหลายตัว/ถูกปิดใช้งาน/ชนิดกับ pattern ไม่ตรง — ผู้เรียกต้องหยุด"""
+        ids = [str(i) for i in (ids or ()) if str(i) != ""]
+        if len(ids) > MAX_IDS:
+            raise UiaError("id มากเกินไป (%d)" % len(ids))
+        if ACT_PATTERNS.get(ctype or "") != pattern:
+            raise UiaError("ชนิด %r สั่งด้วย %r ไม่ได้" % (ctype, pattern))
+        if not (ids or name):
+            raise UiaError("act ต้องมี id หรือ name อย่างน้อยหนึ่งอย่าง")
+        if not rect or len(rect) != 4:
+            raise UiaError("act ต้องระบุพิกัดเป้า (กันสั่งผิดตัว)")
+        return self._call({"op": "act", "hwnd": int(hwnd), "ids": ids, "type": ctype, "name": name or "",
+                           "rect": [int(v) for v in rect], "pattern": pattern})
 
     def dump(self, hwnd, max_nodes=1500, max_depth=14):
         res = self._call({"op": "dump", "hwnd": int(hwnd), "maxNodes": int(max_nodes), "maxDepth": int(max_depth)})

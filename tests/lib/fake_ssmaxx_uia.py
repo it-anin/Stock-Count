@@ -48,6 +48,15 @@ UFLAGS = dict(uia_fail_first=0, uia_always_fail=False, dup_login_btn=False, impo
               minimized=False,        # หน้าต่างหลักถูกย่ออยู่จนกว่า focus() จะกู้ — ตามที่ตรวจจริง 4 พ.ย. 2026: ทั้งหน้าต่างและทุกองค์ประกอบมีพิกัด ≈ -32000
                                       # แต่ foreground_pid ยังเป็น ProMaxx (หน้าต่างที่ถูกย่อยังนับเป็น foreground) · focus_fails=True = กู้ไม่ได้
               pass_plain=False,       # ช่อง cf_pass เป็น TextBox ธรรมดา ไม่ใช่ PasswordBox (พิมพ์รหัสลงช่องที่ไม่ปิดบังไม่ได้)
+              # ── โหมดซ่อนหน้าต่าง + สั่งแบบไม่ใช้เมาส์ (รุ่น .5) ──
+              start_hidden=False,     # เริ่มโดยหน้าต่างหลักถูกซ่อนค้าง (ตัวช่วยรอบก่อนถูกปิดกลางงาน)
+              hide_fails=False,       # hide_window ไม่มีผล (หน้าต่างยังมองเห็น)
+              act_fails=False,        # uia_act ล้ม (คืน False)
+              act_no_effect=False,    # uia_act รายงานสำเร็จแต่ไม่มีอะไรเกิดขึ้น (ต้องจับได้ที่เงื่อนไขหลังคลิก)
+              act_wrong_target=False, # uia_act รายงานสำเร็จแต่เลือกเมนูผิดตัว (เอกสารรับแทนเอกสารจ่าย)
+              form_no_tab=False,      # ฟอร์มเปิดอยู่แต่ไม่มีแท็บ MDI (โครงจริงเปลี่ยน) — ตัวบอกอื่น (ปุ่มนำเข้า/หัวฟอร์ม) ต้องยังจับได้
+              form_no_import=False,   # ฟอร์มเปิดอยู่แต่ไม่มีปุ่มนำเข้า (เช่นฟอร์มอื่นที่ไม่มีปุ่มนี้) — หัวฟอร์มต้องยังจับได้
+              extra_window=False,     # มีหน้าต่างระดับบนอื่นของ ProMaxx ที่มองเห็นอยู่ (ไม่ใช่กล่องข้อความ/หน้าต่างรายการ) โดยหน้าต่างหลักยังไม่ถูกล็อก
               # ── หน้าต่างเลือกประเภทเอกสาร/คลัง ──
               start_type=None, start_wh=None,     # ค่าตั้งต้นของฟอร์มที่เปิดแล้ว (ชื่อแถวเต็ม เช่น "ORDS ใบปรับปรุงลดสินค้า") · None = ค่าเริ่มต้นตามชนิดฟอร์ม
               picker_open=None,                   # "type" | "wh" = เริ่มโดยมีหน้าต่างรายการเปิดค้าง
@@ -83,6 +92,8 @@ class FakeWpfUI(FakeUI):
             raise TypeError("uia flag ไม่รู้จัก: %s" % sorted(bad))
         self.u.update(uia or {})
         self.minimized = bool(self.u["minimized"])
+        self.hidden = bool(self.u["start_hidden"])     # หน้าต่างหลักถูกซ่อน (SW_HIDE) — โปรเซสยังทำงาน · UIA ยังอ่าน/สั่งผ่าน hwnd ได้
+        self.acted = []                                # uia_act ที่ "มีผล" (pattern, ชนิด:ชื่อ/id)
         super().__init__(W, M, **flags)
         self.focus_field = self.u["start_focus_field"] if self.state == "login" else None
         # menu | form (ใช้เมื่อ state=doc/import) — start_letter ใส่ = เริ่มที่ฟอร์มที่เปิดแล้ว
@@ -109,9 +120,11 @@ class FakeWpfUI(FakeUI):
         s, tops = self.state, []
         if s in ("login", "logging", "main", "doc", "import"):
             en = not (s == "import" or self.u["top_disabled"] or self.picker)
-            tops.append((self.W(MAIN_HWND, MAIN_CLS, TITLE, MINI_WIN if self.minimized else WIN, True, en, 0, self.PID, 0), []))
+            tops.append((self.W(MAIN_HWND, MAIN_CLS, TITLE, MINI_WIN if self.minimized else WIN, not self.hidden, en, 0, self.PID, 0), []))
             tops.append((self.W(101, "HwndWrapper[ssmaxx.exe;;213f64ff]", "", (0, 0, 136, 39), False, True, 0, self.PID, 0), []))
             tops.append((self.W(102, "HwndWrapper[ssmaxx.exe;;8de39fac]", "MediaContextNotificationWindow", (0, 0, 0, 0), False, True, 0, self.PID, 0), []))
+        if s in ("login", "logging", "main", "doc", "import") and self.u["extra_window"]:
+            tops.append((self.W(500, "HwndWrapper[ssmaxx.exe;;eeeeeeee-0000-4000-8000-000000000000]", "Another ProMaxx window", (100, 100, 900, 700), True, True, 0, self.PID, 0), []))
         if s == "import":
             tops.append((self.W(DIALOG_HWND, "#32770", "Select File", (482, 203, 1865, 962), True, True, 0, self.PID, 0), []))
         if self.picker:                  # หน้าต่างรายการเป็นหน้าต่างระดับบนใหม่ (เต็มจอ) ของโปรเซสเดียวกัน
@@ -181,12 +194,15 @@ class FakeWpfUI(FakeUI):
         # ฟอร์มเอกสาร (แท็บ MDI)
         if s in ("doc", "import") and self.stage == "form":
             tab = (("MDI_TAB", "TabControl"),) + wnd[1:]
-            els.append(E("", "TabItem", (2, 85, 106, 111), name=self.menu_choice, cls="TabItem", parents=tab))
+            if not self.u["form_no_tab"]:
+                els.append(E("", "TabItem", (2, 85, 106, 111), name=self.menu_choice, cls="TabItem", parents=tab))
             fp = (("", "GroupBox"), ("", "UserObject"), ("", self._form_cls()), ("", "UserObject"), ("", "TabItem"), ("MDI_TAB", "TabControl"))
             dxi = 30 if self.drifted else 0
             for i, (bid, hp) in enumerate([("uo_tran_bt_import", self.u["import_help"]), ("uo_tran_bt_insert", "แทรกรายการ"),
                                            ("uo_tran_bt_delete", "ลบรายการ"), ("uo_tran_bt_cancel", "ยกเลิกรายการ"),
                                            ("uo_tran_bt_reference", "ดูรายละเอียดอ้างอิง")]):
+                if bid == "uo_tran_bt_import" and self.u["form_no_import"]:
+                    continue
                 x0 = 1591 + 24 * i + (dxi if bid == "uo_tran_bt_import" else 0)
                 els.append(E(bid, "Button", (x0, 256, x0 + 20, 276), name="Contactus", cls="Button", help=hp, parents=fp))
             els += self._header_els()
@@ -317,7 +333,7 @@ class FakeWpfUI(FakeUI):
     # ── adapter: input ──────────────────────────────────────────
     def type_text(self, text):
         self._act("type_text", text)
-        if self.state == "login" and self.has_focus and self.focus_field:
+        if self.state == "login" and self.has_focus and self.focus_field and not self.hidden:
             self.fields[self.focus_field] = text
         else:
             self.misfires.append("type_unfocused")
@@ -340,6 +356,8 @@ class FakeWpfUI(FakeUI):
         self._tick()
         if self.minimized:
             return False, "ใต้เมาส์เป็นหน้าต่างของโปรแกรมอื่น"       # หน้าต่างอยู่มุม -32000 — ใต้เมาส์ไม่ใช่ ProMaxx
+        if self.hidden:
+            return False, "ใต้เมาส์เป็นหน้าต่างของโปรแกรมอื่น"       # หน้าต่างถูกซ่อน — เมาส์จริงคลิกทะลุไปโปรแกรมอื่น (ต้องไม่เกิดขึ้นในโหมดซ่อน)
         if self.f["click_drift"]:
             return False, "เมาส์ถูกขยับก่อนคลิก"
         if not _contains(WIN, x, y):
@@ -354,6 +372,11 @@ class FakeWpfUI(FakeUI):
             return True, ""
         e = min(hits, key=lambda h: (h.rect[2] - h.rect[0]) * (h.rect[3] - h.rect[1]))
         self.clicked.append(e.id or "%s:%s" % (e.type, e.name))
+        self._el_effect(e)
+        return True, ""
+
+    def _el_effect(self, e):
+        """ผลของการ "กด/เลือก" องค์ประกอบหนึ่งชิ้น — ใช้ร่วมกันระหว่างคลิกเมาส์จริง (click_at) และสั่งผ่าน UIA (uia_act)"""
         i = e.id
         if i in ("cf_empid", "cf_empid:1"):
             if not self.u["focus_never"]:
@@ -381,6 +404,51 @@ class FakeWpfUI(FakeUI):
             self.dialogs_now = [("Select File", ("File &name:", "Files of &type:"))]
         elif i.startswith("uo_tran_bt_"):
             self.misfires.append(i)
+
+    # ── adapter: ซ่อน/แสดงหน้าต่าง + สั่งแบบไม่ใช้เมาส์ (รุ่น .5) ─────────
+    def hide_window(self, hwnd):
+        self.calls.append(("hide_window", hwnd))
+        if hwnd == MAIN_HWND and not self.u["hide_fails"]:
+            self.hidden = True
+            self.has_focus = False       # หน้าต่างที่ถูกซ่อนเสียโฟกัส — Windows ส่งโฟกัสให้หน้าต่างถัดไป (เช่นเบราว์เซอร์) ⇒ ตัวช่วยที่เผลอ "ดึงโฟกัส" ตอนซ่อนจะเห็นเป็น focus()
+
+    def show_window(self, hwnd):
+        self.calls.append(("show_window", hwnd))
+        if hwnd == MAIN_HWND:
+            self.hidden = False
+
+    def reveal_hidden(self, pids):
+        n = 1 if (self.hidden and self.PID in set(pids or [])) else 0
+        self.calls.append(("reveal_hidden", n))
+        if n:
+            self.hidden = False
+        return n
+
+    def uia_act(self, hwnd, ids=(), ctype="", name="", rect=None, pattern=""):
+        """Invoke (ปุ่ม) / Select (รายการ) — ไม่ผ่านเมาส์ จึงทำงานได้แม้หน้าต่างถูกซ่อน · ต้องพบเป้า 1 รายการพอดีที่พิกัดตรง (±2px) เหมือนของจริง"""
+        self.calls.append(("uia_act", hwnd, pattern, ctype, tuple(ids), name, tuple(rect) if rect else None))
+        if self.state == "import":
+            self.acts_after_import += 1
+        self._tick()
+        if self.u["act_fails"]:
+            return False, "UiaError: target count 0"
+        if hwnd != MAIN_HWND:
+            return False, "UiaError: hwnd"
+        if {"Button": "invoke", "ListItem": "select", "TabItem": "select"}.get(ctype) != pattern:
+            return False, "UiaError: pattern not allowed for this control type"
+        hits = [e for e in self._els() if (not ids or e.id in ids) and e.type == ctype and (not name or e.name == name)
+                and e.rect and rect and all(abs(a - b) <= 2 for a, b in zip(e.rect, rect))]
+        if len(hits) != 1:
+            return False, "UiaError: target count %d" % len(hits)
+        e = hits[0]
+        if not e.enabled:
+            return False, "UiaError: target disabled"
+        if self.u["act_no_effect"] or self.state == "import" or self.picker:
+            return True, ""                      # หน้าต่างหลักถูกล็อกด้วยกล่องโมดัล / ไม่มีผล
+        if self.u["act_wrong_target"] and e.type == "ListItem":
+            e = [x for x in self._els() if x.type == "ListItem" and x.name == "เอกสารรับ"][0]
+        self.acted.append((pattern, e.id or "%s:%s" % (e.type, e.name)))
+        self._el_effect(e)
         return True, ""
 
     def _click_picker(self, x, y):
