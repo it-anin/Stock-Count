@@ -1,9 +1,9 @@
 # PromaxxHelper — ตัวช่วยของปุ่ม "🖥️ บันทึกลง PROMAXX" (หน้า 📦 ปรับปรุงสินค้า)
 
-> ✅ **สถานะ (4 พ.ย. 2026 รุ่น `2026-11-04.4`): `LOCATORS_VERIFIED = True` — ผู้ใช้ยืนยันหลังตรวจกับ `ssmaxx.exe` จริงครบ Gate 0** (ผลละเอียดอยู่ §ผลตรวจจริง ท้ายไฟล์)
+> ✅ **สถานะ (4 พ.ย. 2026 รุ่น `2026-11-04.5`): `LOCATORS_VERIFIED = True` — ตั้งหลังผู้ใช้ยืนยัน Gate 0 ครบกับ `ssmaxx.exe` จริง (รุ่น `.4`) · รุ่น `.5` เพิ่มโหมดใช้เซสชันที่เปิดค้าง + ซ่อนหน้าต่าง (§โหมดใช้เซสชันที่เปิดค้าง)** (ผลละเอียดอยู่ §ผลตรวจจริง ท้ายไฟล์)
 > `ssmaxx.exe` เป็นแอป **WPF (.NET)** — ข้างในไม่มี HWND/HMENU ให้ Win32 มองเห็น (ต่างจากบอทเดิมที่ขับ `promaxxreport.exe` แบบ PowerBuilder Win32) จึงหาเป้าด้วย **UI Automation (UIA)** ผ่าน `promaxx_uia.py` แล้วคลิกเมาส์จริงที่กึ่งกลางพิกัดที่ UIA ให้ (ดู §UIA)
 > **พิสูจน์กับ ProMaxx จริงแล้ว:** cold start ORDS ×10 + IRPS ×10 ถึงปุ่ม "นำเข้าไฟล์เอกสาร" ครบ 20/20 · เคสขอบ (รหัสผิดด้วยชื่อปลอม · เปิดซ้อน · เมาส์แทรก · กล่องแทรก · หน้าต่างถูกย่อ) · ขั้นเลือกประเภท/คลังคลิกจริงทั้งสองฟอร์ม · สายเต็ม Chrome 156 / Edge 156 (origin จริง) → ตัวช่วย → ProMaxx
-> **ยังไม่ได้ทดสอบ:** ปุ่มจริงในหน้าเว็บ (ปุ่มอยู่เฉพาะ branch นี้ ยังไม่ merge) · policy `LocalNetworkAccessAllowedForUrls` · จอล็อก (`NO_DESKTOP`) · SQL Server ปิด · ขั้นเลือกประเภท/คลังตอน cold start (ฟอร์มจำค่าล่าสุดไว้ จึงถูกข้ามทุกรอบ)
+> **ยังไม่ได้ทดสอบ:** การกดปุ่มจริงโดยพนักงานบนหน้าเว็บ production (merge เข้า main แล้ว 4 พ.ย. 2026 ปุ่มขึ้นบนเว็บจริง แต่ยังไม่มีรายงานการกด) · policy `LocalNetworkAccessAllowedForUrls` · จอล็อก (`NO_DESKTOP`) · SQL Server ปิด · เส้นทางที่ฟอร์มจำประเภท/คลังผิดจนจบถึงกล่อง Select File (รอบ L7 ถูกหยุด `INTERFERENCE` ก่อนคลิกสุดท้าย)
 > ⚠️ ProMaxx อัปเดตหน้าตา/แก้ `STEP_SPECS` แล้วต้องตั้ง `LOCATORS_VERIFIED = False` ระหว่างตรวจ Gate 0 ใหม่ (§ตรวจหน้าต่างจริง)
 
 ## คืออะไร / ทำไมต้องมี
@@ -46,7 +46,7 @@
    - **ตัวเปิดโปรแกรม (4 พ.ย. 2026):** ตัวช่วยเปิด **`ProMaxx.exe` ในโฟลเดอร์เดียวกับ `ssmaxx.exe`** (ทางลัด "ProMaxx" ของพนักงานชี้ไฟล์นี้) ไม่ใช่ `ssmaxx.exe` ตรงๆ — เปิดตรงแล้ว ProMaxx แสดงกล่อง "Application to the program is open to change." และไม่ไปหน้า Login (เจอจริงบน BIG-IT) · ไม่ต้องแก้ `PROMAXX_EXE_PATH` เพราะตัวช่วยสลับให้เองเมื่อพบ `ProMaxx.exe` ข้างๆ (log บอกบรรทัด `[launch] เปิด …ProMaxx.exe`) · ใส่ `PROMAXX_LAUNCH_DIRECT=1` ถ้าต้องการเปิดไฟล์ที่ตั้งไว้ตรงๆ
    - ⛔ `.env` มีรหัสผ่าน — **repo นี้เป็น PUBLIC ห้ามเข้า git** (อยู่ใน `.gitignore` แล้ว) · หน้าเว็บไม่เคยเห็นหรือส่งรหัสนี้ · ตัวช่วยไม่ใส่รหัสลง log/ผลลัพธ์/screenshot
    - ควรจำกัดสิทธิ์ไฟล์ให้เฉพาะผู้ใช้ Windows ของเครื่องนั้น (คลิกขวา → Properties → Security)
-4. **ตรวจรุ่น**: `PromaxxHelper.exe --version` → `PromaxxHelper 2026-11-04.4 proto=1 locatorsVerified=True` (เลขรุ่นเปลี่ยนทุกครั้งที่แก้โค้ด — ดูประวัติรุ่นที่หัว `promaxx_helper.py`)
+4. **ตรวจรุ่น**: `PromaxxHelper.exe --version` → `PromaxxHelper 2026-11-04.5 proto=1 locatorsVerified=True` (เลขรุ่นเปลี่ยนทุกครั้งที่แก้โค้ด — ดูประวัติรุ่นที่หัว `promaxx_helper.py`)
 5. **ตรวจสภาพเครื่อง**: `PromaxxHelper.exe --find` (อ่านอย่างเดียว) แล้วดูข้อต่อไปนี้ให้ครบ
    - Display Scaling ต้อง **100%** (ไม่ใช่ 125%/150% — พิกัดคลิกจะเพี้ยน)
    - `session ของ helper` ต้องเท่ากับ `session ของหน้าจอ (console)` (ไม่งั้นมองไม่เห็นหน้าต่างของผู้ใช้)
