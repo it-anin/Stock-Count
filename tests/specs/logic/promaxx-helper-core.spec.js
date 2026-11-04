@@ -6,7 +6,7 @@
 //   ⚠️ ไม่ได้พิสูจน์ว่าคลิกถูกบน ssmaxx.exe จริง — ชื่อ class/ข้อความ/พิกัดในตัวต่อปลอมเป็นค่าสมมติ · ส่วน Windows (promaxx_win.py) ต้องตรวจบนเครื่องจริง (README §ตรวจหน้าต่างจริง)
 //
 // ตรึง:
-//   1. ค่าที่ส่งมอบ — LOCATORS_VERIFIED=False · STEP_SPECS ว่าง (ห้ามมี locator ที่เดา) · ชนิดเอกสาร/พอร์ต/origin ตามที่ผู้ใช้สั่ง · แกนไม่ import win32/psutil
+//   1. ค่าที่ส่งมอบ — LOCATORS_VERIFIED=True (4 พ.ย. 2026 หลังตรวจจริง) · STEP_SPECS ครบทุกขั้น · ชนิดเอกสาร/พอร์ต/origin ตามที่ผู้ใช้สั่ง · แกนไม่ import win32/psutil
 //   2. ค่าตั้ง (.env · ตัวแปรระบบ · พอร์ต · origin · บอทที่ห้ามชน) 3. ด่าน HTTP: Host/Origin/header/ชนิด/ขนาด/JSON/field แปลก/proto/type + CORS + PNA
 //   4. ด่าน preflight ทุกแบบ ต้องปฏิเสธโดย "ไม่ลงมือทำอะไร" (ไม่ launch/พิมพ์/คลิก) · ลำดับความสำคัญของรหัส
 //   5. ★ เส้นทางปกติ ORDS/IRPS: ลำดับ action เป๊ะ · เมนู/ปุ่มถูกชนิด · พิมพ์รหัสครั้งเดียว · หยุดหลังปุ่มนำเข้า (ไม่มี input เพิ่ม)
@@ -57,12 +57,13 @@ const scen = (payload = {}) => runPy(SCEN, payload);
 const HAPPY_ACTS = ['launch', 'focus', 'click_at', 'type_text', 'click_at', 'type_text', 'press_key', 'invoke_menu', 'click_button', 'click_at'];
 const count = (acts, n) => acts.filter((a) => a === n).length;
 
-test('1. ค่าที่ส่งมอบ — ปิดการคลิกไว้ · ไม่มี locator ที่เดา · ชนิดเอกสารตามที่ผู้ใช้สั่ง · แกนไม่ผูก Windows', async () => {
+test('1. ค่าที่ส่งมอบ — เปิดการคลิกหลังตรวจจริงแล้ว · STEP_SPECS ครบ · ชนิดเอกสารตามที่ผู้ใช้สั่ง · แกนไม่ผูก Windows', async () => {
   const r = runPy(`
 print(json.dumps(dict(verified=m.LOCATORS_VERIFIED, specs=m.STEP_SPECS, proto=m.PROTO, port=m.DEFAULT_PORT, prod=m.PROD_ORIGIN,
   docs=m.DOC_TYPES, proc=m.PROC_NAME, order=list(m.STEP_ORDER), imp=m.IMPORT_STEP, block=list(m.DEFAULT_BLOCK_PROCS), body=m.MAX_BODY,
   ver=m.VERSION), ensure_ascii=False))`);
-  expect(r.verified, 'LOCATORS_VERIFIED ต้องเป็น False จนกว่าจะตรวจหน้าต่างจริงครบ (แก้เป็น True ต้องมีผลตรวจ + อัปเดตเทสนี้)').toBe(false);
+  // 4 พ.ย. 2026: ผู้ใช้ยืนยันตั้ง True หลัง Gate 0 (20/20 cold start + เคสขอบ + สายเต็ม Chrome/Edge จริง) — ตั้งกลับเป็น False ได้เสมอ (เช่นระหว่างตรวจใหม่หลัง ProMaxx อัปเดต) แต่ต้องอัปเดตเทสนี้คู่กัน
+  expect(r.verified, 'LOCATORS_VERIFIED ต้องเป็น True ในรุ่นที่ส่งมอบ (ผู้ใช้ยืนยัน 4 พ.ย. 2026) — ถ้า False ปุ่มบนเว็บจะได้ UNVERIFIED และไม่คลิกอะไร').toBe(true);
   // 3 พ.ย. 2026: เติม STEP_SPECS จากการตรวจจริง (UIA) แล้ว — ตรึงโครงที่ส่งมอบ (รายละเอียดด่านกันพลาดอยู่ใน promaxx-helper-uia.spec.js ข้อ 5)
   expect(Object.keys(r.specs), 'STEP_SPECS ต้องครบทุกขั้นตามลำดับขั้นตอน').toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
   expect(r.specs['import-button'].allow_dialogs, 'ขั้นสุดท้ายอนุญาตเฉพาะกล่อง Select File').toEqual(['^Select File\\b']);
@@ -86,7 +87,7 @@ print(json.dumps(dict(verified=m.LOCATORS_VERIFIED, specs=m.STEP_SPECS, proto=m.
   expect(win, 'promaxx_win.py ต้อง import win32* แบบ lazy (ภายใน WinAdapter) ไม่ใช่ระดับโมดูล').not.toMatch(/^(import|from)\s+(win32\w*|psutil|pyautogui|PIL)\b/m);
   const v = cli(['--version']);
   expect(v.status).toBe(0);
-  expect(v.out).toMatch(/PromaxxHelper \d{4}-\d{2}-\d{2}\.\d+ proto=1 locatorsVerified=False/);
+  expect(v.out).toMatch(/PromaxxHelper \d{4}-\d{2}-\d{2}\.\d+ proto=1 locatorsVerified=True/);
 });
 
 test('2. ค่าตั้ง — .env (BOM · เครื่องหมายคำพูด · คอมเมนต์) · ตัวแปรระบบชนะไฟล์ · พอร์ต/origin/บอทที่ห้ามชน ตรวจและเตือน', async () => {
