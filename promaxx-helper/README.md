@@ -1,0 +1,256 @@
+# PromaxxHelper — ตัวช่วยของปุ่ม "🖥️ บันทึกลง PROMAXX" (หน้า 📦 ปรับปรุงสินค้า)
+
+> ✅ **สถานะ (4 พ.ย. 2026 รุ่น `2026-11-04.4`): `LOCATORS_VERIFIED = True` — ผู้ใช้ยืนยันหลังตรวจกับ `ssmaxx.exe` จริงครบ Gate 0** (ผลละเอียดอยู่ §ผลตรวจจริง ท้ายไฟล์)
+> `ssmaxx.exe` เป็นแอป **WPF (.NET)** — ข้างในไม่มี HWND/HMENU ให้ Win32 มองเห็น (ต่างจากบอทเดิมที่ขับ `promaxxreport.exe` แบบ PowerBuilder Win32) จึงหาเป้าด้วย **UI Automation (UIA)** ผ่าน `promaxx_uia.py` แล้วคลิกเมาส์จริงที่กึ่งกลางพิกัดที่ UIA ให้ (ดู §UIA)
+> **พิสูจน์กับ ProMaxx จริงแล้ว:** cold start ORDS ×10 + IRPS ×10 ถึงปุ่ม "นำเข้าไฟล์เอกสาร" ครบ 20/20 · เคสขอบ (รหัสผิดด้วยชื่อปลอม · เปิดซ้อน · เมาส์แทรก · กล่องแทรก · หน้าต่างถูกย่อ) · ขั้นเลือกประเภท/คลังคลิกจริงทั้งสองฟอร์ม · สายเต็ม Chrome 156 / Edge 156 (origin จริง) → ตัวช่วย → ProMaxx
+> **ยังไม่ได้ทดสอบ:** ปุ่มจริงในหน้าเว็บ (ปุ่มอยู่เฉพาะ branch นี้ ยังไม่ merge) · policy `LocalNetworkAccessAllowedForUrls` · จอล็อก (`NO_DESKTOP`) · SQL Server ปิด · ขั้นเลือกประเภท/คลังตอน cold start (ฟอร์มจำค่าล่าสุดไว้ จึงถูกข้ามทุกรอบ)
+> ⚠️ ProMaxx อัปเดตหน้าตา/แก้ `STEP_SPECS` แล้วต้องตั้ง `LOCATORS_VERIFIED = False` ระหว่างตรวจ Gate 0 ใหม่ (§ตรวจหน้าต่างจริง)
+
+## คืออะไร / ทำไมต้องมี
+
+หน้าเว็บ (เบราว์เซอร์) สั่งเปิด/คลิกโปรแกรม Windows โดยตรงไม่ได้ จึงมีโปรแกรมเล็กๆ นี้รันบน**เครื่องเดียวกับ ProMaxx** คอยฟังคำสั่งที่ `127.0.0.1` (เฉพาะในเครื่อง)
+
+```
+[Chrome/Edge: หน้า 📦 บน https://anin-stock-count.vercel.app]   (Desktop · pharmacist/supervisor)
+   │ กดปุ่ม "บันทึกลง PROMAXX"   (ชนิดมาจากแท็บ: ords → ORDS/เอกสารจ่าย/O · irps → IRPS/เอกสารรับ/I)
+   │ fetch POST http://127.0.0.1:47831/v1/open-import   {"proto":1,"type":"ORDS"|"IRPS"}
+   ▼
+[PromaxxHelper.exe — เครื่องเดียวกัน เปิดตอน Windows login]
+   │ เปิด ProMaxx.exe (ตัวเปิดโปรแกรมเดียวกับทางลัดของพนักงาน → เปิด ssmaxx.exe ต่อให้) → ล็อกอิน (ครั้งเดียว ไม่ retry)
+   │ → เมนูเอกสารรับ/จ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" → หยุด
+   ▼
+[ssmaxx.exe]
+```
+
+**ขั้นที่ 1 หยุดที่ปุ่ม "นำเข้าไฟล์เอกสาร" โดยตั้งใจ** — ยังไม่เลือกไฟล์ ไม่นำเข้า ไม่บันทึกอะไรลง ProMaxx (ผู้ใช้สั่ง: "ทำแค่ถึงตรงนี้ก่อน เพื่อตรวจว่าคลิกถูกและแม่นยำ")
+
+## ไฟล์ในโฟลเดอร์นี้
+
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `promaxx_helper.py` | ตรรกะทั้งหมดที่ไม่ผูกกับ Windows: ค่าตั้ง/`.env` · เซิร์ฟเวอร์ HTTP · ตรวจ Origin/Host/header · single-flight · ตัวรันขั้นตอน (เงื่อนไขก่อน/หลังทุกขั้น) · รหัส error · CLI · log · `STEP_SPECS` |
+| `promaxx_win.py` | ตัวต่อ Windows (`pywin32`/`psutil`/`pillow` — import แบบ lazy): หา process/หน้าต่าง · เมนู · SendInput · เมาส์ · screenshot · dump · mutex |
+| `promaxx_uia.py` | ตัวอ่าน UIA ของ ssmaxx.exe ผ่าน Windows PowerShell 5.1 + .NET (ไม่ต้องลงแพ็กเกจเพิ่ม · อ่านอย่างเดียว): `ping` / `find` / `dump` · สคริปต์ ASCII ล้วนฝังในไฟล์ · คำถามส่งเป็น base64 |
+| `.env.example` | แม่แบบค่าตั้ง (คัดลอกเป็น `.env` — **ห้ามเข้า git**) |
+| `build_exe.bat` · `PromaxxHelper.spec` | build เป็น `PromaxxHelper.exe` (PyInstaller) — exe **ไม่เข้า git** |
+| `run_promaxx_helper.bat` | รันจากซอร์ส (เครื่องปรับจูน) |
+| `install_startup.bat` | ใส่ shortcut ใน Startup ให้ตัวช่วยเปิดเองตอน Windows login |
+
+เทสอัตโนมัติ (รันบน Linux ได้ ไม่ต้องมี Windows/ProMaxx): `tests/specs/logic/promaxx-helper-core.spec.js` + `tests/specs/logic/adjust-doc-promaxx.spec.js` — ใช้หน้าต่าง ssmaxx **ปลอม** (`tests/lib/fake_ssmaxx.py`) ชื่อ class/ป้าย/พิกัดในนั้นเป็นของสมมติสำหรับเทสเท่านั้น **ไม่ใช่ข้อมูลของ ProMaxx จริง**
+
+## ติดตั้งบนเครื่อง ProMaxx แต่ละเครื่อง
+
+1. **build** (ทำครั้งเดียว บนเครื่องที่มี Python 3.11+): `python -m pip install pywin32 psutil pillow pyinstaller` แล้วดับเบิลคลิก `build_exe.bat` → ได้ `PromaxxHelper.exe` ข้างไฟล์ (ท้าย build พิมพ์ `--version` ให้ดู)
+2. **วางไฟล์** `PromaxxHelper.exe` ไว้โฟลเดอร์เดียวกับ `.env` (เช่น `C:\PromaxxHelper\`)
+3. **สร้าง `.env`** จาก `.env.example` — ใส่ `PROMAXX_USERNAME` / `PROMAXX_PASSWORD` (บัญชีที่เอกสารจะลงชื่อ) · ใส่ `PROMAXX_EXE_PATH` เฉพาะเมื่อ `ssmaxx.exe` ไม่ได้อยู่ที่ `C:\SeniorSoft ProMaxx\`
+   - **ตัวเปิดโปรแกรม (4 พ.ย. 2026):** ตัวช่วยเปิด **`ProMaxx.exe` ในโฟลเดอร์เดียวกับ `ssmaxx.exe`** (ทางลัด "ProMaxx" ของพนักงานชี้ไฟล์นี้) ไม่ใช่ `ssmaxx.exe` ตรงๆ — เปิดตรงแล้ว ProMaxx แสดงกล่อง "Application to the program is open to change." และไม่ไปหน้า Login (เจอจริงบน BIG-IT) · ไม่ต้องแก้ `PROMAXX_EXE_PATH` เพราะตัวช่วยสลับให้เองเมื่อพบ `ProMaxx.exe` ข้างๆ (log บอกบรรทัด `[launch] เปิด …ProMaxx.exe`) · ใส่ `PROMAXX_LAUNCH_DIRECT=1` ถ้าต้องการเปิดไฟล์ที่ตั้งไว้ตรงๆ
+   - ⛔ `.env` มีรหัสผ่าน — **repo นี้เป็น PUBLIC ห้ามเข้า git** (อยู่ใน `.gitignore` แล้ว) · หน้าเว็บไม่เคยเห็นหรือส่งรหัสนี้ · ตัวช่วยไม่ใส่รหัสลง log/ผลลัพธ์/screenshot
+   - ควรจำกัดสิทธิ์ไฟล์ให้เฉพาะผู้ใช้ Windows ของเครื่องนั้น (คลิกขวา → Properties → Security)
+4. **ตรวจรุ่น**: `PromaxxHelper.exe --version` → `PromaxxHelper 2026-11-04.4 proto=1 locatorsVerified=True` (เลขรุ่นเปลี่ยนทุกครั้งที่แก้โค้ด — ดูประวัติรุ่นที่หัว `promaxx_helper.py`)
+5. **ตรวจสภาพเครื่อง**: `PromaxxHelper.exe --find` (อ่านอย่างเดียว) แล้วดูข้อต่อไปนี้ให้ครบ
+   - Display Scaling ต้อง **100%** (ไม่ใช่ 125%/150% — พิกัดคลิกจะเพี้ยน)
+   - `session ของ helper` ต้องเท่ากับ `session ของหน้าจอ (console)` (ไม่งั้นมองไม่เห็นหน้าต่างของผู้ใช้)
+   - `helper รันแบบ Administrator` ต้องเท่ากับสิทธิ์ที่ ssmaxx.exe รัน — ถ้า ProMaxx รันแบบ Administrator แต่ตัวช่วยไม่ใช่ ข้อความที่พิมพ์/คลิกจะไม่ถึง (Windows กั้น) ⇒ ให้รันตัวช่วยด้วยสิทธิ์เดียวกัน
+   - พบ `ssmaxx.exe` (บรรทัด "พาธที่ลองหา")
+6. **ให้เปิดตอน Windows login**: ดับเบิลคลิก `install_startup.bat` (ทำเป็นผู้ใช้ที่นั่งทำงานที่เครื่องนั้น ไม่ใช่ผู้ใช้อื่น) — ถอนด้วยการลบ `PromaxxHelper.lnk` ในโฟลเดอร์ที่เปิดด้วย `explorer shell:startup`
+   - ตัวช่วยเปิดเป็นหน้าต่างคอนโซล (ย่อไว้) · **ปิดหน้าต่างนั้น = ตัวช่วยหยุด**
+7. **เบราว์เซอร์: สิทธิ์ Local Network Access (LNA)** — ดูหัวข้อถัดไป
+
+### เบราว์เซอร์ถามสิทธิ์ Local Network Access
+
+Chrome/Edge รุ่นใหม่จะถามสิทธิ์เมื่อหน้าเว็บ https เรียก `127.0.0.1` (หน้าเว็บส่ง `targetAddressSpace:'loopback'` และตรวจสถานะด้วย `navigator.permissions.query({name:'loopback-network'})` ไว้แล้ว):
+
+- **กดปุ่มครั้งแรก** เบราว์เซอร์อาจขึ้นกล่องถาม → เลือก **Allow** (ถ้าเคยกด Block ให้เปิดที่ไอคอนหน้าเว็บข้าง URL → Site settings → Local network → Allow)
+  - **ตรวจจริง 4 พ.ย. 2026 (Chrome 156 และ Edge 156 · โปรไฟล์ใหม่ · origin จริง `https://anin-stock-count.vercel.app` · ตัวช่วยรุ่น `.3` จาก `.exe`):** สิทธิ์ `loopback-network` เริ่มที่ `prompt` · กล่องถามว่า "anin-stock-count.vercel.app wants to — Access other apps and services on this device" · คำขอแรก**ค้างรอ**จนกว่าจะกด Allow (ปุ่มบนเว็บแสดง "⏳ กำลังทำงาน…") แล้วทำงานต่อเอง (preflight `OPTIONS` ได้ 204 + `Access-Control-Allow-Private-Network: true`) · หลังอนุญาตคำขอต่อไปไม่ถามอีก (~7 มิลลิวินาที)
+  - ⚠️ **บั๊กที่เคยมี (แก้ในรุ่น `.3`):** ตัวช่วยเคยตัดการเชื่อมต่อที่ว่างเกิน 15 วินาที แต่เบราว์เซอร์ถือการเชื่อมต่อไว้ระหว่างรอคนกด Allow ⇒ กดช้ากว่า ~15 วินาที คำขอแรกล้ม (`Failed to fetch` / `ERR_SOCKET_NOT_CONNECTED` / `LocalNetworkAccessPermissionDenied`) ทั้งที่สิทธิ์เป็น `granted` และหน้าเว็บขึ้นข้อความ "ไม่พบ PromaxxHelper บนเครื่องนี้" ผิดๆ (ต้องกดปุ่มอีกครั้งจึงผ่าน) · ตอนนี้ `IDLE_CONN_TIMEOUT = 200` วินาที (ตรวจ: Chrome กด Allow ที่ 77 วินาที สำเร็จ)
+- **อนุญาตล่วงหน้าทุกเครื่องด้วย policy** (IT) — ⚠️ **ตัวอย่างนี้ยังไม่ได้ทดสอบกับ Chrome/Edge รุ่นที่ใช้จริงในร้าน** ชื่อ policy และ path มาจากเอกสารทางการ ([Chrome](https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access) · [Microsoft Learn](https://learn.microsoft.com/ecdn/how-to/configure-local-network-access-policy)) แต่แหล่งต่างๆ ระบุรุ่นที่เริ่มบังคับไม่ตรงกัน ⇒ ทำแล้วเปิด `chrome://policy` / `edge://policy` ตรวจว่า `LocalNetworkAccessAllowedForUrls` ขึ้นสถานะ **OK** (ถ้าขึ้น Unknown policy = ชื่อไม่ตรงรุ่นนั้น ให้ลบ key แล้วใช้วิธีกด Allow)
+
+```powershell
+# รันใน PowerShell แบบ Administrator — เขียน policy ระดับเครื่อง (ทุกผู้ใช้ของเครื่องนี้)
+$site = 'https://anin-stock-count.vercel.app'
+foreach ($p in 'HKLM:\SOFTWARE\Policies\Google\Chrome\LocalNetworkAccessAllowedForUrls',
+               'HKLM:\SOFTWARE\Policies\Microsoft\Edge\LocalNetworkAccessAllowedForUrls') {
+  New-Item -Path $p -Force | Out-Null
+  New-ItemProperty -Path $p -Name '1' -Value $site -PropertyType String -Force | Out-Null
+}
+# ถอน: Remove-Item 'HKLM:\SOFTWARE\Policies\Google\Chrome\LocalNetworkAccessAllowedForUrls','HKLM:\SOFTWARE\Policies\Microsoft\Edge\LocalNetworkAccessAllowedForUrls' -Recurse
+```
+
+- Firefox/Safari ไม่รองรับ/ไม่รับประกัน — ใช้ Chrome หรือ Edge
+
+## สัญญา HTTP (หน้าเว็บ ↔ ตัวช่วย)
+
+ฟังที่ `127.0.0.1` เท่านั้น (พอร์ต `HELPER_PORT` ค่าเริ่มต้น **47831** — ต้องตรงกับ `PROMAXX_HELPER_URL` ใน `index.html`)
+
+| คำขอ | หน้าที่ |
+|---|---|
+| `OPTIONS *` | preflight — ตอบ `Access-Control-Allow-Origin` เฉพาะ Origin ที่อนุญาต + `Access-Control-Allow-Private-Network: true` + `Vary: Origin` |
+| `GET /v1/health` | `{ok,proto,version,ssmaxxRunning,busy,locatorsVerified}` — ตรวจว่าตัวช่วยเปิดอยู่ (หน้าเว็บ**ไม่**ยิงตอนเปิดป็อปอัพ เพื่อไม่ให้ prompt สิทธิ์โผล่เอง) |
+| `POST /v1/open-import` | body `{"proto":1,"type":"ORDS"\|"IRPS"}` เท่านั้น → 200 `{ok:true,reached,steps:[{name,ok,ms}],elapsedMs}` หรือ `{ok:false,code,step,message,steps}` |
+
+ด่านตรวจทุกคำขอ (ไม่ผ่าน = ปฏิเสธก่อนแตะ ProMaxx): `Host` ต้องเป็น `127.0.0.1:พอร์ต`/`localhost:พอร์ต` (กัน DNS rebinding) · `Origin` ต้องอยู่ใน allow-list (`https://anin-stock-count.vercel.app` + `HELPER_ALLOWED_ORIGINS`) · `Content-Type: application/json` + header `X-Anin-Helper: 1` (บังคับให้เบราว์เซอร์ส่ง preflight) · body ≤ 2 KB · field ต้องมีแค่ `proto`,`type` · `type` ต้องเป็น `ORDS` หรือ `IRPS`
+
+### รหัสที่ตัวช่วยตอบ (และหน้าเว็บแสดงอะไร)
+
+| `code` | HTTP | ความหมาย | วิธีแก้ |
+|---|---|---|---|
+| `UNVERIFIED` | 422 | ตัวช่วยยังไม่ผ่านการตรวจหน้าต่างจริง (`LOCATORS_VERIFIED=False`) | ทำ §ตรวจหน้าต่างจริง · **สถานะปัจจุบันของทุกเครื่อง** |
+| `NOT_CONFIGURED` | 422 | `.env` ไม่มีรหัส หรือหา `ssmaxx.exe` ไม่เจอ | เติม `PROMAXX_USERNAME/PASSWORD` · `PROMAXX_EXE_PATH` |
+| `NO_DESKTOP` | 422 | ไม่มีหน้าจอให้คลิก (ล็อกจอ/ไม่ใช่ session ผู้ใช้) | ปลดล็อกจอ · รันตัวช่วยใน session ของผู้ใช้ที่นั่งอยู่ |
+| `UNSUPPORTED_DPI` | 422 | Display Scaling ไม่ใช่ 100% | Settings → Display → Scale = 100% แล้วออก/เข้า Windows ใหม่ |
+| `ALREADY_RUNNING` | 409 | `ssmaxx.exe` เปิดอยู่แล้ว (ผู้ใช้เลือก: ปฏิเสธ ไม่เกาะหน้าต่างเดิม) | ปิด ProMaxx ก่อนแล้วกดใหม่ |
+| `OTHER_BOT_RUNNING` | 409 | บอทอื่นกำลังใช้ ProMaxx (`SeniorsoftExport.exe`/`AutoR01Export.exe`) | รอให้จบ (บอทใช้เมาส์จริง ขับพร้อมกันไม่ได้) |
+| `BUSY` | 409 | ตัวช่วยกำลังทำงานคำสั่งก่อนหน้า | รอ |
+| `NOT_RUNNING` | 409 | (CLI `--step` เท่านั้น) ขั้นกลางต้องเปิด `ssmaxx.exe` ค้างไว้ที่หน้าก่อนหน้าก่อน | เปิดโปรแกรมไปที่หน้านั้นแล้วรันใหม่ |
+| `FORBIDDEN_ORIGIN/HOST/HEADER` | 403 | เว็บที่เรียกไม่อยู่ใน allow-list / Host ผิด / ขาด header | ถ้าเปิดจาก Vercel preview ให้เพิ่มใน `HELPER_ALLOWED_ORIGINS` |
+| `PROTO_MISMATCH` / `BAD_REQUEST` | 400 | รุ่นตัวช่วยกับหน้าเว็บไม่ตรง หรือ body ผิด | อัปเดต `PromaxxHelper.exe` |
+| `LAUNCH_FAILED` | 500 | เปิด ProMaxx ไม่ขึ้น/ขึ้นกล่องผิดพลาด (เช่นต่อ SQL Server ไม่ได้) · `ไม่พบโปรเซส ssmaxx.exe ภายใน 30 วินาที` = ตัวเปิดโปรแกรมไม่ได้เปิด ssmaxx ต่อ · `ProMaxx ปิดตัวเอง` = เห็นโปรเซสแล้วหายเกิน 6 วินาที · กล่อง "Application to the program is open to change." = เปิด `ssmaxx.exe` ตรงๆ (ตั้ง `PROMAXX_LAUNCH_DIRECT=1` ไว้ หรือไม่มี `ProMaxx.exe` ข้างๆ) | อ่านข้อความ · ตรวจว่าเครื่อง SQL Server (BIGYAMAINPC) เปิดอยู่ · ตรวจว่า `ProMaxx.exe` อยู่โฟลเดอร์เดียวกับ `ssmaxx.exe` |
+| `LOGIN_FAILED` | 500 | ล็อกอินไม่ผ่าน — **ไม่ลองซ้ำ** (กันบัญชีถูกล็อก) | ตรวจรหัสใน `.env` · ล็อกอินมือเองเพื่อดูว่าบัญชีถูกล็อกหรือไม่ |
+| `INTERFERENCE` | 500 | เมาส์ไม่อยู่ที่เป้าหลังสั่งขยับ (ผู้ใช้ขยับเมาส์ระหว่างทำงาน) | อย่าแตะเมาส์/คีย์บอร์ด ~1 นาที แล้วลองใหม่ |
+| `UNEXPECTED_DIALOG` / `FOCUS_LOST` | 500 | มีกล่องข้อความแปลกแทรก / หน้าต่าง ProMaxx ไม่อยู่ด้านหน้า หรือถูกย่ออยู่และกู้กลับมาไม่ได้ | อ่านข้อความ (อยู่ใน `runs/<เวลา>_<code>/`) |
+| `LOCATOR_MISSING` / `LOCATOR_NOT_FOUND` / `LOCATOR_NOT_UNIQUE` | 500 | ยังไม่มีค่าตั้งของขั้นนั้น / ไม่พบเป้า / พบเป้ามากกว่า 1 (ไม่เดา) | ทำ §ตรวจหน้าต่างจริง หรือหน้าต่าง ProMaxx เปลี่ยนหน้าตา |
+| `PRECONDITION_FAILED` / `POSTCONDITION_FAILED` | 500 | ก่อนลงมือ: ยังไม่เห็นหน้าจอที่ขั้นนั้นต้องใช้ (รอครบเวลาแล้ว — ยังไม่คลิก/ไม่พิมพ์อะไร) / หลังคลิก: หน้าจอไม่เปลี่ยนเป็นหน้าที่ควรเป็น | ดู `runs/` · อาจมี popup หรือขั้นก่อนหน้าไม่ได้พาไปถึงหน้านั้นจริง |
+| `UIA_ERROR` | 500 | อ่านโครงหน้าต่างด้วย UIA (PowerShell) ไม่ได้ ติดกันเกิน 3 ครั้ง / หมดเวลา / ผลไม่ใช่ JSON — ไม่คลิกต่อ | รัน `--find` ดูบรรทัด "UIA (PowerShell)" · ตรวจว่า Windows PowerShell 5.1 ใช้ได้ (นโยบายองค์กร/โปรแกรมป้องกันไวรัสอาจบล็อก) |
+| `INTERNAL` / `STEP_FAILED` | 500 | ข้อผิดพลาดภายในตัวช่วย / ฝ่าฝืนกติกา "ห้ามส่ง input หลังปุ่มนำเข้า" | ดู `promaxx_helper.log` ข้างตัวช่วย แล้วแจ้งผู้พัฒนา |
+
+เมื่อขั้นตอนล้ม ตัวช่วยเก็บหลักฐาน (`dump.txt` / `dump.json` / `screen.png` / `result.json`) ที่ `runs\<เวลา>_<code>\` **ข้างตัวช่วยบนเครื่องนั้น** (เก็บล่าสุด 30 โฟลเดอร์) — รหัสผ่านถูกปิดเป็น `***` · ภาพหน้าจออาจมีข้อมูลธุรกิจ ⛔ **ห้ามเข้า git** (อยู่ใน `.gitignore`)
+
+## กติกาที่ห้ามละเมิดเมื่อแก้โค้ด
+
+1. หน้าเว็บส่งได้แค่ `type` = `ORDS`|`IRPS` — **ห้ามรับ path/คำสั่ง/รหัสผ่านจากเว็บ** (field แปลกปลอม = 400)
+2. ขับเฉพาะหน้าต่างของ process `ssmaxx.exe` · ก่อนพิมพ์/คลิกทุกครั้ง foreground ต้องเป็นของ ssmaxx · หา control ต้อง **พบ 1 รายการพอดี** (0 หรือ >1 = หยุด ห้ามเดา)
+3. **ล็อกอินครั้งเดียว ห้าม retry อัตโนมัติ** · รหัสผ่านห้ามลง log/ผลลัพธ์/screenshot
+4. `ssmaxx.exe` เปิดอยู่แล้ว = ปฏิเสธ ไม่แตะอะไร
+5. `LOCATORS_VERIFIED` เป็น `True` ได้ต่อเมื่อมีผลตรวจจริงครบ (ดูด้านล่าง) — ⛔ ห้ามเปลี่ยนเพื่อให้ปุ่มทำงาน
+6. หลังคลิกปุ่ม "นำเข้าไฟล์เอกสาร" **ห้ามส่ง input เพิ่ม** (ขั้นถัดไปต้องขออนุมัติ)
+7. ห้ามขับ ProMaxx พร้อมบอทอื่น (`HELPER_BLOCK_PROCS`)
+8. ห้ามเรียก `SetProcessDpiAwareness` · ช่องกรอกของ PowerBuilder ต้องเป็น keystroke จริง (SendInput Unicode — ห้าม paste/`WM_SETTEXT`) · เนื้อใน DataWindow (`pbdw125`) ต้องคลิกด้วยเมาส์จริง (บทเรียนจากบอท `auto-r01/bot-export/CLAUDE.md`)
+9. แก้โค้ดแล้วเปลี่ยน `VERSION` ใน `promaxx_helper.py` ทุกครั้ง (ใช้ตรวจด้วย `--version` ว่าวางไฟล์ถูกรุ่น) · เครื่องร้านไม่ใช่ git clone — ต้องก๊อป `PromaxxHelper.exe` ไปวางเองทุกครั้ง
+
+## UIA — ที่มาของ `STEP_SPECS` (ตรวจ 3 พ.ย. 2026 · Build ProMaxx 10.00.10.0025 · อ่านอย่างเดียว ยังไม่เคยคลิกจริง)
+
+เก็บโครงสร้างด้วย UIA ทีละหน้าจอ (หน้า Login → หน้าหลัก → เมนูเอกสารรับ/จ่าย → ฟอร์มเอกสาร → กล่อง Select File) ได้ข้อมูลดังนี้ (เก็บเฉพาะโครงสร้าง ไม่มีข้อมูลธุรกิจ):
+
+| ขั้น | เป้า (AutomationId / ชนิด) | ตัวตรวจผล |
+|---|---|---|
+| launch | หน้าต่างระดับบน class `HwndWrapper[ssmaxx.exe;;<GUID เปลี่ยนทุกครั้ง>]` ชื่อ "SeniorSoft ProMaxx" (ต้องใช้ `cls_re`) | `uo_login_panel` มองเห็น |
+| login | ช่องชื่อผู้ใช้ `cf_empid` (TextBox) ↔ `cf_empid:1` (DWTextBlock) · รหัสผ่าน `cf_pass` (**PasswordBox**) ↔ `cf_pass:1` · ปุ่ม `cb_Login` | `uo_login_panel` หาย + ListItem "เอกสารรับ" ใน `lbx_manumain` |
+| menu | ListItem ชื่อ "เอกสารรับ"/"เอกสารจ่าย" ใต้ `lbx_manumain` (**ไม่มี id** ต้องใช้ชื่อ) | Button id `I`/`O` ใต้หน้าคลาส `ui_mainmenu_tranin/tranout_style2` |
+| doc-button | Button id `I` (รับ) / `O` (จ่าย) | TabItem ชื่อเมนู ใต้ `MDI_TAB` + ปุ่มนำเข้าใต้ฟอร์มคลาส `pn_trans_in` / `pn_trans_out` |
+| doc-type-open / -pick / -ok | ช่องประเภทเอกสาร `SYSVOUCHERID:1` (DWTextBlock ชื่อ = ค่าที่เห็น) → หน้าต่างรายการ → แถว `col1:N` ชื่อ "รหัส ชื่อไทย" → ปุ่ม `cb_ok` "ตกลง" | หัวข้อหน้าต่างรายการ "ประเภทเอกสาร" · เครื่องหมายเลือกแถว `p_1:N` ของแถวที่คลิก · หลังตกลง: หน้าต่างรายการหาย + `SYSVOUCHERID:1` = ชื่อประเภทที่ต้องการ |
+| warehouse-open / -pick / -ok | ช่องคลัง `SYSWAREHOUSEID:1` → หน้าต่างรายการ (2 แถว: `Warehouse` / `Front Store`) → `cb_ok` | เหมือนข้างบน · **คลังต้องเป็น `Front Store` เท่านั้น** (ผู้ใช้สั่ง) |
+| import-button | Button `uo_tran_bt_import` · **HelpText ต้องตรง "นำเข้าไฟล์เอกสาร"** · ใต้คลาสฟอร์มข้างต้น · **ก่อนคลิกต้องอ่านกลับครบ: ประเภท · `TRANNO:1` ขึ้นต้นรหัสประเภท · คลัง = Front Store** | หน้าต่างระดับบน `#32770` ชื่อ "Select File" ของ ssmaxx (หน้าต่างหลักถูกล็อก) |
+
+**กติกาที่ต้องจำ (เจอจริงจากการตรวจ):**
+- ช่องล็อกอินเป็น PowerBuilder DataWindow ที่ **สลับชนิดตามโฟกัส** (TextBox/PasswordBox เมื่อกำลังพิมพ์ · DWTextBlock เมื่อไม่ได้โฟกัส) → spec ระบุ id ทั้งสองแบบ และ **ต้อง `await` ให้ช่องที่ถูกชนิด (คลาส `TextBox` / `PasswordBox`) ได้รับโฟกัสก่อนพิมพ์** ไม่งั้นหยุด (ไม่พิมพ์รหัสลงช่องที่ไม่ใช่ช่องรหัสผ่าน)
+- `IsOffscreen` ของ UIA **เชื่อไม่ได้อย่างเดียว**: หลังเปิดฟอร์ม หน้าเมนูถูกเลื่อนไปนอกกรอบหน้าต่าง (x ≈ +1900) แต่ปุ่ม I/O ยังรายงาน `IsOffscreen=False` → ตัวช่วยตรวจพิกัดด้วย (`_visible_in`: กึ่งกลางอยู่ในกรอบหน้าต่าง และอยู่ในกรอบ ≥ 80% ของพื้นที่)
+- ชื่อ (Name) ของปุ่มทูลบาร์ใช้ไม่ได้ ("Contactus"/"Exit" ถูกคัดลอกผิดมา) → ใช้ id + HelpText · ปุ่ม **แทรก/ลบ/ยกเลิกรายการ ติดกับปุ่มนำเข้า (ห่าง 4px)** จึงมี `reverify` (อ่านเป้าซ้ำก่อนกด ขยับเกิน 2px = หยุด)
+- id `uo_tran_bt_import` มีในฟอร์ม **โอนสินค้าระหว่างสาขา (`pn_trans_tb_out`) ด้วย** → ต้องเช็คคลาสฟอร์ม ไม่ใช่แค่ id
+- `Custom id` ที่เป็นตัวเลข (เช่น `17`, `23`, `295`) เปลี่ยนทุกครั้งที่โหลดหน้า → ห้ามใช้ · id ซ้ำข้ามหน้า (`B W A C D R H`) → เช็คคลาสหน้าแม่ (`ancestor`) เสมอ
+- ค่าเริ่มต้นของฟอร์ม **เชื่อไม่ได้ ต้องอ่านก่อนแล้วตั้งเมื่อไม่ตรง:** ฟอร์ม `pn_trans_out` (ปุ่ม O) เคยเปิดมาเป็น "ใบเสร็จรับเงิน(เงินสด)" (ORCM) และภายหลังเปิดมาเป็น ORDS (น่าจะจำประเภทที่ใช้ล่าสุด — ยังมีข้อมูลแค่สองจุด) คลัง Front Store · ฟอร์ม `pn_trans_in` (ปุ่ม I) เปิดมาเป็น "ใบปรับปรุงเพิ่มสินค้า" (IRPS) **แต่คลังเป็น `Warehouse`** → ขั้น `doc-type-*` / `warehouse-*` อ่านค่าก่อน ข้ามเมื่อตรงอยู่แล้ว (ไม่แตะฟอร์ม) และตั้งผ่านหน้าต่างรายการเมื่อไม่ตรง
+- **หน้าต่างรายการ (ประเภทเอกสาร/คลัง):** คลิกช่อง → เปิดหน้าต่างระดับบน **ใบใหม่ทุกครั้ง** (ชื่อ `sfw_winrespond` · UIA id `w_popup_select_ddw` · hwnd และ GUID ในชื่อคลาสเปลี่ยนไม่ซ้ำ → หาจากชื่อ ห้ามจำ hwnd) หน้าต่างหลักถูกล็อกระหว่างนั้น · **คลิกแถวอย่างเดียวไม่เปลี่ยนค่าในฟอร์ม ต้องกด "ตกลง"** · แถวที่คลิกจะกลายเป็นช่อง `Edit` id `col1` ชื่อว่าง (อ่านชื่อแถวนั้นจาก UIA ไม่ได้อีก) — ใช้เครื่องหมาย `p_1:N` (Image ที่มองเห็นเฉพาะแถวที่เลือก) ยืนยันแถว · รายการประเภทของเอกสารรับมี ≥ 15 แถวและมีแถบเลื่อน (ORDS 13 แถวไม่มี) แถว IRPS อยู่ตำแหน่งที่ 2 เห็นครบ — แถวที่ถูกเลื่อนออกนอกกรอบรายการจะไม่ถูกคลิก (หยุด)
+- เลขที่เอกสารที่เห็นเป็น "เลขถัดไปที่ว่าง" ไม่ถูกจองตอนเปิดฟอร์มหรือเปลี่ยนประเภท (ORDS/IRPS เดือนนี้ยังเป็น `…00001` ทุกครั้งที่เปิด/เปลี่ยน) · `ORCM…871 → 872` ที่เห็นข้ามรอบน่าจะเป็นบิลขายจริง (ไม่ได้พิสูจน์)
+- UIA ล้ม 1–3 ครั้งติดกันระหว่างรอเงื่อนไขทนได้ (ช่วงโปรแกรมกำลังเปิด) · ครบ 4 = `UIA_ERROR` · แต่ละครั้งใช้เวลาประมาณ 1.2 วินาที (วัดบน Windows 11 / PowerShell 5.1.26100 — ยังไม่ได้วัดทั้งขั้นตอน)
+- ต้องมี Windows PowerShell 5.1 (มากับ Windows) — ตัวช่วยเรียกด้วย `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File` (ข้ามนโยบายเฉพาะโปรเซสนั้น ไม่แก้ค่าเครื่อง) · โปรแกรมป้องกันไวรัสบางตัวอาจเตือนการเรียก PowerShell จากโปรแกรมอื่น — `--find` จะรายงานสถานะ "UIA (PowerShell)"
+
+**เครื่องมือ:** `--inspect --label <ชื่อ>` เขียน `uia_<n>_<hwnd>.txt` (โครงสร้าง UIA ของหน้าต่างที่มองเห็นทุกใบ · ไม่อ่านค่าที่พิมพ์ในช่องกรอก) เพิ่มจาก `dump.txt`/`screen.png` · ตอนขั้นตอนล้มก็เก็บ `uia_*.txt` ให้ใน `runs\` ด้วย
+
+## ตรวจหน้าต่างจริง (Gate 0) — ต้องทำก่อนปุ่มจะคลิกได้
+
+> ใครทำ: ผม (Claude) ผ่าน Remote Control บนเครื่อง Windows ที่มี `ssmaxx.exe` + มี clone ของ repo นี้ หรือ IT ทำเองตามขั้นตอนนี้แล้วส่งโฟลเดอร์ `runs\` (ตัดข้อมูลธุรกิจออกจากภาพถ้าจำเป็น) มาให้
+
+**เตรียมเครื่อง:** เปิดเครื่อง SQL Server (BIGYAMAINPC) · ปิด `ssmaxx.exe` ทุกตัว · ปลดล็อกจอ · Scaling 100% · สร้าง `.env` (ผู้ใช้สร้างเอง — ⛔ ห้ามส่งรหัสในแชท) · `python -m pip install pywin32 psutil pillow`
+
+**ขั้น 1 — เก็บ "ความจริง" ของหน้าต่าง (อ่านอย่างเดียว ไม่คลิก):** เปิด ProMaxx ด้วย shortcut เดียวกับที่พนักงานใช้ แล้วในแต่ละสถานะรัน `run_promaxx_helper.bat --inspect --label <ชื่อ>`
+
+| สถานะที่ต้องหยุดรอที่หน้านั้น | `--label` |
+|---|---|
+| หน้า Login (ยังไม่พิมพ์อะไร) | `S1-login` |
+| ล็อกอินเองแล้ว หน้าหลัก | `S2-main` |
+| เข้าเมนู **เอกสารรับ** แล้ว | `S3-menu-receive` |
+| เข้าเมนู **เอกสารจ่าย** แล้ว | `S3-menu-issue` |
+| คลิกปุ่ม **I** แล้ว / ปุ่ม **O** แล้ว | `S4-button-I` / `S4-button-O` |
+| คลิก **นำเข้าไฟล์เอกสาร** แล้ว (หยุด — ยังไม่เลือกไฟล์ · ปิดกล่องเองด้วยมือ) | `S5-import` |
+
+แต่ละครั้งได้ `runs\<เวลา>_<label>\dump.txt` (ทุกหน้าต่างของ ssmaxx + ลูก: class / ข้อความ / rect / id / style + เมนู HMENU) กับ `screen.png` — ถ้า dump ไม่เจอหน้าต่างของโปรเซส ssmaxx ให้ดูท้ายไฟล์ ("หน้าต่างอื่นที่เห็นอยู่") ว่าหน้าต่างจริงเป็นของโปรเซสชื่ออะไร (อาจเป็นโปรเซสลูก/ตัวห่อ — ต้องปรับ `SSMAXX_PROC_NAME`)
+
+**ขั้น 2 — เติม `STEP_SPECS`** *(ทำแล้วในรุ่น `2026-11-03.2` ตาม §UIA — ข้อความด้านล่างเป็นวิธีทำเมื่อ ProMaxx อัปเดตหน้าตาแล้วต้องตรวจใหม่ · ⚠️ ProMaxx เป็น WPF จึงใช้ `kind:"uia"` ไม่ใช่ `menu`/`control`/`point`)* ใน `promaxx_helper.py` ตามรูปแบบที่อธิบายไว้เหนือตัวแปรนั้น (ชุดตัวอย่างเต็มอยู่ใน `tests/lib/fake_ssmaxx.py` — เป็นข้อมูลสมมติ ห้ามคัดลอกค่า) โดย
+- เป้า "เมนู" → ใช้ `kind:"menu"` (ส่ง `WM_COMMAND` ไม่ใช้เมาส์) · ปุ่มที่เป็น `Button` จริง → `kind:"control"` · ปุ่มที่อยู่ใน DataWindow ไม่มี HWND → `kind:"point"` (เมาส์จริง · พิกัดเป็นเศษส่วนของ rect — ต้องมีเงื่อนไขหลังคลิกที่ตรวจได้ ห้ามคลิกตามพิกัดเฉยๆ แล้วไม่ตรวจผล)
+- ทุกขั้นต้องมี `post` (หน้าต่าง/ข้อความที่พิสูจน์ว่าไปถึงหน้าที่ควรเป็น) และ regex ต้อง**ตรงเป้าเดียว**
+- **แนวทางจากบอทเดิม** (`auto-r01/bot-export/CLAUDE.md` — ขับ `promaxxreport.exe` ซึ่งเป็น**คนละโปรแกรม** ใช้เป็นแนวทางเท่านั้น ห้ามถือว่า `ssmaxx.exe` เหมือนกัน): หน้า Login ของมันคลิกช่องที่พิกัด % ของหน้าต่าง (ชื่อผู้ใช้ ~72%,35% · รหัสผ่าน ~72%,50%) แล้วพิมพ์ Unicode → กด Enter → คลิกเมาส์จริงที่ปุ่ม (~50%,67%) = ฟอร์มเป็น DataWindow ไม่มี HWND · ช่องของ PowerBuilder commit ค่าก็ต่อเมื่อมี keystroke จริงหรือเสียโฟกัสจริงเท่านั้น — `BM_CLICK` / paste / `WM_SETTEXT` ไม่ commit ⇒ ถ้าปุ่มยืนยันของ `ssmaxx.exe` ทำให้ค่าที่เพิ่งพิมพ์ไม่ถูกใช้ ให้เปลี่ยน `kind:"control"` จาก `via:"message"` เป็น `via:"mouse"`, ใช้ `kind:"point"`, หรือใช้ `{"do":"key","key":"enter"}` แทน
+
+**ขั้น 3 — ดูด้วยตาก่อนคลิกจริง** (ปิด ProMaxx แล้วเปิดไว้ที่หน้าก่อนขั้นนั้น): ขณะ `LOCATORS_VERIFIED=False` ทุกคำสั่งที่ทำงานกับ ProMaxx ต้องใส่ `--force-unverified`
+
+```bat
+run_promaxx_helper.bat --step doc-button --type irps --dry-run --force-unverified
+```
+`--dry-run` = หาเป้า + วาดกรอบ/กากบาทลง `runs\…\NN_<step>.png` แต่**ไม่คลิก** (ขั้น login จะไม่พิมพ์อะไรเลย) · ตรวจภาพว่ากากบาทอยู่บนเป้าจริง แล้วค่อยรัน `--hover-ms 1500` (เมาส์ไปค้างเหนือเป้าให้คนดูทัน) และสุดท้ายไม่ใส่ทั้งสองตัว (คลิกจริงทีละขั้น)
+
+**ขั้น 4 — เกณฑ์ "แม่นยำ" (ต้องผ่านครบก่อนตั้ง `LOCATORS_VERIFIED = True`):**
+- `--open ords` ×10 และ `--open irps` ×10 จาก **cold start** (ปิด ProMaxx ทุกรอบ: `--close-ssmaxx --allow-close`) ถึงหน้านำเข้าทุกครั้ง · ยืนยันด้วย `result.json`/ภาพ ไม่มีคลิกหลุด ไม่มีกล่องแปลก
+- เคสลบ: ProMaxx เปิดอยู่ → `ALREADY_RUNNING` ไม่คลิก · รหัสผิด → หยุดที่ login **ไม่ลองซ้ำ** · SQL Server ปิด → จดข้อความต่อฐานข้อมูลไม่ได้แล้วหยุด · ขยับเมาส์กลางทาง → `INTERFERENCE` · มี popup แทรก → หยุดพร้อมข้อความ · ล็อกจอ → `NO_DESKTOP`
+- หลังปุ่มนำเข้า ตัวช่วยไม่ส่ง input เพิ่ม (เทสอัตโนมัติตรึงอยู่แล้ว — ตรวจด้วยตาอีกครั้งบนของจริง)
+
+**ขั้น 5 — เปิดใช้งาน:** ตั้ง `LOCATORS_VERIFIED = True` + เปลี่ยน `VERSION` (คอมมิตแยก) · build exe ใหม่ · ลองกดปุ่มจากหน้าเว็บ**จริง**บน Chrome และ Edge ของเครื่องนั้น (ดู prompt LNA · ทดสอบ policy) — ต้องมี Origin จริง (หน้า production หรือ Vercel preview + `HELPER_ALLOWED_ORIGINS`) · แล้วเติมตาราง "ผลตรวจจริง" ด้านล่าง
+
+## คำสั่ง CLI (ใช้ตอนตรวจ/ปรับจูน)
+
+| คำสั่ง | ทำอะไร |
+|---|---|
+| (ดับเบิลคลิก) หรือ `--serve` | รอรับคำสั่งจากหน้าเว็บ |
+| `--version` | พิมพ์รุ่น/proto/`locatorsVerified` |
+| `--find` | ตรวจสภาพเครื่อง: พาธ ssmaxx · session · สิทธิ์ Administrator · Scaling · โปรเซสที่เกี่ยวกับ ProMaxx (อ่านอย่างเดียว) |
+| `--inspect --label S3-menu` | dump หน้าต่าง/เมนู + screenshot ลง `runs\` (อ่านอย่างเดียว ไม่คลิก) |
+| `--open ords\|irps` | ทำทั้งขั้นตอน (เส้นทางเดียวกับปุ่มบนเว็บ) |
+| `--step <launch\|login\|menu\|doc-button\|doc-type-open\|doc-type-pick\|doc-type-ok\|warehouse-open\|warehouse-pick\|warehouse-ok\|import-button> --type ords\|irps` | ทำเฉพาะขั้นเดียวจากหน้าที่เปิดค้างไว้ · เสริม `--dry-run` / `--hover-ms N` · ขั้น `*-pick` / `*-ok` ต้องมีหน้าต่างรายการเปิดค้างอยู่ก่อน (จึง `--dry-run` ดูเป้าของแต่ละคลิกได้) · ขั้นที่ค่าตรงอยู่แล้วถูกข้าม |
+| `--close-ssmaxx --allow-close` | ปิด `ssmaxx.exe` ทุกตัว (เครื่องทดสอบเท่านั้น) |
+| `--force-unverified` / `--force-dpi` | ข้ามด่าน UNVERIFIED / Scaling 100% (เครื่องทดสอบเท่านั้น) · `--port N` ทับ `HELPER_PORT` |
+
+exit code: `0` สำเร็จ · `1` ไม่สำเร็จ · `2` ตัวเลือกผิด/ตั้งค่าไม่ครบ · `3` ไม่ได้ทำอะไร (มีตัวช่วยอื่น/ProMaxx เปิดอยู่/พอร์ตถูกใช้)
+
+## ถอด / ย้อนกลับ
+
+| ระดับ | ทำอะไร |
+|---|---|
+| ปิดปุ่มบนเว็บ | `let ADJUST_DOC_PROMAXX=false;` ใน `index.html` → push (ตัวช่วยบนเครื่องไม่กระทบอะไร) |
+| หยุดตัวช่วยบนเครื่องหนึ่ง | ปิดหน้าต่างคอนโซลของ PromaxxHelper · ลบ `PromaxxHelper.lnk` ใน `explorer shell:startup` · ลบโฟลเดอร์ตัวช่วย (ลบ `.env` ด้วย) · ลบ policy LNA ถ้าเคยใส่ |
+| ถอนโค้ด | `git revert --no-edit $(git log --no-merges --format=%h --grep='^feat(adj-promaxx)' <จุดก่อนแก้>..HEAD)` (+ `feat(promaxx-helper)` ถ้าจะถอนตัวช่วยด้วย) — ดูรายการก่อนรัน · ⛔ ห้าม `reset --hard`/force-push |
+
+ไม่มีผลต่อ Firestore / `firestore.rules` / `sw.js` / `vercel.json` / APK ⇒ ย้อนโดยไม่ต้อง migrate
+
+## ข้อจำกัดที่ยอมรับ
+
+- ต้องติดตั้งตัวช่วยทุกเครื่องที่จะใช้ปุ่ม (build exe เอง — ไม่เข้า git)
+- ใช้เมาส์/คีย์บอร์ดจริงประมาณ 1 นาที — **ห้ามแตะระหว่างทำงาน**
+- หลังจบ ProMaxx ค้างเปิดที่หน้านำเข้า ⇒ กดปุ่มซ้ำจะถูกปฏิเสธ (`ALREADY_RUNNING`) จนกว่าจะปิดเอง
+- ProMaxx อัปเดตหน้าตา = ค่าตั้งขั้นนั้นพัง → ด่านเงื่อนไขหลังคลิกหยุดเองและไม่คลิกต่อ (ต้องตรวจใหม่)
+- ยังไม่รู้ว่า `ssmaxx.exe` ตรวจสาขา/คลังตามบัญชีที่ล็อกอินหรือไม่ — ตัวช่วยอ่านสาขาในฟอร์ม (`SYSBRANCHID:1`) ลง log เท่านั้น **ยังไม่ตัดสิน** เพราะสัญญา HTTP ยังไม่บอกสาขาจากเว็บ (เฟส 2) · คลังบังคับเป็น Front Store เท่านั้น (ถ้า WH คลังกลางต้องใช้ปุ่มนี้ ต้องตัดสินใจกันใหม่)
+- ขั้น `doc-type-*` / `warehouse-*` คลิกจริงผ่านแล้ว 4 พ.ย. 2026 (รุ่น `.5`) ทั้ง IRPS และ ORDS รวมการคลิกในหน้าต่างรายการ (หน้าต่างระดับบนใบที่สองของ `ssmaxx.exe`) · แต่ในรอบ cold start 20 รอบ ProMaxx จำประเภท/คลังล่าสุดของแต่ละฟอร์มไว้ ขั้นเหล่านี้จึงถูก**ข้ามทั้งหมด** — เส้นทางคลิกเลือกตอนฟอร์มเริ่มด้วยค่าผิดพิสูจน์แยกบนโปรแกรมที่เปิดอยู่ ไม่ใช่ใน loop · เจอครั้งเดียว: `doc-type-pick` ฝั่ง ORDS หาแถวไม่เจอ (`LOCATOR_NOT_FOUND`) ทั้งที่แถวมีอยู่จริง ลองซ้ำผ่าน ยังไม่รู้สาเหตุ (ตัวช่วยหยุดถูกต้อง ไม่คลิก) · เว็บยังไม่มีป้ายไทยของชื่อขั้นใหม่ในข้อความ error (แสดงชื่อขั้นดิบ)
+- **สถานะหลักฐานจริงของ `promaxx_win.py` (อัปเดต 4 พ.ย. 2026):** รันบน Windows จริงแล้ว ✅ — ส่วนอ่านอย่างเดียว (`--find` · `--inspect` · `pids` · `top_windows`/`child_windows` · `dpi_percent` · UIA ผ่าน PowerShell) และส่วนลงมือ (`launch` ผ่าน `ProMaxx.exe` · `focus` · `click_at` · `type_text` · `close_processes` · `dialogs()` จับกล่องข้อความจริงได้) จาก cold start 20 รอบ + รอบเดี่ยว · **ยังไม่เคยรันจริง:** `press_key` · `invoke_menu` · `click_button` (ขั้นตอน UIA ปัจจุบันไม่เรียก) · mutex ข้ามโปรเซส · โหมด `--serve` (ปุ่มจากเว็บ) · เทสอัตโนมัติใช้หน้าต่าง `ssmaxx.exe` **ปลอม** (`tests/lib/fake_ssmaxx.py` แบบ Win32 และ `fake_ssmaxx_uia.py` แบบ WPF+UIA ที่จำลองตามโครงที่ตรวจจริง) จึงพิสูจน์ได้แค่ตรรกะของตัวช่วย (ด่านความปลอดภัย · ลำดับขั้น · การหยุด) ไม่ใช่ว่าคลิก/พิมพ์ถูกบน ProMaxx จริง
+- `WinAdapter.focus()` กู้ (SW_RESTORE) เฉพาะหน้าต่างที่ถูกย่ออยู่ ไม่ย่อหน้าต่างที่ขยายเต็มจอ (แก้แล้วรุ่น `.3`)
+- **หน้าต่าง ProMaxx ที่ถูกย่อ (แก้แล้วรุ่น `2026-11-04.2`):** หน้าต่างที่ถูกย่ออ่านพิกัดได้ ≈ −32000 (ทั้งหน้าต่างและทุกองค์ประกอบใน UIA) แต่**ยังนับเป็น foreground** ⇒ รุ่นก่อนหน้าล้มที่ด่านก่อนเริ่มของขั้น (`PRECONDITION_FAILED` หลัง 15 วินาที) และ `_ensure_focus` ข้ามเพราะ foreground ตรง · ตอนนี้ต้นของทุกขั้น (`_restore_minimized`) กู้หน้าต่างกลับมาก่อนอ่านอะไร (โหมดจริง) · กู้ไม่สำเร็จ = `FOCUS_LOST` ไม่คลิก/พิมพ์ · `--dry-run` ไม่ลงมือ จึงไม่กู้ แจ้ง "หน้าต่าง ProMaxx ถูกย่ออยู่ — dry-run ไม่กู้ให้" · `_ensure_focus` ตรวจซ้ำก่อนคลิก (ถูกย่อกลางขั้น) · ตรวจจริง 4 พ.ย. 2026 ผ่านทุกจังหวะ (ดูตารางผลตรวจจริง)
+
+## นอกขอบเขตขั้นที่ 1 (รออนุมัติ หลังยืนยันว่าคลิกแม่นยำแล้ว)
+
+เลือกไฟล์ / ส่งแถวข้อมูลให้ตัวช่วย / นำเข้า / บันทึก / อ่านเลขที่เอกสารกลับ / ปิด ProMaxx หลังจบ / แจ้ง Status ใน 🗂️ ประวัติ
+
+## ผลตรวจจริง (เติมหลัง Gate 0 — เก็บเป็นข้อความโครงสร้างอย่างเดียว: class / ป้าย / ตำแหน่งสัมพัทธ์ · ⛔ ห้ามแปะภาพหน้าจอหรือข้อมูลธุรกิจ)
+
+| รายการ | ผล |
+|---|---|
+| ชื่อโปรเซสที่เป็นเจ้าของหน้าต่างจริง | ✅ `ssmaxx.exe` (หน้าต่างหลักคลาส `HwndWrapper[ssmaxx.exe;;<GUID>]`) · พาธที่ตั้งใน `.env` ไม่ได้อ่านเพื่อไม่ให้เห็นรหัส |
+| ssmaxx รันแบบ Administrator หรือไม่ | ⏳ ยังไม่ตรวจ |
+| หน้า Login: ช่อง username-password / ปุ่ม | ✅ `uo_login_panel` · `cf_empid`↔`cf_empid:1` · `cf_pass`↔`cf_pass:1` (PasswordBox) · `cb_Login` — คลิกจริงผ่านรอบเดี่ยว 1 ครั้ง |
+| หน้าหลัก: มีเมนู HMENU จริงหรือเป็น DataWindow | ✅ ไม่มี HMENU (WPF) · เมนูซ้ายเป็น ListBox `lbx_manumain` |
+| เมนู เอกสารรับ / เอกสารจ่าย: ป้าย + id | ✅ ListItem ชื่อ "เอกสารรับ"/"เอกสารจ่าย" (ไม่มี id) — คลิกจริงผ่านทั้งสอง |
+| ปุ่ม I / O: เป็น `Button` จริงหรือจุดใน DataWindow | ✅ Button id `I`/`O` ใต้หน้าคลาส `ui_mainmenu_tranin/tranout_style2` — คลิกจริงผ่านทั้งสอง |
+| ปุ่ม "นำเข้าไฟล์เอกสาร": class / ป้าย | ✅ Button `uo_tran_bt_import` · HelpText "นำเข้าไฟล์เอกสาร" · ใต้ `pn_trans_in`/`pn_trans_out` · คลิกจริงผ่านทั้งสอง (เงื่อนไขหลังคลิก = มี `#32770` "Select File" — ยังไม่มีคนยืนยันด้วยตา) |
+| ส่วนหัวฟอร์ม: ประเภท / เลขที่ / สาขา / คลัง | ✅ `SYSVOUCHERID:1` · `TRANNO:1` · `SYSBRANCHID:1` · `SYSWAREHOUSEID:1` (DWTextBlock ชื่อ = ค่าที่เห็น) ทั้งสองฟอร์ม |
+| หน้าต่างรายการประเภทเอกสาร/คลัง | ✅ ตรวจด้วยมือ D1–D6/E1–E2 แล้ว **ตัวช่วยคลิกเองผ่านแล้ว 4 พ.ย. 2026** ทั้ง IRPS (ประเภท+คลัง) และ ORDS (ประเภท+คลัง) — แต่ละคลิกผ่านภาพ dry-run ก่อน · ด่านตรวจก่อนคลิก `import-button` ปฏิเสธเมื่อประเภท/คลังผิด (ทดสอบทั้งสองฟอร์ม) และผ่านเมื่อถูก |
+| หน้าต่าง ProMaxx ถูกย่อ | ✅ 4 พ.ย. 2026 รุ่น `.2` บนโปรแกรมจริง: ย่อแล้ว `--dry-run` = แจ้งชัดเจนและไม่แตะหน้าต่าง · ขั้น `menu` / `doc-button` จริง = กู้แล้วคลิกสำเร็จ · ขั้นที่ควรถูกข้าม (`doc-type-open`) = กู้แล้วข้าม ไม่คลิก (รุ่นก่อนหน้าล้ม `PRECONDITION_FAILED` ที่ `doc-button`) · เทสอัตโนมัติข้อ 6 ของ `promaxx-helper-uia` + mutation 12/12 |
+| ตัวเปิดโปรแกรม (`launch`) | ✅ ทางลัดพนักงาน = `ProMaxx.exe` · เปิด `ssmaxx.exe` ตรงๆ → กล่อง "Application to the program is open to change." (`LAUNCH_FAILED`) · เปิดผ่าน `ProMaxx.exe` ได้หน้า Login ใน ~8 วินาที · รุ่น `2026-11-04.1` สลับให้เองและแยกด่านโปรเซสหาย 2 แบบ (เทสอัตโนมัติ + mutation 22/22) — รัน cold start ซ้ำ 20/20 บนโปรแกรมจริงแล้ว (ดูแถวถัดไป) |
+| ORDS ×10 / IRPS ×10 จาก cold start | ✅ 4 พ.ย. 2026 (BIG-IT): ปิด ProMaxx → `--open` → ถึงปุ่มนำเข้า (หน้าต่าง Select File ขึ้น) ครบ **20/20** รอบละ 51–54 วินาที — เงื่อนไข: เปิดผ่าน `ProMaxx.exe` (รุ่น `.5` + ตัวแปรเฉพาะโปรเซส) · ข้ามขั้นประเภท/คลังทั้ง 6 ขั้นทุกรอบ (ฟอร์มจำค่าล่าสุด) · ⏳ ยังไม่วัดเวลาในกรณีที่ต้องคลิกเลือกประเภท+คลังตอน cold start (ประมาณการ ~100 วินาที เทียบที่เว็บรอได้ 180) |
+| เคสลบบนโปรแกรมจริง | ✅ 4 พ.ย. 2026 (BIG-IT · รุ่น `.1`–`.2`): รหัสผิด (ชื่อปลอมผ่านตัวแปรโปรเซส ไม่ใช้บัญชีจริง) = `LOGIN_FAILED` พิมพ์/คลิก Login ครั้งเดียว ไม่ retry รหัสปลอมไม่รั่วใน log/หลักฐาน · เปิดซ้อน = `ALREADY_RUNNING` ไม่แตะอะไร · เมาส์แทรกระหว่างคลิก = `INTERFERENCE` · กล่องแทรก (กล่อง "Application to the program is open to change." ตอน launch · Select File ค้างแล้วกดซ้ำ) = `UNEXPECTED_DIALOG`/`LAUNCH_FAILED` ระบุชื่อกล่อง · หน้าต่างถูกย่อ = กู้แล้วทำต่อ (รุ่น `.2`) · ⏳ ยังไม่ทดสอบ: จอล็อก (`NO_DESKTOP` ต้องกด Win+L) · SQL Server ปิด (ห้ามปิด BIGYAMAINPC) |
+| สายเต็ม เบราว์เซอร์จริง → ตัวช่วย → ProMaxx จริง | ✅ 4 พ.ย. 2026 11:20–11:30 (exe ทดสอบ `.3-fulltest` ที่ตั้ง True เฉพาะสำเนา build · คำขอเดียวกับปุ่มทุกประการจาก origin `https://anin-stock-count.vercel.app` ยิงจากหน้า `maintenance.json`): **Chrome 156** ORDS 200 `import-button` (ตัวช่วย 51.8 วิ) → ORDS ซ้ำขณะเปิดอยู่ 409 `ALREADY_RUNNING` ไม่คลิก → ปิด → IRPS 200 (49.9 วิ) · **Edge 156** ORDS 200 (52.0 วิ) + 409 ซ้ำ + IRPS 200 (53.1 วิ รันแยกรอบสอง — รอบแรกหน้าต่าง Edge ถูกปิดกลางทางระหว่าง IRPS) · ตรวจอิสระอ่านอย่างเดียวหลังทุกรอบ: Select File ขึ้นจริง · ฟอร์มตรงชนิด (`pn_trans_out` "ใบปรับปรุงลดสินค้า" / `pn_trans_in` "ใบปรับปรุงเพิ่มสินค้า") · คลัง Front Store · ขั้นประเภท/คลังถูกข้ามทุกรอบ (ฟอร์มจำค่าไว้) |
+| build `PromaxxHelper.exe` | ✅ 4 พ.ย. 2026: `build_exe.bat` ได้ ~19.5 MB ใน ~35 วินาที · เจอและแก้บั๊กสคริปต์ (`"%~dp0"` ลงท้ายด้วย `\` กลายเป็นอักขระ escape ปิดเครื่องหมายคำพูด → `--distpath` เพี้ยน — ต้องใช้ `"%~dp0."`) · `--version` ตรง · ฟังที่ `127.0.0.1:47831` เท่านั้น · Origin ปลอม = `FORBIDDEN_ORIGIN` |
+| Chrome / Edge: prompt LNA | ✅ 4 พ.ย. 2026 (Chrome 156 · Edge 156 · โปรไฟล์ใหม่ · origin จริง · คำขอเดียวกับปุ่มทุกประการ แต่ยิงจากหน้า `maintenance.json` ไม่ใช่ปุ่มจริง): ขึ้นกล่องถาม → Allow → ได้ `422 UNVERIFIED` พร้อมข้อความไทยครบ · Chrome กด Allow ช้า 77 วินาทีสำเร็จ (รุ่น `.3`) · รุ่นก่อน `.3` กดช้า (26/39 วินาที) ล้มทั้ง Chrome และ Edge (บั๊ก timeout ข้างบน) · ⏳ Edge กดช้ากับรุ่น `.3` ยังไม่ได้ยืนยันซ้ำ (รอบนั้นคนกดที่ ~3 วินาที) · ⏳ policy ล่วงหน้า (`LocalNetworkAccessAllowedForUrls`) ยังไม่ทดสอบ · ⏳ **ยังไม่ได้ลองปุ่มจริงในหน้าเว็บ** — ปุ่มยังไม่อยู่บนเว็บจริง (อยู่เฉพาะ branch นี้ ยังไม่ merge) · สายเต็มทดสอบด้วยคำขอแบบเดียวกับปุ่ม (แถวก่อนหน้า) |

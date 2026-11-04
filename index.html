@@ -186,6 +186,7 @@
     #adjustDocPopupCard .stock-popup-footer { flex-wrap:wrap; gap:8px 14px; }
     #adjustDocPopupCard .stock-popup-footer > div:last-child { margin-left:auto; }
     #adjustDocPopupCard .stock-popup-footer button { white-space:nowrap; }
+    #adjPromaxxBtn:disabled { opacity:0.6; cursor:default; }   /* ระหว่างตัวช่วยกำลังขับ ProMaxx (กันกดซ้ำ) */
     /* ชิปตัวกรอง "ตรวจสอบ Report" (เดิม "ตรวจกับ ERP") ในป็อปอัพ 📦 (ต.ค. 2026) — ไม่ใช้ .popup-filter ด้วยเหตุผลเดียวกับ .pg-bar (ถูกวนล้าง .active ตอนสลับ ORDS/IRPS) */
     .adj-erp-chip { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:9px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-family:inherit; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap; line-height:1.15; }
     .adj-erp-chip:hover { border-color:rgba(0,114,198,0.4); color:var(--accent); }
@@ -1228,6 +1229,7 @@
         <button onclick="saveAdjustDocToCloud()" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">💾 บันทึก LOT</button>
         <button onclick="exportAdjustDocExcel()" title="Export ทุกรายการของแท็บนี้ (ไม่ใช่เฉพาะหน้าที่เห็น)" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">📊 Export Excel</button>
         <button id="adjExportTextBtn" onclick="onAdjExportTextClick()" title="Export ทุกรายการของแท็บนี้" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
+        <button id="adjPromaxxBtn" onclick="onAdjPromaxxClick()" title="เปิด ProMaxx (ssmaxx.exe) ที่เครื่องนี้ → ล็อกอิน → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O → ปุ่ม นำเข้าไฟล์เอกสาร แล้วหยุด (ขั้นทดสอบ: ยังไม่นำเข้าข้อมูล)" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(0,114,198,0.45);background:rgba(0,114,198,0.08);color:var(--accent);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">🖥️ บันทึกลง PROMAXX</button>
         <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
     </div>
@@ -9849,6 +9851,17 @@ let ADJUST_DOC_HISTORY=true;
 //   สาขายาเท่านั้น (ตัวอ่าน R16 รองรับ SRC/KKL/SSS — WH อยู่ SYSBRANCHID 0 ปะปนกับ SRC) · เลขที่ใบที่มีในประวัติแล้วถูกข้าม (นำเข้าไฟล์เดิมซ้ำได้ ไม่เกิดซ้ำ) · ก่อนวันเริ่มรอบนับ/ใบยกเลิก/คลังอื่น ถูกตัดโดยตัวอ่านและแจ้งในตัวอย่าง
 //   false = ไม่มีปุ่ม 📥 · เอกสารที่นำเข้าไปแล้วยังแสดงในประวัติตามปกติ (doc บน cloud ไม่ถูกลบ) (ทางถอย — เทสสลับได้)
 let ADJUST_DOC_HISTORY_IMPORT=true;
+// 🖥️ บันทึกลง PROMAXX (3 พ.ย. 2026 · ผู้ใช้สั่ง) — ปุ่มท้ายฟุตเตอร์ 📦 สั่งโปรแกรมตัวช่วย PromaxxHelper (promaxx-helper/ · รันบนเครื่องเดียวกับ ProMaxx ที่ 127.0.0.1)
+//   ให้เปิด ssmaxx.exe → ล็อกอิน → เมนูเอกสารรับ/จ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" แล้ว "หยุด" (ขั้นที่ 1: ยังไม่เลือกไฟล์/ไม่นำเข้า/ไม่บันทึก — ไว้พิสูจน์ว่าคลิกถูก)
+//   ชนิดมาจากแท็บที่เปิด: ords → ORDS (เอกสารจ่าย · O) · irps → IRPS (เอกสารรับ · I) · เฉพาะ pharmacist/supervisor บน Desktop (ไม่ใช่ PDA)
+//   ⛔ หน้าเว็บส่งแค่ {proto,type} — ห้ามส่ง path/คำสั่ง/รหัสผ่าน (รหัส ProMaxx อยู่ใน .env บนเครื่อง ไม่ผ่านเว็บ · ตัวช่วยปฏิเสธ field อื่น) · ไม่เขียน Firestore
+//   Chrome/Edge รุ่นใหม่ถามสิทธิ์ Local Network Access ครั้งแรก (fetch ใส่ targetAddressSpace:'loopback') — IT อนุญาตล่วงหน้าด้วย policy ได้ (promaxx-helper/README.md)
+//   PROMAXX_HELPER_URL ต้องตรงกับ HELPER_PORT ใน .env ของตัวช่วย (ค่าเริ่มต้น 47831) · false = ไม่มีปุ่ม (ทางถอย — ตัวช่วยบนเครื่องไม่กระทบอะไร)
+let ADJUST_DOC_PROMAXX=true;
+let PROMAXX_HELPER_URL='http://127.0.0.1:47831';      // let: เทสชี้ไปเซิร์ฟเวอร์จำลองได้
+const PROMAXX_HELPER_PROTO=1;
+let PROMAXX_HELPER_TIMEOUT_MS=180000;      // เปิดโปรแกรม+ล็อกอิน+คลิก ราว 30–90 วินาที
+let _adjPromaxxBusy=false;                   // กำลังสั่งตัวช่วย — กันกดซ้ำ
 const ADJ_HIST_MAX_KB=800;
 let _adjHist=null;           // doc ดิบของ {branch}_adjhist: {branch,countResetAt,entries:[{no,dir,at,by,rows:[[sku,qty,base,price,lot,exp]]}],updatedBy,updatedAt} · กรองรอบด้วย _adjHistCurrent ตอนใช้
 let _adjHistReadToken=0;     // ผลอ่าน cloud ที่ถูกแซง (บันทึกใหม่/เปิดซ้ำ/logout) ถูกทิ้ง
@@ -11432,6 +11445,7 @@ function setAdjDocFilter(f,btn){
   document.querySelectorAll('#adjustDocPopupOverlay .popup-filter').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   renderAdjustDocTable();
+  _refreshAdjPromaxxBtn();      // tooltip ปุ่ม 🖥️ บอกชนิดตามแท็บ (ORDS/IRPS)
 }
 // ผู้ใช้กดเปลี่ยนหน้า (« ‹ › ») — วาดใหม่ทันทีแล้วเลื่อนขึ้นบนสุด · re-render อื่น (เลือก LOT/แก้จำนวน/โหลดข้อมูลเสร็จ) คงหน้าและตำแหน่งเลื่อนเดิม
 // p อาจเป็น Infinity (หน้าสุดท้าย) — renderAdjustDocTable เป็นตัว clamp ให้
@@ -11452,6 +11466,7 @@ async function openAdjustDocPopup(){
   _loadAdjErpFromCloud();   // ผลตรวจกับ ERP ที่แนบไว้ ({branch}_adjerp) — ไม่รอ · มาแล้ววาดใหม่เอง
   _loadAdjErpAckFromCloud();   // รับทราบรายการปรับยอดนอกใบ ({branch}_adjerpack · ADJ_ERP_OUTSIDE_ACK) — ไม่รอ · มาแล้ววาดใหม่เอง
   _refreshAdjHistBtn();_loadAdjHistFromCloud();   // 🗂️ ประวัติปรับปรุง ({branch}_adjhist) — อ่านใหม่ทุกครั้งที่เปิด (เครื่องอื่นอาจเพิ่งส่งออก) · มาแล้ววาดใหม่เอง
+  _refreshAdjPromaxxBtn();                        // 🖥️ บันทึกลง PROMAXX — แสดงเฉพาะ pharmacist/supervisor บน Desktop (ADJUST_DOC_PROMAXX)
   // ดึง LOT/ราคา ของ SKU ในใบจาก Supabase ทุกครั้งที่เปิด + LOT ที่เลือกไว้จาก {branch}_adjlot (ดู _refreshAdjMaster)
   await _refreshAdjMaster();
 }
@@ -11506,6 +11521,84 @@ function exportAdjustDocText(){
   toast(`Export ${dir.toUpperCase()} ${rows.length} รายการ (Text) สำเร็จ${pageTag}${_adjErpFilterNote(vr)}${_adjEditNote(all)}`,'success');
   _warnAdjustDocDropped();
   _warnAdjErpDuplicate(rows,vr);
+}
+
+// ── 🖥️ บันทึกลง PROMAXX (3 พ.ย. 2026 · ผู้ใช้สั่ง) — เรียกตัวช่วยบนเครื่อง (สวิตช์ ADJUST_DOC_PROMAXX · ดูคำอธิบายที่ประกาศ) ────────────
+// กด → POST http://127.0.0.1:47831/v1/open-import {proto:1,type} → ตัวช่วยขับ ssmaxx.exe ไปถึงปุ่ม "นำเข้าไฟล์เอกสาร" แล้วหยุด · ผลกลับมาเป็นรหัส (code) ที่ map เป็นข้อความสั้นด้านล่าง
+// toast ต้องสั้น (Desktop ไม่ตัดบรรทัด · §🔤) · รายละเอียดทุกขั้น (ms ต่อขั้น) อยู่ใน console.info('[promaxx]') ให้ IT ดู
+const _PROMAXX_STEP_TH={preflight:'ตรวจความพร้อม',launch:'เปิดโปรแกรม',login:'ล็อกอิน',menu:'เข้าเมนู','doc-button':'กดปุ่ม I/O','import-button':'กดปุ่มนำเข้าไฟล์เอกสาร'};
+const _PROMAXX_DOC_TH={ORDS:'เอกสารจ่าย · O',IRPS:'เอกสารรับ · I'};
+const _PROMAXX_NOT_ALLOWED='ตัวช่วยไม่อนุญาตเว็บนี้ — ตรวจ HELPER_ALLOWED_ORIGINS';
+const _PROMAXX_OLD_HELPER='ตัวช่วยรุ่นไม่ตรง — อัปเดต PromaxxHelper';
+const _PROMAXX_CODE_MSG={
+  ALREADY_RUNNING:['ProMaxx เปิดอยู่แล้ว — ปิด ssmaxx.exe ก่อนแล้วกดใหม่','warn'],
+  BUSY:['ตัวช่วยกำลังทำงานอยู่ — รอสักครู่','warn'],
+  OTHER_BOT_RUNNING:['มีบอทอื่นใช้ ProMaxx อยู่ — รอให้จบก่อน','warn'],
+  UNVERIFIED:['ตัวช่วยยังไม่ผ่านการตรวจหน้าต่างจริง (ปิดการคลิก)','warn'],
+  NOT_CONFIGURED:['ตั้งค่าตัวช่วยไม่ครบ — ดูไฟล์ .env ข้าง PromaxxHelper','warn'],
+  NO_DESKTOP:['ตัวช่วยไม่มีหน้าจอให้คลิก (ล็อกจออยู่?)','warn'],
+  UNSUPPORTED_DPI:['ตั้ง Display Scaling เป็น 100% ก่อน','warn'],
+  FORBIDDEN_ORIGIN:[_PROMAXX_NOT_ALLOWED,'warn'],FORBIDDEN_HOST:[_PROMAXX_NOT_ALLOWED,'warn'],FORBIDDEN_HEADER:[_PROMAXX_NOT_ALLOWED,'warn'],
+  PROTO_MISMATCH:[_PROMAXX_OLD_HELPER,'warn'],BAD_REQUEST:[_PROMAXX_OLD_HELPER,'warn'],
+  LOGIN_FAILED:['ล็อกอิน ProMaxx ไม่สำเร็จ — ตรวจรหัสในไฟล์ .env (ไม่ลองซ้ำ)','error'],
+  INTERFERENCE:['คลิกไม่ได้ — อย่าแตะเมาส์ระหว่างทำงาน แล้วลองใหม่','error'],
+};
+function _adjPromaxxEnabled(){return ADJUST_DOC_PROMAXX&&!!currentBranch&&!_isPdaApp()&&(currentRole==='pharmacist'||currentRole==='supervisor');}
+function _adjPromaxxType(){return _adjDocFilter==='irps'?'IRPS':'ORDS';}
+function _refreshAdjPromaxxBtn(){
+  const b=document.getElementById('adjPromaxxBtn');if(!b)return;
+  b.style.display=_adjPromaxxEnabled()?'':'none';
+  b.disabled=_adjPromaxxBusy;
+  b.textContent=_adjPromaxxBusy?'⏳ กำลังทำงาน…':'🖥️ บันทึกลง PROMAXX';
+  const t=_adjPromaxxType();
+  b.title=`ชนิดตามแท็บที่เปิด: ${t} (${_PROMAXX_DOC_TH[t]})\nเปิด ProMaxx (ssmaxx.exe) ที่เครื่องนี้ → ล็อกอิน → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" แล้วหยุด\nขั้นทดสอบ: ยังไม่เลือกไฟล์ ไม่นำเข้า ไม่บันทึกข้อมูล · ต้องเปิด PromaxxHelper ไว้ และอย่าแตะเมาส์ระหว่างทำงาน (ประมาณ 1 นาที)`;
+}
+// สถานะสิทธิ์ Local Network Access ('granted'|'denied'|'prompt'|'' = ไม่ทราบ) — ใช้แยก "ตัวช่วยไม่ได้เปิด" ออกจาก "เบราว์เซอร์บล็อก" ตอน fetch ล้ม
+async function _adjPromaxxPermission(){
+  try{
+    if(!navigator.permissions||!navigator.permissions.query)return '';
+    const st=await navigator.permissions.query({name:'loopback-network'});
+    return (st&&st.state)||'';
+  }catch(e){return '';}      // ชื่อสิทธิ์ไม่รู้จัก (เบราว์เซอร์รุ่นเก่า) = ไม่ทราบ
+}
+// คืน {status,data} เมื่อตัวช่วยตอบ · {err:'denied'|'unreachable'|'timeout'|'bad'} เมื่อไม่ได้คำตอบที่ใช้ได้ — ไม่โยน error
+async function _adjPromaxxCall(type){
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),PROMAXX_HELPER_TIMEOUT_MS);
+  try{
+    const res=await fetch(PROMAXX_HELPER_URL+'/v1/open-import',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Anin-Helper':'1'},         // Content-Type JSON + header เอง = บังคับ preflight (ตัวช่วยตรวจ Origin)
+      body:JSON.stringify({proto:PROMAXX_HELPER_PROTO,type}),
+      targetAddressSpace:'loopback',cache:'no-store',signal:ac.signal});
+    let data=null;try{data=await res.json();}catch(e){}
+    if(!data||typeof data!=='object'||data.proto!==PROMAXX_HELPER_PROTO)return {err:'bad',status:res.status,data};
+    return {status:res.status,data};
+  }catch(e){
+    if(e&&e.name==='AbortError')return {err:'timeout'};
+    return {err:(await _adjPromaxxPermission())==='denied'?'denied':'unreachable'};
+  }finally{clearTimeout(tm);}
+}
+function _adjPromaxxMessage(r,type){
+  if(r.err==='denied')return {text:'เบราว์เซอร์บล็อกตัวช่วย — เปิดสิทธิ์ Local network ใน Site settings',level:'warn',ms:8000};
+  if(r.err==='unreachable')return {text:'ไม่พบ PromaxxHelper บนเครื่องนี้ — เปิดตัวช่วยก่อน',level:'warn',ms:6000};
+  if(r.err==='timeout')return {text:'ตัวช่วยไม่ตอบใน 3 นาที — ดูหน้าต่าง ProMaxx และ log ของตัวช่วย',level:'error',ms:8000};
+  if(r.err)return {text:_PROMAXX_OLD_HELPER,level:'warn',ms:6000};
+  const d=r.data;
+  if(d.ok)return {text:`เปิดหน้า "นำเข้าไฟล์เอกสาร" แล้ว (${type} · ${_PROMAXX_DOC_TH[type]}) — ยังไม่ได้นำเข้าข้อมูล`,level:'success',ms:7000};
+  const fixed=_PROMAXX_CODE_MSG[d.code];
+  if(fixed)return {text:fixed[0],level:fixed[1],ms:7000};
+  if(d.code==='UNEXPECTED_DIALOG'||d.code==='LAUNCH_FAILED')return {text:_shortErr(d.message,70),level:'error',ms:9000};   // ข้อความจากตัวช่วยบอกสาเหตุแล้ว (กล่องข้อความ/ต่อ SQL Server ไม่ได้)
+  return {text:`ไม่สำเร็จที่ขั้น "${_PROMAXX_STEP_TH[d.step]||d.step||'?'}" — ${_shortErr(d.message,45)}`,level:'error',ms:9000};
+}
+async function onAdjPromaxxClick(){
+  if(_adjPromaxxBusy||!_adjPromaxxEnabled())return;
+  const type=_adjPromaxxType();     // จับตอนกด — สลับแท็บระหว่างทำงานไม่เปลี่ยนชนิดที่สั่งไปแล้ว
+  _adjPromaxxBusy=true;_refreshAdjPromaxxBtn();
+  try{
+    const r=await _adjPromaxxCall(type);
+    const m=_adjPromaxxMessage(r,type);
+    console.info('[promaxx]',type,r.err||r.data);
+    toast(m.text,m.level,m.ms);
+  }finally{_adjPromaxxBusy=false;_refreshAdjPromaxxBtn();}
 }
 
 // ── 🗂️ ประวัติปรับปรุง (7 ต.ค. 2026 · ผู้ใช้สั่ง) ─────────────────────────────────────────
