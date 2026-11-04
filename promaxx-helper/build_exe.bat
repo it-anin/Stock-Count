@@ -12,7 +12,9 @@ REM ============================================================
 setlocal
 cd /d "%~dp0"
 
-python -m PyInstaller "%~dp0PromaxxHelper.spec" --noconfirm --clean --distpath "%~dp0" --workpath "%~dp0build"
+REM  "%~dp0" ends with a backslash, so "%~dp0" would escape the closing quote ("...\" becomes a literal quote)
+REM  and break --distpath. Use "%~dp0." (ends with a dot) for any argument that must end at the folder itself.
+python -m PyInstaller "%~dp0PromaxxHelper.spec" --noconfirm --clean --distpath "%~dp0." --workpath "%~dp0build"
 if errorlevel 1 (
   echo BUILD FAILED
   exit /b 1

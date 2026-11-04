@@ -54,7 +54,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #                 · ด่าน "โปรแกรมปิดตัวเอง" แยก 2 แบบ: ไม่เคยเห็นโปรเซส ssmaxx รอได้ 30 วินาที (ตัวเปิดโปรแกรมช้า) · เห็นแล้วหายเกิน 6 วินาที = หยุด
 #   2026-11-04.2  กู้หน้าต่าง ProMaxx ที่ถูกย่อ (พิกัด ≈ -32000) ก่อนตรวจเงื่อนไขของทุกขั้น — เดิมด่านก่อนเริ่มอ่านปุ่มไม่เห็นแล้วล้ม PRECONDITION_FAILED
 #                 และ _ensure_focus ข้ามเพราะหน้าต่างที่ถูกย่อยังนับเป็น foreground · dry-run ไม่กู้ (แจ้งข้อความชัดเจน) · กู้ไม่สำเร็จ = FOCUS_LOST ไม่คลิก
-VERSION = "2026-11-04.2"
+#   2026-11-04.3  ตัวรับคำขอ HTTP ไม่ตัดการเชื่อมต่อที่ว่างเร็วเกินไป (15 → 200 วินาที): เบราว์เซอร์ถือการเชื่อมต่อรอคนกด Allow ของ Local Network Access
+#                 ถ้ากดช้ากว่า 15 วินาที คำขอแรกล้ม (Failed to fetch) ทั้งที่สิทธิ์เป็น granted — เจอจากการทดสอบ Chrome/Edge จริง
+VERSION = "2026-11-04.3"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"
@@ -66,7 +68,12 @@ LOCATORS_VERIFIED = False
 PROC_NAME = "ssmaxx.exe"
 # ทางลัด "ProMaxx" ที่พนักงานใช้ชี้ไป ProMaxx.exe (ตัวเปิดโปรแกรม) ซึ่งเปิด ssmaxx.exe ต่อให้ · เปิด ssmaxx.exe ตรงๆ แล้วได้กล่อง
 # "Application to the program is open to change." (ตรวจจริง 4 พ.ย. 2026: 20/20 รอบเปิดผ่าน ProMaxx.exe ได้หน้า Login ใน ~8 วินาที)
-MINIMIZED_LEFT = -30000      # พิกัดซ้ายของหน้าต่างที่ถูกย่อ (Windows ให้ -32000 ทั้ง Win32 และ UIA) — ไม่ใช่หน้าต่างที่มองเห็นได้จริง
+# ซ็อกเก็ตที่เชื่อมต่อแล้วแต่ยังไม่ส่งคำขอ: Chrome/Edge ตรวจสิทธิ์ Local Network Access "หลังเชื่อมต่อ TCP" แล้วถือการเชื่อมต่อไว้ระหว่างรอคนกด Allow
+# ถ้าตัวช่วยตัดการเชื่อมต่อก่อนคนกด (เดิม 15 วินาที) คำขอแรกล้ม ERR_SOCKET_NOT_CONNECTED/LocalNetworkAccessPermissionDenied ทั้งที่สิทธิ์เป็น granted
+# (ตรวจจริง 4 พ.ย. 2026: กด Allow ที่ ~8 วินาที สำเร็จ · ที่ 26/39 วินาที ล้ม) ⇒ ต้อง ≥ เวลารอของหน้าเว็บ (PROMAXX_HELPER_TIMEOUT_MS = 180 วินาที)
+# ตัวเลขนี้ไม่กระทบเวลาทำงานของงาน (ใช้กับการรอข้อมูลบนซ็อกเก็ตเท่านั้น) · ฟังเฉพาะ 127.0.0.1 จึงไม่เปิดช่อง slowloris ให้เครื่องอื่น
+IDLE_CONN_TIMEOUT = 200
+MINIMIZED_LEFT = -30000     # พิกัดซ้ายของหน้าต่างที่ถูกย่อ (Windows ให้ -32000 ทั้ง Win32 และ UIA) — ไม่ใช่หน้าต่างที่มองเห็นได้จริง
 LAUNCHER_NAME = "ProMaxx.exe"
 LAUNCH_SPAWN_GRACE = 30      # วินาที: สั่งเปิดแล้วยังไม่เคยเห็นโปรเซส ssmaxx เลย — รอตัวเปิดโปรแกรมได้เท่านี้ก่อนตัดสินว่าล้ม
 LAUNCH_VANISH_GRACE = 6      # วินาที: เคยเห็นโปรเซส ssmaxx แล้วหายไปเกินนี้ = โปรแกรมปิดตัวเอง (เผื่อกะพริบตอนตัวเปิดโปรแกรมรีสตาร์ท)
@@ -1382,7 +1389,7 @@ def make_server(service, host="127.0.0.1", port=None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "PromaxxHelper"
         sys_version = ""
-        timeout = 15
+        timeout = IDLE_CONN_TIMEOUT
 
         def _serve(self):
             try:

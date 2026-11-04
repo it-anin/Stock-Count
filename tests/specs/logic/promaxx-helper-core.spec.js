@@ -807,3 +807,47 @@ print(json.dumps(out, ensure_ascii=False, default=str))`);
   expect(r.ld).toEqual({ default: false, one: true, true: true, yes: true, on: true, zero: false, junk: false, file: true, sys_beats_file: false });
   expect(r.consts).toEqual({ name: 'ProMaxx.exe', spawn: 30, vanish: 6 });
 });
+
+test('17. ★ ซ็อกเก็ตที่เชื่อมต่อแล้วแต่ยังไม่ส่งคำขอ ต้องไม่ถูกตัดเร็วเกินไป — เบราว์เซอร์ถือการเชื่อมต่อรอคนกด Allow ของ Local Network Access (4 พ.ย. 2026: เดิม 15 วินาที → กดช้า = Failed to fetch)', async () => {
+  // เจอจาก Chrome/Edge จริง: กด Allow ที่ ~8 วินาที สำเร็จ · ที่ 26/39 วินาที คำขอแรกล้ม (ERR_SOCKET_NOT_CONNECTED + LocalNetworkAccessPermissionDenied) ทั้งที่สิทธิ์เป็น granted
+  // ต้นเหตุ: Handler.timeout = 15 ตัดการเชื่อมต่อที่ว่าง · ที่นี่ตรึงค่าที่ส่งมอบ + กลไก (ซ็อกเก็ตจริง ใช้เวลาสั้นๆ เพื่อให้เทสเร็ว) · ไม่พึ่งเบราว์เซอร์
+  const r = runPy(String.raw`
+import socket, threading, time
+svc, ui, log, st = fk.make(m, tmp, verified=True)
+shipped = m.IDLE_CONN_TIMEOUT
+def serve(timeout_s):
+    m.IDLE_CONN_TIMEOUT = timeout_s
+    srv = m.make_server(svc, '127.0.0.1', 0)           # Handler.timeout อ่านค่าตอนสร้างเซิร์ฟเวอร์
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+def trial(srv, idle):
+    port = srv.server_address[1]
+    s = socket.create_connection(('127.0.0.1', port), timeout=15)
+    time.sleep(idle)                                    # เหมือนเบราว์เซอร์ที่เชื่อมต่อแล้วรอคนกด Allow
+    try:
+        s.sendall(('GET /v1/health HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nConnection: close\r\n\r\n' % port).encode())
+        data = b''
+        while True:
+            c = s.recv(65536)
+            if not c: break
+            data += c
+        return data.split(b'\r\n', 1)[0].decode() if data else 'closed'
+    except Exception as e:
+        return 'error:' + type(e).__name__
+    finally:
+        s.close()
+s1 = serve(shipped)
+ship_handler = s1.RequestHandlerClass.timeout
+s1.shutdown(); s1.server_close()
+s2 = serve(2)
+quick, slow = trial(s2, 1.0), trial(s2, 3.5)
+s2.shutdown(); s2.server_close()
+print(json.dumps(dict(shipped=shipped, ship_handler=ship_handler, quick=quick, slow=slow, web_wait=180)))`);
+  expect(r.shipped, 'ต้อง ≥ เวลารอของหน้าเว็บ (PROMAXX_HELPER_TIMEOUT_MS = 180 วินาที) — เดิม 15 วินาทีทำให้กด Allow ช้าแล้วล้ม').toBeGreaterThanOrEqual(r.web_wait);
+  expect(r.ship_handler, 'ตัวรับคำขอต้องใช้ค่านี้จริง (ไม่ใช่ตัวเลขฮาร์ดโค้ดอีกตัว)').toBe(r.shipped);
+  expect(r.quick, 'ว่างสั้นกว่าเวลาที่ตั้ง = ยังได้รับบริการ').toBe('HTTP/1.0 200 OK');
+  expect(r.slow, 'ว่างนานกว่าเวลาที่ตั้ง = ถูกตัด (กลไกทำงานจริง — ยืนยันว่า timeout คือตัวควบคุม)').toMatch(/^(closed|error:)/);
+  const idx = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'index.html'), 'utf8');
+  const web = idx.match(/PROMAXX_HELPER_TIMEOUT_MS\s*=\s*(\d+)/);
+  expect(web && Number(web[1]) / 1000, 'ค่ารอของหน้าเว็บที่ตรึงในเทสนี้ต้องตรงกับ index.html').toBe(r.web_wait);
+});
