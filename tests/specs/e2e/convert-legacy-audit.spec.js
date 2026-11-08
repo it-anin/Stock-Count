@@ -85,7 +85,7 @@ test.describe('tools/convert-legacy-pharmacy-audits.js', () => {
     // ① dry-run — รายงานถูก ไม่เขียนอะไร
     const before = await cloudState();
     const dry = await desk.page.evaluate(() => convertLegacyAudits());
-    expect(dry.skus).toEqual(['S-1000', 'S-MULTI', 'S-NORM']);
+    expect(dry.skus, JSON.stringify({ report: dry, marker: await getDoc(PROJECT_ID, MARKERS), epoch: E })).toEqual(['S-1000', 'S-MULTI', 'S-NORM']);
     expect(dry.ords).toBe(2);
     expect(dry.irps).toBe(1);
     expect(dry.afterSwitch).toEqual(['S-MULTI']);

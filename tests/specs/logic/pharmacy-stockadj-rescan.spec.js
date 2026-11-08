@@ -142,7 +142,7 @@ test('★ direct Stock Adj (ไม่มี marker): confirm → transaction เ
   const c = await cloud(app.page);
   expect(c.confirms).toBe(1);
   expect(c.tx).toBe(1);
-  expect(c.ops).toEqual([['delete', ITEMS + 'SA0']]);             // marker doc ไม่ถูกเขียน (ไม่มีอะไรให้ลบ)
+  expect(c.ops).toEqual([['set', 'stock_sessions/SRC/delete_intents/current'], ['delete', ITEMS + 'SA0']]);             // marker doc ไม่ถูกเขียน (ไม่มีอะไรให้ลบ)
   expect(c.store[ITEMS + 'SA0']).toBeUndefined();
   expect(c.store[ITEMS + 'SA1']).toBeDefined();                   // SKU อื่นไม่ถูกแตะ
 
@@ -172,7 +172,7 @@ test('★ Stock Adj ที่ผ่านรีเช็ค (มี final marker
 
   const c = await cloud(app.page);
   expect(c.tx).toBe(1);                                            // ต้องเป็นก้อนเดียว — ล้มกลางคันจะไม่ค้างครึ่งทาง
-  expect(c.ops).toEqual([['set', 'stock_sessions/SRC_pharmacy_audit_markers'], ['delete', ITEMS + 'SA1']]);
+  expect(c.ops).toEqual([['set', 'stock_sessions/SRC_pharmacy_audit_markers'], ['set', 'stock_sessions/SRC/delete_intents/current'], ['delete', ITEMS + 'SA1']]);
   const doc = c.store['stock_sessions/SRC_pharmacy_audit_markers'];
   expect(Object.keys(doc.items)).toEqual(['SA2']);                // SKU อื่นยังอยู่
   expect(doc.items.SA2).toMatchObject({ status: 'stock_adjustment', auditor: 'Pharm', reopenedAt: expect.any(String) });

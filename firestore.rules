@@ -1,6 +1,6 @@
-// Firestore Security Rules — เก็บไว้ track ใน git เท่านั้น
-// deploy จริงทำผ่าน Firebase Console → Firestore Database → Rules → Publish (ไม่มี Firebase CLI/auto-deploy ผูกไว้)
-// แก้ไฟล์นี้แล้วอย่าลืม copy ไป publish ใน Console ด้วย — ไม่งั้นจะไม่ตรงกับของจริง
+// Firestore Security Rules — deploy separately from the web.
+// Publish via Firebase Console, or Firebase CLI with firebase.rules.json (rules only).
+// Git/Vercel does not publish these rules. Publish the pharmacy delete guard BEFORE the matching web.
 //
 // ── ตรวจว่า "ของจริงบน Console" ตรงกับไฟล์นี้หรือยัง (read-only, 1 read) ──
 // rules ก่อน 524f969 (13 ส.ค. 2026) ไม่มี match ของ confirm_ops และไม่มี recursive {document=**}
@@ -17,11 +17,42 @@ service cloud.firestore {
     // หรือ replace ทั้ง document จน field schemaVersion หาย (ค่า default หลัง write จะเป็น 1)
     // v1 → v1 และ v1 → v2 ยังผ่าน; v2 → v2/เวอร์ชันสูงกว่ายังผ่าน
     function preservesScanSchemaVersion() {
-      let currentVersion = resource.data.get('schemaVersion', 1);
+      let currentVersion = resource == null ? 1 : resource.data.get('schemaVersion', 1);
       let nextVersion = request.resource.data.get('schemaVersion', 1);
       return !(currentVersion is number)
         || currentVersion < 2
         || (nextVersion is number && nextVersion >= currentVersion);
+    }
+
+    function isPharmacyBranch(branch) {
+      return branch in ['SRC', 'KKL', 'SSS'];
+    }
+
+    function isConfirmedScan(data) {
+      return data.get('status', '') in ['pass', 'audit', 'audit_check', 'stock_adjustment'];
+    }
+
+    // Stale clients cannot delete confirmed results with a plain delete. Intent and
+    // deletion must share one atomic request; an earlier intent cannot be replayed.
+    function hasPharmacyDeleteIntent(branch, sku) {
+      let intent = getAfter(/databases/$(database)/documents/stock_sessions/$(branch)/delete_intents/current).data;
+      let source = intent.sources.get(sku, {});
+      return intent.createdAt == request.time
+        && source.get('countResetAt', null) == resource.data.get('countResetAt', '')
+        && source.get('rev', null) == resource.data.get('rev', 0)
+        && source.get('status', null) == resource.data.get('status', '')
+        && source.get('updatedAt', null) == resource.data.get('updatedAt', null);
+    }
+
+    function validPharmacyDeleteIntent(branch, intentId) {
+      let data = request.resource.data;
+      return isPharmacyBranch(branch) && intentId == 'current'
+        && data.keys().hasOnly(['branch', 'reason', 'actor', 'createdAt', 'sources'])
+        && data.branch == branch
+        && data.reason in ['new_count', 'clear_all', 'cleanup_epoch', 'restart_scan', 'restart_scan_retry']
+        && data.actor is string && data.actor.size() > 0
+        && data.createdAt == request.time
+        && data.sources is map && data.sources.size() > 0 && data.sources.size() <= 450;
     }
 
     // WH workflow v2 materialize final provenance ลง items/{sku}.
@@ -131,8 +162,18 @@ service cloud.firestore {
 
     // schema v2: 1 document ต่อ SKU — WH same-epoch final provenance เดินหน้าอย่างเดียว
     match /stock_sessions/{branch}/items/{sku} {
-      allow read, create, delete: if true;
+      allow read, create: if true;
+      allow delete: if resource == null || !isPharmacyBranch(branch) || !isConfirmedScan(resource.data)
+        || hasPharmacyDeleteIntent(branch, sku);
       allow update: if preservesWhWorkflowOpIds(branch);
+    }
+
+    // Deliberate deletion protocol, not authentication. Existing access is unchanged;
+    // cached old applications cannot accidentally manufacture this atomic intent.
+    match /stock_sessions/{branch}/delete_intents/{intentId} {
+      allow read: if isPharmacyBranch(branch);
+      allow create, update: if validPharmacyDeleteIntent(branch, intentId);
+      allow delete: if false;
     }
 
     // WH workflow v2: ผล Count/Recheck ต่อ SKU ถูกเตรียมเป็นชุด แล้ว publish

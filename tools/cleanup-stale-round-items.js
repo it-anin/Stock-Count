@@ -80,6 +80,9 @@ async function readServerEpoch(branch) {
 }
 // ลบทีละชุดด้วย transaction: อ่านซ้ำ → ลบเฉพาะที่ keep(data, docId) ยังเป็นจริง
 async function deleteInTransactions(branch, epoch, ids, keep, label) {
+  if (['SRC', 'KKL', 'SSS'].includes(branch) && typeof _writePharmacyDeleteIntent !== 'function') {
+    throw new Error('โหลดเว็บรุ่นใหม่ก่อนล้างรายการ — ต้องใช้ตัวป้องกันการลบผล Confirm');
+  }
   const itemsRef = getScanItemsRef(branch);
   let deleted = 0, skipped = 0; const skippedIds = [];
   for (let i = 0; i < ids.length; i += TX_CHUNK) {
@@ -92,11 +95,12 @@ async function deleteInTransactions(branch, epoch, ids, keep, label) {
       if (cur !== epoch) throw new Error(`รอบบน server เปลี่ยนเป็น ${cur} ระหว่างทำ — หยุด`);
       const snaps = [];
       for (const id of chunk) snaps.push(await tx.get(itemsRef.doc(id)));
-      let d = 0, s = 0; const sk = [];
+      let d = 0, s = 0; const sk = [], entries = [];
       snaps.forEach((snap, k) => {
-        if (snap.exists && keep(snap.data() || {}, chunk[k])) { tx.delete(snap.ref); d++; }
+        if (snap.exists && keep(snap.data() || {}, chunk[k])) { entries.push({ sku: chunk[k], data: snap.data() }); tx.delete(snap.ref); d++; }
         else { s++; sk.push(chunk[k]); }
       });
+      if (['SRC', 'KKL', 'SSS'].includes(branch)) _writePharmacyDeleteIntent(tx, entries, 'cleanup_epoch');
       return { d, s, sk };
     });
     deleted += res.d; skipped += res.s; skippedIds.push(...res.sk);

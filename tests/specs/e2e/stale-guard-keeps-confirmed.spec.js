@@ -71,6 +71,7 @@ const toasts = (app) => app.page.evaluate(() => window.__toasts.slice());
 const wake = (app) => app.page.evaluate(() => {   // ปลุกจอ → visibilitychange (handler เรียก runStaleGuard แล้ว syncToFirestore)
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   document.dispatchEvent(new Event('visibilitychange'));
+  return Object.fromEntries(['S-NORM', 'S-CATA', 'S-MULTI'].map(s => [s, state.scanData.get(s)?.status]));
 });
 // เครือข่ายกลับมา: ปลดช่วง backoff (รอบที่ลองตอนออฟไลน์ล้มเป็นปกติ) แล้ว flush จริงจนไม่เหลือค้าง
 async function backOnlineAndFlush(app) {
@@ -86,13 +87,13 @@ async function sleepConfirmWake(browser, { guard = true, only = SKUS } = {}) {
   await makeItYesterday(pda);
   await trackToasts(pda);
   await pda.page.evaluate((g) => { FLUSH_DEL_KEEP_CONFIRMED = g; }, guard);
+  if (!guard) await pda.page.evaluate(() => stopScanSessionListener());
   await pda.page.evaluate(() => _db.disableNetwork());              // PDA หลับ — ไม่ได้รับอะไรจาก Cloud
   const revs = await botConfirm(pda, only);                          // 21:10 บอท Confirm
   const asleep = { cloud: await cloudView(pda), local: await localStatuses(pda) };
-  await wake(pda);                                                   // เช้า 09:03 ปลุก PDA
-  await pda.page.waitForFunction((skus) => skus.every((s) => state.scanData.get(s).status === 'pending'), SKUS, { timeout: 10000, polling: 50 });
-  const afterWake = await localStatuses(pda);                        // runStaleGuard รีเซ็ตของค้างข้ามวันในเครื่องแล้ว (ยังไม่รู้ว่าบอท Confirm ไปแล้ว)
-  await backOnlineAndFlush(pda);                                     // เน็ตกลับมา → flush จริง
+  const afterWake = await wake(pda);                                                   // เช้า 09:03 ปลุก PDA
+  if (guard) await backOnlineAndFlush(pda);
+  else await pda.page.evaluate(async () => { await _db.enableNetwork(); _scanItemBackoffUntil = 0; clearTimeout(_scanItemFlushTimer); _scanItemFlushTimer = null; await _flushDirtySkus(); });                                     // เน็ตกลับมา → flush จริง
   return { pda, revs, asleep, afterWake, cloud: await cloudView(pda), local: await localStatuses(pda), toasts: await toasts(pda) };
 }
 
@@ -122,9 +123,9 @@ test.describe('รีเซ็ตของค้างข้ามวันห�
     await closeApp(r.pda, { allowPageErrors: true });
   });
 
-  test('★ canary: ปิดสวิตช์ FLUSH_DEL_KEEP_CONFIRMED = บั๊กเดิมกลับมาเป๊ะ — ผลของบอททั้งหมดหายจาก Cloud (พิสูจน์ว่าเทสข้อบนจับบั๊กได้จริง)', async ({ browser }) => {
+  test('old client with disabled client guard: server rejects deletion and retains every confirmed result', async ({ browser }) => {
     const r = await sleepConfirmWake(browser, { guard: false });
-    for (const s of SKUS) expect(r.cloud[s], `${s}: บั๊กเดิม — เอกสารที่บอท Confirm ถูกลบ`).toBeNull();
+    for (const s of SKUS) expect(r.cloud[s], s).toMatchObject({ updatedBy: 'auto-r16', rev: r.revs[s] });
     expect(r.local).toEqual({ 'S-NORM': 'pending', 'S-CATA': 'pending', 'S-MULTI': 'pending' });
     expect(r.toasts.some((t) => t.includes('ไม่ต้องนับใหม่'))).toBe(false);
     await closeApp(r.pda, { allowPageErrors: true });

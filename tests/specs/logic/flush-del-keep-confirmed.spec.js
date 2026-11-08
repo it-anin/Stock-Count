@@ -50,7 +50,8 @@ const INSTALL = () => {
   };
   // เหมือน Firestore client: เอกสารที่อ่านถูกแก้ก่อน commit → ทำ callback ใหม่ทั้งก้อน (สูงสุด 5 รอบ) · pending ของรอบที่ชนถูกทิ้ง
   fk.setServer = (path, data) => { fk.server.set(path, data); fk.ver[path] = (fk.ver[path] || 0) + 1; };
-  _db = { batch: newBatch, runTransaction: async (fn) => {
+  const intentRef = path => ({ path, id: path.split('/').pop(), collection: c => ({ doc: id => intentRef(path + '/' + c + '/' + id) }) });
+  _db = { collection: c => ({ doc: id => intentRef(c + '/' + id) }), batch: newBatch, runTransaction: async (fn) => {
     fk.txCount++; if (fk.failFrom && fk.txCount >= fk.failFrom) fk.failTx = true;
     for (let attempt = 1; attempt <= 5; attempt++) {
       fk.attempt = attempt; fk.txAttempts++;
@@ -96,6 +97,7 @@ const UNINSTALL = () => {
   console.warn = r.warn; _scanItemFlushing = r.flushing; window.toast = r.toast; window.scheduleSave = r.scheduleSave; _listCleared = r.listCleared;
   for (const k of Object.keys(r)) if (k.startsWith('ui_')) window[k.slice(3)] = r[k];
   if (typeof _forceDelSkus !== 'undefined') _forceDelSkus.clear();
+  _forceDelSources.clear();
   if (typeof FLUSH_DEL_KEEP_CONFIRMED !== 'undefined') FLUSH_DEL_KEEP_CONFIRMED = true;
   if (typeof FLUSH_DEL_CHECK_CHUNK !== 'undefined') FLUSH_DEL_CHECK_CHUNK = 50;
 };
@@ -142,7 +144,7 @@ const MIXED = async () => {
   __fk.srv('N-1', { countResetAt: 'E2' });                        // เอกสารของรอบที่ "ใหม่กว่า" (เครื่องอื่นเริ่มนับใหม่) → ห้ามแตะ · ไม่รับเข้ารอบนี้
   __fk.srv('L-1', { status: 'audit_check' });                     // legacy confirmed → เก็บ · M-1: ไม่มีบน server
   await _flushDirtySkus();
-  return { txDeletes: __fk.txDeletes.slice().sort(), serverLeft: [...__fk.server.keys()].sort(), status: __fk.statuses(skus), dirty: _dirtySkus.size, toasts: __fk.toasts.slice() };
+  return { txDeletes: __fk.txDeletes.slice().sort(), serverLeft: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), status: __fk.statuses(skus), dirty: _dirtySkus.size, toasts: __fk.toasts.slice() };
 };
 const CHUNKS = async () => {
   const skus = []; for (let i = 1; i <= 120; i++) skus.push('C-' + String(i).padStart(3, '0'));
@@ -155,10 +157,10 @@ const FAIL_THEN_OK = async () => {
   for (const s of ['P-1', 'P-2']) { __fk.stale(s); __fk.srv(s); }
   __fk.failTx = true;                                              // อ่านไม่ได้ (ออฟไลน์/ล้ม)
   await _flushDirtySkus();
-  const first = { dirty: [..._dirtySkus].sort(), backoff: _scanItemBackoffUntil > Date.now(), streak: _scanItemFailStreak, server: [...__fk.server.keys()].sort(), status: __fk.statuses(['P-1', 'P-2']), toasts: __fk.toasts.length, deletes: __fk.txDeletes.length + __fk.batchDeletes().length };
+  const first = { dirty: [..._dirtySkus].sort(), backoff: _scanItemBackoffUntil > Date.now(), streak: _scanItemFailStreak, server: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), status: __fk.statuses(['P-1', 'P-2']), toasts: __fk.toasts.length, deletes: __fk.txDeletes.length + __fk.batchDeletes().length };
   __fk.failTx = false; _scanItemBackoffUntil = 0; clearTimeout(_scanItemFlushTimer); _scanItemFlushTimer = null;
   await _flushDirtySkus();
-  return { first, second: { dirty: _dirtySkus.size, server: [...__fk.server.keys()].sort(), status: __fk.statuses(['P-1', 'P-2']), streak: _scanItemFailStreak, toasts: __fk.toasts.length } };
+  return { first, second: { dirty: _dirtySkus.size, server: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), status: __fk.statuses(['P-1', 'P-2']), streak: _scanItemFailStreak, toasts: __fk.toasts.length } };
 };
 const EPOCH_MOVED = async () => {
   __fk.stale('P-1'); __fk.srv('P-1'); __fk.stale('D-1'); __fk.srv('D-1', { status: 'scanning' });
@@ -168,7 +170,7 @@ const EPOCH_MOVED = async () => {
   _scanItemRev.set('P-1', 7); _scanItemSynced.set('P-1', 'fp-new-epoch');   // ตัวฟังรับเอกสารของรอบใหม่เข้ามาระหว่างรอ — ห้ามถูกล้างตามไปด้วย (ของรอบเก่าเท่านั้นที่ทิ้ง)
   __fk.txGate.resolve();
   await p;
-  return { txDeletes: __fk.txDeletes.length, serverLeft: [...__fk.server.keys()].sort(), dirty: _dirtySkus.size, drops: __fk.dropWarns().length, toasts: __fk.toasts.length,
+  return { txDeletes: __fk.txDeletes.length, serverLeft: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), dirty: _dirtySkus.size, drops: __fk.dropWarns().length, toasts: __fk.toasts.length,
     newEpochState: [_scanItemRev.get('P-1'), _scanItemSynced.get('P-1')] };
 };
 const RESCANNED_DURING = async () => {
@@ -294,7 +296,7 @@ test('★ ล้มกลางชุด (ชุดที่ 2 เป็นต�
     __fk.failFrom = 2;                                               // transaction แรกผ่าน · ตั้งแต่ครั้งที่ 2 ล้ม
     await _flushDirtySkus();
     return { txCount: __fk.txCount, status: __fk.statuses(skus), dirty: [..._dirtySkus].sort(), backoff: _scanItemBackoffUntil > Date.now(), streak: _scanItemFailStreak,
-      server: [...__fk.server.keys()].sort(), deletes: __fk.txDeletes.length + __fk.batchDeletes().length, toasts: __fk.toasts.length };
+      server: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), deletes: __fk.txDeletes.length + __fk.batchDeletes().length, toasts: __fk.toasts.length };
   }, { chunk: 1 });
   expect(r).toEqual({ txCount: 2, status: ['pass', 'pending', 'pending'], dirty: ['P-2', 'P-3'], backoff: true, streak: 1, server: ['items/P-1', 'items/P-2', 'items/P-3'], deletes: 0, toasts: 1 });
   await closeApp(app);
@@ -335,7 +337,7 @@ test('★ รอบนับเปลี่ยน "ระหว่างชุ�
     for (const s of ['P-1', 'P-2', 'P-3']) { __fk.stale(s); __fk.srv(s); }
     __fk.afterTx = () => __fk.adoptNewEpoch('E2');                   // ชุดแรกจบ → เครื่องนี้รับรอบใหม่
     await _flushDirtySkus();
-    return { txCount: __fk.txCount, serverLeft: [...__fk.server.keys()].sort(), dirty: _dirtySkus.size, drops: __fk.dropWarns().length, deletes: __fk.txDeletes.length };
+    return { txCount: __fk.txCount, serverLeft: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), dirty: _dirtySkus.size, drops: __fk.dropWarns().length, deletes: __fk.txDeletes.length };
   }, { chunk: 1 });
   expect(r).toMatchObject({ txCount: 1, serverLeft: ['items/P-1', 'items/P-2', 'items/P-3'], dirty: 0, deletes: 0 });
   expect(r.drops).toBeGreaterThanOrEqual(1);
@@ -347,12 +349,13 @@ test('★ ↺ สแกนใหม่ (restartPharmacyScan) สั่งลบ�
   const r = await run(app.page, async () => {
     const skus = ['F-1', 'F-2', 'F-3'];
     for (const s of skus) { __fk.stale(s); __fk.srv(s, { status: 'stock_adjustment', auditStatus: 'stock_adjustment', initialStatus: 'stock_adjustment', directAdj: true, effectiveQty: 3, systemQty: 5 }); }
-    _forceDelSkus.set('F-1', Date.now() + 60000);                    // ↺ สั่งลบซ้ำเศษของ F-1
+    _forceDelSkus.set('F-1', Date.now() + 60000);
+    _forceDelSources.set('F-1', _restartScanResultKey(__fk.server.get('items/F-1')));                    // ↺ สั่งลบซ้ำเศษของ F-1
     _forceDelSkus.set('F-2', Date.now() - 1);                        // ธงหมดอายุแล้ว → ต้องผ่านด่านปกติ (และถูกทิ้ง)
     await _flushDirtySkus();
-    return { batchDeletes: __fk.batchDeletes(), txCount: __fk.txCount, txDeletes: __fk.txDeletes.length, serverLeft: [...__fk.server.keys()].sort(), status: __fk.statuses(skus), flags: [..._forceDelSkus.keys()], toasts: __fk.toasts.length };
+    return { batchDeletes: __fk.batchDeletes(), txCount: __fk.txCount, txDeletes: __fk.txDeletes.length, serverLeft: [...__fk.server.keys()].filter(p => p.startsWith('items/')).sort(), status: __fk.statuses(skus), flags: [..._forceDelSkus.keys()], toasts: __fk.toasts.length };
   });
-  expect(r).toEqual({ batchDeletes: ['items/F-1'], txCount: 1, txDeletes: 0, serverLeft: ['items/F-2', 'items/F-3'], status: ['pending', 'stock_adjustment', 'stock_adjustment'], flags: [], toasts: 1 });
+  expect(r).toEqual({ batchDeletes: [], txCount: 2, txDeletes: 1, serverLeft: ['items/F-2', 'items/F-3'], status: ['pending', 'stock_adjustment', 'stock_adjustment'], flags: [], toasts: 1 });
   await closeApp(app);
 });
 
@@ -361,15 +364,16 @@ test('★ ลบจริง (ติดธง) แล้วเขียนล้
   const r = await run(app.page, async () => {
     __fk.stale('F-1'); __fk.srv('F-1', { status: 'stock_adjustment', auditStatus: 'stock_adjustment', directAdj: true });
     _forceDelSkus.set('F-1', Date.now() + 60000);
-    __fk.failBatch = true;
+    _forceDelSources.set('F-1', _restartScanResultKey(__fk.server.get('items/F-1')));
+    __fk.failTx = true;
     await _flushDirtySkus();
     const first = { dirty: [..._dirtySkus], flag: _forceDelSkus.has('F-1'), server: __fk.server.has('items/F-1'), status: state.scanData.get('F-1').status, txCount: __fk.txCount };
-    __fk.failBatch = false; _scanItemBackoffUntil = 0; clearTimeout(_scanItemFlushTimer); _scanItemFlushTimer = null;
+    __fk.failTx = false; _scanItemBackoffUntil = 0; clearTimeout(_scanItemFlushTimer); _scanItemFlushTimer = null;
     await _flushDirtySkus();
     return { first, second: { dirty: _dirtySkus.size, flag: _forceDelSkus.has('F-1'), server: __fk.server.has('items/F-1'), status: state.scanData.get('F-1').status, txCount: __fk.txCount, batchDeletes: __fk.batchDeletes() } };
   });
-  expect(r.first).toEqual({ dirty: ['F-1'], flag: true, server: true, status: 'pending', txCount: 0 });
-  expect(r.second).toEqual({ dirty: 0, flag: false, server: false, status: 'pending', txCount: 0, batchDeletes: ['items/F-1'] });
+  expect(r.first).toEqual({ dirty: ['F-1'], flag: true, server: true, status: 'pending', txCount: 1 });
+  expect(r.second).toEqual({ dirty: 0, flag: false, server: false, status: 'pending', txCount: 2, batchDeletes: [] });
   await closeApp(app);
 });
 

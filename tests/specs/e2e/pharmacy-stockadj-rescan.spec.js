@@ -201,6 +201,7 @@ test.describe('↺ สแกนใหม่ → ⏳ รอนับ', () => {
       _db.batch = () => { const b = realBatch(); const rc = b.commit.bind(b); b.commit = async () => { await new Promise((r) => setTimeout(r, 600)); return rc(); }; return b; };
       const real = _db.runTransaction.bind(_db);
       _db.runTransaction = async (fn) => {
+        _db.runTransaction = real; // inject one delayed write, not a fresh write on every cleanup retry
         const s = state.scanData.get('S-F05'); s.adjQty = 2; s.adjBase = 2; s.adjBy = 'Pharm'; s.adjAt = new Date().toISOString();
         _markSkuDirty('S-F05');                                    // แก้จำนวนในใบระหว่างรอ → flush เริ่ม (local ยังเป็น Stock Adj) → เขียนเอกสารเดิม
         clearTimeout(_scanItemFlushTimer); _scanItemFlushTimer = null;

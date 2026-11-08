@@ -505,3 +505,11 @@ R01 เช้า 08:10 = 2 · **R16 ที่ใช้ Confirm ครอบถ�
 `if(!state.r16RawMap.size||!scanTimestamp)return state.r16SalesMap.get(sku)||0;` — เครื่องที่**รับ R16 ผ่าน cloud sync ไม่มี rawMap** (sync เฉพาะ salesMap/inboundMap) → fallback คืน**ยอดรวมทั้งก้อนไม่กรอง TRANDATE** ขณะที่เครื่องอัพไฟล์เองกรองตาม timestamp ได้ → การคำนวณ effectiveQty **ให้ผลต่างกันตามเครื่อง** สำหรับ item timestamp เก่า (เจอตอนออกแบบ recheck ข้าม baseline — กันด้วย `_isPreBaselineItem` guard ใน `getPharmacistAuditEffectiveQty`) — logic ใหม่ที่พึ่ง `getSoldQtyBefore/getInboundQtyBefore/getR16103QtyBefore` ต้องเช็คเคสเครื่องไม่มี rawMap เสมอ
 
 WH Supervisor แก้ข้อจำกัดนี้แล้วด้วย R16 versioned chunks + meta; ข้อควรระวัง fallback ด้านบนยังมีผลกับสาขายา/legacy path ที่ไม่ได้โหลด raw timeline chunks.
+
+## Confirmed pharmacy deletion guard (8 November 2026)
+
+- Confirmed items in SRC/KKL/SSS cannot be deleted by a plain delete after publishing the new rules. Explicit deletion must call `_writePharmacyDeleteIntent(writer, entries, reason)` in the same atomic request. The source epoch/revision/status/update timestamp and request timestamp are checked by rules. Earlier intents cannot be replayed.
+- Use the protocol in reset, rescan, and Console cleanup tools. Normal X must read the server and adopt an existing confirmation. Rescan retry must match the original result; keep a newer confirmation.
+- Empty audit-log backfill must preserve live marker items in a transaction scoped to the server session epoch. A stale local cache is not permission to write `items:{}`. Reset must await every cleanup operation, even when one operation rejects, before rebuilding the new round.
+- Publish `firestore.rules` BEFORE deploying the matching web. Git/Vercel does not publish rules. Old web cannot perform intentional confirmed deletion while only the new rules are live. Preserve and compare live rules before replacing them.
+- Details and rollback: `docs/pharmacy-confirmed-delete-guard.md`. Tests: `pharmacy-delete-rules.spec.js`, overnight resume, rescan, cleanup, and Progress suites. Private count backups and missing-item review stay in ignored `stock_backup_*.json` files; do not restore historical quantities just to raise Progress.

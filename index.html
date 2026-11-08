@@ -2370,13 +2370,14 @@ async function _backfillPharmacyAuditMarkersFromLog(){
   if(!_db||!_isPharmacyBranch()||_pharmacyAuditMarkerData.legacyLogBackfilledAt)return;
   // ยังไม่มี R01/R05 map = ยังตัดสินไม่ได้ว่า SKU ใน log อยู่ในรอบนี้จริง ห้ามปัก migration-complete ก่อนเวลา
   if(!state.skuMap.size)return;
-  const epochMs=Date.parse(_countResetAt||'');if(!Number.isFinite(epochMs))return;
+  const branch=currentBranch,epoch=_countResetAt||'';
+  const epochMs=Date.parse(epoch);if(!Number.isFinite(epochMs))return;
   // migration สำหรับ session รุ่นเก่าที่ Audit ถูก whole-document write ลบ: อ่าน log ตั้งแต่ epoch (จำกัด 14 วัน)
   const today=new Date();const first=new Date(Math.max(epochMs,today.getTime()-13*86400000));
   first.setHours(0,0,0,0);const refs=[];
   for(let d=new Date(first);d<=today;d.setDate(d.getDate()+1)){
     const dateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    refs.push(_db.collection('stock_audit_log').doc(`${currentBranch}_${dateStr}`));
+    refs.push(_db.collection('stock_audit_log').doc(`${branch}_${dateStr}`));
   }
   const docs=await Promise.all(refs.map(ref=>ref.get()));const bySku=new Map();
   for(const doc of docs){
@@ -2390,6 +2391,7 @@ async function _backfillPharmacyAuditMarkersFromLog(){
       const old=bySku.get(sku);if(!old||String(old.timestamp||'')<String(item.timestamp||''))bySku.set(sku,item);
     }
   }
+  if(currentBranch!==branch||(_countResetAt||'')!==epoch)return;
   const markers=[];
   for(const[sku,item]of bySku){
     const systemQty=Number(state.skuMap.get(sku)?.systemQty||0);const final=!!(item.auditor&&item.status!=='audit');
@@ -2401,14 +2403,26 @@ async function _backfillPharmacyAuditMarkersFromLog(){
       countConfirmedAt:final?'':item.timestamp||'',confirmedAt:item.timestamp||'',confirmedBy:final?(item.auditor||''):'',
       r01Version:state.r01Version||'',r16Version:state.r16DetailVersion||'',r16_103Version:state.r16_103DetailVersion||''});
   }
-  if(markers.length){
-    await _writePharmacyAuditMarkers(markers);
-    await getPharmacyAuditMarkerRef().set({legacyLogBackfilledAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-  }else{
-    await getPharmacyAuditMarkerRef().set({branch:currentBranch,countResetAt:_countResetAt||'',items:{},
-      legacyLogBackfilledAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-  }
-  _pharmacyAuditMarkerData.legacyLogBackfilledAt=new Date().toISOString();
+  if(markers.length)await _writePharmacyAuditMarkers(markers);
+  // A stale local snapshot must not replace live markers with an empty migration result.
+  const completed=await _db.runTransaction(async tx=>{
+    const ref=getPharmacyAuditMarkerRef(branch);
+    const [session,snapshot]=await Promise.all([tx.get(_db.collection('stock_sessions').doc(branch)),tx.get(ref)]);
+    if(currentBranch!==branch||(_countResetAt||'')!==epoch||!session.exists)return null;
+    const raw=session.data()||{};
+    const meta=raw.session_data_json?JSON.parse(raw.session_data_json):(raw.session_data||{});
+    if((meta.countResetAt||'')!==epoch)return null;
+    const old=snapshot.exists?(snapshot.data()||{}):{};
+    if((old.countResetAt||'')>epoch)return null;
+    if((old.countResetAt||'')===epoch&&old.legacyLogBackfilledAt)return old;
+    const next=(old.countResetAt||'')===epoch?{...old}:{branch,countResetAt:epoch,items:{}};
+    next.legacyLogBackfilledAt=firebase.firestore.FieldValue.serverTimestamp();
+    next.updatedAt=firebase.firestore.FieldValue.serverTimestamp();
+    tx.set(ref,next);
+    return next;
+  });
+  if(completed&&currentBranch===branch&&(_countResetAt||'')===epoch)
+    _pharmacyAuditMarkerData={...completed,legacyLogBackfilledAt:new Date().toISOString()};
 }
 async function _loadPharmacyAuditMarkerState(){
   if(!_db||!_isPharmacyBranch())return;
@@ -4307,7 +4321,7 @@ async function startNewCount(){
   // WH / สาขายา (WH_KEEP_R01_ON_NEW_COUNT / PHARMACY_KEEP_R01_ON_NEW_COUNT): ไม่ลบ master doc R01 ของบอท — เคลียร์เฉพาะ field R16 ของ doc นั้น (ชุดเดียวกับที่บอทเขียนทุกเช้า) ให้เครื่องอื่นไม่เห็น R16 รอบเก่ายัง Ready
   // (_applyR16MetaFromDoc อ่าน field r16* ของ master ตอน login — ไม่เคลียร์ = เครื่องที่ล็อกอินใหม่เห็น R16 รอบเก่าเป็น Ready · ห้ามถอด field ออกจาก update() นี้)
   // update() ไม่สร้าง doc ว่างขึ้นมาถ้ายังไม่มี (not-found = ไม่มีอะไรต้องเคลียร์)
-  if(_db&&currentBranch&&!_adminMode){try{const _r01Ref=_db.collection('stock_sessions').doc(getSessionId()+'_r01');const deletes=[_keepR01?_r01Ref.update({r16Loaded:false,r16UploadedAt:'',r16DetailVersion:'',r16_103Loaded:false,r16_103UploadedAt:'',r16_103DetailVersion:''}).catch(e=>{if(e&&e.code!=='not-found')throw e;}):_r01Ref.delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(_isPharmacyBranch())deletes.push(getPharmacyAuditMarkerRef().delete());if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());await Promise.all(deletes);}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/workflow markers:',e.message);}}
+  if(_db&&currentBranch&&!_adminMode){try{const _r01Ref=_db.collection('stock_sessions').doc(getSessionId()+'_r01');const deletes=[_keepR01?_r01Ref.update({r16Loaded:false,r16UploadedAt:'',r16DetailVersion:'',r16_103Loaded:false,r16_103UploadedAt:'',r16_103DetailVersion:''}).catch(e=>{if(e&&e.code!=='not-found')throw e;}):_r01Ref.delete(),_db.collection('stock_sessions').doc(getSessionId()+'_adjlot').delete()];if(_isPharmacyBranch())deletes.push(getPharmacyAuditMarkerRef().delete());if(currentBranch==='WH')deletes.push(getWhCountInboxRef().delete(),getWhCountConfirmationRef().delete(),getWhRecheckInboxRef().delete(),getWhRecheckConfirmationRef().delete());const cleanup=await Promise.allSettled(deletes);const failed=cleanup.find(r=>r.status==='rejected');if(failed)throw failed.reason;}catch(e){console.warn('[startNewCount] clear _r01/_adjlot/workflow markers:',e.message);}}
   // WH / สาขายา คง R01 บน Cloud: เครื่องนี้ยังไม่มี R01 ในหน่วยความจำ (เช่นเพิ่งล็อกอิน) → โหลดจาก Cloud ก่อน rebuildMaps ไม่งั้นหลังเริ่มนับใหม่เห็น R01 ว่างทั้งที่ Cloud มี
   if(_keepR01&&_db&&!state.r01Data.length){try{await restoreMasterFromFirestore(true);}catch(e){console.warn('[startNewCount] restore R01 ที่คงไว้บน Cloud:',e.message);}}
   rebuildMaps();saveSession(); // repopulate pending เฉพาะ local (sync(false) ที่ตามมาจะไม่อัป pending)
@@ -4406,6 +4420,7 @@ const _scanItemRev=new Map();   // sku → rev ล่าสุดที่เค
 const _scanItemSynced=new Map();// sku → JSON ของ payload ที่ sync แล้ว (ใช้ reconcile หา SKU ที่ลืม mark)
 const _scanItemInFlight=new Set();// sku ที่กำลังเขียนอยู่ — listener ต้องไม่รับ echo ทับระหว่างนี้
 const _forceDelSkus=new Map();    // sku → หมดอายุ (ms) · "ลบจริง" ตอน flush โดยไม่ผ่านด่าน FLUSH_DEL_KEEP_CONFIRMED — ใช้เฉพาะ restartPharmacyScan (ลบซ้ำเศษที่เขียนฟื้นหลัง ↺: Stock Adj ที่เห็นบน Cloud ตอนนั้นคือเศษของเครื่องนี้เอง ไม่ใช่ผล Confirm ของคนอื่น) · มีอายุกันธงค้าง
+const _forceDelSources=new Map(); // original confirmed result, so a retry cannot delete a newer confirmation
 let _scanItemFlushTimer=null;
 let _scanItemFlushing=false;
 let _scanItemReconcileTimer=null;
@@ -4432,6 +4447,49 @@ function _markSkuDirty(sku){
 
 // สถานะที่ Confirm แล้ว — เขียนได้เฉพาะจาก Confirm flow ไม่ใช่จากการสแกนสด
 const _CONFIRMED_STATUSES=new Set(['pass','audit','audit_check','stock_adjustment']);
+
+// Publish firestore.rules BEFORE deploying this protocol. Confirmed deletion requires
+// this intent in the SAME atomic request, bound to the exact server result we read.
+function _writePharmacyDeleteIntent(writer,entries,reason){
+  if(!_isPharmacyBranch())return;
+  const sources={};
+  for(const{sku,data}of entries){
+    if(!data||!_CONFIRMED_STATUSES.has(data.status))continue;
+    sources[sku]={countResetAt:data.countResetAt||'',rev:data.rev||0,status:data.status,updatedAt:data.updatedAt||null};
+  }
+  if(!Object.keys(sources).length)return;
+  writer.set(_db.collection('stock_sessions').doc(getSessionId()).collection('delete_intents').doc('current'),{
+    branch:currentBranch,reason,actor:currentUser||'Administrator',createdAt:firebase.firestore.FieldValue.serverTimestamp(),sources
+  });
+}
+async function _commitScanItemDeletes(snapshot,reason){
+  const batch=_db.batch(),entries=[];
+  snapshot.forEach(doc=>entries.push({sku:doc.id,data:doc.data()}));
+  _writePharmacyDeleteIntent(batch,entries,reason);
+  snapshot.forEach(doc=>batch.delete(doc.ref));
+  await batch.commit();
+}
+function _restartScanResultKey(data){
+  return JSON.stringify([data.countResetAt||'',data.status||'',Number(data.countedQty)||0,
+    ...['firstScanAt','timestamp','r01Version','r16Version','countConfirmedAt','pharmacyAuditCountConfirmedAt','recheckConfirmedAt'].map(k=>data[k]||'')]);
+}
+async function _deleteRestartScanRemnant(itemsRef,sku,epoch){
+  let kept=null;
+  await _db.runTransaction(async tx=>{
+    kept=null;
+    const ref=itemsRef.doc(sku),snap=await tx.get(ref);
+    if(!snap.exists||_flushEpochMoved(epoch)||state.scanData.get(sku)?.status!=='pending')return;
+    const data=snap.data()||{};
+    if(String(data.countResetAt||'')>epoch)return;
+    if(_CONFIRMED_STATUSES.has(data.status)&&_restartScanResultKey(data)!==_forceDelSources.get(sku)){
+      if(String(data.countResetAt||'')===epoch)kept={sku,data};
+      return;
+    }
+    _writePharmacyDeleteIntent(tx,[{sku,data}],'restart_scan_retry');
+    tx.delete(ref);
+  });
+  return kept;
+}
 
 // เขียน dirty SKU ขึ้น items collection
 // - `pending` = ลบ doc ทิ้ง (ไม่มี doc = pending ตรงกับพฤติกรรม cloud เดิมที่ไม่อัป pending)
@@ -4487,13 +4545,16 @@ async function _deleteScanItemsKeepConfirmed(itemsRef,skus,epoch){
     const snaps=await Promise.all(skus.map(s=>tx.get(itemsRef.doc(s))));
     // SCAN_FLUSH_EPOCH_GUARD: รอบเปลี่ยนระหว่างรอ tx.get → เป็นของรอบที่ไม่มีอยู่แล้ว ห้ามลบ (เช็คก่อน tx.delete ทันที ไม่มี await คั่น)
     if(_flushEpochMoved(epoch)){moved=true;return;}
+    const oldConfirmed=[];
     snaps.forEach((snap,i)=>{
       if(!snap.exists)return;
       const d=snap.data()||{};const de=String(d.countResetAt||'');
       if(de>epoch)return;   // เครื่องอื่นเริ่มนับใหม่แล้ว — เอกสารนี้เป็นของรอบใหม่ ห้ามแตะ (เครื่องนี้จะรับรอบใหม่ทางตัวฟัง session เอง)
       if(de===epoch&&_CONFIRMED_STATUSES.has(d.status)){kept.push({sku:skus[i],data:d});return;}   // Confirm แล้ว → เก็บไว้
+      if(_CONFIRMED_STATUSES.has(d.status))oldConfirmed.push({sku:skus[i],data:d});
       tx.delete(itemsRef.doc(skus[i]));   // ยังไม่ Confirm / เศษรอบเก่า (query ของรอบนี้ไม่เห็นอยู่แล้ว) → ลบตามเดิม
     });
+    _writePharmacyDeleteIntent(tx,oldConfirmed,'cleanup_epoch');
   });
   return{kept,moved};
 }
@@ -4541,14 +4602,16 @@ async function _flushDirtySkus(){
     const plain=[];   // เขียนตรงได้ (ลบ / สถานะที่ Confirm แล้ว)
     const contended=[];// ต้อง transaction (scanning — ยอดสะสมจากหลายเครื่อง)
     const guardedDel=[];// FLUSH_DEL_KEEP_CONFIRMED (สาขายา): local เป็น pending → ลบเฉพาะที่ server ยังไม่ Confirm (transaction อ่านก่อนลบ)
+    const restartDel=[];
     const guardDel=FLUSH_DEL_KEEP_CONFIRMED&&_isPharmacyBranch();
     for(const sku of skus){
       const sd=state.scanData.get(sku);
       if(!sd||sd.status==='pending'){
         // _forceDelSkus: ↺ สแกนใหม่ (restartPharmacyScan) สั่งให้ลบซ้ำเศษที่ flush ค้างเขียนฟื้นหลังลบ — ต้องลบจริง ห้ามถือว่าเป็นผล Confirm ของคนอื่น
         let force=false;const fd=_forceDelSkus.get(sku);
-        if(fd!==undefined){if(fd>Date.now())force=true;else _forceDelSkus.delete(sku);}   // ธงหมดอายุ = ทิ้ง (ไม่ปล่อยค้าง)
-        if(guardDel&&!force)guardedDel.push(sku);else plain.push({sku,del:true});
+        if(fd!==undefined){if(fd>Date.now())force=true;else{_forceDelSkus.delete(sku);_forceDelSources.delete(sku);}}
+        if(force&&_isPharmacyBranch())restartDel.push(sku);
+        else if(guardDel)guardedDel.push(sku);else plain.push({sku,del:true});
         continue;
       }
       if(sd.status==='scanning')contended.push(sku);
@@ -4574,6 +4637,17 @@ async function _flushDirtySkus(){
     }
     // FLUSH_DEL_KEEP_CONFIRMED: ลบ pending แบบมีเงื่อนไข ชุดละ FLUSH_DEL_CHECK_CHUNK — Confirm แล้วบน server = ไม่ลบ รับผลเข้าเครื่อง (ดูคอมเมนต์เหนือ _deleteScanItemsKeepConfirmed)
     const keptConfirmed=[];
+    for(const sku of restartDel){
+      if(_flushEpochMoved(epoch)){epochDropped++;continue;}
+      if(sawError){requeue.push(sku);continue;}
+      try{
+        const kept=await _deleteRestartScanRemnant(itemsRef,sku,epoch);
+        if(_flushEpochMoved(epoch)){epochDropped++;continue;}
+        if(kept)keptConfirmed.push(kept);
+        _forceDelSkus.delete(sku);_forceDelSources.delete(sku);
+        if(!kept){_scanItemRev.delete(sku);_scanItemSynced.delete(sku);}
+      }catch(e){requeue.push(sku);sawError=true;if(_isRateLimitError(e))sawRateLimit=true;console.warn('[restart scan retry]',e.code||e.message);}
+    }
     for(let i=0;i<guardedDel.length;i+=FLUSH_DEL_CHECK_CHUNK){
       const chunk=guardedDel.slice(i,i+FLUSH_DEL_CHECK_CHUNK);
       if(_flushEpochMoved(epoch)){epochDropped+=guardedDel.length-i;break;}
@@ -7195,7 +7269,11 @@ function _removeSkuFromFirestore(sku){
   if(_isScanSchemaV2()){
     _dirtySkus.delete(String(sku));
     _scanItemRev.delete(String(sku));_scanItemSynced.delete(String(sku));
-    getScanItemsRef().doc(String(sku)).delete().catch(e=>console.warn('[removeSku]',e.message));
+    if(_isPharmacyBranch()){
+      _deleteScanItemsKeepConfirmed(getScanItemsRef(),[String(sku)],_countResetAt||'')
+        .then(({kept})=>{if(kept.length)_adoptKeptConfirmedItems(kept);})
+        .catch(e=>{_markSkuDirty(String(sku));console.warn('[removeSku]',e.message);});
+    }else getScanItemsRef().doc(String(sku)).delete().catch(e=>console.warn('[removeSku]',e.message));
     return;
   }
   const ref=_db.collection('stock_sessions').doc(getSessionId());
@@ -8120,9 +8198,7 @@ async function _deleteScanItemsNotInEpoch(epoch,onProgress){
   for(let round=0;round<100;round++){
     const snap=await itemsRef.where('countResetAt','!=',epoch).limit(SCAN_ITEM_BATCH_SIZE).get({source:'server'});
     if(snap.empty)return{deleted,complete:true};
-    const batch=_db.batch();
-    snap.forEach(doc=>batch.delete(doc.ref));
-    await batch.commit();
+    await _commitScanItemDeletes(snap,'new_count');
     deleted+=snap.size;
     if(onProgress)onProgress(deleted);
   }
@@ -8136,9 +8212,7 @@ async function _deleteScanItemsForEpoch(epoch){
   for(;;){
     const snap=await itemsRef.where('countResetAt','==',epoch||'').limit(SCAN_ITEM_BATCH_SIZE).get();
     if(snap.empty)break;
-    const batch=_db.batch();
-    snap.forEach(doc=>batch.delete(doc.ref));
-    await batch.commit();
+    await _commitScanItemDeletes(snap,'cleanup_epoch');
     deleted+=snap.size;
     if(snap.size<SCAN_ITEM_BATCH_SIZE)break;
   }
@@ -8152,9 +8226,7 @@ async function _deleteAllScanItems(){
   for(;;){
     const snap=await itemsRef.limit(SCAN_ITEM_BATCH_SIZE).get();
     if(snap.empty)break;
-    const batch=_db.batch();
-    snap.forEach(doc=>batch.delete(doc.ref));
-    await batch.commit();
+    await _commitScanItemDeletes(snap,'clear_all');
     deleted+=snap.size;
     if(snap.size<SCAN_ITEM_BATCH_SIZE)break;
   }
@@ -8912,6 +8984,7 @@ async function restartPharmacyScan(sku){
   _dirtySkus.delete(sku);
   _restartScanBusy.add(sku);
   let nextMarkerItems=null;
+  let restartSourceKey=_restartScanResultKey({...sd,countResetAt:epoch});
   try{
     await _db.runTransaction(async tx=>{
       nextMarkerItems=null;   // transaction ถูกรันซ้ำได้เมื่อชนกัน — ตั้งค่าใหม่ทุกรอบ
@@ -8921,6 +8994,7 @@ async function restartPharmacyScan(sku){
       // doc id คือ SKU ใช้ร่วมทุกรอบ — เศษรอบอื่นไม่ใช่ของรอบนี้ (ไม่ลบ ไม่ใช้ตัดสิน) · ของรอบนี้ที่ไม่ใช่ Stock Adj แล้ว/rev เปลี่ยน = มีเครื่องอื่นแก้ระหว่างทาง
       const current=server&&String(server.countResetAt||'')===epoch?server:null;
       if(current&&(current.status!=='stock_adjustment'||(knownRev&&Number(current.rev)!==knownRev)))throw new Error('RESCAN_CHANGED');
+      if(current)restartSourceKey=_restartScanResultKey(current);
       const old=markerSnap.exists?(markerSnap.data()||{}):{};
       if((old.countResetAt||'')===epoch&&old.items&&Object.prototype.hasOwnProperty.call(old.items,sku)){
         const items={...old.items};delete items[sku];
@@ -8931,7 +9005,7 @@ async function restartPharmacyScan(sku){
         tx.set(markerRef,{...old,items,legacyLogBackfilledAt:old.legacyLogBackfilledAt||firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
         nextMarkerItems=items;
       }
-      if(current)tx.delete(itemRef);
+      if(current){_writePharmacyDeleteIntent(tx,[{sku,data:current}],'restart_scan');tx.delete(itemRef);}
     });
   }catch(e){
     console.warn('[restart scan]',e.code||'',e.message);beepError();
@@ -8945,7 +9019,7 @@ async function restartPharmacyScan(sku){
   _dirtySkus.delete(sku);_scanItemRev.delete(sku);_scanItemSynced.delete(sku);
   // แก้ในใบ/เขียนที่เริ่มระหว่างรอ transaction อาจฟื้นเอกสารหลังเราลบ → ให้ flush ลบซ้ำ (sd เป็น pending = batch.delete)
   // เศษที่ฟื้นขึ้นมาเป็นของเครื่องนี้เอง (Stock Adj เดิม) — ต้องลบจริง ไม่ใช่ผ่านด่านรับผล Confirm ของ _flushDirtySkus (FLUSH_DEL_KEEP_CONFIRMED) · ธงมีอายุ 5 นาที
-  if(_scanItemInFlight.has(sku)){_dirtySkus.add(sku);_forceDelSkus.set(sku,Date.now()+300000);_scheduleScanFlush(SCAN_ITEM_FLUSH_MS);}
+  if(_scanItemInFlight.has(sku)){_dirtySkus.add(sku);_forceDelSkus.set(sku,Date.now()+300000);_forceDelSources.set(sku,restartSourceKey);_scheduleScanFlush(SCAN_ITEM_FLUSH_MS);}
   scanListMap.delete(sku);
   console.info('[restart scan]',sku,{countedQty:sd.countedQty,recheckQty:sd.recheckQty,directAdj:sd.directAdj===true,initialStatus:sd.initialStatus,by:currentUser||''});
   invalidatePopupRowsCache();saveSession();rebuildScanListMap(true);renderScanList();updateStats();renderTable();

@@ -52,15 +52,21 @@ async function purgeTestSku(sku, { apply = false } = {}) {
   a.download = `backup_${currentBranch}_${sku}_${Date.now()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
 
-  // 1) marker ก่อน (ดูเหตุผลที่หัวไฟล์)
-  if (marker) await _db.runTransaction(async tx => {
-    const s = await tx.get(markerRef); if (!s.exists) return;
-    const old = s.data() || {}; if (!old.items || !(sku in old.items)) return;
-    const items = { ...old.items }; delete items[sku];
-    tx.set(markerRef, { ...old, items, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  // Delete marker and item atomically, with a fresh intent for the exact source.
+  if (typeof _writePharmacyDeleteIntent !== 'function') throw new Error('โหลดเว็บรุ่นใหม่ก่อนล้างผล Confirm');
+  await _db.runTransaction(async tx => {
+    const [liveItem, liveMarker] = await Promise.all([tx.get(itemRef), tx.get(markerRef)]);
+    const current = liveItem.exists ? liveItem.data() : null;
+    if (current && (!item || (current.countResetAt || '') !== (item.countResetAt || '') || (current.rev || 0) !== (item.rev || 0))) {
+      throw new Error('PURGE_CHANGED: รายการเปลี่ยนระหว่างสำรอง — ตรวจใหม่ก่อนลบ');
+    }
+    const old = liveMarker.exists ? (liveMarker.data() || {}) : {};
+    if (old.items && sku in old.items) {
+      const items = { ...old.items }; delete items[sku];
+      tx.set(markerRef, { ...old, items, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+    if (current) { _writePharmacyDeleteIntent(tx, [{ sku, data: current }], 'cleanup_epoch'); tx.delete(itemRef); }
   });
-  // 2) item
-  if (item) await itemRef.delete();
   // 3) ในเครื่องนี้
   _dirtySkus.delete(sku); _scanItemRev.delete(sku); _scanItemSynced.delete(sku);
   state.scanData.delete(sku); scanListMap.delete(sku);

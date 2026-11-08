@@ -131,6 +131,7 @@ const row = c => ({
 
 // ── เขียน: ชุดละ ≤ CHUNK SKU · transaction เดียว = ลบ item + ลบ entry ใน marker + ตั้ง legacyLogBackfilledAt ──────────────
 async function resetChunk(branch, epoch, chunk) {
+  if (typeof _writePharmacyDeleteIntent !== 'function') throw new Error('โหลดเว็บรุ่นใหม่ก่อนล้างผล Confirm');
   const markerRef = getPharmacyAuditMarkerRef(branch);
   const col = getScanItemsRef(branch);
   let nextItems = null; let deleted = 0;
@@ -142,6 +143,7 @@ async function resetChunk(branch, epoch, chunk) {
     const old = markerSnap.exists ? (markerSnap.data() || {}) : {};
     const same = (old.countResetAt || '') === epoch;
     const items = same ? { ...(old.items || {}) } : {};
+    const deletionSources = [];
     chunk.forEach((c, i) => {
       const server = snaps[i].exists ? (snaps[i].data() || {}) : null;
       // doc id คือ SKU ใช้ร่วมทุกรอบ — เศษรอบอื่นไม่ใช่ของรอบนี้ (ไม่ลบ ไม่ใช้ตัดสิน)
@@ -150,8 +152,9 @@ async function resetChunk(branch, epoch, chunk) {
       const m = items[c.sku];
       if (m && (m.status !== 'audit' || m.auditor || m.backorder)) throw new Error(`RESET_CHANGED:${c.sku}`);
       delete items[c.sku];
-      if (cur) { tx.delete(col.doc(c.sku)); deleted++; }
+      if (cur) { deletionSources.push({ sku: c.sku, data: cur }); tx.delete(col.doc(c.sku)); deleted++; }
     });
+    _writePharmacyDeleteIntent(tx, deletionSources, 'cleanup_epoch');
     const ts = firebase.firestore.FieldValue.serverTimestamp();
     // เหมือน _writePharmacyAuditMarkers: เอกสารรอบอื่นถือว่าว่าง · legacyLogBackfilledAt ตั้งในก้อนเดียวกันเสมอ (กัน login ถัดไป "กู้" จาก stock_audit_log)
     tx.set(markerRef, { ...(same ? old : {}), branch, countResetAt: epoch, items,

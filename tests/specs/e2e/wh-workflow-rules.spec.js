@@ -1,9 +1,9 @@
 // WH workflow provenance is an authoritative same-epoch marker. A delayed PDA may still hold an
 // old scanning/audit snapshot, so rules must reject any write which removes or changes an existing
 // whCountOpId/whRecheckOpId. Starting a genuinely newer epoch remains allowed.
-const { test, expect, closeApp, requireEmulator } = require('../../lib/hooks');
+const { test, expect, closeApp, requireEmulator, newAppContext, waitForAppReady } = require('../../lib/hooks');
 const { bootFreshCount, PROJECT_ID } = require('../../lib/scenario');
-const { getDoc } = require('../../lib/emulator');
+const { getDoc, clearAll, emuPort } = require('../../lib/emulator');
 const { makeWhCountItem, makeAuditItem } = require('../../lib/wh-workflow');
 
 test.describe('firestore.rules — WH workflow provenance guard', () => {
@@ -155,8 +155,17 @@ test.describe('firestore.rules — WH workflow provenance guard', () => {
   });
 
   test('legacy WH final documents are read/delete-only after workflow-v2 cutover', async ({ browser }) => {
-    const app = await bootFreshCount(browser, { branch: 'WH', role: 'supervisor', user: 'Supervisor', mode: 'desktop' });
-    const created = await app.page.evaluate(async () => {
+    // Test rules with bare SDK clients: app bootstrap deliberately clears legacy maps,
+    // and a client which deleted/rejected a document can retain a negative cache entry.
+    await clearAll(PROJECT_ID);
+    const bareClient = async () => {
+      const client = await newAppContext(browser, { login: false, projectId: PROJECT_ID, firestorePort: emuPort() });
+      await client.page.goto('/index.html');
+      await waitForAppReady(client.page, { login: false });
+      return client;
+    };
+    const creator = await bareClient();
+    const created = await creator.page.evaluate(async () => {
       const attempt = async (fn) => {
         try { await fn(); return 'ALLOWED'; }
         catch (e) { return e.code || String(e); }
@@ -168,11 +177,13 @@ test.describe('firestore.rules — WH workflow provenance guard', () => {
       };
     });
     expect(created).toEqual({ count: 'permission-denied', recheck: 'permission-denied' });
+    await closeApp(creator);
 
     const { adminDb } = require('../../lib/emulator');
     const db = adminDb(PROJECT_ID);
     await db.doc('stock_sessions/WH_count_confirmations').set({ S1: { status: 'pass' } });
     await db.doc('stock_sessions/WH_recheck_confirmations').set({ S1: { status: 'pass' } });
+    const app = await bareClient();
     const existing = await app.page.evaluate(async () => {
       const attempt = async (fn) => {
         try { await fn(); return 'ALLOWED'; }
