@@ -248,6 +248,47 @@
     .upload-file-badge-warn { background:#fff3cd; color:#92400e; }
     .upload-file-badge-warn .upload-file-badge-dot { background:var(--yellow); }
     @keyframes pulseDot { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+    /* ───── แผง DATA STATUS (Timeline · สาขายา SRC/KKL/SSS · พ.ย. 2026) — ดู _dsSync ─────
+       แทนการ์ดอัปโหลดเดิมด้วยแผงอ่านสถานะใบเดียว · การ์ดเดิมยังอยู่ใน DOM ครบ (แค่ซ่อน) เพราะโค้ดเขียนค่าลง id เดิมอยู่ราว 40 จุด
+       ⚠️ ซ่อนด้วยคลาส ds-on บน #uploadPanel เท่านั้น — WH ไม่มีคลาสนี้ จึงเห็นการ์ดเดิมทุกพิกเซล */
+    .ds-panel { display:none; --ds-ink3:#66768d; }
+    #uploadPanel.ds-on > .ds-panel { display:block; }
+    #uploadPanel.ds-on > .upload-panel-header,
+    #uploadPanel.ds-on > #pmUploadSection,
+    #uploadPanel.ds-on > .upload-file-item,
+    #uploadPanel.ds-on > #r05UploadSection,
+    #uploadPanel.ds-on > #r16103UploadSection { display:none!important; }
+    .ds-panel [hidden] { display:none!important; }
+    .ds-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+    .ds-title { display:flex; align-items:center; gap:8px; min-width:0; font-size:0.7rem; font-weight:600; color:#000000; letter-spacing:0.08em; text-transform:uppercase; }
+    .ds-title i { flex:none; width:3px; height:14px; background:var(--green); border-radius:2px; }
+    /* ปุ่ม Guide แบบ Soft UI (นูนนุ่ม ไฟส่องจากซ้ายบน) */
+    .ds-guide { flex:none; width:44px; height:26px; padding:0; display:flex; align-items:center; justify-content:center; border:0; border-radius:11px; background:linear-gradient(145deg,#f5f8fc,#e4eaf3); box-shadow:3px 3px 7px #cbd3e0,-3px -3px 7px #ffffff; color:#d62828; font-family:inherit; font-size:12.5px; font-weight:600; line-height:1; cursor:pointer; }
+    .ds-guide:active { box-shadow:inset 2px 2px 5px #cbd3e0,inset -2px -2px 5px #ffffff; }
+    .ds-guide:focus-visible, .ds-up:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .ds-tl { list-style:none; margin:2px 0 0; padding:0; }
+    .ds-it { --ds-c:#1a9e5c; --ds-cb:#e1f5ee; --ds-ci:#0f6e56; position:relative; padding:0 0 15px 31px; }
+    .ds-it[data-st="warn"] { --ds-c:#e08c00; --ds-cb:#fff3cd; --ds-ci:#92400e; }
+    .ds-it[data-st="none"] { --ds-c:#8a9ab4; --ds-cb:#eef2f7; --ds-ci:#4a5a72; }
+    .ds-it:last-child { padding-bottom:0; }
+    .ds-it::before { content:""; position:absolute; left:9px; top:22px; bottom:-1px; width:2px; border-radius:1px; background:var(--border); }
+    .ds-it:last-child::before { display:none; }
+    .ds-nd { position:absolute; left:0; top:0; width:20px; height:20px; border-radius:50%; display:grid; place-items:center; background:var(--ds-c); color:#ffffff; box-shadow:0 0 0 3px var(--ds-cb); }
+    .ds-it[data-st="none"] .ds-nd { background:#ffffff; color:var(--ds-c); border:2px dashed var(--ds-c); box-shadow:none; }
+    .ds-nd svg { display:block; }
+    .ds-t1 { display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:20px; }
+    .ds-nm { min-width:0; overflow-wrap:anywhere; font-size:12.5px; font-weight:600; color:var(--text); }
+    .ds-sl { min-width:0; overflow-wrap:anywhere; font-style:normal; font-size:10.5px; font-weight:600; color:var(--ds-ci); text-align:right; }
+    .ds-t2 { font-size:10.5px; color:var(--ds-ink3); }
+    .ds-kv { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:baseline; gap:2px 7px; margin:5px 0 0; font-size:10.5px; line-height:1.45; }
+    .ds-kv dt { color:var(--ds-ink3); }
+    .ds-kv dd { margin:0; font-weight:600; font-variant-numeric:tabular-nums; color:var(--text); overflow-wrap:anywhere; }
+    .ds-nt { display:flex; align-items:flex-start; gap:5px; margin-top:6px; padding:4px 7px; border-radius:7px; background:#fff3cd; color:#92400e; font-size:10.5px; font-weight:500; line-height:1.35; }
+    .ds-nt svg { flex:none; margin-top:1px; }
+    /* ปุ่มอัปโหลดด้วยมือ — โผล่เฉพาะ Admin Mode (ทางสำรองเมื่อบอทพัง) */
+    .ds-up { display:inline-flex; align-items:center; gap:5px; margin-top:8px; padding:3px 10px 3px 8px; border:1px solid var(--border); border-radius:8px; background:#ffffff; color:var(--text2); font-family:inherit; font-size:10.5px; font-weight:600; cursor:pointer; }
+    .ds-up:hover { border-color:var(--green); color:var(--text); }
+    .ds-up > * { pointer-events:none; }   /* คลิกโดนไอคอน/ข้อความ = คลิกที่ปุ่มเอง (ตัวจับคลิกทั้งหน้าจะไม่ดึงโฟกัสกลับช่องสแกน) */
     .scan-input-wrap { position:relative; }
     .scan-input { width:100%; padding:14px 16px; background:var(--surface2); border:2px solid var(--border); border-radius:10px; color:var(--text); font-family:'Inter',sans-serif; font-size:0.7rem; outline:none; transition:all 0.2s; }
     .scan-input.pda-receiving { color:transparent; caret-color:transparent; }
@@ -2006,6 +2047,181 @@ function updateBranchDisplay(){
   if(r16103Sec)r16103Sec.style.display=(currentBranch==='WH'&&window.innerWidth>600)?'':'none';
   const locBtn=document.getElementById('btnLocation');
   if(locBtn)locBtn.style.display=(currentBranch==='WH'&&window.innerWidth>600)?'':'none';
+  try{_dsSync();}catch(e){}   // แผง DATA STATUS (สาขายา) — ล้มแล้วเงียบ = เห็นการ์ดอัปโหลดเดิมตามปกติ (ดู _dsSync)
+}
+// ───── แผง DATA STATUS (Timeline · สาขายา SRC/KKL/SSS · พ.ย. 2026 · ผู้ใช้สั่ง) ─────
+// แทนการ์ด "Upload File" เดิมของสาขายาด้วยแผงอ่านสถานะใบเดียว: พนักงานไม่มีปุ่มอัปโหลดแล้ว (บอท auto-r01/r05/r16 อัปให้)
+// กติกาที่ผู้ใช้สั่ง: เฉพาะสาขายา (WH ไม่แตะ) · Product Master/R05 เห็นเฉพาะ Admin Mode เหมือนเดิม · ทางสำรองตอนบอทพัง = ปุ่มอัปโหลดในแผงนี้ เฉพาะ Admin Mode
+//   · ไม่มีสถานะ "ล่าช้า" (เช้าก่อนบอทอัปยังไม่มีใครเปิดร้าน) — มีแค่ Ready / ยังไม่โหลด / ตรวจสอบวันที่ (R16) ตามที่การ์ดเดิมมีอยู่แล้ว
+// ⛔ แผงนี้ "อ่านจากการ์ดเดิมแล้ววาดใหม่" เท่านั้น — ห้ามแตะเส้นทางที่บอท/เว็บเขียนข้อมูล:
+//    • โค้ดเดิมราว 40 จุดยังเขียน badge/เวลาลง id เดิม (badgeR01 · r01Timestamp · …) → ตัวสังเกต (MutationObserver) อ่านค่าจาก id เหล่านั้น (อ่านอย่างเดียว ห้ามเขียนกลับ)
+//    • การ์ด/input file เดิมอยู่ใน DOM ครบ แค่ซ่อนด้วยคลาส ds-on บน #uploadPanel (ห้ามลบ — `fileX.nextElementSibling` และปุ่ม Admin ของแผงนี้ใช้ input เดิม)
+//    • ไม่แตะ Firestore / parse / serialize / listener / บอท auto-* / firestore.rules / sw.js / APK · WH ไม่เคยได้ DOM ของแผงนี้
+// ⛔ ห้ามให้ _ds* เขียน state / Firestore / localStorage · วาดพังต้องถอยไปใช้การ์ดเดิม (ถอดคลาส ds-on) ไม่ใช่ปล่อยจอว่าง
+let DATA_STATUS_PANEL=true;   // false = ไม่ใส่ ds-on เลย → การ์ดอัปโหลดเดิมครบทุกสาขา (ทางถอยเร็วสุด)
+const DS_TITLE='DATA STATUS';
+const DS_ITEMS=[
+  {id:'pm', badge:'badgeProductMaster',ts:'pmTimestamp',sec:'pmUploadSection',file:'fileProductMaster',code:'Product Master',th:'ชื่อสินค้า (ของสาขานี้)'},
+  {id:'r01',badge:'badgeR01',          ts:'r01Timestamp',                      file:'fileR01',          code:'R01.102',       th:'จำนวนสินค้า'},
+  {id:'r05',badge:'badgeR05',          ts:'r05Timestamp',sec:'r05UploadSection',file:'fileR05',          code:'R05.106',       th:'Barcode'},
+  {id:'r16',badge:'badgeR16',          ts:'r16Timestamp',                      file:'fileR16',          code:'R16.104',       th:'สินค้าที่ขาย'}
+];
+// ไอคอนเป็นค่าคงที่ในโค้ด (ไม่มีข้อความจากข้อมูลปนเข้ามา) — ข้อความทุกตัวที่มาจากการ์ดเดิมใส่ด้วย textContent
+const DS_ICON={
+  ok:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.3l2.4 2.4 4.6-5"/></svg>',
+  warn:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 2.4v4.2"/><circle cx="6" cy="9.2" r=".55" fill="currentColor"/></svg>',
+  none:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.3"/><path d="M6 3.7V6l1.6 1"/></svg>',
+  up:'<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8.8V2.8M3.4 5.3L6 2.7l2.6 2.6M2.5 9.8h7"/></svg>'
+};
+function _dsOn(){return DATA_STATUS_PANEL&&_isPharmacyBranch();}
+function _dsEl(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+// อ่านสถานะ 1 แถวจากการ์ดเดิม (อ่านอย่างเดียว) — badge มีค่าได้แค่ Ready / ยังไม่โหลด / ⚠️ ตรวจสอบวันที่ (R16) · ค่าอื่นที่ไม่รู้จัก = ถือว่ายังไม่พร้อม (ไม่อ้างว่า Ready)
+function _dsRead(d){
+  const bd=document.getElementById(d.badge);
+  const raw=((bd&&bd.textContent)||'').trim();
+  const warnCls=!!(bd&&bd.parentElement&&bd.parentElement.classList.contains('upload-file-badge-warn'));
+  let st,label;
+  if(warnCls||/^⚠/.test(raw)){st='warn';label=raw.replace(/^⚠\uFE0F?\s*/,'')||'ตรวจสอบ';}
+  else if(raw==='Ready'){st='ok';label='Ready';}
+  else{st='none';label=raw||'ยังไม่โหลด';}
+  const tsEl=document.getElementById(d.ts);
+  const ts=(tsEl&&tsEl.style.display!=='none')?(tsEl.textContent||'').trim():'';
+  const sec=d.sec?document.getElementById(d.sec):null;   // PM/R05: การ์ดเดิมซ่อน/แสดงตาม Admin Mode (applyAdminUI) — แถวนี้ตามไปด้วย
+  return {st,label,ts,show:sec?sec.style.display!=='none':true};
+}
+// แยกข้อความเวลาของการ์ดเดิม → แถว label/ค่า (R05 มี 2 เวลา: อัปโหลด/ตรวจ · R16 ต่อท้าย "ข้อมูล …") + ข้อความเตือนของ R05 ("บอทยังไม่ได้ตรวจวันนี้") แยกเป็นกล่อง
+function _dsParseTs(raw){
+  const out={kv:[],note:''};
+  if(!raw)return out;
+  let s=raw;
+  const stale=/\s*⚠\uFE0F?\s*บอทยังไม่ได้ตรวจวันนี้/;
+  if(stale.test(s)){out.note='บอทยังไม่ได้ตรวจวันนี้';s=s.replace(stale,'');}
+  s.split(' · ').forEach((seg,i)=>{
+    seg=seg.trim();if(!seg)return;
+    let m;
+    if((m=seg.match(/^อัปโหลดล่าสุด:\s*(.*)$/)))out.kv.push(['อัปโหลด',m[1]]);
+    else if((m=seg.match(/^ตรวจล่าสุด:\s*(.*)$/)))out.kv.push(['ตรวจ',m[1]]);
+    else if((m=seg.match(/^ข้อมูล\s+(.*)$/)))out.kv.push(['ข้อมูล',m[1]]);
+    else out.kv.push([i===0?'อัปโหลด':'',seg]);   // PM/R16: เวลาเปล่าๆ ไม่มีคำนำหน้า
+  });
+  return out;
+}
+// สร้าง DOM ของแผงครั้งเดียว (lazy — WH ไม่เคยได้) แล้วแทรกถัดจาก #guidePopover (ไม่คั่นระหว่าง input file กับการ์ดของมัน)
+function _dsEnsure(card){
+  let root=document.getElementById('dsPanel');
+  if(root&&root.parentNode===card)return root;
+  if(root)root.remove();
+  root=_dsEl('div','ds-panel');root.id='dsPanel';
+  const head=_dsEl('div','ds-head');
+  const title=_dsEl('div','ds-title');
+  title.appendChild(_dsEl('i'));
+  title.appendChild(document.createTextNode(DS_TITLE));
+  const guide=_dsEl('button','ds-guide','Guide');   // ปุ่ม Guide แบบ Soft UI — เปิดคู่มือตัวเดิม (openGuideModal)
+  guide.type='button';guide.id='dsGuide';
+  guide.addEventListener('click',()=>{try{openGuideModal();}catch(e){console.warn('[data-status] เปิด Guide ไม่ได้:',e&&e.message);}});
+  head.appendChild(title);head.appendChild(guide);
+  const list=_dsEl('ol','ds-tl');
+  DS_ITEMS.forEach(d=>{
+    const li=_dsEl('li','ds-it');li.setAttribute('data-ds',d.id);li.hidden=true;
+    const t1=_dsEl('div','ds-t1');
+    t1.appendChild(_dsEl('span','ds-nm',d.code));
+    t1.appendChild(_dsEl('em','ds-sl'));
+    const kv=_dsEl('dl','ds-kv');kv.hidden=true;
+    const nt=_dsEl('div','ds-nt');nt.hidden=true;
+    nt.innerHTML=DS_ICON.warn+'<span></span>';
+    // ทางสำรองตอนบอทพัง: เฉพาะ Admin Mode — ใช้ input file เดิม (loadR01/loadR05/…) ด้วยวิธีเดียวกับการ์ดเดิมทุกประการ
+    const up=_dsEl('button','ds-up');up.type='button';up.hidden=true;
+    up.title='อัปโหลดด้วยมือ — Admin Mode เท่านั้น (เก็บในเครื่องนี้ ไม่ขึ้น Cloud)';
+    up.setAttribute('aria-label','อัปโหลด '+d.code+' ด้วยมือ (Admin Mode)');
+    up.innerHTML=DS_ICON.up+'<span>อัปโหลดด้วยมือ</span>';
+    up.addEventListener('click',()=>{
+      if(!_adminMode)return;   // ปุ่มซ่อนอยู่ตอนไม่ใช่ Admin อยู่แล้ว — เช็คซ้ำกันถูกเรียกทางอื่น
+      const f=document.getElementById(d.file);
+      if(f){f.value='';f.click();}
+    });
+    li.appendChild(_dsEl('span','ds-nd'));
+    li.appendChild(t1);
+    li.appendChild(_dsEl('div','ds-t2',d.th));
+    li.appendChild(kv);li.appendChild(nt);li.appendChild(up);
+    list.appendChild(li);
+  });
+  root.appendChild(head);root.appendChild(list);
+  const pop=document.getElementById('guidePopover');
+  card.insertBefore(root,(pop&&pop.parentNode===card)?pop.nextSibling:card.firstChild);
+  _dsObserve();
+  return root;
+}
+function _dsRender(){
+  const root=document.getElementById('dsPanel');
+  if(!root)return;
+  const admin=!!_adminMode;
+  DS_ITEMS.forEach(d=>{
+    const li=root.querySelector('li[data-ds="'+d.id+'"]');
+    if(!li)return;
+    const v=_dsRead(d);
+    const p=_dsParseTs(v.ts);
+    li.hidden=!v.show;
+    li.setAttribute('data-st',v.st);
+    li.querySelector('.ds-nd').innerHTML=DS_ICON[v.st];
+    li.querySelector('.ds-sl').textContent=v.label;
+    const kv=li.querySelector('.ds-kv');
+    kv.textContent='';
+    p.kv.forEach(([k,val])=>{
+      if(k)kv.appendChild(_dsEl('dt',null,k));
+      const dd=_dsEl('dd',null,val);
+      if(!k)dd.style.gridColumn='1 / -1';
+      kv.appendChild(dd);
+    });
+    kv.hidden=!p.kv.length;
+    const nt=li.querySelector('.ds-nt');
+    nt.querySelector('span').textContent=p.note;
+    nt.hidden=!p.note;
+    li.querySelector('.ds-up').hidden=!admin;
+  });
+}
+// ตัวสังเกตตัวเดียว: เฝ้า badge/เวลา/ส่วน PM-R05/ปุ่ม Admin ของการ์ดเดิม แล้ววาดแผงใหม่ (รวมเป็นรอบเดียวต่อ 1 task) — ไม่เขียนอะไรกลับ จึงไม่มีทางวนลูป
+let _dsObs=null,_dsTimer=0;
+function _dsObserve(){
+  if(_dsObs||typeof MutationObserver!=='function')return;
+  _dsObs=new MutationObserver(()=>{
+    if(_dsTimer)return;
+    _dsTimer=setTimeout(()=>{
+      _dsTimer=0;
+      const card=document.getElementById('uploadPanel');
+      if(!card||!card.classList.contains('ds-on'))return;   // ไม่ได้ใช้แผงอยู่ (WH / สวิตช์ปิด / ถอยไปการ์ดเดิมแล้ว)
+      try{_dsRender();}
+      catch(e){card.classList.remove('ds-on');console.warn('[data-status] วาดแผงไม่สำเร็จ — กลับไปใช้การ์ดอัปโหลดเดิม:',e&&e.message);}
+    },0);
+  });
+  DS_ITEMS.forEach(d=>{
+    const bd=document.getElementById(d.badge);
+    if(bd){
+      _dsObs.observe(bd,{childList:true,characterData:true,subtree:true});
+      if(bd.parentElement)_dsObs.observe(bd.parentElement,{attributes:true,attributeFilter:['class']});   // upload-file-badge-warn
+    }
+    const ts=document.getElementById(d.ts);
+    if(ts)_dsObs.observe(ts,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['style']});
+    const sec=d.sec?document.getElementById(d.sec):null;
+    if(sec)_dsObs.observe(sec,{attributes:true,attributeFilter:['style']});
+  });
+  // applyAdminUI() เขียนข้อความ/คลาสของปุ่ม Administrator ทุกครั้งที่เข้า-ออก Admin Mode → ใช้เป็นสัญญาณให้ปุ่มอัปโหลดในแผงโผล่/หาย
+  const ab=document.getElementById('btnAdmin');
+  if(ab)_dsObs.observe(ab,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']});
+}
+// จุดเข้า: เรียกท้าย updateBranchDisplay() (ตอนเลือกสาขา/login) · สาขายา = สร้าง+วาดแผงแล้วซ่อนการ์ดเดิม · สาขาอื่น/สวิตช์ปิด = ถอดคลาส (การ์ดเดิมครบทุกพิกเซล)
+// คลาส ds-on ใส่ "หลังวาดสำเร็จ" เท่านั้น — วาดพัง = การ์ดเดิมยังอยู่ ไม่เคยเหลือจอว่าง
+function _dsSync(){
+  const card=document.getElementById('uploadPanel');
+  if(!card)return;
+  if(!_dsOn()){card.classList.remove('ds-on');return;}
+  try{
+    _dsEnsure(card);
+    _dsRender();
+    card.classList.add('ds-on');
+  }catch(e){
+    card.classList.remove('ds-on');
+    console.warn('[data-status] สร้างแผงไม่สำเร็จ — ใช้การ์ดอัปโหลดเดิมแทน:',e&&e.message);
+  }
 }
 // ฉากขาวเฟรมแรก (#bootCover · LOGIN_WHITE_FLOW) — ปิดเมื่อมีอย่างอื่นรับช่วงคลุมจอแล้ว: หน้าเลือกสาขา (modal ขาวทึบ) หรือเริ่ม initAfterLogin (หน้า Loading ขาวทึบขึ้นใน task เดียวกัน)
 // เรียกซ้ำได้/ไม่มี element = ไม่ทำอะไร · ตัวกันค้างฝั่ง CSS (ซ่อนเองใน 6 วิ) ทำงานแม้ไม่มีใครเรียกฟังก์ชันนี้
