@@ -62,7 +62,8 @@
   .step-n { width:30px; height:30px; border-radius:50%; background:var(--org); color:#fff; font-weight:700; font-size:.88rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:3px; }
   .step-n.purple { background:var(--purple); }
   .step-n.green  { background:var(--green); }
-  .step-c strong { font-size:.98rem; display:block; margin-bottom:3px; }
+  /* ชื่อขั้น = <strong> ตัวแรกของ .step-c เท่านั้นที่เป็นบล็อก — <strong> ในย่อหน้า/รายการเป็นตัวหนาในบรรทัด (เดิมทุกตัวโดน display:block จึงขึ้นบรรทัดใหม่กลางประโยค) */
+  .step-c > strong:first-child { font-size:.98rem; display:block; margin-bottom:3px; }
   .step-c p, .step-c ul { font-size:.92rem; color:#334; }
   .step-c ul { padding-left:18px; margin-top:4px; }
   .step-c li { margin-bottom:2px; }

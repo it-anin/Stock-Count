@@ -141,7 +141,8 @@
   .step-num.red    { background: var(--red);    }
 
   .step-content { flex: 1; }
-  .step-content strong { font-size: 1rem; display: block; margin-bottom: 4px; }
+  /* ชื่อขั้น = <strong> ตัวแรกของ .step-content เท่านั้นที่เป็นบล็อก — <strong> ในย่อหน้า/รายการเป็นตัวหนาในบรรทัด (เดิมทุกตัวโดน display:block จึงขึ้นบรรทัดใหม่กลางประโยค) */
+  .step-content > strong:first-child { font-size: 1rem; display: block; margin-bottom: 4px; }
   .step-content p, .step-content ul { font-size: 0.93rem; color: #334; }
   .step-content ul { padding-left: 18px; margin-top: 4px; }
   .step-content li { margin-bottom: 2px; }
