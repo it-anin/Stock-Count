@@ -705,7 +705,7 @@
         </div>
         <div id="guidePopover" class="upload-guide-popover">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-            <h4 style="margin:0;color:var(--orange);font-size:1rem;">📌 คู่มือการเตรียมไฟล์</h4>
+            <h4 id="guideTitle" style="margin:0;color:var(--orange);font-size:1rem;">📌 คู่มือการเตรียมไฟล์</h4>
             <button onclick="closeGuideModal()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:1.2rem;">&times;</button>
           </div>
           <div id="guideContent" style="font-size:0.82rem;line-height:1.65;color:var(--text2);">
@@ -919,7 +919,7 @@
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">2</span>
-        <span>อัพโหลด <strong>R01.102</strong> ตอนเริ่มรอบนับ (แนะนำหลัง 21:00 · อัพได้ทุกเวลา)</span>
+        <span id="guideStep2">อัพโหลด <strong>R01.102</strong> ตอนเริ่มรอบนับ (แนะนำหลัง 21:00 · อัพได้ทุกเวลา)</span>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <span style="background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;margin-top:1px;">3</span>
@@ -2131,7 +2131,7 @@ function _dsEnsure(card){
     nt.innerHTML=DS_ICON.warn+'<span></span>';
     // ทางสำรองตอนบอทพัง: เฉพาะ Admin Mode — ใช้ input file เดิม (loadR01/loadR05/…) ด้วยวิธีเดียวกับการ์ดเดิมทุกประการ
     const up=_dsEl('button','ds-up');up.type='button';up.hidden=true;
-    up.title='อัปโหลดด้วยมือ — Admin Mode เท่านั้น (เก็บในเครื่องนี้ ไม่ขึ้น Cloud)';
+    up.title='อัปโหลดด้วยมือ — Admin Mode เท่านั้น (ทางสำรองเมื่อบอทพลาด)';   // ⛔ ห้ามเขียนว่า "ไม่ขึ้น Cloud": อัปมือใน Admin Mode แล้ว R01/R05/Product Master ขึ้น Cloud ตามปกติ (e2e data-status-panel ตรวจแล้ว) — ที่ถูกตัดคือการซิงก์สแกน/session
     up.setAttribute('aria-label','อัปโหลด '+d.code+' ด้วยมือ (Admin Mode)');
     up.innerHTML=DS_ICON.up+'<span>อัปโหลดด้วยมือ</span>';
     up.addEventListener('click',()=>{
@@ -7555,7 +7555,13 @@ function applyAuditTerminology(){
         :'รายการ <strong style="color:var(--red);">⚠️ Stock Adj</strong> (รวม <strong style="color:var(--yellow);">รอรีเช็ค</strong>) → เภสัชออกใบที่ <strong>📦 ปรับปรุงสินค้า</strong> (แก้จำนวนในใบได้) · สงสัยรายการไหน กด <strong>↺ สแกนใหม่</strong> (Desktop) → <strong style="color:var(--yellow);">รอรีเช็ค</strong> → สแกนนับใหม่ → กด <strong>✓ ยืนยันรีเช็ค</strong> บน Desktop'));
   // ปุ่ม Confirm ที่ Desktop ถูกซ่อนเมื่อบอท Confirm ให้ (PHARMACY_DESKTOP_CONFIRM_BY_BOT) → วิธีใช้ที่เคยบอกให้ "กด Confirm" ต้องตรงกับหน้าจอ · ปิดสวิตช์/WH = ข้อความเดิมทุกตัวอักษร
   const _bot=!isWh&&_confirmByBotOn();
-  setHtml('guideStep4',_bot?'<strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน 21:10 (อัพมือที่การ์ด R16.104 เฉพาะเมื่อบอทพลาด)':'อัพโหลด <strong>R16.104</strong> ก่อนกด Confirm (ยอดขาย/รับเข้าระหว่างนับ)');
+  // แผง DATA STATUS (สาขายา · DATA_STATUS_PANEL — 10 พ.ย. 2026): พนักงานไม่อัปไฟล์เอง บอทอัป R01 ทุกเช้า/R16 ทุกคืน → ข้อ 2 และ 4 ต้องไม่สั่งให้อัปโหลด
+  // ปิดสวิตช์/WH = ข้อความเดิมทุกตัวอักษร (ข้อ 2 เดิม = HTML ตั้งต้นของ #guideStep2 — ต้องตั้งกลับทุกครั้ง ไม่งั้นสลับ SRC→WH แล้วข้อความใหม่ค้าง)
+  const _ds=!isWh&&_dsOn();
+  setHtml('guideStep2',_ds?'<strong>R01.102</strong> — บอทอัปให้ทุกเช้า ไม่ต้องอัปเอง (Desktop ดูสถานะที่แผง <strong>DATA STATUS</strong>)':'อัพโหลด <strong>R01.102</strong> ตอนเริ่มรอบนับ (แนะนำหลัง 21:00 · อัพได้ทุกเวลา)');
+  setHtml('guideStep4',_ds
+    ?(_bot?'<strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน 21:10 (ยอดขาย/รับเข้าระหว่างนับ)':'<strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน ~21:10 (ยอดขาย/รับเข้าระหว่างนับ) · ปุ่ม Confirm ปลดล็อกเองเมื่อ R16 พร้อม')
+    :(_bot?'<strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน 21:10 (อัพมือที่การ์ด R16.104 เฉพาะเมื่อบอทพลาด)':'อัพโหลด <strong>R16.104</strong> ก่อนกด Confirm (ยอดขาย/รับเข้าระหว่างนับ)'));
   setHtml('guideStep5',_bot?'<strong>บอท Confirm ให้ 21:10</strong> → ระบบเปรียบเทียบกับ System Qty อัตโนมัติ (เห็นผล Pass / Stock Adj เช้าวันถัดไป)':'กด <strong>✔ Confirm</strong> → ระบบเปรียบเทียบกับ System Qty อัตโนมัติ');
   set('noStockModalNote',_bot?'บอท Confirm 21:10 แล้วรายการนี้จะเข้าเอกสารปรับสต็อก (ขาด)':'หลังกด Confirm รายการนี้จะเข้าเอกสารปรับสต็อก (ขาด) ทันที');
   set('guideRulePill',isWh?'Pass / Recheck / Stock Adj':_pharmTxt('Pass / Audit / Stock Adj','Pass / รอรีเช็ค / Stock Adj'));
@@ -7788,8 +7794,64 @@ function exportExcel(){
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(popupFilterState==='audit'?_popupAuditFilterTerm():'Stock').slice(0,31));XLSX.writeFile(wb,`${fileTag}_${_fileDateDMY()}.xlsx`);toast(`Export ${label} ${rows.length-1} รายการ สำเร็จ`,'success');
 }
 
+// คู่มือของปุ่ม Guide บนแผง DATA STATUS — เวอร์ชันใหม่ของสาขายา (SRC/KKL/SSS) เมื่อเปิด DATA_STATUS_PANEL (ผู้ใช้สั่ง 10 พ.ย. 2026 "อัปเดทปุ่ม Guide และคู่มือให้เป็นเวอร์ชั่นใหม่")
+// เหตุผล: พนักงานไม่อัปไฟล์เองแล้ว — บอท auto-r01 อัป R01 ทุกเช้า · auto-r16 อัป R16 ทุกคืน (~21:10) · แผงแสดงสถานะอย่างเดียว · อัปมือเฉพาะ Admin Mode (ทางสำรองเมื่อบอทพลาด)
+// ⛔ สถานะที่อธิบายต้องตรงกับแผงจริง (_dsRead: Ready · ยังไม่โหลด · ตรวจสอบวันที่) · ห้ามมีสถานะ "ล่าช้า" (ผู้ใช้สั่ง) · ห้ามมีคำว่า Audit บนจอสาขายา (ใช้ _pharmTxt เหมือนฉบับเดิม)
+// ⛔ ฉบับเดิมของ guideHtml (ด้านล่าง) ไม่ถูกแก้ — ปิดสวิตช์ DATA_STATUS_PANEL / WH ได้ข้อความเดิมทุกตัวอักษร · ตัวคุมเดียว = ด่านบรรทัดแรกของ guideHtml
+// ⚠️ ข้อเท็จจริงของ Admin Mode ที่เขียนไว้ตรวจด้วย e2e data-status-panel แล้ว: อัปมือ → R01/R05/Product Master ขึ้น Cloud ตามปกติ · ที่ถูกตัดคือการซิงก์สแกน/session · R16 ที่อัปมือเก็บ timeline ไว้ในเครื่องนั้น
+function _guideHtmlDataStatus(){
+  const bot=_confirmByBotOn();                    // บอท Confirm ให้ 21:10 (PHARMACY_DESKTOP_CONFIRM_BY_BOT) · ปิด = พนักงานกด Confirm ที่ Desktop
+  const keepR01=PHARMACY_KEEP_R01_ON_NEW_COUNT;   // เริ่มนับใหม่ไม่ล้าง R01 · ปิด = ล้าง และพนักงานอัปใหม่เองไม่ได้ → ต้องเตือนให้ Admin อัป
+  return ''
+  +'<div style="background:rgba(0,114,198,0.06);padding:9px 12px;border-radius:8px;margin-bottom:12px;border:1px solid rgba(0,114,198,0.2);">'
+    +'<strong style="color:var(--accent);display:block;margin-bottom:5px;">⚡ ขั้นตอนการนับสต็อก (สาขา)</strong>'
+    +'<ol style="padding-left:18px;margin:0;line-height:1.8;">'
+      +'<li><strong>R01.102</strong> — บอทอัปให้ทุกเช้า ไม่ต้องอัปเอง · รอให้แผงขึ้น <strong>Ready</strong> ก่อนเริ่มสแกน'+(keepR01?' (กด "เริ่มนับใหม่" ไม่ล้าง R01)':'')+'</li>'
+      +'<li>สแกนสินค้า</li>'
+      +'<li><strong>R16.104</strong> — บอทอัปให้อัตโนมัติทุกคืน '+(bot?'21:10':'~21:10 (Desktop โหลดเอง ไม่ต้อง F5)')+'</li>'
+      +(bot?'<li><strong>บอท Confirm ให้ 21:10</strong> → ระบบตรวจสอบสินค้า</li>':'<li>R16 เป็น <strong>Ready</strong> แล้ว → กด <strong>Confirm</strong> → ระบบตรวจสอบสินค้า</li>')
+      +'<li>'+_pharmTxt('Audit (ไม่ตรง) → เภสัช Login PDA สแกนสินค้ารีเช็ค','ไม่ตรง → Stock Adj ทันที → เภสัชออกใบที่ 📦 ปรับปรุงสินค้า (สงสัยรายการไหน กด ↺ สแกนใหม่ '+(_rescanToPendingOn()?'แล้วให้ผู้ช่วยนับใหม่':'แล้วรีเช็ค')+')')+'</li>'
+    +'</ol>'
+    +'<div style="margin-top:6px;color:var(--orange);">รายการ <strong>'+_pharmTxt('Audit ที่เภสัชยังไม่ยืนยัน','รอรีเช็ค ที่เภสัชยังไม่ยืนยัน')+'</strong> ให้เภสัชสแกนรีเช็ค</div>'
+    +(keepR01?'':'<div style="margin-top:4px;color:var(--red);">⚠️ กด "เริ่มนับใหม่" จะล้าง R01 ของสาขา — ให้ Admin อัป R01 ใหม่ก่อนสแกน (พนักงานทั่วไปอัปเองไม่ได้)</div>')
+  +'</div>'
+  +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid var(--border);">'
+    +'<strong style="color:var(--accent);display:block;margin-bottom:5px;">📊 อ่านสถานะที่แผง DATA STATUS</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li>แผงนี้<strong>แสดงสถานะอย่างเดียว</strong> ไม่มีปุ่มอัปโหลด · แถว: <strong>R01.102</strong> (จำนวนสินค้า) · <strong>R16.104</strong> (สินค้าที่ขาย)</li>'
+      +'<li style="margin-top:3px;"><strong style="color:var(--green);">Ready</strong> = ข้อมูลพร้อมใช้ · "อัปโหลด" = เวลาที่บอทเขียนข้อมูลขึ้นระบบ · R16 มี "ข้อมูล" = ช่วงเวลาที่ไฟล์ครอบคลุม</li>'
+      +'<li style="margin-top:3px;"><strong style="color:var(--text3);">ยังไม่โหลด</strong> = ยังไม่มีข้อมูลของรอบนี้ — R16 เป็นแบบนี้ตลอดวันตามปกติ (บอทอัปคืนละครั้ง ล้างทุกเช้า) · R01 ยังขึ้นแบบนี้ตอนจะเริ่มสแกน → แจ้ง Admin/IT</li>'
+      +'<li style="margin-top:3px;"><strong style="color:var(--orange);">ตรวจสอบวันที่</strong> = ข้อมูล R16 อาจไม่ครอบช่วงที่สแกน → แจ้ง Admin/IT (ผล Pass / Stock Adj อาจคลาด)</li>'
+    +'</ul>'
+  +'</div>'
+  +'<div style="background:var(--surface2);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(224,140,0,0.35);">'
+    +'<strong style="color:var(--orange);display:block;margin-bottom:5px;">ℹ️ R16.104 — ใช้ชดเชยตอน Confirm</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li><strong style="color:var(--green);">บวกกลับ:</strong> ORCM/OCTM (ยอดขาย) + OTFI <strong>Col A=1</strong> (สาขา→คลัง) · <strong style="color:var(--red);">หักออก:</strong> OTFB/ORTS + OTFI <strong>Col A=0</strong> (คลัง→สาขา รับเข้า) <span style="color:var(--text3);font-size:0.92em;">— SRC: OTFB/OTFI Col A=0 ข้าม (คลังชากค้อส่ง) / Col A=1 บวกกลับ</span></li>'
+      +'<li style="margin-top:3px;color:var(--orange);">ใช้คอลัม R (BASEQUANTITY) — แปลงเป็นหน่วยเล็กสุดแล้ว</li>'
+    +'</ul>'
+  +'</div>'
+  +'<div style="background:rgba(107,63,160,0.06);padding:9px 12px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(107,63,160,0.2);">'
+    +'<strong style="color:var(--purple);display:block;margin-bottom:5px;">🔒 Admin Mode — ทางสำรองเมื่อบอทพลาด</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li>พนักงานทั่วไปอัปไฟล์เองไม่ได้ · เฉพาะ <strong>Admin Mode</strong> จะมีปุ่ม <strong>อัปโหลดด้วยมือ</strong> ในแต่ละแถวของแผง</li>'
+      +'<li style="margin-top:3px;"><strong>R01.102</strong> — รายงาน R01.102 → สร้างรายงาน → เลือกสาขา → ติ๊กสินค้าทั้งหมด → ส่งออก .CSV · <span style="color:var(--orange);">ระวังไฟล์เก่าทับของบอท</span></li>'
+      +'<li style="margin-top:3px;"><strong>R16.104</strong> — <strong>สะสมตั้งแต่วันที่อัพ R01 ถึงปัจจุบัน (ไม่ใช่แค่วันเดียว)</strong> → ส่งออก .CSV · <strong>ต้องดึงจากแอพม่วงล่าสุดเท่านั้น</strong></li>'
+      +'<li style="margin-top:3px;"><strong>R05.106</strong> — Barcode สินค้า (ใช้ร่วมทุกสาขา) · <strong>Product Master</strong> — ชื่อสินค้าของสาขานี้ (แยกไฟล์ต่อสาขา · อัปทีละสาขา) · 2 แถวนี้เห็นเฉพาะ Admin Mode</li>'
+      +'<li style="margin-top:3px;">Admin Mode หยุดซิงก์การสแกนกับระบบกลาง — ใช้อัปไฟล์เท่านั้น ไม่ใช้สแกน</li>'
+    +'</ul>'
+  +'</div>'
+  +'<div style="background:rgba(26,158,92,0.06);padding:9px 12px;border-radius:8px;border:1px solid rgba(26,158,92,0.25);">'
+    +'<strong style="color:var(--green);display:block;margin-bottom:5px;">☁️ Multi-Device</strong>'
+    +'<ul style="padding-left:16px;margin:0;">'
+      +'<li>ข้อมูลที่บอทอัป (R01/R16) ขึ้นระบบกลางแล้วทุกเครื่องในสาขาได้รับเอง — ไม่ต้องอัพซ้ำ</li>'
+      +'<li style="margin-top:3px;">ข้อมูลสแกนของเครื่องอื่นยังไม่ขึ้น → กด <strong>"☁️ ดึงข้อมูล"</strong></li>'
+    +'</ul>'
+  +'</div>';
+}
 // คู่มือการเตรียมไฟล์ branch-aware — สาขา: ยอดขาย+รับเข้า; WH: รับเข้า + ORCM ที่ต้องบวกกลับ + R16.103
 function guideHtml(isWh){
+  if(!isWh&&_dsOn())return _guideHtmlDataStatus();   // แผง DATA STATUS (สาขายา): คู่มือเวอร์ชันใหม่ · ปิดสวิตช์/WH/ยังไม่เลือกสาขา = โค้ดเดิมด้านล่างทั้งก้อน (ไม่แตะ)
   const bot=!isWh&&_confirmByBotOn();   // PHARMACY_DESKTOP_CONFIRM_BY_BOT: ปุ่ม Confirm ที่ Desktop ถูกซ่อน บอทตัดสินให้ทุกคืน 21:10 · ปิดสวิตช์/WH = ข้อความเดิมทุกตัวอักษร
   const keepR01=isWh?WH_KEEP_R01_ON_NEW_COUNT:PHARMACY_KEEP_R01_ON_NEW_COUNT;   // เริ่มนับใหม่ไม่ล้าง R01 (บอทอัปให้ทุกเช้า) · ปิดสวิตช์ = ข้อความเดิมทุกตัวอักษร
   return ''
@@ -7857,7 +7919,7 @@ function guideHtml(isWh){
     +'</ul>'
   +'</div>';
 }
-function openGuideModal(){var c=document.getElementById('guideContent');if(c)c.innerHTML=guideHtml(currentBranch==='WH');document.getElementById('guidePopover').style.display='block';}
+function openGuideModal(){var c=document.getElementById('guideContent');if(c)c.innerHTML=guideHtml(currentBranch==='WH');var t=document.getElementById('guideTitle');if(t)t.textContent=(currentBranch!=='WH'&&_dsOn())?'📌 คู่มือ DATA STATUS':'📌 คู่มือการเตรียมไฟล์';document.getElementById('guidePopover').style.display='block';}   // หัวป็อปอัพตั้งทุกครั้งที่เปิด (ไม่ใช่ครั้งเดียว) — สลับสาขายา→WH แล้วต้องกลับเป็นชื่อเดิม
 function closeGuideModal(){document.getElementById('guidePopover').style.display='none';}
 function openScanGuide(){
   const btn=document.getElementById('scanGuideBtn');

@@ -32,8 +32,10 @@ async function rowUi(page, { branch, role, bot }) {
 }
 
 // ข้อความวิธีใช้ทั้งชุดที่ applyAuditTerminology/guideHtml ผลิต (ใช้ textContent/innerHTML ของ DOM จริง)
+// DATA_STATUS_PANEL = false: เทสนี้ตรึงข้อความของ "การ์ด Upload File เดิม" (OLD/BOT ด้านล่างคือข้อความก่อนมีแผง DATA STATUS) — ข้อความของแผงใหม่ (10 พ.ย. 2026) ตรึงที่ data-status-guide.spec.js
 async function texts(page, { branch, role, bot }) {
   return page.evaluate(({ branch, role, bot }) => {
+    DATA_STATUS_PANEL = false;
     PHARMACY_DESKTOP_CONFIRM_BY_BOT = bot;
     currentBranch = branch; currentRole = role; currentUser = 'T';
     applyAuditTerminology();
