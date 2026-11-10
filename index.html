@@ -262,10 +262,10 @@
     .ds-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
     .ds-title { display:flex; align-items:center; gap:8px; min-width:0; font-size:0.7rem; font-weight:600; color:#000000; letter-spacing:0.08em; text-transform:uppercase; }
     .ds-title i { flex:none; width:3px; height:14px; background:var(--green); border-radius:2px; }
-    /* ปุ่ม Guide แบบ Soft UI (นูนนุ่ม ไฟส่องจากซ้ายบน) */
-    .ds-guide { flex:none; width:44px; height:26px; padding:0; display:flex; align-items:center; justify-content:center; border:0; border-radius:11px; background:linear-gradient(145deg,#f5f8fc,#e4eaf3); box-shadow:3px 3px 7px #cbd3e0,-3px -3px 7px #ffffff; color:#d62828; font-family:inherit; font-size:12.5px; font-weight:600; line-height:1; cursor:pointer; }
-    .ds-guide:active { box-shadow:inset 2px 2px 5px #cbd3e0,inset -2px -2px 5px #ffffff; }
-    .ds-guide:focus-visible, .ds-up:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    /* ปุ่ม Guide แบบ Soft UI (นูนนุ่ม ไฟส่องจากซ้ายบน) — ใช้ร่วมกับปุ่ม Guide ของการ์ด SCAN (.soft-guide-btn · 10 พ.ย. 2026) กฎชุดเดียว แก้ที่นี่ที่เดียว */
+    .ds-guide, .soft-guide-btn { flex:none; width:44px; height:26px; padding:0; display:flex; align-items:center; justify-content:center; border:0; border-radius:11px; background:linear-gradient(145deg,#f5f8fc,#e4eaf3); box-shadow:3px 3px 7px #cbd3e0,-3px -3px 7px #ffffff; color:#d62828; font-family:inherit; font-size:12.5px; font-weight:600; line-height:1; cursor:pointer; }
+    .ds-guide:active, .soft-guide-btn:active { box-shadow:inset 2px 2px 5px #cbd3e0,inset -2px -2px 5px #ffffff; }
+    .ds-guide:focus-visible, .ds-up:focus-visible, .soft-guide-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
     .ds-tl { list-style:none; margin:2px 0 0; padding:0; }
     .ds-it { --ds-c:#1a9e5c; --ds-cb:#e1f5ee; --ds-ci:#0f6e56; position:relative; padding:0 0 15px 31px; }
     .ds-it[data-st="warn"] { --ds-c:#e08c00; --ds-cb:#fff3cd; --ds-ci:#92400e; }
@@ -823,7 +823,7 @@
       <div class="panel-card" style="padding:0;overflow:hidden;">
         <div class="scan-header-bar" style="padding:14px 16px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
           <h3 style="margin:0;">SCAN</h3>
-          <button id="scanGuideBtn" class="upload-help-btn" onclick="openScanGuide()">Guide</button>
+          <button id="scanGuideBtn" class="soft-guide-btn" onclick="openScanGuide()">Guide</button>
         </div>
 
         <div id="pharmIdleNote" style="display:none;padding:22px 20px;text-align:center;color:var(--text2);font-size:0.9rem;line-height:1.6;">

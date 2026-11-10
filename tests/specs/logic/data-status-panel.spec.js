@@ -437,6 +437,103 @@ test.describe('แผง DATA STATUS (สาขายา)', () => {
     await closeApp(app);
   });
 
+  // 10 พ.ย. 2026 (ผู้ใช้สั่ง "แก้ปุ่ม Guide ที่ Card Scan ให้เหมือนกับที่ Card Status") — ปุ่ม #scanGuideBtn ใช้กฎ CSS ชุดเดียวกับ .ds-guide (.soft-guide-btn)
+  test('ปุ่ม Guide ของการ์ด SCAN เหมือนปุ่ม Guide ของ Card Status (Soft UI) · ปุ่มของการ์ด Upload ไม่เปลี่ยน · เงาไม่ถูกตัด · ป็อปอัพยังเกาะปุ่ม', async ({ browser }) => {
+    const app = await bootBare(browser);
+    await setBranch(app.page, 'SRC');
+    await settle(app.page);
+    const PROPS = ['backgroundImage', 'backgroundColor', 'boxShadow', 'borderTopWidth', 'borderRadius', 'color', 'width', 'height', 'fontSize', 'fontWeight', 'fontFamily', 'lineHeight', 'display', 'justifyContent', 'alignItems', 'flexShrink', 'paddingTop', 'paddingLeft', 'cursor'];
+    const read = () => app.page.evaluate((props) => {
+      const pick = (el) => { const s = getComputedStyle(el); const o = {}; for (const p of props) o[p] = s[p]; return o; };
+      const scan = document.getElementById('scanGuideBtn');
+      const ds = document.getElementById('dsGuide');
+      const bar = scan.closest('.scan-header-bar').getBoundingClientRect();
+      const r = scan.getBoundingClientRect();
+      const up = document.querySelector('#uploadPanel .upload-panel-header .upload-help-btn');   // ปุ่ม Guide ของการ์ด Upload (ซ่อนอยู่เมื่อแผง DATA STATUS เปิด)
+      const us = up ? getComputedStyle(up) : null;
+      return {
+        scan: pick(scan), ds: pick(ds), scanClass: scan.className,
+        up: up ? { cls: up.className, border: us.borderTopWidth, shadow: us.boxShadow, w: us.width, h: us.height } : null,
+        // เงานูนยื่นออกจากปุ่ม 3px offset + 7px blur = 10px ทุกด้าน — ต้องอยู่ในแถบหัวการ์ด (การ์ดมี overflow:hidden)
+        room: { top: r.top - bar.top, bottom: bar.bottom - r.bottom, left: r.left - bar.left },
+        text: scan.textContent,
+      };
+    }, PROPS);
+
+    // 1) สไตล์ที่ผู้ใช้เห็นจริง (computed) ต้องเท่ากับปุ่มของ Card Status ทุกค่า
+    const a = await read();
+    expect(a.scan, 'ปุ่ม SCAN ต้องมีสไตล์เท่าปุ่ม Guide ของ Card Status ทุกค่า').toEqual(a.ds);
+    expect(a.scan.backgroundImage).toContain('linear-gradient');
+    expect(a.scan.boxShadow).toContain('rgb(203, 211, 224)');
+    expect(a.scan.boxShadow).toMatch(/-3px -3px/);
+    expect(a.scan.borderTopWidth).toBe('0px');
+    expect(a.scan.color).toBe('rgb(214, 40, 40)');
+    expect(a.scan.width).toBe('44px');
+    expect(a.text).toBe('Guide');
+    expect(a.scanClass, 'ต้องไม่เหลือคลาสสไตล์เดิม (กฎซ้อนกัน)').not.toContain('upload-help-btn');
+
+    // 2) ปุ่ม Guide ของการ์ด Upload (เส้นทาง WH / ปิดแผง) ต้องเป็นสไตล์เดิมเป๊ะ — งานนี้ไม่แตะ
+    expect(a.up, 'ต้องมีปุ่ม Guide ของการ์ด Upload ใน DOM').not.toBeNull();
+    expect(a.up).toEqual({ cls: 'upload-help-btn', border: '1px', shadow: 'none', w: '40px', h: '25px' });
+
+    // 3) เงานูนต้องไม่ล้นแถบหัวการ์ด (ไม่งั้นถูก overflow:hidden ของการ์ดตัด)
+    expect(a.room.top, 'พื้นที่เหนือปุ่ม ≥ เงา 10px').toBeGreaterThanOrEqual(10);
+    expect(a.room.bottom, 'พื้นที่ใต้ปุ่ม ≥ เงา 10px').toBeGreaterThanOrEqual(10);
+    expect(a.room.left, 'พื้นที่ซ้ายปุ่ม ≥ เงา 10px').toBeGreaterThanOrEqual(10);
+
+    // 4) กดค้าง (:active) — เงานูนกลายเป็นเงาจม เหมือนปุ่ม Card Status
+    await clearOverlays(app.page);
+    const pressed = async (sel) => {
+      const box = await app.page.locator(sel).boundingBox();
+      await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await app.page.mouse.down();
+      const sh = await app.page.evaluate((s) => getComputedStyle(document.querySelector(s)).boxShadow, sel);
+      // ปล่อยนอกปุ่ม — กดและปล่อยบนปุ่มเดียวกันคือ "คลิก" (จะเปิดป็อปอัพคู่มือแล้วปนกับข้อ 5)
+      await app.page.mouse.move(box.x + box.width + 300, box.y + box.height + 300);
+      await app.page.mouse.up();
+      return sh;
+    };
+    const shScan = await pressed('#scanGuideBtn');
+    expect(shScan).toContain('inset');
+    expect(shScan, 'เงาตอนกดค้างเท่าปุ่ม Card Status').toBe(await pressed('#dsGuide'));
+    expect(await app.page.evaluate(() => [getComputedStyle(document.getElementById('scanGuidePopover')).display, getComputedStyle(document.getElementById('guidePopover')).display]),
+      'กดค้างแล้วปล่อยนอกปุ่มต้องไม่นับเป็นคลิก (ป็อปอัพยังปิด)').toEqual(['none', 'none']);
+
+    // 5) ฟังก์ชันเดิมยังทำงาน: คลิกแล้วป็อปอัพคู่มือ SCAN เปิดและเกาะใต้ปุ่ม (ขนาดปุ่มเปลี่ยน 25→26px ตำแหน่งต้องตามปุ่มจริง)
+    expect(await app.page.evaluate(() => getComputedStyle(document.getElementById('scanGuidePopover')).display)).toBe('none');
+    await app.page.click('#scanGuideBtn');
+    const pop = await app.page.evaluate(() => {
+      const p = document.getElementById('scanGuidePopover');
+      const r = document.getElementById('scanGuideBtn').getBoundingClientRect();
+      return { d: getComputedStyle(p).display, top: parseFloat(p.style.top), want: r.bottom + 10, len: p.textContent.length };
+    });
+    expect(pop.d).toBe('block');
+    expect(Math.abs(pop.top - pop.want), 'ป็อปอัพอยู่ใต้ปุ่ม 10px').toBeLessThan(1);
+    expect(pop.len).toBeGreaterThan(50);
+    await closeApp(app);
+  });
+
+  test('ปุ่ม Guide ของการ์ด SCAN เป็น Soft UI ทุกสาขา รวม WH (ไม่มีแผง DATA STATUS ให้เทียบ — ตรวจค่าตรง)', async ({ browser }) => {
+    const app = await bootBare(browser);
+    await setBranch(app.page, 'WH');
+    await settle(app.page);
+    const g = await app.page.evaluate(() => {
+      const s = getComputedStyle(document.getElementById('scanGuideBtn'));
+      const up = getComputedStyle(document.querySelector('#uploadPanel .upload-panel-header .upload-help-btn'));
+      return { bg: s.backgroundImage, shadow: s.boxShadow, border: s.borderTopWidth, color: s.color, w: s.width, h: s.height, dsPanel: !!document.getElementById('dsPanel'), upBorder: up.borderTopWidth, upShadow: up.boxShadow };
+    });
+    expect(g.dsPanel, 'WH ไม่ได้แผง DATA STATUS').toBe(false);
+    expect(g.bg).toContain('linear-gradient');
+    expect(g.shadow).toContain('rgb(203, 211, 224)');
+    expect(g.border).toBe('0px');
+    expect(g.color).toBe('rgb(214, 40, 40)');
+    expect(g.w).toBe('44px');
+    expect(g.h).toBe('26px');
+    expect(g.upBorder, 'ปุ่ม Guide ของการ์ด Upload ของ WH ยังเป็นแบบเดิม').toBe('1px');
+    expect(g.upShadow).toBe('none');
+    await closeApp(app);
+  });
+
   test('ไม่มีคำว่า "ล่าช้า" ในแผงทุกสถานะ · มีแค่ Ready / ยังไม่โหลด / ตรวจสอบวันที่', async ({ browser }) => {
     const app = await bootBare(browser);
     await setBranch(app.page, 'SRC');
