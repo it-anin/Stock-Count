@@ -13,6 +13,9 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
 
 ⛔ กติกาห้ามละเมิด (แก้โค้ดแล้วต้องไม่ทำให้ข้อใดหาย):
   1. หน้าเว็บส่งได้แค่ type = ORDS | IRPS — ไม่รับ path/คำสั่ง/รหัสผ่านจากเว็บ (field แปลกปลอม = 400)
+     ★ ข้อยกเว้น (รุ่น .6 · ผู้ใช้อนุมัติ 4 พ.ย. 2026): เส้นทาง "นำเข้าอัตโนมัติ" (/v1/prepare-import · /v1/run-import · /v1/cancel-import) รับเฉพาะ field
+       ที่ตรวจรูปแบบเข้ม: branch (SRC|KKL|SSS) · ticket (ที่ตัวช่วยออกให้เอง) · docNo (ต้องตรงที่อ่านจาก ProMaxx) · เนื้อไฟล์ Text (10 ช่อง ≤ 20 แถว + hash)
+       ชื่อไฟล์/พาธ/คำสั่ง "ไม่รับจากเว็บ" — ตัวช่วยตั้งชื่อและเขียนไฟล์ในโฟลเดอร์ของตัวเองเท่านั้น · เส้นทางเดิม /v1/open-import ไม่เปลี่ยน
   2. รับคำสั่งจาก Origin ที่อยู่ใน allow-list เท่านั้น + ตรวจ Host (กัน DNS rebinding) + บังคับ header X-Anin-Helper (บังคับ preflight)
   3. ขับเฉพาะหน้าต่างของ process ssmaxx.exe · foreground ต้องเป็นของ ssmaxx ก่อนพิมพ์/คลิกทุกครั้ง · พบ control ต้อง "1 รายการพอดี" ไม่เดา
   4. ล็อกอินครั้งเดียว ห้าม retry อัตโนมัติ (กันบัญชีถูกล็อก) · รหัสผ่านห้ามลง log/ผลลัพธ์/screenshot
@@ -23,6 +26,11 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
   6. LOCATORS_VERIFIED = False → ปฏิเสธคลิกจริงจากเว็บ (UNVERIFIED) · จะเป็น True ได้ต่อเมื่อตรวจกับหน้าต่าง ssmaxx.exe จริงครบแล้วเท่านั้น
      (ตั้งเป็น True แล้วตั้งแต่รุ่น 2026-11-04.4 — แก้ STEP_SPECS/ProMaxx อัปเดตหน้าตา = ตั้ง False ระหว่างตรวจใหม่)
   7. หลังคลิกปุ่ม "นำเข้าไฟล์เอกสาร" ห้ามส่ง input เพิ่ม (ขั้นถัดไปต้องขออนุมัติ)
+     ★ ข้อยกเว้นเดียว (รุ่น .6 · ผู้ใช้อนุมัติ 4 พ.ย. 2026 · เฉพาะเส้นทางนำเข้าอัตโนมัติ · สาขา SRC/KKL/SSS): ส่งได้เฉพาะ (ก) ใส่ชื่อไฟล์ลงช่อง File name ของกล่อง
+       Select File + กด Open (ผ่าน Windows message ไม่ใช้เมาส์) (ข) กด "ตกลง" (cb_ok) "ครั้งเดียว" หลังตารางรายละเอียดตรงไฟล์ทุกแถว (SKU + จำนวน + ยอดรวม)
+       และ PROMAXX_AUTO_CONFIRM เปิด (ค่าเริ่มต้นปิด) — หลังกด "ตกลง" ห้ามมี input อีก · ห้ามกดปุ่มอื่นของแถบปุ่ม (เพิ่ม/ลบ/ยกเลิก/อนุมัติ ฯลฯ)
+  7c. ก่อนกด "ตกลง": เลขที่เอกสาร/ประเภท/สาขา/คลังในฟอร์มต้องเหมือนตอนอ่านเลขที่ (จังหวะ 1) · ตารางต้องว่างก่อนนำเข้า · ตารางหลังนำเข้าต้องตรงไฟล์ทุกแถว
+      ไม่ผ่านข้อใด = หยุด ไม่กด ดึง ProMaxx ขึ้นหน้าให้พนักงานตัดสินใจเอง · ไม่ลองซ้ำ
   7b. ก่อนคลิกปุ่มนำเข้า ต้องอ่านกลับได้ครบ: ประเภทเอกสารตรงชื่อ · เลขที่เอกสารขึ้นต้นรหัสประเภท · คลัง = Front Store — ไม่ตรงข้อใด = หยุด
       ห้ามเดา/ห้ามเชื่อค่าเริ่มต้นของฟอร์ม (ProMaxx เปิดฟอร์มมาเป็นประเภท/คลังต่างกันได้) · เลือกค่าในหน้าต่างรายการต้องเจอแถว "ชื่อตรงทุกตัวอักษร 1 แถวพอดี"
       และเครื่องหมายเลือกแถวต้องย้ายมาที่แถวนั้นก่อนกด "ตกลง" · หน้าต่างรายการเป็นหน้าต่างระดับบนใหม่ทุกครั้ง (hwnd/GUID เปลี่ยน) หาจากชื่อ ไม่จำ hwnd
@@ -41,14 +49,17 @@ PromaxxHelper — ตัวช่วยบนเครื่อง ProMaxx ใ�
 exit code: 0 สำเร็จ · 1 ไม่สำเร็จ · 2 ตัวเลือกผิด/ตั้งค่าไม่ครบ · 3 ไม่ได้ทำอะไร (มีตัวช่วยอื่น/ProMaxx เปิดอยู่/พอร์ตถูกใช้)
 """
 import argparse
+import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import sys
 import threading
 import time
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ประวัติรุ่น (แก้โค้ดแล้วเปลี่ยนเลขนี้ทุกครั้ง — ใช้ตรวจด้วย --version ว่าวางไฟล์ถูกรุ่น)
@@ -69,7 +80,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #   2026-11-04.5  (ผู้ใช้สั่ง 4 พ.ย. 2026 "A/B ร่วมกัน") ส่วน A: ใช้ ProMaxx ที่เปิด/ล็อกอินค้างต่อได้เมื่อปลอดภัย (ไม่มีฟอร์ม/กล่องค้าง) มิฉะนั้น SESSION_NOT_READY
 #                 ส่วน B: ซ่อนหน้าต่างหลังล็อกอินแล้วสั่งผ่าน UIA (op act ใน promaxx_uia.py) · แสดงกลับเสมอ · --reveal-ssmaxx · ปิดได้ทาง .env
 #                 (PROMAXX_ATTACH_EXISTING / PROMAXX_HIDE_AFTER_LOGIN) · ตรวจจริงแล้วว่าซ่อนหน้าต่างแล้ว UIA ยังอ่านพิกัด/สั่งปุ่มได้
-VERSION = "2026-11-04.5"
+#   2026-11-04.6  (ผู้ใช้สั่ง 4 พ.ย. 2026) "นำเข้าอัตโนมัติ" 2 จังหวะ (เฉพาะสาขายา SRC/KKL/SSS · WH ไม่ใช้): /v1/prepare-import เปิดฟอร์ม + ตรวจสาขา/คลัง/ประเภท + อ่านเลขที่เอกสาร
+#                 → เว็บใส่เลขที่ใน popup → /v1/run-import (ตัวช่วยเขียนไฟล์เอง · ใส่ชื่อไฟล์ + Open ผ่าน Windows message · เทียบตารางกับไฟล์ · กด "ตกลง" เมื่อเปิด
+#                 PROMAXX_AUTO_CONFIRM) · /v1/cancel-import · ตั๋ว (ticket) ใช้ครั้งเดียว หมดอายุ 10 นาที · เส้นทางเดิม /v1/open-import ไม่เปลี่ยน
+#                 ⚠️ ภายในรุ่นนี้ (ยังไม่ส่งออกเครื่องอื่น — เลขรุ่นจึงไม่ขยับ) แก้เพิ่ม 2 ครั้งหลังตรวจจริง 5 พ.ย. 2026: (ก) show_window_back ใช้ SW_SHOWNA ไม่ใช่ SW_SHOWNOACTIVATE
+#                 (รีสตอร์หน้าต่างที่ขยายเต็มจอ → ปุ่มนำเข้าหลุดกรอบ) (ข) ขั้น verify-table/confirm ตรวจ "หน้าต่างอื่นของ ProMaxx ค้าง" (ป๊อปอัพเลือก Lot No.) → UNEXPECTED_DIALOG
+#                 บอกสาเหตุ แทน TABLE_MISMATCH · ก่อนส่ง exe ไปเครื่องอื่นต้อง build ใหม่จากโค้ดล่าสุด และถ้าเครื่องไหนมี exe .6 รุ่นก่อนหน้านี้อยู่ให้เลื่อนเลขรุ่น
+VERSION = "2026-11-05.1"
 PROTO = 1
 DEFAULT_PORT = 47831
 PROD_ORIGIN = "https://anin-stock-count.vercel.app"
@@ -96,7 +113,28 @@ ACT_PATTERN = {"Button": "invoke", "ListItem": "select", "TabItem": "select"}   
 # ข้อความปฏิเสธเมื่อเซสชันที่เปิดค้างไม่ปลอดภัยพอจะใช้ต่อ — ต้องสั้น: หน้าเว็บโชว์ "ไม่สำเร็จที่ขั้น … — <ข้อความ ≤45 ตัวอักษร>" (รายละเอียดอยู่ใน log)
 NOT_READY_FORM = "มีฟอร์มเอกสารค้างใน ProMaxx — ปิดก่อนแล้วกดใหม่"
 NOT_READY_WINDOW = "ProMaxx มีหน้าต่างหรือกล่องค้าง — ปิดก่อนแล้วกดใหม่"
+NOT_READY_LOGIN = "หน้า Login มีข้อความค้างอยู่ — ปิด ProMaxx แล้วกดใหม่"
 NOT_READY_WAIT = "ProMaxx ยังไม่พร้อม — รอสักครู่แล้วกดใหม่"
+# ข้อความเมื่อมีหน้าต่างอื่นของ ProMaxx ค้างระหว่างนำเข้า (ตรวจจริง 5 พ.ย. 2026: ป๊อปอัพเลือก Lot No.) — หน้าเว็บโชว์ _shortErr(ข้อความ, 70) ซึ่งนับเฉพาะตัวที่กินที่
+# (ไม่นับสระบน-ล่าง/วรรณยุกต์) ⇒ ต้องสั้นพอให้ส่วน "ต้องทำอะไร" ไม่ถูกตัด (เทสตรึงความยาว) · ชื่อหน้าต่างที่แทรกใน MSG_EXTRA_WINDOW ถูกตัดที่ EXTRA_TITLE_MAX ตัวอักษร
+MSG_LOT_POPUP = "ProMaxx ขอให้เลือก Lot No. — ยังไม่บันทึก เลือกหรือกดออกเอง แล้วลองใหม่"
+MSG_EXTRA_WINDOW = "ProMaxx มีหน้าต่างอื่นค้าง (%s) — ยังไม่บันทึก ปิดก่อนแล้วลองใหม่"
+EXTRA_TITLE_MAX = 16
+# ── ล็อกอินแบบ "ล่องหน" (รุ่น 2026-11-05.1 · PROMAXX_LOGIN_MODE=message) ──
+# ส่งชื่อผู้ใช้/รหัสผ่านเข้าช่อง Login ด้วยข้อความ Windows (WM_CHAR) ขณะหน้าต่างถูกซ่อน — ไม่ใช้เมาส์/คีย์บอร์ดจริง ไม่ต้องเห็นหน้าต่าง
+# ตรวจจริง 5 พ.ย. 2026 (BIG-IT · Build ProMaxx 10.4.28.0845.1): ProMaxx สร้างหน้าต่างหลักแล้ว "แสดงเอง" ~7.6 วินาทีหลังเปิดโปรแกรม → ซ่อนทันทีที่โผล่ (~0.3 วินาที) ·
+# ช่องชื่อผู้ใช้ยังได้โฟกัส (UIA HasKeyboardFocus) ทั้งที่ซ่อน/ไม่ใช่ foreground · WM_CHAR เข้าช่องถูกต้อง · Tab ย้ายไปช่องรหัสผ่าน ·
+# หลัง Tab ProMaxx แสดงชื่อที่พิมพ์เป็นชื่อของ cf_empid:1 (อ่านกลับตรวจได้โดยไม่ต้องอ่านค่าช่องกรอก) · ล็อกอินจริงสำเร็จ 2 ครั้ง · โฟกัสแป้นพิมพ์ยังอยู่ที่ Chrome ตลอด
+LOGIN_MODES = ("message", "input")
+MSG_CHAR_DELAY = 0.08       # วินาทีระหว่างตัวอักษรที่ส่งด้วยข้อความ (ค่าที่ตรวจจริง)
+MSG_TAB_SETTLE = 1.0        # รอหลัง Tab ให้ช่องรหัสผ่านสร้าง/รับโฟกัส (ค่าที่ตรวจจริง)
+MSG_SUBMIT_SETTLE = 0.6     # รอหลังส่งรหัสผ่านครบ ก่อนกด SIGN IN (ค่าที่ตรวจจริง)
+MSG_USER_FOCUS_WAIT = 8     # วินาที: รอให้ช่องชื่อผู้ใช้รับโฟกัสก่อนส่งข้อความ · ไม่รับ = ใช้เมาส์/คีย์จริงแทน (ยังไม่ได้ส่งอะไร)
+HIDE_POLL = 0.05            # วินาที: ความถี่ตรวจว่าหน้าต่างหลักโผล่ขึ้นมาตอนรอเปิดโปรแกรม (Win32 อย่างเดียว ไม่ผ่าน UIA ที่ช้า ~1.5 วินาทีต่อครั้ง)
+HIDE_MAX = 30               # ซ่อนซ้ำเกินกี่ครั้งถือว่าผิดปกติ (หน้าต่างโผล่ซ้ำไม่หยุด) → เลิกเฝ้า
+HIDE_FAIL_MAX = 3           # สั่งซ่อนแล้วยังมองเห็นอยู่ติดกันกี่ครั้งก่อนยอมแพ้ (ใช้วิธีเมาส์/คีย์จริงแทน)
+LOT_POPUP_MARKS = ("ui_popup_lotnoBalance", "id=dw_lotno")      # โครง UIA ของป๊อปอัพ Lot No. (คลาสของ UserObject ข้างใน · id ของ DataWindow) — ตรวจจริง 5 พ.ย. 2026
+EXTRA_PEEK_NODES = 80                                            # โหนดสูงสุดที่อ่านจากหน้าต่างที่ค้าง (คลาส ui_popup_lotnoBalance อยู่โหนดที่ ~6)
 JOB_MUTEX = "Local\\AninPromaxxHelperJob"        # กันสองโปรเซสขับ ProMaxx พร้อมกัน (เช่น --open ระหว่างที่ --serve กำลังทำงาน)
 SERVE_MUTEX = "Local\\AninPromaxxHelperServe"    # กันเปิดตัวช่วยซ้อนกัน
 DEFAULT_BLOCK_PROCS = ("seniorsoftexport.exe", "autor01export.exe")   # บอทที่ใช้เมาส์/คีย์บอร์ดจริง — ห้ามแย่งกัน
@@ -106,6 +144,22 @@ EXE_CANDIDATES = (
     r"C:\Program Files\SeniorSoft ProMaxx\ssmaxx.exe",
 )
 EXIT_OK, EXIT_FAILED, EXIT_CONFIG, EXIT_BUSY = 0, 1, 2, 3
+
+# ── นำเข้าอัตโนมัติ (รุ่น .6 · เฉพาะสาขายา — WH ไม่ใช้ปุ่มนี้ · ผู้ใช้สั่ง 4 พ.ย. 2026) ──
+# ชื่อสาขาที่ ProMaxx แสดงในหัวฟอร์ม (SYSBRANCHID:1) — SRC ตรวจจากฟอร์มจริง 4 พ.ย. 2026 · KKL/SSS ตรงกับชื่อที่บอท auto-r16 ตรวจกับ ProMaxx แล้ว
+# ⛔ ไม่ตรง = หยุดก่อนส่งเลขที่ให้เว็บ (กันนำเข้าผิดสาขา) · สาขาที่ไม่อยู่ในนี้ (เช่น WH) = BRANCH_NOT_SUPPORTED ไม่แตะ ProMaxx
+BRANCH_FORM_NAMES = {
+    "SRC": "อนิน สาขาแยกชากค้อ",
+    "KKL": "อนิน สาขาเก้ากิโล",
+    "SSS": "อนิน สาขาสวนเสือศรีราชา",
+}
+TICKET_TTL = 600               # วินาที: ตั๋วจากจังหวะ 1 ใช้ได้กี่วินาที (ใช้ครั้งเดียว)
+IMPORT_MAX_ROWS = 20           # แถวสูงสุดต่อเอกสาร = หน้าละ 20 ของใบ 📦 (ตารางใน ProMaxx มองเห็น ~24 แถว — ห้ามเกินจนกว่าจะตรวจการเลื่อนตาราง)
+MAX_IMPORT_BODY = 131072       # ไบต์: เพดานของ POST /v1/run-import (เส้นทางอื่นใช้ MAX_BODY)
+IMPORT_KEEP_DAYS = 30          # วัน: ไฟล์ใน import\ เก่ากว่านี้ถูกลบเอง (เฉพาะไฟล์ชื่อรูปแบบของเรา)
+VERIFY_MAX_NODES = 6000        # โหนดสูงสุดตอน dump ตาราง (ฟอร์มว่าง ~1,230 โหนด · 20 แถวราว 1,800)
+CONFIRM_OBSERVE_SEC = 20       # วินาที: หลังกด "ตกลง" รอสังเกตผลนานเท่านี้
+DOCNO_RE = re.compile(r"^(ORDS|IRPS)[A-Z0-9]{6,30}$")
 
 # ชนิดเอกสาร → ข้อความไทย/อักษรปุ่ม (ผู้ใช้ระบุ 3 พ.ย. 2026: IRPS = เอกสารรับ = อักษร I · ORDS = เอกสารจ่าย = อักษร O)
 #   menu_cls = คลาสของหน้าเมนูย่อยที่ปุ่ม I/O อยู่ · form_cls = คลาสของฟอร์มเอกสารที่เปิดหลังกดปุ่ม (ตรวจจริง 3 พ.ย. 2026 — UIA ClassName)
@@ -127,12 +181,18 @@ STEP_ORDER = ("launch", "login", "menu", "doc-button",
               "doc-type-open", "doc-type-pick", "doc-type-ok", "warehouse-open", "warehouse-pick", "warehouse-ok",
               "import-button")
 IMPORT_STEP = STEP_ORDER[-1]                                              # ขั้นสุดท้าย — หลังขั้นนี้ห้ามมี input เพิ่ม
+# นำเข้าอัตโนมัติ (รุ่น .6): จังหวะ 1 = เปิดฟอร์ม + ตั้งประเภท/คลัง + ตรวจสาขา + อ่านเลขที่ (ไม่กดปุ่มนำเข้า) · จังหวะ 2 = กดนำเข้า → ใส่ชื่อไฟล์ + Open → เทียบตาราง → ตกลง
+STEP_ORDER_PREPARE = STEP_ORDER[:-1] + ("form-ready",)
+STEP_ORDER_IMPORT = ("import-click", "select-file", "verify-table", "confirm")
+POST_IMPORT_INPUT_STEPS = ("select-file", "confirm")                     # ขั้นเดียวที่ส่ง input ได้หลังกดปุ่มนำเข้า (เส้นทางนำเข้าอัตโนมัติ)
 
 HTTP_STATUS = {
     "BAD_REQUEST": 400, "PROTO_MISMATCH": 400, "FORBIDDEN_HOST": 403, "FORBIDDEN_ORIGIN": 403, "FORBIDDEN_HEADER": 403,
     "NOT_FOUND": 404, "METHOD_NOT_ALLOWED": 405, "PAYLOAD_TOO_LARGE": 413, "UNSUPPORTED_MEDIA": 415,
     "BUSY": 409, "ALREADY_RUNNING": 409, "SESSION_NOT_READY": 409, "OTHER_BOT_RUNNING": 409, "NOT_RUNNING": 409,
     "NOT_CONFIGURED": 422, "UNSUPPORTED_DPI": 422, "UNVERIFIED": 422, "NO_DESKTOP": 422,
+    "TICKET_INVALID": 409, "TICKET_EXPIRED": 409, "STATE_CHANGED": 409,
+    "FILE_INVALID": 422, "BRANCH_NOT_SUPPORTED": 422, "TABLE_MISMATCH": 422,
 }   # รหัสอื่น (LAUNCH_FAILED · LOGIN_FAILED · STEP_FAILED · LOCATOR_* · …) = 500
 
 
@@ -263,6 +323,9 @@ class Settings:
     launch_direct: bool = False      # PROMAXX_LAUNCH_DIRECT=1 → เปิดไฟล์ที่ตั้งไว้ตรงๆ ไม่สลับเป็น ProMaxx.exe
     attach_existing: bool = False    # PROMAXX_ATTACH_EXISTING (ค่าเริ่มต้นของ .env = เปิด · dataclass = ปิดเพื่อให้โค้ด/เทสที่สร้าง Settings เองได้พฤติกรรมเดิม)
     hide_after_login: bool = False   # PROMAXX_HIDE_AFTER_LOGIN (เหมือนข้างบน)
+    auto_confirm: bool = False       # PROMAXX_AUTO_CONFIRM (รุ่น .6) — เปิด = กด "ตกลง" เองหลังตารางตรงไฟล์ · ค่าเริ่มต้นปิด (ตัวช่วยหยุดก่อนตกลง) จนกว่าจะทดสอบกดจริงผ่าน
+    import_dir: str = ""             # PROMAXX_IMPORT_DIR — โฟลเดอร์ที่ตัวช่วยเขียนไฟล์นำเข้า (ค่าเริ่มต้น <โฟลเดอร์ตัวช่วย>\import)
+    login_mode: str = "input"        # PROMAXX_LOGIN_MODE: message = ล็อกอินด้วยข้อความ Windows ขณะซ่อนหน้าต่าง (ไม่ใช้เมาส์/คีย์จริง) · input = เมาส์/คีย์จริง (ค่าของ dataclass = input เพื่อให้โค้ด/เทสที่สร้าง Settings เองได้พฤติกรรมเดิม · .env เริ่มต้น = message)
     proc_name: str = PROC_NAME
     port: int = DEFAULT_PORT
     allowed_origins: tuple = (PROD_ORIGIN,)
@@ -330,6 +393,15 @@ def load_settings(base_dir=None, environ=None, warn=None):
     s.launch_direct = get("PROMAXX_LAUNCH_DIRECT").lower() in ("1", "true", "yes", "on")
     s.attach_existing = _flag(get("PROMAXX_ATTACH_EXISTING"), True)
     s.hide_after_login = _flag(get("PROMAXX_HIDE_AFTER_LOGIN"), True)
+    mode = get("PROMAXX_LOGIN_MODE").strip().lower()
+    if mode in LOGIN_MODES:
+        s.login_mode = mode
+    else:
+        s.login_mode = "message"
+        if mode:
+            warn("PROMAXX_LOGIN_MODE ต้องเป็น message หรือ input — ใช้ message")
+    s.auto_confirm = _flag(get("PROMAXX_AUTO_CONFIRM"), False)
+    s.import_dir = get("PROMAXX_IMPORT_DIR") or os.path.join(base_dir, "import")
     s.proc_name = get("SSMAXX_PROC_NAME") or PROC_NAME
     port = get("HELPER_PORT")
     if port:
@@ -403,6 +475,9 @@ _LOGIN_PANEL = {"within": _MAIN, "id": "uo_login_panel", "type": "Custom"}
 _UNDER_LOGIN = {"id": "uo_login_panel"}
 _USER_CELL = {"within": _MAIN, "id": ["cf_empid", "cf_empid:1"], "ancestor": _UNDER_LOGIN}
 _USER_EDIT = {"within": _MAIN, "id": "cf_empid", "type": "Edit", "cls": "TextBox", "focused": True, "ancestor": _UNDER_LOGIN}
+# ชื่อผู้ใช้ที่ ProMaxx "แสดง" หลังโฟกัสย้ายออกจากช่อง (DWTextBlock · ชื่อ = ข้อความที่พิมพ์) — ตรวจจริง 5 พ.ย. 2026: ส่ง zzprobe + Tab แล้ว name='zzprobe'
+# ใช้ตรวจว่าชื่อผู้ใช้ที่ส่งด้วยข้อความเข้าช่องครบก่อนส่งรหัสผ่าน (ไม่ต้องอ่านค่าช่องกรอก/ValuePattern)
+_USER_SHOWN = {"within": _MAIN, "id": "cf_empid:1", "type": "Custom", "cls": "DWTextBlock", "ancestor": _UNDER_LOGIN}
 _PASS_CELL = {"within": _MAIN, "id": ["cf_pass", "cf_pass:1"], "ancestor": _UNDER_LOGIN}
 _PASS_EDIT = {"within": _MAIN, "id": "cf_pass", "type": "Edit", "cls": "PasswordBox", "focused": True, "ancestor": _UNDER_LOGIN}
 _LOGIN_BTN = {"within": _MAIN, "id": "cb_Login", "type": "Button", "ancestor": _UNDER_LOGIN}
@@ -426,6 +501,14 @@ _NUMBER_PREFIX = {"within": _MAIN, "id": "TRANNO:1", "type": "Custom", "name_re"
 _BRANCH_FIELD = {"within": _MAIN, "id": "SYSBRANCHID:1", "type": "Custom", "ancestor": _FORM}
 _WH_FIELD = {"within": _MAIN, "id": "SYSWAREHOUSEID:1", "type": "Custom", "ancestor": _FORM}
 _WH_IS_TARGET = dict(_WH_FIELD, name=WAREHOUSE_NAME)
+# ── นำเข้าอัตโนมัติ (รุ่น .6) ── ชื่อ/เลขที่ใช้โทเคนดิบ {=...} (เทียบตรงตัว · ชื่อสาขามีช่องว่าง)
+_BRANCH_IS_TARGET = dict(_BRANCH_FIELD, name="{=branch_name}")
+_DOCNO_IS_TARGET = {"within": _MAIN, "id": "TRANNO:1", "type": "Custom", "name": "{=doc_no}", "ancestor": _FORM}
+# ตารางรายละเอียดต้องว่างก่อนนำเข้า: ไม่มีเซลล์ CF_ITEMID:1 ที่ชื่อไม่ว่าง (ตรวจจริง 4 พ.ย. 2026: ฟอร์มใหม่แถว 1 ว่าง · หลังนำเข้า CF_ITEMID:1 = รหัสสินค้า)
+_TABLE_EMPTY = {"uia_gone": {"within": _MAIN, "id": "CF_ITEMID:1", "type": "Custom", "name_re": r"\S", "ancestor": _FORM}}
+# ปุ่ม "ตกลง" ของฟอร์ม = Button cb_ok (ชื่อ/HelpText ว่าง) ใต้ sfw_buttonbar_ui → uo_tran_uo_1 → uo_tran → ฟอร์ม · พบตัวเดียว (ตรวจจริง 4 พ.ย. 2026)
+# ⚠️ อยู่ติดกับ ลบ(cb_delete)/ยกเลิก(cb_cancel) ห่าง 1px — ระบุด้วย AutomationId + reverify เท่านั้น ห้ามคลิกตามตำแหน่ง/ข้อความ
+_CONFIRM_BTN = {"within": _MAIN, "id": "cb_ok", "type": "Button", "ancestor": {"cls": "{form_cls}"}}
 # หน้าต่างรายการเป็นหน้าต่างระดับบนใบใหม่ทุกครั้ง (hwnd และ GUID ในชื่อคลาสเปลี่ยน) → หาจาก "ชื่อ" เท่านั้น
 _PICKER = {"cls_re": r"^HwndWrapper\[ssmaxx\.exe;;", "title": r"^sfw_winrespond$"}
 _PICKER_LIST = "uo_popupdw_dw_datatmp"
@@ -513,7 +596,49 @@ STEP_SPECS = {
         "post": {"win": _FILE_DIALOG},
         "post_timeout": 20,
     },
+    # ── นำเข้าอัตโนมัติ (รุ่น .6) ──
+    # จังหวะ 1: ตรวจว่าฟอร์มถูกต้องครบ (ประเภท · เลขที่ขึ้นต้นรหัสประเภท · คลัง Front Store · สาขา) แล้ว "อ่านเลขที่" — ไม่กดอะไร
+    "form-ready": {
+        "pre": {"all": [{"uia": _IMPORT_BTN}, {"uia": _TYPE_IS_TARGET}, {"uia": _NUMBER_PREFIX}, {"uia": _WH_IS_TARGET}, {"uia": _BRANCH_IS_TARGET}]},
+        "pre_timeout": 8,
+        "pre_what": "ฟอร์มยังไม่ใช่ประเภทเอกสาร/เลขที่/คลัง Front Store/สาขาที่ต้องการ — ไม่ส่งเลขที่ให้เว็บ",
+        "actions": [{"do": "read", "sel": _NUMBER_PREFIX, "store": "doc_no", "label": "เลขที่เอกสาร"}],
+        "post": {"uia": _NUMBER_PREFIX},
+        "post_timeout": 8,
+    },
+    # จังหวะ 2 ขั้นแรก: ด่านเดียวกับ import-button + "เลขที่ต้องเหมือนตอนอ่าน" + "ตารางต้องว่าง" แล้วกดปุ่มนำเข้า
+    "import-click": {
+        "pre": {"all": [{"uia": _IMPORT_BTN}, {"uia": _TYPE_IS_TARGET}, {"uia": _DOCNO_IS_TARGET}, {"uia": _WH_IS_TARGET}, {"uia": _BRANCH_IS_TARGET}, _TABLE_EMPTY]},
+        "pre_timeout": 8,
+        "pre_what": "ฟอร์มเปลี่ยนไปจากตอนอ่านเลขที่ (ประเภท/เลขที่/คลัง/สาขา) หรือตารางมีรายการอยู่แล้ว — ไม่กดนำเข้า",
+        "actions": [{"do": "click", "target": _uia(_IMPORT_BTN, reverify=True)}],
+        "allow_dialogs": [r"^Select File\b"],
+        "post": {"win": _FILE_DIALOG},
+        "post_timeout": 20,
+    },
+    # กล่อง Select File: ใส่ชื่อไฟล์ (WM_SETTEXT) + Open (BM_CLICK) — ขั้นนี้ทำใน Runner._step_select_file (ตรวจ control id 1148/1/1136 ตามที่ตรวจจริง)
+    "select-file": {
+        "pre": {"win": _FILE_DIALOG},
+        "post": {"gone": _FILE_DIALOG},
+        "post_timeout": 15,
+        "allow_dialogs": [r"^Select File\b"],
+    },
+    # เทียบตารางกับไฟล์ — ทำใน Runner._step_verify_table (อ่านผ่าน UIA dump · ไม่กดอะไร)
+    "verify-table": {"custom": True},
+    # กด "ตกลง": ด่านก่อนกดเหมือน import-click (ยกเว้นตารางต้อง "ไม่ว่าง" แล้ว ซึ่ง verify-table ตรวจละเอียดไปก่อนหน้า)
+    "confirm": {
+        "pre": {"all": [{"uia": _CONFIRM_BTN}, {"uia": _TYPE_IS_TARGET}, {"uia": _DOCNO_IS_TARGET}, {"uia": _WH_IS_TARGET}, {"uia": _BRANCH_IS_TARGET}]},
+        "pre_timeout": 8,
+        "pre_what": "ฟอร์มเปลี่ยนไปจากตอนอ่านเลขที่ หรือไม่เห็นปุ่ม ตกลง — ไม่กด",
+        "actions": [{"do": "click", "target": _uia(_CONFIRM_BTN, reverify=True)}],
+    },
 }
+
+
+def _utf16_units(text):
+    """ข้อความ → รายการหน่วย UTF-16 (ตัวอักษรนอก BMP เช่นอีโมจิเป็น 2 หน่วย) — WM_CHAR รับทีละหน่วย"""
+    b = str(text).encode("utf-16-le", "surrogatepass")
+    return [b[i] | (b[i + 1] << 8) for i in range(0, len(b), 2)]
 
 
 def _fmt(obj, tokens):
@@ -592,6 +717,196 @@ def _center(rect):
     return ((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2)
 
 
+# ─────────────────────────────────────────────────────────────
+# นำเข้าอัตโนมัติ (รุ่น .6): ตรวจเนื้อไฟล์ · เขียนไฟล์ · อ่านตารางจาก UIA · เทียบตาราง — ฟังก์ชันบริสุทธิ์ (เทสบน Linux ได้ · ไม่แตะ ProMaxx)
+# ─────────────────────────────────────────────────────────────
+
+_SKU_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-]{0,29}$")
+# re.ASCII: \d รับเฉพาะ 0-9 (ค่าเริ่มต้นของ Python รับเลขยูนิโค้ดเช่น ๑๒/١٢ ด้วย) — ต้องตรงกับตัวตรวจฝั่งหน้าเว็บ (_adjPromaxxCheckText ใน index.html · เทส parity เทียบทั้งสองฝั่ง)
+_NUM_RE = re.compile(r"^\d{1,9}(\.\d{1,4})?$", re.ASCII)
+_LOT_RE = re.compile(r"^[^\x00-\x1f\x7f]{0,40}$")
+_EXP_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$", re.ASCII)
+_IMPORT_NAME_RE = re.compile(r"^stockadj_(ords|irps)_[A-Z0-9]{6,30}_\d{2}-\d{2}-\d{4}_\d{6}(_\d{1,2})?\.txt$")
+
+
+def _dec(text):
+    try:
+        return Decimal(str(text).replace(",", "").strip())
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def parse_import_text(text):
+    """ตรวจเนื้อไฟล์ Text ที่เว็บสร้าง (รูปแบบเดียวกับ Export Text: SKU⇥จำนวน⇥ราคา⇥ช่องว่าง×5⇥LOT⇥EXP · CRLF · 10 ช่อง · ≤ IMPORT_MAX_ROWS แถว)
+    → [{"sku","qty"(Decimal),"price"(Decimal|None),"lot","exp"}] · ผิดรูปแบบข้อใดข้อหนึ่ง = FILE_INVALID ทั้งไฟล์ (ไม่เดา · ไม่ตัดแถวทิ้งให้)"""
+    if not isinstance(text, str) or not text:
+        raise HelperError("FILE_INVALID", "ไฟล์ว่าง")
+    if len(text.encode("utf-8")) > MAX_IMPORT_BODY:
+        raise HelperError("FILE_INVALID", "ไฟล์ใหญ่เกินกำหนด")
+    if "\x00" in text:
+        raise HelperError("FILE_INVALID", "ไฟล์มีอักขระต้องห้าม")
+    lines = text.replace("\r\n", "\n").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()                                  # Export ปิดท้ายด้วย newline
+    if not lines or len(lines) > IMPORT_MAX_ROWS:
+        raise HelperError("FILE_INVALID", "จำนวนรายการต้องอยู่ระหว่าง 1–%d (ได้ %d)" % (IMPORT_MAX_ROWS, len(lines)))
+    rows, seen = [], set()
+    for i, ln in enumerate(lines, 1):
+        f = ln.split("\t")
+        if len(f) != 10 or any(f[k] != "" for k in (3, 4, 5, 6, 7)):
+            raise HelperError("FILE_INVALID", "แถว %d: รูปแบบคอลัมน์ไม่ตรง" % i)
+        sku, qty, price, lot, exp = f[0], f[1], f[2], f[8], f[9]
+        if not _SKU_RE.match(sku):
+            raise HelperError("FILE_INVALID", "แถว %d: รหัสสินค้าไม่ถูกต้อง" % i)
+        if not _NUM_RE.match(qty) or _dec(qty) <= 0:
+            raise HelperError("FILE_INVALID", "แถว %d: จำนวนไม่ถูกต้อง" % i)
+        if price != "" and not _NUM_RE.match(price):
+            raise HelperError("FILE_INVALID", "แถว %d: ราคาไม่ถูกต้อง" % i)
+        if not _LOT_RE.match(lot) or (exp != "" and not _EXP_RE.match(exp)):
+            raise HelperError("FILE_INVALID", "แถว %d: LOT/EXP ไม่ถูกต้อง" % i)
+        if sku in seen:
+            raise HelperError("FILE_INVALID", "แถว %d: รหัสสินค้าซ้ำ (%s)" % (i, sku))
+        seen.add(sku)
+        rows.append({"sku": sku, "qty": _dec(qty), "price": _dec(price) if price != "" else None, "lot": lot, "exp": exp})
+    return rows
+
+
+def import_file_sha256(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def safe_doc_no(doc_no):
+    s = str(doc_no or "").strip().upper()
+    if not DOCNO_RE.match(s):
+        raise HelperError("BAD_REQUEST", "เลขที่เอกสารไม่ถูกต้อง")
+    return s
+
+
+def import_file_name(doc_type, doc_no, now=None):
+    """ชื่อไฟล์ที่ตัวช่วยเขียน — มาจากค่าที่ตัวช่วยตรวจเองเท่านั้น (ไม่รับชื่อ/พาธจากเว็บ) · stockadj_<ords|irps>_<เลขที่>_<วว-ดด-ปปปป>_<ชชนนวว>.txt"""
+    t = time.localtime(now if now is not None else time.time())
+    return "stockadj_%s_%s_%s_%s.txt" % (str(doc_type).lower(), safe_doc_no(doc_no), time.strftime("%d-%m-%Y", t), time.strftime("%H%M%S", t))
+
+
+def write_import_file(directory, doc_type, doc_no, text, now=None):
+    """เขียนไฟล์ UTF-8 (ไม่มี BOM · เนื้อตามที่เว็บส่งทุกไบต์ รวม CRLF) ลงโฟลเดอร์ของตัวช่วยเอง · สร้างใหม่เท่านั้น ไม่ทับไฟล์เดิม → พาธเต็ม"""
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError as e:
+        raise HelperError("STEP_FAILED", "สร้างโฟลเดอร์ไฟล์นำเข้าไม่ได้ (%s)" % type(e).__name__)
+    base = os.path.join(os.path.abspath(directory), import_file_name(doc_type, doc_no, now))
+    data = text.encode("utf-8")
+    for n in range(0, 21):
+        path = base if n == 0 else base[:-4] + "_%d.txt" % n
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+        except FileExistsError:
+            continue
+        except OSError as e:
+            raise HelperError("STEP_FAILED", "เขียนไฟล์นำเข้าไม่ได้ (%s)" % type(e).__name__)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        return path
+    raise HelperError("STEP_FAILED", "เขียนไฟล์นำเข้าไม่ได้ (ชื่อซ้ำ)")
+
+
+def prune_import_dir(directory, days=IMPORT_KEEP_DAYS, now=None):
+    """ลบไฟล์นำเข้าเก่ากว่า days วัน — เฉพาะชื่อรูปแบบของเรา (ไฟล์อื่นในโฟลเดอร์ไม่แตะ) · ไม่โยนข้อผิดพลาด"""
+    try:
+        cutoff = (now if now is not None else time.time()) - days * 86400
+        for fn in os.listdir(directory):
+            p = os.path.join(directory, fn)
+            if _IMPORT_NAME_RE.match(fn) and os.path.isfile(p) and os.path.getmtime(p) < cutoff:
+                os.remove(p)
+    except OSError:
+        pass
+
+
+_DUMP_RE = re.compile(r'^\s*(\w+) id=(\S*) name="(.*?)" cls=(\S+) rect=')
+_CELL_RE = re.compile(r"^(CF_ITEMID|QUANTITY|PRICE|AMOUNT|ITEMNAME|SYSUNITID):(\d+)$")
+
+
+def parse_detail_dump(lines):
+    """อ่านตารางรายละเอียดสินค้า + ยอดรวมจากข้อความ dump ของ UIA (รูปแบบจริง: 'Custom id=CF_ITEMID:1 name="100593" cls=DWTextBlock rect=(…) …')
+    คืน {"rows": {n: {"sku","qty","price","amount","name","unit"}}, "total_qty": Decimal|None, "ambiguous": [..], "orphans": [..]}
+    · แถว = เลขท้าย :N ของ CF_ITEMID ที่ชื่อไม่ว่าง · เซลล์ id ซ้ำ (มีชุดซ่อนอยู่ ค่าว่าง) → ใช้ค่าไม่ว่าง · ค่าไม่ว่างต่างกัน = ambiguous (ผู้เรียกต้องหยุด)
+    · orphans = แถวที่ไม่มี CF_ITEMID แต่มีจำนวน/ยอดไม่ใช่ศูนย์ (แถวว่างท้ายตารางมีจำนวน ".00" ตามปกติ — ไม่นับ)"""
+    cells, totals = {}, set()
+    for ln in lines:
+        m = _DUMP_RE.match(ln)
+        if not m:
+            continue
+        id_, name = m.group(2), m.group(3).strip()
+        if id_ == "CF_TOTALQUANTITY:1":
+            if name:
+                totals.add(name)
+            continue
+        mm = _CELL_RE.match(id_)
+        if mm and name:
+            cells.setdefault((int(mm.group(2)), mm.group(1)), set()).add(name)
+    ambiguous, per_row = [], {}
+    for (n, f), vals in cells.items():
+        if len(vals) > 1:
+            ambiguous.append("%s:%d" % (f, n))
+        per_row.setdefault(n, {})[f] = sorted(vals)[0]
+    rows, orphans = {}, []
+    for n, c in sorted(per_row.items()):
+        if c.get("CF_ITEMID"):
+            rows[n] = {"sku": c["CF_ITEMID"], "qty": _dec(c.get("QUANTITY", "")), "price": _dec(c.get("PRICE", "")),
+                       "amount": _dec(c.get("AMOUNT", "")), "name": c.get("ITEMNAME", ""), "unit": c.get("SYSUNITID", "")}
+        else:
+            for f in ("QUANTITY", "AMOUNT"):
+                d = _dec(c.get(f, ""))
+                if d is not None and d != 0:
+                    orphans.append("แถว %d: มี%s แต่ไม่มีรหัสสินค้า" % (n, "จำนวน" if f == "QUANTITY" else "ยอด"))
+                    break
+    if len(totals) == 1:
+        total = _dec(next(iter(totals)))
+    else:
+        total = None
+        if len(totals) > 1:
+            ambiguous.append("CF_TOTALQUANTITY:1")
+    return {"rows": rows, "total_qty": total, "ambiguous": ambiguous, "orphans": orphans}
+
+
+def compare_table(expected, table):
+    """เทียบแถวจากไฟล์ (parse_import_text) กับตารางใน ProMaxx (parse_detail_dump) → รายการปัญหา (ว่าง = ตรงทุกแถว)
+    ตรวจ: อ่านได้ไม่กำกวม · จำนวนแถวเท่ากัน · เลขแถว 1..N ต่อเนื่อง · SKU ตรงและไม่ซ้ำ · จำนวนตรงทุกแถว · ยอดรวมจำนวนตรง
+    ราคา/LOT/EXP "ไม่ใช่เงื่อนไขหยุด" (ProMaxx อาจใช้ราคาของตัวเอง — จำนวนต่างหากที่กระทบสต็อก)"""
+    problems = []
+    if table["ambiguous"]:
+        problems.append("อ่านตารางไม่ชัดเจน (%s)" % ", ".join(table["ambiguous"][:3]))
+    problems += table["orphans"][:3]
+    rows = table["rows"]
+    if len(rows) != len(expected):
+        problems.append("จำนวนแถวในตาราง %d ≠ ไฟล์ %d" % (len(rows), len(expected)))
+    if sorted(rows) != list(range(1, len(rows) + 1)):
+        problems.append("เลขแถวในตารางไม่ต่อเนื่อง")
+    by_sku = {}
+    for n, r in rows.items():
+        by_sku.setdefault(r["sku"], []).append(n)
+    for sku, ns in by_sku.items():
+        if len(ns) > 1:
+            problems.append("SKU %s ซ้ำในตาราง (แถว %s)" % (sku, ",".join(str(x) for x in ns)))
+    for e in expected:
+        ns = by_sku.get(e["sku"])
+        if not ns:
+            problems.append("SKU %s ไม่อยู่ในตาราง" % e["sku"])
+            continue
+        q = rows[ns[0]]["qty"]
+        if q is None or q != e["qty"]:
+            problems.append("SKU %s จำนวนในตาราง %s ≠ ไฟล์ %s" % (e["sku"], q if q is not None else "?", e["qty"]))
+    want_total = sum((e["qty"] for e in expected), Decimal(0))
+    if table["total_qty"] is None:
+        problems.append("อ่านยอดรวมจำนวนในตารางไม่ได้")
+    elif table["total_qty"] != want_total:
+        problems.append("ยอดรวมจำนวน %s ≠ ไฟล์ %s" % (table["total_qty"], want_total))
+    extra = [s for s in by_sku if s not in {e["sku"] for e in expected}]
+    if extra:
+        problems.append("มี SKU เกินในตาราง: %s" % ", ".join(extra[:3]))
+    return problems
+
+
 @dataclass
 class JobOpts:
     dry_run: bool = False
@@ -646,6 +961,17 @@ class Runner:
         self._hidden = set()             # hwnd หน้าต่างที่ตัวช่วยซ่อนไว้ (ต้องแสดงกลับเสมอ)
         self._hide_tried = False
         self._was_hidden = False
+        self.captured = {}               # ค่าที่ action read อ่านไว้ (เช่น doc_no = เลขที่เอกสารที่ ProMaxx แสดง)
+        self._input_steps_after_import = ()      # ขั้นที่ส่ง input ได้หลังกดปุ่มนำเข้า (เส้นทางนำเข้าอัตโนมัติเท่านั้น — ดู POST_IMPORT_INPUT_STEPS)
+        self._locked = False             # True หลังกด "ตกลง" — ห้ามมี input อีกเลย
+        self._import_path = ""
+        self._import_rows = []
+        self._msg_login = False          # True = ล็อกอินด้วยข้อความ Windows ขณะซ่อนหน้าต่าง (ตัดสินหลัง preflight · ดู _decide_login_mode) · เปิดอยู่ = _hide_watch ซ่อนหน้าต่างหลักที่โผล่ขึ้นมาเอง
+        self._prev_fg = 0                # หน้าต่างที่อยู่ด้านหน้าตอนเริ่มงาน (เบราว์เซอร์ของพนักงาน) — คืนโฟกัสให้ถ้า ProMaxx ไปแย่ง
+        self._t_start = 0.0
+        self._hide_fail = 0
+        self.hide_events = []            # [(วินาทีนับจากเริ่มงาน, hwnd)] ทุกครั้งที่ _hide_watch ซ่อนหน้าต่าง (ไว้วัด/เทส)
+        self.confirm_after = None        # สิ่งที่เห็นหลังกด ตกลง (ไว้บอกผล/วินิจฉัย)
 
     # ── ตัวช่วย: หน้าต่างของ ssmaxx ──────────────────────────────
     def _pids(self):
@@ -757,6 +1083,8 @@ class Runner:
             if self._cond(cond, step):
                 return
             self._guard_dialogs(step, allow)
+            if self._hidden:
+                self._restore_foreground("ระหว่างรอ")        # ProMaxx ที่ซ่อนอยู่ยังดึง foreground ได้ (เจอจริงหลังกด SIGN IN) — คืนให้เบราว์เซอร์ของพนักงาน
             if each:
                 each()
             if self.clock() >= deadline:
@@ -781,6 +1109,37 @@ class Runner:
         low = blob.lower()
         hint = " — ProMaxx ต่อฐานข้อมูลไม่ได้ ตรวจว่าเครื่อง SQL Server (BIGYAMAINPC) เปิดอยู่" if ("sql server" in low or "connect" in low or "database" in low) else ""
         return blob[:160] + hint
+
+    # ── หน้าต่างระดับบนอื่นของ ProMaxx ที่ค้างอยู่ (ไม่ใช่กล่องข้อความมาตรฐาน) ─────────────
+    def _extra_windows(self):
+        """หน้าต่างระดับบนของ ProMaxx ที่มองเห็นอยู่ แต่ไม่ใช่หน้าต่างหลัก · เกณฑ์เดียวกับด่านก่อนนำเข้า (_preflight_import)
+        ตรวจจริง 5 พ.ย. 2026: Lot ในไฟล์ไม่มียอดคงเหลือ → ProMaxx เปิดป๊อปอัพ 'Lot No.' เป็นหน้าต่างระดับบนใหม่ของ ssmaxx.exe (ชื่อ sfw_winrespond เต็มจอ
+        · ไม่ใช่ #32770 จึง adapter.dialogs() มองไม่เห็น) ขณะที่หน้าต่างหลักยังเป็น enabled และแถวยังไม่ถูกเพิ่มลงตาราง — เดิมตัวช่วยอ่านตารางไม่เจอแถวแล้ว
+        รายงาน TABLE_MISMATCH (ทำให้เข้าใจผิดว่าไฟล์/ตารางพัง) ทั้งที่สาเหตุคือ ProMaxx รอให้คนเลือก"""
+        return [w for w in self._tops() if not _match_win(w, _MAIN)]
+
+    def _guard_extra_windows(self, step):
+        """มีหน้าต่างอื่นของ ProMaxx ค้าง = หยุดทันที (UNEXPECTED_DIALOG · ยังไม่กด ตกลง · ปล่อยหน้าต่างนั้นไว้ให้พนักงานจัดการ) · อ่านอย่างเดียว ไม่ส่ง input
+        รู้จักป๊อปอัพเลือก Lot No. (อ่านโครง UIA ของหน้าต่างนั้น — เฉพาะตอนล้ม) · อ่านไม่ได้/ไม่ใช่ = ข้อความทั่วไปพร้อมชื่อหน้าต่าง"""
+        extras = self._extra_windows()
+        if not extras:
+            return
+        lot = False
+        for w in extras[:2]:
+            try:
+                lines = self.adapter.uia_dump(w.hwnd, max_nodes=EXTRA_PEEK_NODES)
+            except Exception as e:      # noqa: BLE001 — อ่านโครงไม่ได้ก็รายงานแบบทั่วไป (ห้ามบังสาเหตุจริง)
+                self.log("[%s] อ่านโครงหน้าต่างที่ค้างไม่ได้ (%s) — รายงานแบบทั่วไป" % (step, type(e).__name__))
+                continue
+            if any(mark in ln for ln in lines for mark in LOT_POPUP_MARKS):
+                lot = True
+                break
+        desc = [[(w.cls or "")[:60], (w.text or "")[:60]] for w in extras[:4]]
+        self.log("[%s] มีหน้าต่างอื่นของ ProMaxx ค้าง: %s%s" % (
+            step, "; ".join("%s %r" % (c[:30], t) for c, t in desc), " — เป็นป๊อปอัพเลือก Lot No." if lot else ""))
+        title = (extras[0].text or "").strip()[:EXTRA_TITLE_MAX] or "ไม่มีชื่อ"
+        raise HelperError("UNEXPECTED_DIALOG", MSG_LOT_POPUP if lot else MSG_EXTRA_WINDOW % title, step,
+                          detail={"windows": desc, "lotPopup": lot})
 
     # ── โฟกัส/คลิก/พิมพ์ ────────────────────────────────────────
     def _restore_minimized(self, step):
@@ -808,7 +1167,10 @@ class Runner:
             raise HelperError("FOCUS_LOST", "หน้าต่าง ProMaxx ไม่ได้อยู่ด้านหน้า — ไม่พิมพ์/คลิก", step)
 
     def _guard_no_input(self, step):
-        if self._after_import:
+        if self._locked:
+            self.actions_after_import += 1
+            raise HelperError("STEP_FAILED", "หลังกด ตกลง ห้ามส่ง input เพิ่ม", step)
+        if self._after_import and step not in self._input_steps_after_import:
             self.actions_after_import += 1
             raise HelperError("STEP_FAILED", "หลังปุ่มนำเข้าไฟล์เอกสารห้ามส่ง input เพิ่ม", step)
 
@@ -926,6 +1288,20 @@ class Runner:
         shown = vis[0].name if len(vis) == 1 else ("(อ่านไม่ได้)" if not vis else "(พบ %d ตัว)" % len(vis))
         self.log("[%s] %s: %s" % (step, a.get("label") or _sel_label(sel), shown))
 
+    def _read(self, a, step):
+        """อ่านชื่อขององค์ประกอบ "ตัวเดียวที่มองเห็นอยู่" เก็บลง self.captured[store] — อ่านอย่างเดียว ไม่คลิก (ใช้กับ dry-run ได้)"""
+        sel = a.get("sel") or {}
+        key = a.get("store") or ""
+        if not key:
+            raise HelperError("LOCATOR_MISSING", "action read ต้องระบุ store", step)
+        top = self._one_top(sel.get("within"), "(อ่านค่า)", step)
+        _, vis, _ = self._uia_matches(top, sel, step)
+        if len(vis) != 1:
+            raise HelperError("LOCATOR_NOT_FOUND" if not vis else "LOCATOR_NOT_UNIQUE",
+                              "อ่าน %s ไม่ได้ (พบ %d รายการที่มองเห็น)" % (a.get("label") or key, len(vis)), step)
+        self.captured[key] = vis[0].name
+        self.log("[%s] %s: %s" % (step, a.get("label") or key, vis[0].name))
+
     def _pick_row(self, a, step, allow):
         """คลิกแถวในหน้าต่างรายการ แล้วต้องเห็นเครื่องหมายเลือกแถว (Image p_1:N) ของแถวนั้น — ยังไม่กด "ตกลง" (เป็นขั้นต่อไป)
         ด่าน: แถวชื่อตรงทุกตัวอักษร 1 แถวพอดี (_resolve) · อยู่ในกรอบรายการจริง (แถวที่ถูกเลื่อนออกนอกกรอบไม่ถูกคลิก) · อ่านเป้าซ้ำก่อนกด (reverify)"""
@@ -973,6 +1349,8 @@ class Runner:
             return self._click(a.get("target") or {}, step, allow)
         if do == "note":
             return self._note(a, step)
+        if do == "read":
+            return self._read(a, step)
         if do == "pick_row":
             return self._pick_row(a, step, allow)
         if do in ("type", "key"):
@@ -1007,7 +1385,7 @@ class Runner:
         (พิมพ์ · กดคีย์ · คลิกพิกัด · คลิกช่องข้อความ/แถวในหน้าต่างรายการ ต้องใช้เมาส์/คีย์จริง → ไม่ผ่าน)"""
         for a in spec.get("actions") or []:
             do = a.get("do")
-            if do in ("wait", "await", "note"):
+            if do in ("wait", "await", "note", "read"):
                 continue
             if do == "click":
                 t = a.get("target") or {}
@@ -1032,10 +1410,15 @@ class Runner:
             raise HelperError("STEP_FAILED", "สั่ง %s ไม่สำเร็จ: %s" % (res.label, self._scrub(str(why))[:140]), step)
         self.log("[%s] %s %s (เบื้องหลัง — ไม่ใช้เมาส์)" % (step, "กด" if pattern == "invoke" else "เลือก", res.label))
         self.sleep(self.SETTLE)
+        self._restore_foreground("หลังสั่งเบื้องหลัง")
 
     def _hide_main(self, step):
         """ซ่อนหน้าต่างหลักครั้งเดียวหลังล็อกอิน (หรือก่อนขั้นแรกเมื่อใช้เซสชันที่ล็อกอินค้างอยู่) · ซ่อนไม่สำเร็จ = ทำต่อแบบเห็นหน้าต่าง ไม่ล้ม"""
         if self._hide_tried or self.opts.dry_run or not self.settings.hide_after_login:
+            return
+        if self._hidden:                 # ล็อกอินแบบข้อความซ่อนไว้แล้ว — ตรวจว่ายังซ่อนอยู่ (ProMaxx อาจแสดงหน้าต่างเองอีกหลังล็อกอิน) ไม่ซ่อน/ไม่ log ซ้ำ
+            self._hide_tried = True
+            self._hide_watch(force=True)
             return
         self._hide_tried = True
         if not (hasattr(self.adapter, "hide_window") and hasattr(self.adapter, "uia_act")):
@@ -1060,6 +1443,7 @@ class Runner:
 
     def _reveal(self, why, focus_dialog=False):
         """แสดงหน้าต่างที่ซ่อนไว้กลับมา (ไม่ส่งคีย์/คลิก) · ไม่โยนข้อผิดพลาด · focus_dialog = ดึงกล่อง Select File ขึ้นหน้าสุดต่อ"""
+        self._msg_login = False          # แสดงกลับแล้ว = เลิกเฝ้าซ่อน (ไม่งั้น _hide_watch จะซ่อนหน้าต่างที่ตั้งใจแสดง)
         if not self._hidden:
             return
         hs, self._hidden = list(self._hidden), set()
@@ -1083,6 +1467,262 @@ class Runner:
             self._reveal("สิ้นสุดงาน")
         except Exception:      # noqa: BLE001
             pass
+
+    def _reveal_back(self, why):
+        """แสดงหน้าต่างที่ซ่อนไว้กลับมา "โดยไม่ดึงขึ้นหน้า" (ไม่แย่งโฟกัสจากเบราว์เซอร์ของพนักงาน — อยู่หลังหน้าต่างอื่น เห็นบน taskbar) · ไม่โยนข้อผิดพลาด"""
+        self._msg_login = False
+        if not self._hidden:
+            return
+        hs, self._hidden = list(self._hidden), set()
+        show = getattr(self.adapter, "show_window_back", None) or self.adapter.show_window
+        for h in hs:
+            try:
+                show(h)
+            except Exception as e:      # noqa: BLE001
+                self.log("แสดงหน้าต่าง ProMaxx กลับไม่สำเร็จ (%s) — ใช้ --reveal-ssmaxx" % type(e).__name__)
+        self.log("แสดงหน้าต่าง ProMaxx กลับมาแล้ว โดยไม่ดึงขึ้นหน้า (%s)" % why)
+
+    def _send_main_back(self, why):
+        """หน้าต่างหลักอยู่ด้านหน้า (เช่นขั้นเลือกประเภท/คลังต้องใช้เมาส์จริง) → ส่งไปอยู่หลังสุดโดยไม่ย่อ/ไม่ปิด เพื่อให้เบราว์เซอร์ของพนักงานกลับมาอยู่หน้า (ไม่ส่งคีย์/คลิก)"""
+        fn = getattr(self.adapter, "show_window_back", None)
+        if not fn:
+            return
+        try:
+            mains = self._find_tops(_MAIN)
+            if len(mains) == 1:
+                fn(mains[0].hwnd)
+                self.log("ส่งหน้าต่าง ProMaxx ไปอยู่หลังสุด (%s)" % why)
+        except Exception as e:      # noqa: BLE001
+            self.log("ส่งหน้าต่าง ProMaxx ไปหลังสุดไม่สำเร็จ (%s)" % type(e).__name__)
+
+    def _bring_main_front(self, why):
+        """แสดง + ดึงหน้าต่างหลักขึ้นหน้าสุด (ใช้เมื่อพนักงานต้องลงมือต่อเอง เช่น ตัวช่วยหยุดก่อน ตกลง)"""
+        self._reveal(why)
+        try:
+            mains = self._find_tops(_MAIN)
+            if len(mains) == 1:
+                self.adapter.focus(mains[0].hwnd)
+        except Exception as e:      # noqa: BLE001
+            self.log("ดึงหน้าต่าง ProMaxx ขึ้นหน้าไม่สำเร็จ (%s)" % type(e).__name__)
+
+    # ── ล็อกอินแบบ "ล่องหน" (รุ่น 2026-11-05.1) ──────────────────
+    def _decide_login_mode(self, only_step):
+        """ตัดสินหลัง preflight ว่าจะล็อกอินด้วยข้อความ (ไม่ใช้เมาส์/คีย์จริง) ไหม · เฉพาะงานเต็ม (ไม่ใช่ --step/dry-run) และเมื่อเปิดโหมดซ่อนหน้าต่างอยู่
+        ใช้กับ cold start และ ProMaxx ที่ค้างหน้า Login · ล็อกอินแล้ว (ready) ไม่มีขั้นล็อกอิน · ตัวต่อที่ไม่มี method ครบ = ใช้วิธีเดิม"""
+        self._msg_login = False
+        st = self.settings
+        if only_step or self.opts.dry_run or st.login_mode != "message" or not st.hide_after_login or self.resume_from == "ready":
+            return
+        if not all(callable(getattr(self.adapter, n, None)) for n in ("post_char", "post_key", "hide_window", "uia_act")):
+            return
+        self._msg_login = True
+        self.log("[preflight] ล็อกอินแบบข้อความ: ซ่อนหน้าต่าง ProMaxx แล้วส่งชื่อผู้ใช้/รหัสผ่านด้วยข้อความ Windows (ไม่ใช้เมาส์/คีย์บอร์ดจริง)")
+
+    def _remember_foreground(self, only_step):
+        """จำหน้าต่างที่อยู่ด้านหน้าตอนเริ่มงาน (ปกติคือเบราว์เซอร์ที่พนักงานเพิ่งกดปุ่ม) ไว้คืนโฟกัสให้เมื่อ ProMaxx ไปแย่ง · อ่านอย่างเดียว"""
+        self._prev_fg = 0
+        self._t_start = self.clock()
+        fn = getattr(self.adapter, "foreground_hwnd", None)
+        if only_step or self.opts.dry_run or not callable(fn):
+            return
+        try:
+            h = int(fn() or 0)
+            fp = self.adapter.foreground_pid()
+            if h and fp is not None and fp not in self._pids():
+                self._prev_fg = h
+        except Exception:      # noqa: BLE001
+            self._prev_fg = 0
+
+    def _restore_foreground(self, why):
+        """ถ้าหน้าต่างด้านหน้าตอนนี้เป็นของ ProMaxx (แย่งโฟกัสแป้นพิมพ์จากเบราว์เซอร์ของพนักงาน — หน้าต่างที่ซ่อนแล้วก็ยังเป็น foreground ได้) ให้คืนให้หน้าต่างเดิม
+        ไม่ใช่ของ ProMaxx = ไม่แตะ · ไม่ส่งคีย์/คลิก · ล้มไม่โยนข้อผิดพลาด"""
+        h = self._prev_fg
+        if not h or self.opts.dry_run:
+            return False
+        try:
+            fp = self.adapter.foreground_pid()
+            if fp is None or fp not in self._pids():
+                return False
+            self.adapter.focus(h)
+        except Exception as e:      # noqa: BLE001
+            self.log("คืนโฟกัสให้หน้าต่างเดิมไม่สำเร็จ (%s)" % type(e).__name__)
+            return False
+        self.log("คืนโฟกัสแป้นพิมพ์ให้หน้าต่างเดิมของพนักงาน (%s)" % why)
+        return True
+
+    def _hide_watch(self, force=False):
+        """ซ่อนหน้าต่างหลักของ ProMaxx ที่ "โผล่ขึ้นมา" (ProMaxx แสดงหน้าต่างเองหลังโหลดเสร็จ) — อ่านหน้าต่างด้วย Win32 อย่างเดียว (เร็ว ไม่ผ่าน UIA)
+        ทำงานเมื่อ _msg_login เปิดอยู่ (หรือ force) · ซ่อนแล้วเพิ่ม hwnd เข้า _hidden (UIA ยังอ่าน/สั่งผ่าน hwnd ได้) · ไม่ซ่อนหน้าต่างอื่น (กล่องข้อความ/ป๊อปอัพ ต้องให้พนักงานเห็น)
+        ซ่อนแล้วยังมองเห็น HIDE_FAIL_MAX ครั้งติด หรือโผล่ซ้ำเกิน HIDE_MAX = เลิกเฝ้า (ล็อกอินจะใช้วิธีเมาส์/คีย์จริงถ้ายังไม่ได้ส่งอะไร)"""
+        if self.opts.dry_run or not (self._msg_login or force):
+            return False
+        try:
+            wins = self.adapter.top_windows(self._pids())
+        except Exception:      # noqa: BLE001
+            return False
+        hid = False
+        for w in wins:
+            if not w.visible or not _match_win(w, _MAIN):
+                continue
+            if not ((w.w >= 50 and w.h >= 30) or w.rect[0] <= MINIMIZED_LEFT):
+                continue
+            try:
+                self.adapter.hide_window(w.hwnd)
+                still = any(x.hwnd == w.hwnd and x.visible for x in self.adapter.top_windows(self._pids()))
+            except Exception as e:      # noqa: BLE001
+                self.log("ซ่อนหน้าต่าง ProMaxx ไม่สำเร็จ (%s)" % type(e).__name__)
+                still = True
+            if still:
+                self._hide_fail += 1
+                if self._hide_fail >= HIDE_FAIL_MAX:
+                    self.log("ซ่อนหน้าต่าง ProMaxx ไม่สำเร็จ %d ครั้งติด — เลิกเฝ้าซ่อน" % self._hide_fail)
+                    self._msg_login = False
+                continue
+            self._hide_fail = 0
+            again = w.hwnd in self._hidden
+            self._hidden.add(w.hwnd)
+            self._was_hidden = True
+            self.hide_events.append((round(self.clock() - self._t_start, 2), w.hwnd))
+            self.log("ซ่อนหน้าต่าง ProMaxx %s" % ("ที่โผล่กลับขึ้นมาอีก" if again else "ที่เพิ่งโผล่ขึ้นมา"))
+            hid = True
+            if len(self.hide_events) > HIDE_MAX:
+                self.log("หน้าต่าง ProMaxx โผล่ซ้ำเกิน %d ครั้ง — เลิกเฝ้าซ่อน" % HIDE_MAX)
+                self._msg_login = False
+        if hid:
+            self._restore_foreground("หลังซ่อนหน้าต่าง")
+        return hid
+
+    def _wait_launch_hidden(self, spec, vanished):
+        """รอหน้า Login หลังสั่งเปิดโปรแกรม แบบเฝ้าซ่อนหน้าต่างที่โผล่ขึ้นมาเอง — วนเร็ว (HIDE_POLL) ด้วย Win32 ล้วน · ตรวจเงื่อนไข (UIA ช้า) ทุก POLL
+        ก่อนหน้าต่างหลักโผล่ _cond ไม่เรียก UIA เลย (ไม่มีหน้าต่างที่มองเห็น/ที่เราซ่อน) จึงไม่เสียเวลาตอนที่ต้องจับจังหวะโผล่"""
+        step = "launch"
+        timeout = float(spec.get("post_timeout", 60))
+        deadline = self.clock() + timeout
+        next_eval = self.clock()
+        while True:
+            self._hide_watch()
+            if self.clock() >= next_eval:
+                if self._cond(spec["post"], step):
+                    return
+                self._guard_dialogs(step, spec.get("allow_dialogs"))
+                vanished()
+                next_eval = self.clock() + self.POLL
+            if self.clock() >= deadline:
+                raise HelperError("LAUNCH_FAILED", "ไม่พบหน้า Login ภายใน %d วินาที" % timeout, step)
+            self.sleep(HIDE_POLL)
+
+    def _message_login_blocker(self, step):
+        """เหตุผลที่ล็อกอินด้วยข้อความไม่ได้ (ข้อความ) หรือ "" = ทำได้ — ตรวจ "ก่อนส่งอะไรทั้งนั้น" · ไม่ได้ = ใช้เมาส์/คีย์จริงแทน (ไม่มีอะไรค้างในช่อง)"""
+        st = self.settings
+        for what, text in (("ชื่อผู้ใช้", st.username), ("รหัสผ่าน", st.password)):
+            if not text or any(ord(c) < 0x20 or ord(c) == 0x7F for c in text):
+                return "%s ว่าง/มีอักขระควบคุม" % what
+        mains = self._find_tops(_MAIN)
+        if len(mains) != 1 or mains[0].hwnd not in self._hidden:
+            return "ซ่อนหน้าต่าง ProMaxx ไม่สำเร็จ"
+        if any(w.hwnd == mains[0].hwnd and w.visible for w in self.adapter.top_windows(self._pids())):
+            return "หน้าต่าง ProMaxx ยังมองเห็นอยู่หลังสั่งซ่อน"
+        if not mains[0].enabled:
+            return "หน้าต่างหลักถูกล็อก (มีกล่องโมดัล)"
+        try:
+            self._wait_cond({"uia": _USER_EDIT}, MSG_USER_FOCUS_WAIT, step, "PRECONDITION_FAILED",
+                            "ช่องชื่อผู้ใช้ยังไม่รับโฟกัสแป้นพิมพ์", None, each=self._hide_watch)
+        except HelperError as e:
+            if e.code == "PRECONDITION_FAILED":      # UNEXPECTED_DIALOG/UIA_ERROR ต้องหยุดจริง — ปล่อยให้ผู้เรียกโยนต่อ
+                return e.message
+            raise
+        return ""
+
+    def _post_units(self, hwnd, units, what, step, allow=None):
+        """ส่งทีละหน่วย UTF-16 ด้วย WM_CHAR · ก่อนส่งทุกตัวตรวจกล่องข้อความของ ProMaxx (โผล่ = หยุด · หน้าต่างหลักที่ถูกล็อกด้วยกล่องรับข้อความไม่ได้) ·
+        ส่งไม่เข้าคิวกลางทาง = STEP_FAILED (ห้ามลองซ้ำ — มีบางส่วนไปแล้ว) · ห้าม log ตัวอักษร"""
+        pids = self._pids()
+        for i, u in enumerate(units):
+            self._guard_dialogs(step, allow)
+            if not self.adapter.post_char(hwnd, u, pids):
+                raise HelperError("STEP_FAILED", "ส่งข้อความเข้า ProMaxx ไม่สำเร็จ — ยังไม่ล็อกอิน", step,
+                                  detail={"field": what, "sent": i, "total": len(units)})
+            self.sleep(MSG_CHAR_DELAY)
+            self._hide_watch()
+
+    def _check_username_shown(self, step):
+        """ProMaxx ต้องแสดงชื่อผู้ใช้ที่ส่งตรงกับ .env ก่อนส่งรหัสผ่าน (ส่งตก/ผิดช่อง/ปนกับของค้าง = หยุดตรงนี้ · ยังไม่มีการล็อกอิน จึงไม่นับเป็นล็อกอินผิด)
+        เทียบแบบไม่สนตัวพิมพ์ใหญ่/เล็กและช่องว่างหัวท้าย (ProMaxx อาจแปลงตัวพิมพ์) · ชื่อใน UIA ถูกตัดที่ 80 ตัวอักษร"""
+        top = self._one_top(_MAIN, "(ตรวจชื่อผู้ใช้)", step)
+        _, vis, _ = self._uia_matches(top, _USER_SHOWN, step)
+        want = (self.settings.username or "").strip().casefold()[:80]
+        got = (vis[0].name or "").strip().casefold() if len(vis) == 1 else None
+        if got is None or got != want:
+            self.log("[%s] ชื่อผู้ใช้ที่ ProMaxx แสดงไม่ตรงกับที่ส่ง (ส่ง %d ตัวอักษร · เห็น %s) — ไม่ส่งรหัสผ่าน"
+                     % (step, len(want), "ไม่ได้" if got is None else "%d ตัวอักษร" % len(got)))
+            raise HelperError("STEP_FAILED", "ชื่อผู้ใช้ที่ ProMaxx รับไม่ตรง — ยังไม่ล็อกอิน", step)
+        self.log("[%s] ProMaxx แสดงชื่อผู้ใช้ตรงกับที่ส่ง" % step)
+
+    def _login_fallback(self, spec, why):
+        """ล็อกอินด้วยข้อความไม่ได้ "ก่อนส่งอะไร" → ใช้วิธีเมาส์/คีย์จริง (แสดงหน้าต่างกลับ แล้วเดินขั้น login ตามเดิม) · เลิกเฝ้าซ่อน"""
+        self.log("[login] ล็อกอินแบบข้อความไม่ได้ (%s) — ใช้เมาส์/คีย์บอร์ดจริงแทน (อย่าแตะเมาส์ระหว่างทำงาน)" % why)
+        self._msg_login = False
+        self._reveal("ล็อกอินแบบข้อความไม่ได้")
+        return self._step_normal("login", spec)
+
+    def _step_login_message(self, spec):
+        """ขั้น login แบบล่องหน: ไม่ใช้เมาส์/คีย์บอร์ดจริง ไม่ต้องเห็นหน้าต่าง
+        ก่อนส่งอะไร: ตรวจ _message_login_blocker + ข้อความแรกต้องเข้าคิว — ไม่ผ่านเป็นถอยไปวิธีเดิม (เมาส์/คีย์จริง)
+        ส่งแล้ว = ไม่ถอยไปวิธีเดิม (ข้อความที่ค้างในช่องจะปนกับที่พิมพ์ใหม่) และไม่ลองซ้ำเด็ดขาด (กันบัญชีถูกล็อก):
+          ชื่อผู้ใช้ → Tab → ช่องรหัสผ่านต้องได้โฟกัส → ProMaxx ต้องแสดงชื่อที่ส่งตรงกัน → รหัสผ่าน → กด SIGN IN (UIA Invoke) → รอเมนูหลัก
+        ผิดพลาดก่อนส่งรหัสผ่าน = ยังไม่ได้ล็อกอิน (ไม่นับเป็นล็อกอินผิด)"""
+        name = "login"
+        st = self.settings
+        allow = spec.get("allow_dialogs")
+        self._guard_no_input(name)
+        self._guard_dialogs(name, allow)
+        self._wait_cond(spec.get("pre"), float(spec.get("pre_timeout", 15)), name, "PRECONDITION_FAILED",
+                        spec.get("pre_what") or "ยังไม่พบหน้าจอที่ต้องใช้ในขั้นนี้", allow, each=self._hide_watch)
+        self._hide_watch()
+        why = self._message_login_blocker(name)
+        if why:
+            return self._login_fallback(spec, why)
+        top = self._one_top(_MAIN, "(ส่งข้อความ)", name)
+        pids = self._pids()
+        units = _utf16_units(st.username)
+        if not self.adapter.post_char(top.hwnd, units[0], pids):
+            return self._login_fallback(spec, "ProMaxx ไม่รับข้อความ (อาจรันด้วยสิทธิ์สูงกว่าตัวช่วย)")
+        self._typed_creds = True            # ส่งแล้ว: นับจากตรงนี้ว่าอาจมีข้อความค้างในช่อง — ห้ามถอยไปวิธีเดิม
+        self.sleep(MSG_CHAR_DELAY)
+        self._hide_watch()
+        self._post_units(top.hwnd, units[1:], "ชื่อผู้ใช้", name, allow)
+        self.log("[%s] ส่งชื่อผู้ใช้ด้วยข้อความ (%d ตัวอักษร) — ไม่ใช้เมาส์/คีย์บอร์ดจริง" % (name, len(st.username)))
+        self._guard_dialogs(name, allow)
+        if not self.adapter.post_key(top.hwnd, "tab", pids):
+            raise HelperError("STEP_FAILED", "ส่ง Tab เข้า ProMaxx ไม่สำเร็จ — ยังไม่ล็อกอิน", name)
+        self.sleep(MSG_TAB_SETTLE)
+        self._hide_watch()
+        try:
+            self._wait_cond({"uia": _PASS_EDIT}, 8, name, "PRECONDITION_FAILED", "ช่องรหัสผ่านไม่รับโฟกัสหลัง Tab", allow, each=self._hide_watch)
+        except HelperError as e:
+            if e.code != "PRECONDITION_FAILED":
+                raise
+            self.log("[%s] %s — ไม่ส่งรหัสผ่าน" % (name, e.message))
+            raise HelperError("PRECONDITION_FAILED", "ช่องรหัสผ่านไม่รับโฟกัสหลัง Tab — ยังไม่ล็อกอิน", name)       # ข้อความสั้นพอให้หน้าเว็บโชว์ครบ (ตัด 45 ตัวอักษร)
+        self._check_username_shown(name)
+        # กล่องข้อความที่โผล่หลัง Tab: _wait_cond คืนทันทีเมื่อเงื่อนไขจริงอยู่แล้ว (ไม่เรียกตรวจกล่อง) → _post_units ตรวจก่อนส่ง "ทุกตัวรวมตัวแรก" ของรหัสผ่านแทน
+        self._post_units(top.hwnd, _utf16_units(st.password), "รหัสผ่าน", name, allow)
+        self.log("[%s] ส่งรหัสผ่านด้วยข้อความ (%d ตัวอักษร)" % (name, len(st.password)))
+        self.sleep(MSG_SUBMIT_SETTLE)
+        self._hide_watch()
+        self._guard_dialogs(name, allow)
+        self._act({"do": "click", "target": _uia(_LOGIN_BTN)}, name, allow)           # หน้าต่างซ่อนอยู่ → _click สั่ง Invoke ผ่าน UIA (ไม่ใช้เมาส์)
+        try:
+            self._wait_cond(spec.get("post"), float(spec.get("post_timeout", 40)), name, "POSTCONDITION_FAILED",
+                            spec.get("post_what") or "หน้าจอหลังคลิกไม่ขึ้นตามที่คาด", allow, each=self._hide_watch)
+        except HelperError as e:
+            if e.code in ("POSTCONDITION_FAILED", "UNEXPECTED_DIALOG"):
+                raise HelperError("LOGIN_FAILED", "เข้าสู่ระบบไม่สำเร็จ — ตรวจ PROMAXX_USERNAME/PASSWORD (ไม่ลองซ้ำ กันบัญชีถูกล็อก)"
+                                  + ("" if e.code == "POSTCONDITION_FAILED" else " · " + e.message), "login", e.detail)
+            raise
+        self._restore_foreground("หลังล็อกอิน")        # ProMaxx ดึง foreground ตอนเมนูหลักขึ้น (เจอจริง) — อาจตรงกับจังหวะที่เงื่อนไขรอเป็นจริงพอดี จึงตรวจอีกครั้งที่นี่
+        self._msg_login = False             # ล็อกอินสำเร็จแล้ว — เลิกเฝ้าซ่อน (_hide_main ตรวจต่อให้) · ขั้นถัดไปไม่มีเมาส์/คีย์อยู่แล้ว
+        return False
 
     # ── หลักฐานตอนล้ม ───────────────────────────────────────────
     def _ensure_run_dir(self, label):
@@ -1176,6 +1816,13 @@ class Runner:
         top = mains[0]
         try:
             if self._cond({"uia": _LOGIN_PANEL}, step):
+                # ช่องชื่อผู้ใช้ที่ไม่ได้โฟกัสแสดงข้อความที่พิมพ์ไว้เป็นชื่อของ cf_empid:1 (ตรวจจริง 5 พ.ย. 2026) · มีข้อความค้างอยู่ = รอบก่อนหยุดกลางทาง/พนักงานพิมพ์ค้างไว้
+                # → พิมพ์ชื่อผู้ใช้ต่อท้ายจะได้ชื่อผิดแล้วล็อกอินพลาด (นับเป็นการล็อกอินผิด 1 ครั้ง) ⇒ ปฏิเสธ ไม่แตะอะไร
+                _, shown, _ = self._uia_matches(top, _USER_SHOWN, step)
+                stale = [e for e in shown if (e.name or "").strip()]
+                if stale:
+                    self.log("[preflight] ใช้ ProMaxx ที่ค้างหน้า Login ไม่ได้: ช่องชื่อผู้ใช้มีข้อความค้างอยู่ (%d ตัวอักษร)" % len(stale[0].name))
+                    raise HelperError("SESSION_NOT_READY", NOT_READY_LOGIN, step)
                 return "login"
             # ตรวจฟอร์มค้าง "ก่อน" ดูเมนู: เมื่อเปิดฟอร์มแล้วรายการเมนูซ้ายถูกเลื่อนออกนอกกรอบ (ตรวจจริง 4 พ.ย. 2026) จึงไม่ใช้ "เห็นเมนู" เป็นตัวบอกว่าว่าง
             for what, sel in (("แท็บฟอร์ม", _OPEN_TABS), ("ปุ่มนำเข้าของฟอร์ม", _ANY_IMPORT_BTN), ("หัวฟอร์มเอกสาร", _ANY_TYPE_FIELD)):
@@ -1238,8 +1885,11 @@ class Runner:
                                   + self._seen_hint(), "launch")
 
         try:
-            self._wait_cond(spec["post"], float(spec.get("post_timeout", 60)), "launch", "LAUNCH_FAILED",
-                            "ไม่พบหน้า Login", spec.get("allow_dialogs"), each=vanished)
+            if self._msg_login:
+                self._wait_launch_hidden(spec, vanished)
+            else:
+                self._wait_cond(spec["post"], float(spec.get("post_timeout", 60)), "launch", "LAUNCH_FAILED",
+                                "ไม่พบหน้า Login", spec.get("allow_dialogs"), each=vanished)
         except HelperError as e:
             if e.code == "UNEXPECTED_DIALOG":           # กล่องก่อนล็อกอิน = เปิดโปรแกรมไม่สำเร็จ (เช่น ต่อ SQL Server ไม่ได้)
                 raise HelperError("LAUNCH_FAILED", e.message, "launch", e.detail)
@@ -1273,7 +1923,7 @@ class Runner:
                 raise HelperError("LOGIN_FAILED", "เข้าสู่ระบบไม่สำเร็จ — ตรวจ PROMAXX_USERNAME/PASSWORD (ไม่ลองซ้ำ กันบัญชีถูกล็อก)"
                                   + ("" if e.code == "POSTCONDITION_FAILED" else " · " + e.message), "login", e.detail)
             raise
-        if name == IMPORT_STEP:
+        if name in (IMPORT_STEP, "import-click"):
             self._after_import = True
         return False
 
@@ -1285,6 +1935,14 @@ class Runner:
             spec = self._spec(name)
             if name == "launch":
                 self._step_launch(spec)
+            elif name == "select-file":
+                self._step_select_file(spec)
+            elif name == "verify-table":
+                self._step_verify_table(spec)
+            elif name == "confirm":
+                self._step_confirm(spec)
+            elif name == "login" and self._msg_login:
+                skipped = bool(self._step_login_message(spec))
             else:
                 skipped = bool(self._step_normal(name, spec))
         except HelperError as e:
@@ -1322,7 +1980,9 @@ class Runner:
         self.tokens = dict(info)         # letter · menu_th · menu_cls · form_cls · code · type_name (ทุกคีย์ใน DOC_TYPES แทนเข้า spec ได้)
         self.tokens["type_row"] = "%s %s" % (info["code"], info["type_name"])   # ชื่อแถวในหน้าต่างรายการ (มีช่องว่าง → ใช้เป็นโทเคนดิบ {=type_row} เท่านั้น)
         try:
+            self._remember_foreground(only_step)
             self._preflight(only_step)
+            self._decide_login_mode(only_step)
             names = (only_step,) if only_step else STEP_ORDER
             if not only_step and self.resume_from:
                 skip = ("launch",) if self.resume_from == "login" else ("launch", "login")
@@ -1341,12 +2001,256 @@ class Runner:
                 body["hidden"] = True
             return 200, body
         except HelperError as e:
-            self.log("✗ [%s] %s: %s" % (e.step or "?", e.code, e.message))
-            self._reveal_quietly()              # ก่อนเก็บหลักฐาน: ภาพหน้าจอ/dump ต้องเห็นหน้าต่าง ProMaxx
-            if e.code not in ("BUSY", "UNVERIFIED", "NOT_CONFIGURED", "ALREADY_RUNNING", "SESSION_NOT_READY", "OTHER_BOT_RUNNING", "NOT_RUNNING",
-                              "UNSUPPORTED_DPI", "NO_DESKTOP") and not self.opts.dry_run:
-                self._evidence(e)
-            return e.http, error_body(e, self.log, self.steps)
+            return self._fail(e)
+
+    def _fail(self, e):
+        self.log("✗ [%s] %s: %s" % (e.step or "?", e.code, e.message))
+        self._reveal_quietly()              # ก่อนเก็บหลักฐาน: ภาพหน้าจอ/dump ต้องเห็นหน้าต่าง ProMaxx
+        if e.code not in ("BUSY", "UNVERIFIED", "NOT_CONFIGURED", "ALREADY_RUNNING", "SESSION_NOT_READY", "OTHER_BOT_RUNNING", "NOT_RUNNING",
+                          "UNSUPPORTED_DPI", "NO_DESKTOP", "TICKET_INVALID", "TICKET_EXPIRED", "STATE_CHANGED", "FILE_INVALID",
+                          "BRANCH_NOT_SUPPORTED") and not self.opts.dry_run:
+            self._evidence(e)
+        return e.http, error_body(e, self.log, self.steps)
+
+    # ── นำเข้าอัตโนมัติ (รุ่น .6 · เฉพาะสาขายา) ───────────────────
+    def _setup_tokens(self, doc_type, branch=None, doc_no=None):
+        info = DOC_TYPES[doc_type]
+        self.doc_type = doc_type
+        self.tokens = dict(info)
+        self.tokens["type_row"] = "%s %s" % (info["code"], info["type_name"])
+        if branch:
+            self.tokens["branch_name"] = BRANCH_FORM_NAMES[branch]
+        if doc_no:
+            self.tokens["doc_no"] = doc_no
+
+    def run_prepare(self, doc_type, branch):
+        """จังหวะ 1: เปิด/ใช้ ProMaxx → ตั้งประเภท/คลัง → ตรวจสาขา → อ่านเลขที่เอกสาร แล้วหยุด (ไม่กดปุ่มนำเข้า) · คืน (status, body) — body มี docNo"""
+        try:
+            return self._run_prepare(doc_type, branch)
+        finally:
+            self._reveal_quietly()
+            self._log_uia_stats()
+
+    def _run_prepare(self, doc_type, branch):
+        t0 = self.clock()
+        try:
+            if branch not in BRANCH_FORM_NAMES:
+                raise HelperError("BRANCH_NOT_SUPPORTED", "สาขา %s ไม่รองรับการนำเข้าอัตโนมัติ" % branch, "preflight")
+            self._setup_tokens(doc_type, branch)
+            self._remember_foreground(None)
+            self._preflight(None)
+            self._decide_login_mode(None)
+            names = STEP_ORDER_PREPARE
+            if self.resume_from:
+                skip = ("launch",) if self.resume_from == "login" else ("launch", "login")
+                names = tuple(n for n in names if n not in skip)
+            for n in names:
+                if n not in ("launch", "login"):
+                    self._hide_main(n)
+                self.run_step(n)
+            try:
+                doc_no = safe_doc_no(self.captured.get("doc_no", ""))
+            except HelperError:
+                raise HelperError("STEP_FAILED", "เลขที่เอกสารที่อ่านได้รูปแบบไม่ถูกต้อง", "form-ready")
+            if not doc_no.startswith(DOC_TYPES[doc_type]["code"]):
+                raise HelperError("STEP_FAILED", "เลขที่เอกสารไม่ขึ้นต้นด้วยรหัสประเภท", "form-ready")
+            hid = self._was_hidden
+            if self._hidden:
+                self._reveal_back("ส่งเลขที่ให้เว็บ")
+            else:
+                self._send_main_back("ส่งเลขที่ให้เว็บ")
+            self._restore_foreground("ส่งเลขที่ให้เว็บ")        # ProMaxx แย่ง foreground ไประหว่างทาง (เช่นขั้นที่ต้องใช้เมาส์จริง) → คืนให้เบราว์เซอร์ของพนักงาน
+            body = {"ok": True, "proto": PROTO, "version": VERSION, "stage": "prepared", "type": doc_type, "branch": branch, "docNo": doc_no,
+                    "elapsedMs": int((self.clock() - t0) * 1000), "steps": self.steps}
+            if self.resume_from:
+                body["attached"] = self.resume_from
+            if hid:
+                body["hidden"] = True
+            return 200, body
+        except HelperError as e:
+            return self._fail(e)
+
+    def _preflight_import(self, ticket):
+        """จังหวะ 2: ProMaxx ต้องยังเป็นโปรเซสเดิมที่เตรียมไว้ในจังหวะ 1 และไม่มีกล่อง/หน้าต่างอื่นค้าง — ไม่แตะอะไรถ้าไม่ผ่าน"""
+        step = "preflight"
+        if not (LOCATORS_VERIFIED or self.opts.force_unverified):
+            raise HelperError("UNVERIFIED", "ตัวช่วยยังไม่ผ่านการตรวจหน้าต่างจริง — ปิดการคลิกไว้", step)
+        if not self.adapter.session_ok():
+            raise HelperError("NO_DESKTOP", "ไม่มีหน้าจอให้คลิก (ล็อกจออยู่/ไม่ใช่ session ผู้ใช้)", step)
+        dpi = self.adapter.dpi_percent()
+        if dpi not in (None, 100) and not self.opts.force_dpi:
+            raise HelperError("UNSUPPORTED_DPI", "Display Scaling ต้องเป็น 100%% (ตอนนี้ %s%%)" % dpi, step)
+        pids = set(self._pids())
+        if not pids or not set(ticket["pids"]) <= pids:
+            raise HelperError("STATE_CHANGED", "ProMaxx ถูกปิดหรือเปิดใหม่หลังอ่านเลขที่ — เริ่มใหม่", step)
+        others = self.adapter.running_names(self.settings.block_procs)
+        if others:
+            raise HelperError("OTHER_BOT_RUNNING", "มีบอทอื่นกำลังใช้ ProMaxx (%s) — รอให้จบก่อน" % ", ".join(others), step)
+        if reveal_stray(self.adapter, self.settings):
+            self.log("[preflight] แสดงหน้าต่าง ProMaxx ที่ถูกซ่อนค้างกลับมา")
+        self._restore_minimized(step)
+        dlgs = self.adapter.dialogs(self._pids())
+        tops = self._tops()
+        mains = [w for w in tops if _match_win(w, _MAIN)]
+        others_w = [w for w in tops if not _match_win(w, _MAIN)]
+        if dlgs or others_w:
+            self.log("[preflight] ไม่นำเข้า: มีหน้าต่าง/กล่องอื่นค้าง — %s" % "; ".join(
+                [("กล่อง %s" % d[0]) for d in dlgs] + [("%s %s" % (w.cls[:18], w.text)) for w in others_w])[:200])
+            raise HelperError("SESSION_NOT_READY", NOT_READY_WINDOW, step)
+        if len(mains) != 1 or not mains[0].enabled:
+            raise HelperError("STATE_CHANGED", NOT_READY_WAIT, step)
+
+    def _step_select_file(self, spec):
+        """กล่อง Select File (หน้าต่างเลือกไฟล์มาตรฐานของ Windows · ตรวจจริง 4 พ.ย. 2026): ช่อง File name = ComboBoxEx32 id 1148 → Edit · ปุ่ม Open = Button id 1 ·
+        ตัวกรองไฟล์ = ComboBox id 1136 (*.txt) — ใส่พาธเต็มด้วย WM_SETTEXT → อ่านกลับด้วย WM_GETTEXT ต้องตรงทุกตัวอักษร → BM_CLICK ปุ่ม Open (ไม่ใช้เมาส์/คีย์)
+        ไม่ตรงข้อใด = หยุดโดยยังไม่กด Open (กล่องค้างไว้ให้พนักงานทำต่อเอง)"""
+        step = "select-file"
+        allow = spec.get("allow_dialogs")
+        self._wait_cond(spec.get("pre"), 10, step, "PRECONDITION_FAILED", "ยังไม่เห็นกล่อง Select File", allow)
+        dlg = self._one_top(_FILE_DIALOG, "Select File", step)
+        kids = self.adapter.child_windows(dlg.hwnd)
+
+        def pick(cls, cid, visible=True):
+            return [c for c in kids if (c.cls or "").lower() == cls and c.ctrl_id == cid and (c.visible or not visible)]
+        combos, edits, opens, types = pick("comboboxex32", 1148), pick("edit", 1148), pick("button", 1), pick("combobox", 1136)
+        for label, found in (("ช่อง File name", edits), ("ปุ่ม Open", opens)):
+            if not found:
+                raise HelperError("LOCATOR_NOT_FOUND", "ไม่พบ%s ในกล่อง Select File — ไม่ใส่ชื่อไฟล์" % label, step)
+            if len(found) > 1:
+                raise HelperError("LOCATOR_NOT_UNIQUE", "พบ%s %d รายการ — ไม่ใส่ชื่อไฟล์" % (label, len(found)), step)
+        if len(combos) != 1 or not types:
+            raise HelperError("LOCATOR_NOT_FOUND", "โครงสร้างกล่อง Select File ไม่ตรงที่ตรวจไว้ — ไม่ใส่ชื่อไฟล์", step)
+        if not edits[0].enabled or not opens[0].enabled:
+            raise HelperError("LOCATOR_NOT_FOUND", "ช่อง File name/ปุ่ม Open ใช้งานไม่ได้ (disabled)", step)
+        path = self._import_path
+        self._guard_no_input(step)
+        self._guard_dialogs(step, allow)
+        self.adapter.set_text(edits[0].hwnd, path)
+        got = self.adapter.get_text(edits[0].hwnd)
+        if got != path:
+            raise HelperError("STEP_FAILED", "ใส่ชื่อไฟล์ลงกล่อง Select File ไม่สำเร็จ (อ่านกลับไม่ตรง) — ไม่กด Open", step)
+        self.log("[select-file] ใส่ชื่อไฟล์แล้ว (%s · %d แถว) — กด Open" % (os.path.basename(path), len(self._import_rows)))
+        self.adapter.click_button(opens[0].hwnd)
+        self.sleep(self.SETTLE)
+        self._wait_cond(spec.get("post"), float(spec.get("post_timeout", 15)), step, "POSTCONDITION_FAILED",
+                        "กด Open แล้วกล่อง Select File ไม่ปิด", allow)
+
+    def _step_verify_table(self, spec):
+        """เทียบตารางรายละเอียดสินค้าใน ProMaxx กับไฟล์ (SKU + จำนวน + ยอดรวม) — อ่านผ่าน UIA dump ครั้งเดียว · ไม่ตรง = TABLE_MISMATCH ไม่กด ตกลง"""
+        step = "verify-table"
+        problems, table = [], {"rows": {}}
+        for attempt in (1, 2):
+            top = self._one_top(_MAIN, "หน้าต่างหลัก", step)
+            if not top.enabled:
+                raise HelperError("UNEXPECTED_DIALOG", "หน้าต่างหลักของ ProMaxx ถูกล็อก (มีกล่องค้าง) — ไม่ตรวจตาราง/ไม่กด ตกลง", step)
+            self._guard_dialogs(step)
+            self._guard_extra_windows(step)         # ก่อนอ่านตาราง (อ่านนาน ~8 วินาที — ไม่เสียเวลาเปล่าถ้ามีป๊อปอัพรออยู่แล้ว)
+            try:
+                lines = self.adapter.uia_dump(top.hwnd, max_nodes=VERIFY_MAX_NODES)
+            except Exception as e:      # noqa: BLE001
+                raise HelperError("UIA_ERROR", "อ่านตารางใน ProMaxx (UIA) ไม่ได้: %s %s" % (type(e).__name__, self._scrub(str(e))[:140]), step)
+            table = parse_detail_dump(lines)
+            problems = compare_table(self._import_rows, table)
+            if not problems:
+                self._guard_extra_windows(step)     # ป๊อปอัพอาจขึ้นระหว่างอ่าน — ตารางที่ตรงแต่มีหน้าต่างค้างไม่ถือว่าพร้อม (ไม่ประกาศว่าตรง/ไม่ไปขั้น ตกลง)
+                self.log("[verify-table] ตารางตรงไฟล์ครบ %d แถว (SKU + จำนวน · ยอดรวม %s)" % (len(self._import_rows), table["total_qty"]))
+                return
+            if attempt == 1 and len(table["rows"]) < len(self._import_rows):
+                self.log("[verify-table] ตารางยังโหลดไม่ครบ (%d/%d) — รอแล้วอ่านใหม่" % (len(table["rows"]), len(self._import_rows)))
+                self.sleep(2.0)
+                continue
+            break
+        self._guard_extra_windows(step)             # ไม่ตรง: ถ้ามีหน้าต่างค้าง นั่นคือสาเหตุจริง (เช่น ป๊อปอัพ Lot No. — แถวยังไม่ถูกเพิ่ม) ไม่ใช่ตารางผิด
+        raise HelperError("TABLE_MISMATCH", "ตารางใน ProMaxx ไม่ตรงไฟล์: " + "; ".join(problems[:3]) + " — ไม่กด ตกลง", step,
+                          detail={"problems": problems})
+
+    def _observe_after_confirm(self, doc_no):
+        """หลังกด ตกลง: สังเกตผล (อ่านอย่างเดียว) — บันทึกเลขที่เอกสารตอนนี้ · ตารางว่างไหม · กล่องข้อความที่ขึ้น
+        saved = เลขที่เอกสารเปลี่ยนไปจากเดิม หรือตารางถูกล้าง (ฟอร์มถูกรีเซ็ตเป็นใบใหม่) — ⚠️ ยังไม่เคยกด ตกลง จริง จึงยังไม่รู้ว่า ProMaxx ทำอะไร:
+        ถ้าผลจริงต่างจากนี้ ตัวช่วยคืน CONFIRM_UNKNOWN (ไม่ใช่ 'สำเร็จ') แล้วดึง ProMaxx ขึ้นหน้าให้พนักงานตรวจ"""
+        step = "confirm"
+        info = {"saved": False, "docNo": None, "tableEmpty": None, "dialogs": []}
+        no_sel = {"within": _MAIN, "id": "TRANNO:1", "type": "Custom", "ancestor": _FORM}
+        row_sel = {"within": _MAIN, "id": "CF_ITEMID:1", "type": "Custom", "ancestor": _FORM}
+        deadline = self.clock() + CONFIRM_OBSERVE_SEC
+        while True:
+            for title, texts in self.adapter.dialogs(self._pids()):
+                d = self._dialog_text(title, texts)
+                if d not in info["dialogs"]:
+                    info["dialogs"].append(d)
+            try:
+                top = self._one_top(_MAIN, "หน้าต่างหลัก", step)
+                _, vis, _ = self._uia_matches(top, _fmt(no_sel, self.tokens), step)
+                names = [e.name for e in vis if (e.name or "").strip()]
+                info["docNo"] = names[0] if len(names) == 1 else (None if not names else "(พบ %d ตัว)" % len(names))
+                _, vis2, _ = self._uia_matches(top, _fmt(row_sel, self.tokens), step)
+                info["tableEmpty"] = not any((e.name or "").strip() for e in vis2)
+            except HelperError as e:
+                if e.code not in ("UIA_ERROR", "LOCATOR_NOT_FOUND", "LOCATOR_NOT_UNIQUE"):
+                    raise
+            if (info["docNo"] and info["docNo"] != doc_no and not str(info["docNo"]).startswith("(")) or info["tableEmpty"] is True:
+                info["saved"] = True
+                return info
+            if self.clock() >= deadline:
+                return info
+            self.sleep(1.5)
+
+    def _step_confirm(self, spec):
+        """กด "ตกลง" (cb_ok) ครั้งเดียว — เมื่อ PROMAXX_AUTO_CONFIRM เปิดและ verify-table ผ่านแล้วเท่านั้น (run_import เรียกตามลำดับ) · หลังกดห้ามมี input อีก"""
+        step = "confirm"
+        allow = spec.get("allow_dialogs")
+        self._wait_cond(spec.get("pre"), float(spec.get("pre_timeout", 8)), step, "PRECONDITION_FAILED",
+                        spec.get("pre_what") or "ฟอร์มเปลี่ยนไปจากตอนอ่านเลขที่ — ไม่กด ตกลง", allow)
+        self._guard_extra_windows(step)      # ด่านสุดท้ายก่อนการกระทำที่ย้อนไม่ได้: UIA สั่งปุ่มของหน้าต่างหลักได้แม้มีป๊อปอัพ (เช่น Lot No.) เปิดอยู่ — มีหน้าต่างค้าง = ไม่กด ตกลง
+        for a in spec["actions"]:
+            self._act(a, step, allow)
+        self._locked = True
+        self.log("[confirm] กด ตกลง แล้ว — สังเกตผลไม่เกิน %d วินาที (ห้ามส่ง input เพิ่ม)" % CONFIRM_OBSERVE_SEC)
+        self.confirm_after = self._observe_after_confirm(self.tokens.get("doc_no", ""))
+        self.log("[confirm] ผลที่เห็น: %s" % json.dumps(self.confirm_after, ensure_ascii=False))
+        if not self.confirm_after.get("saved"):
+            raise HelperError("CONFIRM_UNKNOWN", "กดตกลงแล้ว แต่ยืนยันผลไม่ได้ — ตรวจใน ProMaxx ก่อนทำซ้ำ", step, detail=self.confirm_after)
+
+    def run_import(self, ticket, rows, path):
+        """จังหวะ 2: ตัวช่วยกดปุ่มนำเข้า → ใส่ชื่อไฟล์ + Open → เทียบตาราง → (ถ้าเปิด PROMAXX_AUTO_CONFIRM) กด ตกลง · คืน (status, body)"""
+        try:
+            return self._run_import(ticket, rows, path)
+        finally:
+            self._reveal_quietly()
+            self._log_uia_stats()
+
+    def _run_import(self, ticket, rows, path):
+        t0 = self.clock()
+        doc_type, branch, doc_no = ticket["type"], ticket["branch"], ticket["doc_no"]
+        try:
+            self._setup_tokens(doc_type, branch, doc_no)
+            self._input_steps_after_import = POST_IMPORT_INPUT_STEPS
+            self._import_path, self._import_rows = path, rows
+            self._preflight_import(ticket)
+            names = ("import-click", "select-file", "verify-table") + (("confirm",) if self.settings.auto_confirm else ())
+            for n in names:
+                if n == "import-click":
+                    self._hide_main(n)
+                self.run_step(n)
+            confirmed = bool(self.settings.auto_confirm)
+            hid = self._was_hidden
+            if confirmed:
+                if self._hidden:
+                    self._reveal_back("นำเข้าและกด ตกลง แล้ว")
+                else:
+                    self._send_main_back("นำเข้าและกด ตกลง แล้ว")
+            else:
+                self._bring_main_front("ตัวช่วยหยุดก่อน ตกลง — พนักงานตรวจตารางแล้วกด ตกลง เอง")
+            body = {"ok": True, "proto": PROTO, "version": VERSION, "stage": "imported", "type": doc_type, "branch": branch, "docNo": doc_no,
+                    "rows": len(rows), "file": os.path.basename(path), "confirmed": confirmed,
+                    "elapsedMs": int((self.clock() - t0) * 1000), "steps": self.steps}
+            if hid:
+                body["hidden"] = True
+            if self.confirm_after:
+                body["after"] = self.confirm_after
+            return 200, body
+        except HelperError as e:
+            return self._fail(e)
 
 
 def error_body(e, log, steps=None):
@@ -1487,6 +2391,8 @@ class Service:
         self.sleep = sleep
         self._lock = threading.Lock()        # single-flight ในโปรเซสนี้
         self.busy = False
+        self._tlock = threading.Lock()       # ป้องกันตั๋วนำเข้าอัตโนมัติ (อ่าน/เขียนจากหลายเธรด HTTP)
+        self.ticket = None                   # {"id","type","branch","doc_no","pids","expires"} — มีใบเดียว · ใช้ครั้งเดียว · หมดอายุ TICKET_TTL
 
     # ── งานขับ ProMaxx (HTTP และ CLI ใช้ตัวเดียวกัน) ─────────────
     def run_job(self, doc_type, opts=None, only_step=None):
@@ -1509,9 +2415,113 @@ class Service:
                 self.adapter.release_mutex(JOB_MUTEX)
             self._lock.release()
 
+    # ── นำเข้าอัตโนมัติ (รุ่น .6) ─────────────────────────────────
+    def _now(self):
+        return (self.clock or time.monotonic)()
+
+    def _clear_ticket(self, only_id=None):
+        with self._tlock:
+            if self.ticket and (only_id is None or secrets.compare_digest(str(only_id), self.ticket["id"])):
+                self.ticket = None
+                return True
+        return False
+
+    def _acquire_job(self):
+        """single-flight + mutex ข้ามโปรเซส → (ok, error_response) · ok=True ผู้เรียกต้องเรียก _release_job()"""
+        if not self._lock.acquire(blocking=False):
+            return False, (409, error_body(HelperError("BUSY", "ตัวช่วยกำลังทำงานอยู่ — รอสักครู่", "preflight"), self.log))
+        if not self.adapter.acquire_mutex(JOB_MUTEX):
+            self._lock.release()
+            return False, (409, error_body(HelperError("BUSY", "มีอีกโปรเซสของตัวช่วยกำลังขับ ProMaxx — รอสักครู่", "preflight"), self.log))
+        self.busy = True
+        return True, None
+
+    def _release_job(self):
+        self.busy = False
+        self.adapter.release_mutex(JOB_MUTEX)
+        self._lock.release()
+
+    def run_prepare_job(self, doc_type, branch):
+        """จังหวะ 1 (HTTP /v1/prepare-import): ได้ docNo + ticket · ทุกครั้งที่เริ่มใหม่ ตั๋วเก่าถูกยกเลิก"""
+        if branch not in BRANCH_FORM_NAMES:
+            return 422, error_body(HelperError("BRANCH_NOT_SUPPORTED", "สาขา %s ไม่รองรับการนำเข้าอัตโนมัติ" % branch, "preflight"), self.log)
+        ok, err = self._acquire_job()
+        if not ok:
+            return err
+        try:
+            self._clear_ticket()
+            runner = Runner(self.adapter, self.settings, self.log, specs=self.specs, opts=JobOpts(), clock=self.clock, sleep=self.sleep)
+            status, body = runner.run_prepare(doc_type, branch)
+            if status == 200:
+                t = {"id": secrets.token_urlsafe(24), "type": doc_type, "branch": branch, "doc_no": body["docNo"],
+                     "pids": frozenset(runner._pids()), "expires": self._now() + TICKET_TTL}
+                with self._tlock:
+                    self.ticket = t
+                body["ticket"] = t["id"]
+                body["expiresInSec"] = TICKET_TTL
+                body["autoConfirm"] = bool(self.settings.auto_confirm)      # หน้าเว็บใช้บอกพนักงานก่อนกดยืนยันว่า "ตกลง" จะถูกกดให้หรือไม่
+            return status, body
+        except Exception as e:      # noqa: BLE001
+            self.log("ข้อผิดพลาดที่ไม่คาดคิด: %s" % type(e).__name__)
+            return 500, error_body(HelperError("INTERNAL", "ตัวช่วยผิดพลาดภายใน (%s) — ดู log" % type(e).__name__), self.log)
+        finally:
+            self._release_job()
+
+    def run_import_job(self, req):
+        """จังหวะ 2 (HTTP /v1/run-import): ตรวจทุกอย่างที่ไม่ต้องแตะ ProMaxx ก่อน (ตั๋ว · hash · รูปแบบไฟล์) — ผิดข้อใดไม่แตะ ProMaxx และ "ไม่ใช้ตั๋วทิ้ง" ·
+        ผ่านแล้วตั๋วถูกใช้ครั้งเดียว (ล้มกลางทางต้องเริ่มจังหวะ 1 ใหม่)"""
+        with self._tlock:
+            t = self.ticket
+        if not t or not secrets.compare_digest(str(req["ticket"]), t["id"]):
+            return 409, error_body(HelperError("TICKET_INVALID", "ตั๋วไม่ถูกต้องหรือถูกใช้ไปแล้ว — กดใหม่", "preflight"), self.log)
+        if self._now() > t["expires"]:
+            self._clear_ticket(t["id"])
+            return 409, error_body(HelperError("TICKET_EXPIRED", "ตั๋วหมดอายุ — กดใหม่", "preflight"), self.log)
+        try:
+            doc_no = safe_doc_no(req["docNo"])
+        except HelperError as e:
+            return 400, error_body(e, self.log)
+        if req["type"] != t["type"] or req["branch"] != t["branch"] or doc_no != t["doc_no"]:
+            return 409, error_body(HelperError("TICKET_INVALID", "ตั๋วไม่ตรงกับคำขอ (ชนิด/สาขา/เลขที่) — กดใหม่", "preflight"), self.log)
+        try:
+            text = req["text"]
+            rows = parse_import_text(text)
+            if len(rows) != req["rows"]:
+                raise HelperError("FILE_INVALID", "จำนวนแถวไม่ตรงที่แจ้ง (%d ≠ %s)" % (len(rows), req["rows"]), "preflight")
+            if import_file_sha256(text) != str(req["sha256"]).lower():
+                raise HelperError("FILE_INVALID", "hash ของไฟล์ไม่ตรง — ข้อมูลเสียหายระหว่างส่ง", "preflight")
+        except HelperError as e:
+            return e.http, error_body(e, self.log)
+        ok, err = self._acquire_job()
+        if not ok:
+            return err
+        try:
+            with self._tlock:
+                if self.ticket is not t:
+                    return 409, error_body(HelperError("TICKET_INVALID", "ตั๋วถูกแทนที่แล้ว — กดใหม่", "preflight"), self.log)
+                self.ticket = None                 # ใช้ครั้งเดียว: นับจากตรงนี้
+            try:
+                path = write_import_file(self.settings.import_dir, t["type"], t["doc_no"], text)
+            except HelperError as e:
+                return e.http, error_body(e, self.log)
+            prune_import_dir(self.settings.import_dir)
+            self.log("[run-import] เขียนไฟล์นำเข้า %s (%d แถว · sha256 %s…)" % (os.path.basename(path), len(rows), import_file_sha256(text)[:8]))
+            runner = Runner(self.adapter, self.settings, self.log, specs=self.specs, opts=JobOpts(), clock=self.clock, sleep=self.sleep)
+            return runner.run_import(t, rows, path)
+        except Exception as e:      # noqa: BLE001
+            self.log("ข้อผิดพลาดที่ไม่คาดคิด: %s" % type(e).__name__)
+            return 500, error_body(HelperError("INTERNAL", "ตัวช่วยผิดพลาดภายใน (%s) — ดู log" % type(e).__name__), self.log)
+        finally:
+            self._release_job()
+
+    def cancel_import(self, req):
+        """ยกเลิกตั๋ว (ไม่แตะ ProMaxx — ฟอร์มที่เปิดค้างอยู่ พนักงานปิดเอง) · ตั๋วคนละใบ = ไม่ล้าง (กันยกเลิกงานใหม่ของอีกเครื่อง)"""
+        return 200, {"ok": True, "proto": PROTO, "version": VERSION, "stage": "cancelled", "cleared": self._clear_ticket(req["ticket"])}
+
     def health(self):
         return {"ok": True, "proto": PROTO, "version": VERSION, "ssmaxxRunning": bool(self.adapter.pids(self.settings.proc_name)),
                 "busy": self.busy, "locatorsVerified": LOCATORS_VERIFIED,
+                "autoImport": True, "autoConfirm": bool(self.settings.auto_confirm), "loginMode": self.settings.login_mode, "branches": list(BRANCH_FORM_NAMES),
                 "stepsConfigured": [n for n in STEP_ORDER if (STEP_SPECS if self.specs is None else self.specs).get(n)]}
 
     # ── HTTP ────────────────────────────────────────────────────
@@ -1547,7 +2557,7 @@ class Service:
         port = self.settings.port
         if h.get("host", "") not in ("127.0.0.1:%d" % port, "localhost:%d" % port):
             raise HelperError("FORBIDDEN_HOST", "Host ไม่ถูกต้อง")
-        if route not in ("/v1/health", "/v1/open-import"):
+        if route not in ("/v1/health",) + tuple(REQUEST_SCHEMAS):
             if origin and not origin_ok:
                 raise HelperError("FORBIDDEN_ORIGIN", "Origin ไม่อยู่ใน allow-list")
             raise HelperError("NOT_FOUND", "ไม่พบเส้นทาง")
@@ -1570,9 +2580,10 @@ class Service:
             raise HelperError("FORBIDDEN_HEADER", "ขาด header X-Anin-Helper")
         if h.get("content-type", "").split(";")[0].strip().lower() != "application/json":
             raise HelperError("UNSUPPORTED_MEDIA", "Content-Type ต้องเป็น application/json")
+        limit = MAX_IMPORT_BODY if route == "/v1/run-import" else MAX_BODY
         n = declared_length if declared_length is not None else len(body)
-        if n > MAX_BODY or len(body) > MAX_BODY:
-            raise HelperError("PAYLOAD_TOO_LARGE", "body ใหญ่เกิน %d ไบต์" % MAX_BODY)
+        if n > limit or len(body) > limit:
+            raise HelperError("PAYLOAD_TOO_LARGE", "body ใหญ่เกิน %d ไบต์" % limit)
         if n <= 0 or not body:
             raise HelperError("BAD_REQUEST", "body ว่าง")
         try:
@@ -1581,15 +2592,59 @@ class Service:
             raise HelperError("BAD_REQUEST", "body ต้องเป็น JSON")
         if not isinstance(req, dict):
             raise HelperError("BAD_REQUEST", "body ต้องเป็น JSON object")
-        extra = sorted(set(req) - {"proto", "type"})
+        schema = REQUEST_SCHEMAS[route]
+        extra = sorted(set(req) - set(schema))
         if extra:
             raise HelperError("BAD_REQUEST", "มี field ที่ตัวช่วยรุ่นนี้ไม่รู้จัก: %s (อัปเดต PromaxxHelper?)" % ", ".join(extra))
         if req.get("proto") != PROTO:
             raise HelperError("PROTO_MISMATCH", "proto ไม่ตรง (ตัวช่วยรุ่นนี้ใช้ %d)" % PROTO)
-        if req.get("type") not in DOC_TYPES:
+        if route != "/v1/cancel-import" and req.get("type") not in DOC_TYPES:
             raise HelperError("BAD_REQUEST", "type ต้องเป็น ORDS หรือ IRPS")
-        status, obj = self.run_job(req["type"])
+        if route == "/v1/open-import":
+            status, obj = self.run_job(req["type"])
+            return status, obj, False
+        missing = [k for k in schema if k not in req]
+        if missing:
+            raise HelperError("BAD_REQUEST", "ขาด field: %s" % ", ".join(missing))
+        if route == "/v1/cancel-import":
+            _need_str(req, "ticket", 80)
+            status, obj = self.cancel_import(req)
+            return status, obj, False
+        branch = _need_str(req, "branch", 4)
+        if not re.match(r"^[A-Za-z]{2,4}$", branch):
+            raise HelperError("BAD_REQUEST", "branch ไม่ถูกต้อง")
+        if branch not in BRANCH_FORM_NAMES:
+            raise HelperError("BRANCH_NOT_SUPPORTED", "สาขา %s ไม่รองรับการนำเข้าอัตโนมัติ" % branch)
+        if route == "/v1/prepare-import":
+            status, obj = self.run_prepare_job(req["type"], branch)
+            return status, obj, False
+        # /v1/run-import
+        _need_str(req, "ticket", 80)
+        _need_str(req, "docNo", 40)
+        _need_str(req, "sha256", 64)
+        if not re.match(r"^[0-9a-fA-F]{64}$", req["sha256"]):
+            raise HelperError("BAD_REQUEST", "sha256 ไม่ถูกต้อง")
+        if not isinstance(req["rows"], int) or isinstance(req["rows"], bool) or not 1 <= req["rows"] <= IMPORT_MAX_ROWS:
+            raise HelperError("BAD_REQUEST", "rows ต้องเป็นจำนวนเต็ม 1–%d" % IMPORT_MAX_ROWS)
+        _need_str(req, "text", MAX_IMPORT_BODY)
+        status, obj = self.run_import_job(req)
         return status, obj, False
+
+
+# field ที่แต่ละเส้นทางรับ (ครบพอดี — เกิน = 400 · ขาด = 400) — เส้นทางเดิม /v1/open-import ยังรับแค่ {proto,type}
+REQUEST_SCHEMAS = {
+    "/v1/open-import": ("proto", "type"),
+    "/v1/prepare-import": ("proto", "type", "branch"),
+    "/v1/run-import": ("proto", "ticket", "type", "branch", "docNo", "rows", "sha256", "text"),
+    "/v1/cancel-import": ("proto", "ticket"),
+}
+
+
+def _need_str(req, key, max_len):
+    v = req.get(key)
+    if not isinstance(v, str) or not v or len(v) > max_len:
+        raise HelperError("BAD_REQUEST", "%s ไม่ถูกต้อง" % key)
+    return v
 
 
 def make_server(service, host="127.0.0.1", port=None):
@@ -1603,7 +2658,8 @@ def make_server(service, host="127.0.0.1", port=None):
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = -1
-            body = self.rfile.read(length) if 0 < length <= MAX_BODY else b""
+            limit = MAX_IMPORT_BODY if self.path.split("?", 1)[0] == "/v1/run-import" else MAX_BODY
+            body = self.rfile.read(length) if 0 < length <= limit else b""
             status, headers, payload = service.handle(self.command, self.path, dict(self.headers.items()), body, declared_length=length)
             self.send_response(status)
             for k, v in headers.items():
@@ -1756,6 +2812,8 @@ def main(argv=None, adapter_factory=None, settings=None, log=None, clock=None, s
     log("ตั้ง PROMAXX_USERNAME/PASSWORD แล้ว: %s" % ("ใช่" if st.username and st.password else "ยังไม่ครบ"))
     log("ใช้ ProMaxx ที่เปิดค้างต่อ (เมื่อไม่มีฟอร์มค้าง): %s · ซ่อนหน้าต่างหลังล็อกอิน: %s" % (
         "เปิด" if st.attach_existing else "ปิด", "เปิด" if st.hide_after_login else "ปิด"))
+    log("นำเข้าอัตโนมัติ (สาขา %s): กด ตกลง เอง %s · โฟลเดอร์ไฟล์ %s" % (
+        "/".join(BRANCH_FORM_NAMES), "เปิด" if st.auto_confirm else "ปิด (หยุดก่อน ตกลง)", st.import_dir))
     if not LOCATORS_VERIFIED:
         log("⚠ ยังไม่ผ่านการตรวจหน้าต่าง ssmaxx.exe จริง — ปุ่มบนเว็บจะถูกปฏิเสธ (UNVERIFIED) · ใช้ --inspect/--find เพื่อตรวจ")
     log("ปิดหน้าต่างนี้ = ตัวช่วยหยุดทำงาน")

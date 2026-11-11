@@ -62,6 +62,8 @@ promaxx-helper/promaxx_helper.log
 promaxx-helper/promaxx_helper.log.1
 # หลักฐานตอนตรวจ/ล้ม (dump หน้าต่าง + screenshot ของ ProMaxx) — อาจมีข้อมูลธุรกิจของสาขา ห้ามเข้า repo
 promaxx-helper/runs/
+# ไฟล์นำเข้าที่ตัวช่วยรุ่น .6 เขียนเอง (stockadj_*.txt = SKU/จำนวน/ราคา/LOT/EXP ของสาขา) — ห้ามเข้า repo (ตัวช่วยลบไฟล์ที่เก่ากว่า 30 วันเอง)
+promaxx-helper/import/
 
 # automated tests (tests/.gitignore คุมรายละเอียดอีกชั้น)
 tests/node_modules/

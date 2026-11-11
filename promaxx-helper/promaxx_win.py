@@ -46,6 +46,8 @@ class _INPUT(ctypes.Structure):
 
 
 MAIN_TITLE = "SeniorSoft ProMaxx"      # ชื่อหน้าต่างหลักของ ssmaxx.exe (ตรวจจริง) — ใช้หาหน้าต่างที่ถูกซ่อนค้าง
+WM_KEYDOWN, WM_KEYUP, WM_CHAR = 0x0100, 0x0101, 0x0102
+POST_KEYS = {"tab": 0x09}              # คีย์เดียวที่ post_key ส่งได้ (ใช้ย้ายจากช่องชื่อผู้ใช้ไปช่องรหัสผ่าน) — ห้ามขยายโดยไม่ตรวจกับ ProMaxx จริง
 
 
 def _norm_menu(text):
@@ -111,6 +113,7 @@ class WinAdapter:
         u.GetCursorPos.argtypes, u.GetCursorPos.restype = [ctypes.POINTER(wintypes.POINT)], ctypes.c_bool
         u.SetCursorPos.argtypes, u.SetCursorPos.restype = [ci, ci], ctypes.c_bool
         u.GetSystemMetrics.argtypes, u.GetSystemMetrics.restype = [ci], ci
+        u.SendMessageW.argtypes, u.SendMessageW.restype = [vp, cu, ctypes.c_size_t, vp], ctypes.c_ssize_t
         k.CreateMutexW.argtypes, k.CreateMutexW.restype = [vp, ctypes.c_bool, ctypes.c_wchar_p], vp
         k.WaitForSingleObject.argtypes, k.WaitForSingleObject.restype = [vp, ctypes.c_uint32], ctypes.c_uint32
         k.ReleaseMutex.argtypes = [vp]
@@ -327,6 +330,19 @@ class WinAdapter:
         g, c = self.gui, self.con
         g.ShowWindow(hwnd, c.SW_RESTORE if g.IsIconic(hwnd) else c.SW_SHOW)
 
+    def show_window_back(self, hwnd):
+        """แสดงหน้าต่างที่ซ่อนไว้กลับมาโดย "ไม่ดึงขึ้นหน้า/ไม่แย่งโฟกัส": SW_SHOWNA (ย่ออยู่ = SW_SHOWMINNOACTIVE) แล้วส่งไปอยู่หลังสุดของลำดับหน้าต่าง
+        — พนักงานยังเห็นเบราว์เซอร์ของตัวเองอยู่หน้า · ProMaxx เห็นบน taskbar · ไม่ส่งคีย์/คลิก
+        ⛔ ห้ามใช้ SW_SHOWNOACTIVATE: ทำงานเหมือน SW_SHOWNORMAL ที่ไม่ activate = "รีสตอร์" หน้าต่างที่ขยายเต็มจออยู่กลับเป็นขนาดปกติ
+        (ตรวจจริง 5 พ.ย. 2026: zoomed True → False · 1936×1048 → 1000×650) → ปุ่มนำเข้า/ช่องคลังหลุดนอกกรอบหน้าต่าง แล้วด่าน "มองเห็นในกรอบ" ของจังหวะ 2 ล้ม
+        (PRECONDITION_FAILED ที่ import-click) · SW_SHOWNA = แสดงตามขนาด/สถานะปัจจุบัน (ยังขยายเต็มจออยู่) โดยไม่ activate (ตรวจจริงแล้ว: ไม่แย่งโฟกัส)"""
+        g, c = self.gui, self.con
+        g.ShowWindow(hwnd, c.SW_SHOWMINNOACTIVE if g.IsIconic(hwnd) else c.SW_SHOWNA)
+        try:
+            g.SetWindowPos(hwnd, c.HWND_BOTTOM, 0, 0, 0, 0, c.SWP_NOMOVE | c.SWP_NOSIZE | c.SWP_NOACTIVATE)
+        except Exception:      # noqa: BLE001
+            pass
+
     def reveal_hidden(self, pids):
         """กู้หน้าต่างหลักของ ProMaxx ที่ถูกซ่อนค้าง (เช่นตัวช่วยถูกปิดกลางงานตอนซ่อนอยู่) → คืนจำนวนหน้าต่างที่แสดงกลับ"""
         n = 0
@@ -394,6 +410,43 @@ class WinAdapter:
         time.sleep(0.05)
         self.api.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
 
+    # ── ส่งข้อความเข้าหน้าต่างโดยตรง (ไม่ใช่เมาส์/คีย์บอร์ดจริง · รุ่น 2026-11-05) ─────────────────────────
+    def foreground_hwnd(self):
+        """หน้าต่างที่อยู่ด้านหน้า (foreground) ตอนนี้ — 0 ถ้าไม่มี · อ่านอย่างเดียว (ไว้จำหน้าต่างของพนักงานแล้วคืนโฟกัสให้ทีหลัง)"""
+        try:
+            return int(self.gui.GetForegroundWindow() or 0)
+        except Exception:
+            return 0
+
+    def post_char(self, hwnd, code, pids=None):
+        """ส่งตัวอักษร 1 หน่วย UTF-16 เข้าหน้าต่างด้วย WM_CHAR (PostMessage) — ไม่ใช้เมาส์/คีย์บอร์ดจริง ไม่ต้องเป็น foreground ใช้ได้แม้ SW_HIDE
+        ตรวจจริง 5 พ.ย. 2026 (Build ProMaxx 10.4.28.0845.1): ตัวอักษรเข้าช่องที่ "ได้โฟกัสในโปรแกรม" ทั้งที่หน้าต่างอยู่หลัง/ซ่อน · ล็อกอินจริงสำเร็จด้วยวิธีนี้
+        pids = จำกัดให้ส่งเฉพาะหน้าต่างของโปรเซสเหล่านี้ (กันส่งผิดหน้าต่าง) · คืน True = เข้าคิวข้อความแล้ว (ไม่ได้แปลว่าโปรแกรมรับ — ผู้เรียกต้องตรวจผลเอง)
+        False = ส่งไม่ได้ (หน้าต่างหาย / สิทธิ์ต่ำกว่า เช่น ProMaxx รันแบบ Administrator — UIPI บล็อก PostMessage) · ⛔ ห้าม log ตัวอักษรที่ส่ง"""
+        if pids is not None and self._pid_of(hwnd) not in set(pids):
+            return False
+        try:
+            self.gui.PostMessage(hwnd, WM_CHAR, int(code) & 0xFFFF, 1)
+            return True
+        except Exception:
+            return False
+
+    def post_key(self, hwnd, name, pids=None):
+        """ส่งคีย์ (WM_KEYDOWN แล้ว WM_KEYUP) เข้าหน้าต่างโดยตรง — เฉพาะคีย์ใน POST_KEYS (ตอนนี้มีแค่ Tab) · คืน True/False เหมือน post_char
+        ตรวจจริง 5 พ.ย. 2026: Tab ที่ส่งแบบนี้ย้ายโฟกัสจากช่องชื่อผู้ใช้ไปช่องรหัสผ่านของหน้า Login ได้ (ตัวปรับแต่ง Shift/Ctrl ปลอมด้วยข้อความไม่ได้)"""
+        vk = POST_KEYS.get(str(name).lower())
+        if vk is None:
+            raise ValueError("key ไม่รู้จัก: %r" % name)
+        if pids is not None and self._pid_of(hwnd) not in set(pids):
+            return False
+        try:
+            self.gui.PostMessage(hwnd, WM_KEYDOWN, vk, 1)
+            time.sleep(0.03)
+            self.gui.PostMessage(hwnd, WM_KEYUP, vk, 1 | (1 << 30) | (1 << 31))
+            return True
+        except Exception:
+            return False
+
     def _cursor(self):
         pt = self.wt.POINT()
         self.u.GetCursorPos(ctypes.byref(pt))
@@ -425,6 +478,19 @@ class WinAdapter:
         time.sleep(0.05)
         self.api.mouse_event(self.con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         return True, ""
+
+    def set_text(self, hwnd, text):
+        """ใส่ข้อความลง control ของโปรเซสอื่นด้วย WM_SETTEXT (ไม่ใช้เมาส์/คีย์บอร์ด · ไม่ต้องมีโฟกัส) — ตรวจจริง 4 พ.ย. 2026 กับช่อง File name ของกล่อง Select File
+        ผู้เรียกต้องอ่านกลับด้วย get_text ทุกครั้งก่อนทำต่อ · ห้าม log ข้อความที่ใส่"""
+        return self.gui.SendMessage(hwnd, self.con.WM_SETTEXT, 0, str(text))
+
+    def get_text(self, hwnd):
+        """อ่านข้อความของ control ของโปรเซสอื่นด้วย WM_GETTEXT — GetWindowText อ่านช่องกรอกข้ามโปรเซสไม่ได้ (ข้อกำหนดของ Windows · เจอจริง 4 พ.ย. 2026: ได้ค่าว่าง)"""
+        u = self.u
+        n = int(u.SendMessageW(hwnd, self.con.WM_GETTEXTLENGTH, 0, None))
+        buf = ctypes.create_unicode_buffer(max(n, 0) + 2)
+        u.SendMessageW(hwnd, self.con.WM_GETTEXT, n + 1, ctypes.addressof(buf))
+        return buf.value
 
     def click_button(self, hwnd):
         self.gui.PostMessage(hwnd, self.con.BM_CLICK, 0, 0)            # PostMessage ไม่ใช่ SendMessage (กันค้างเมื่อเปิด dialog modal)
