@@ -65,7 +65,8 @@ print(json.dumps(dict(verified=m.LOCATORS_VERIFIED, specs=m.STEP_SPECS, proto=m.
   // 4 พ.ย. 2026: ผู้ใช้ยืนยันตั้ง True หลัง Gate 0 (20/20 cold start + เคสขอบ + สายเต็ม Chrome/Edge จริง) — ตั้งกลับเป็น False ได้เสมอ (เช่นระหว่างตรวจใหม่หลัง ProMaxx อัปเดต) แต่ต้องอัปเดตเทสนี้คู่กัน
   expect(r.verified, 'LOCATORS_VERIFIED ต้องเป็น True ในรุ่นที่ส่งมอบ (ผู้ใช้ยืนยัน 4 พ.ย. 2026) — ถ้า False ปุ่มบนเว็บจะได้ UNVERIFIED และไม่คลิกอะไร').toBe(true);
   // 3 พ.ย. 2026: เติม STEP_SPECS จากการตรวจจริง (UIA) แล้ว — ตรึงโครงที่ส่งมอบ (รายละเอียดด่านกันพลาดอยู่ใน promaxx-helper-uia.spec.js ข้อ 5)
-  expect(Object.keys(r.specs), 'STEP_SPECS ต้องครบทุกขั้นตามลำดับขั้นตอน').toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
+  expect(Object.keys(r.specs), 'STEP_SPECS ต้องครบทุกขั้นตามลำดับขั้นตอน').toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button',
+    'form-ready', 'import-click', 'select-file', 'verify-table', 'confirm']);   // + ขั้นนำเข้าอัตโนมัติ (รุ่น .6)
   expect(r.specs['import-button'].allow_dialogs, 'ขั้นสุดท้ายอนุญาตเฉพาะกล่อง Select File').toEqual(['^Select File\\b']);
   expect(r.proto).toBe(1);
   expect(r.port).toBe(47831);

@@ -75,18 +75,20 @@ async function startServer(opts = {}) {
     JSON.stringify({ helper_dir: HELPER_DIR, lib_dir: LIB_DIR, tmp, ...opts })], { stdio: ['pipe', 'pipe', 'pipe'] });
   let err = '';
   child.stderr.on('data', (d) => { err += d; });
-  const port = await new Promise((resolve, reject) => {
+  const info = await new Promise((resolve, reject) => {
     let buf = '';
     child.stdout.on('data', (d) => {
       buf += d;
       const line = buf.split('\n')[0];
-      if (buf.includes('\n')) { try { resolve(JSON.parse(line).port); } catch (e) { reject(new Error('serve_fake: ' + buf + err)); } }
+      if (buf.includes('\n')) { try { resolve(JSON.parse(line)); } catch (e) { reject(new Error('serve_fake: ' + buf + err)); } }
     });
     child.on('exit', (c) => reject(new Error('serve_fake exit ' + c + '\n' + err)));
     setTimeout(() => reject(new Error('serve_fake timeout\n' + err)), 20000);
   });
+  const port = info.port, dbg = info.dbg;
   return {
     port, tmp, origin: 'http://127.0.0.1:' + port,
+    state: () => request(dbg).then((r) => r.json),      // สถานะตัวต่อปลอม (เปิดด้วย opts.debug) — กดตกลงกี่ครั้ง · ตารางที่บันทึก · ไฟล์ที่ตัวช่วยเขียน · ปุ่มที่กดผิด
     request: (o) => request(port, o),
     post: (body, headers) => request(port, { method: 'POST', path: '/v1/open-import', headers: { ...POST_HEADERS(), ...headers }, body }),
     stop: () => new Promise((resolve) => { child.once('exit', () => resolve()); try { child.stdin.end(); } catch (e) { resolve(); } setTimeout(() => { child.kill(); resolve(); }, 3000); }),

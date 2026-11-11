@@ -1229,7 +1229,7 @@
         <button onclick="saveAdjustDocToCloud()" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">💾 บันทึก LOT</button>
         <button onclick="exportAdjustDocExcel()" title="Export ทุกรายการของแท็บนี้ (ไม่ใช่เฉพาะหน้าที่เห็น)" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">📊 Export Excel</button>
         <button id="adjExportTextBtn" onclick="onAdjExportTextClick()" title="Export ทุกรายการของแท็บนี้" style="padding:7px 16px;border-radius:7px;border:1px solid rgba(26,158,92,0.4);background:rgba(26,158,92,0.08);color:var(--green);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">⬇️ Export Text</button>
-        <button id="adjPromaxxBtn" onclick="onAdjPromaxxClick()" title="เปิด ProMaxx (ssmaxx.exe) ที่เครื่องนี้ → ล็อกอิน → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O → ปุ่ม นำเข้าไฟล์เอกสาร แล้วหยุด (ขั้นทดสอบ: ยังไม่นำเข้าข้อมูล)" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(0,114,198,0.45);background:rgba(0,114,198,0.08);color:var(--accent);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">🖥️ บันทึกลง PROMAXX</button>
+        <button id="adjPromaxxBtn" onclick="onAdjPromaxxClick()" title="บันทึกรายการของหน้านี้ลง ProMaxx (สาขายา): เปิด ProMaxx → อ่านเลขที่เอกสาร → ยืนยัน → ตัวช่วยเลือกไฟล์และตรวจตาราง" style="display:none;padding:7px 16px;border-radius:7px;border:1px solid rgba(0,114,198,0.45);background:rgba(0,114,198,0.08);color:var(--accent);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:700;">🖥️ บันทึกลง PROMAXX</button>
         <button onclick="closeAdjustDocPopup()" style="padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-size:0.8rem;font-weight:600;">ปิด</button>
       </div>
     </div>
@@ -1329,14 +1329,14 @@
 </div>
 
 <!-- ระบุเลขที่เอกสารก่อนดาวน์โหลด Export Text ของใบ 📦 (7 ต.ค. 2026) — กรอกแล้วรายการในไฟล์ย้ายไป 🗂️ ประวัติปรับปรุง -->
-<div id="adjDocNoModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;" onclick="if(event.target.id==='adjDocNoModal')closeAdjDocNoModal()">
+<div id="adjDocNoModal" style="display:none;position:fixed;inset:0;background:rgba(10,20,40,0.82);z-index:10004;align-items:center;justify-content:center;" onclick="if(event.target.id==='adjDocNoModal'&&!_adjPromaxxCtx)closeAdjDocNoModal()">
   <div id="adjDocNoCard" style="background:var(--surface);border-radius:16px;padding:26px 30px;min-width:340px;max-width:460px;width:92vw;box-shadow:0 8px 40px rgba(0,0,0,0.35);text-align:center;border-top:6px solid #6a3cb5;">
     <div style="font-size:2.1rem;margin-bottom:8px;">📝</div>
-    <div style="font-size:1.05rem;font-weight:700;color:#6a3cb5;margin-bottom:8px;">ระบุเลขที่เอกสาร</div>
-    <div id="adjDocNoSummary" style="font-size:0.85rem;color:var(--text2);margin-bottom:12px;line-height:1.5;"></div>
+    <div id="adjDocNoTitle" style="font-size:1.05rem;font-weight:700;color:#6a3cb5;margin-bottom:8px;">ระบุเลขที่เอกสาร</div>
+    <div id="adjDocNoSummary" style="font-size:0.85rem;color:var(--text2);margin-bottom:12px;line-height:1.5;white-space:pre-line;"></div>
     <input id="adjDocNoInput" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="เลขที่เอกสาร เช่น ORDS…" oninput="onAdjDocNoInput()" onkeydown="onAdjDocNoKey(event)" style="width:100%;padding:11px 12px;border:2px solid var(--border);border-radius:10px;font-size:1rem;text-align:center;font-weight:700;font-family:'Inter',sans-serif;text-transform:uppercase;outline:none;background:var(--surface);color:var(--text);">
     <div id="adjDocNoErr" style="min-height:1.3em;font-size:0.75rem;font-weight:600;margin:6px 0 4px;line-height:1.4;"></div>
-    <div style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;line-height:1.5;">ต้องกรอกก่อนจึงดาวน์โหลดได้ · หลังดาวน์โหลด รายการชุดนี้จะย้ายไป 🗂️ ประวัติปรับปรุงและหายจากตาราง</div>
+    <div id="adjDocNoNote" style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;line-height:1.5;">ต้องกรอกก่อนจึงดาวน์โหลดได้ · หลังดาวน์โหลด รายการชุดนี้จะย้ายไป 🗂️ ประวัติปรับปรุงและหายจากตาราง</div>
     <div style="display:flex;gap:10px;">
       <button onclick="closeAdjDocNoModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">ยกเลิก</button>
       <button id="adjDocNoOk" onclick="confirmAdjDocNo()" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#9b5de5,#6a3cb5);color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;">⬇️ ดาวน์โหลด</button>
@@ -9854,13 +9854,21 @@ let ADJUST_DOC_HISTORY_IMPORT=true;
 // 🖥️ บันทึกลง PROMAXX (3 พ.ย. 2026 · ผู้ใช้สั่ง) — ปุ่มท้ายฟุตเตอร์ 📦 สั่งโปรแกรมตัวช่วย PromaxxHelper (promaxx-helper/ · รันบนเครื่องเดียวกับ ProMaxx ที่ 127.0.0.1)
 //   ให้เปิด ssmaxx.exe → ล็อกอิน → เมนูเอกสารรับ/จ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" แล้ว "หยุด" (ขั้นที่ 1: ยังไม่เลือกไฟล์/ไม่นำเข้า/ไม่บันทึก — ไว้พิสูจน์ว่าคลิกถูก)
 //   ชนิดมาจากแท็บที่เปิด: ords → ORDS (เอกสารจ่าย · O) · irps → IRPS (เอกสารรับ · I) · เฉพาะ pharmacist/supervisor บน Desktop (ไม่ใช่ PDA)
-//   ⛔ หน้าเว็บส่งแค่ {proto,type} — ห้ามส่ง path/คำสั่ง/รหัสผ่าน (รหัส ProMaxx อยู่ใน .env บนเครื่อง ไม่ผ่านเว็บ · ตัวช่วยปฏิเสธ field อื่น) · ไม่เขียน Firestore
+//   ⛔ เส้นทางเดิม /v1/open-import ส่งแค่ {proto,type} — ห้ามส่ง path/คำสั่ง/รหัสผ่าน (รหัส ProMaxx อยู่ใน .env บนเครื่อง ไม่ผ่านเว็บ · ตัวช่วยปฏิเสธ field อื่น)
+//   ★ นำเข้าอัตโนมัติ (ตัวช่วยรุ่น .6 · 4 พ.ย. 2026 · ผู้ใช้สั่ง · เฉพาะสาขายา SRC/KKL/SSS — WH ไม่ใช้ปุ่มนี้) สวิตช์ ADJUST_DOC_PROMAXX_AUTO:
+//     กดปุ่ม → /v1/prepare-import {proto,type,branch} (ตัวช่วยเปิดฟอร์ม ตั้งประเภท/คลัง ตรวจสาขา อ่านเลขที่เอกสาร แล้วหยุด) → ป็อปอัพ "ระบุเลขที่เอกสาร" ใส่เลขจาก ProMaxx ให้ (แก้ไม่ได้)
+//     → พนักงานกดยืนยันปุ่มเดียว → เขียน 🗂️ ประวัติก่อน (ย้ายแถวเหมือน Export Text) → /v1/run-import {proto,ticket,type,branch,docNo,rows,sha256,text} (ตัวช่วยเขียนไฟล์เอง เลือกไฟล์ใน ProMaxx
+//     เทียบตารางกับไฟล์ แล้วกด "ตกลง" เฉพาะเมื่อ PROMAXX_AUTO_CONFIRM เปิดที่ตัวช่วย) · ล้มแบบยืนยันได้ว่ายังไม่ได้ "ตกลง" = คืนแถวกลับตารางเอง · ไม่แน่ชัด = คงไว้ใน 🗂️ + ปุ่มดาวน์โหลดไฟล์
+//     ⛔ เส้นทางใหม่ส่งได้เฉพาะ branch/ticket/docNo/เนื้อไฟล์ Text (ตัวช่วยตรวจรูปแบบเข้ม) — ยังห้ามส่ง path/คำสั่ง/รหัสผ่าน · ADJUST_DOC_PROMAXX_AUTO=false = กลับเป็นเส้นทางเดิม (เปิดหน้านำเข้าแล้วหยุด)
 //   Chrome/Edge รุ่นใหม่ถามสิทธิ์ Local Network Access ครั้งแรก (fetch ใส่ targetAddressSpace:'loopback') — IT อนุญาตล่วงหน้าด้วย policy ได้ (promaxx-helper/README.md)
 //   PROMAXX_HELPER_URL ต้องตรงกับ HELPER_PORT ใน .env ของตัวช่วย (ค่าเริ่มต้น 47831) · false = ไม่มีปุ่ม (ทางถอย — ตัวช่วยบนเครื่องไม่กระทบอะไร)
 let ADJUST_DOC_PROMAXX=true;
 let PROMAXX_HELPER_URL='http://127.0.0.1:47831';      // let: เทสชี้ไปเซิร์ฟเวอร์จำลองได้
 const PROMAXX_HELPER_PROTO=1;
 let PROMAXX_HELPER_TIMEOUT_MS=180000;      // เปิดโปรแกรม+ล็อกอิน+คลิก ราว 30–90 วินาที
+let ADJUST_DOC_PROMAXX_AUTO=true;            // นำเข้าอัตโนมัติ (ต้องเปิด ADJUST_DOC_HISTORY ด้วย — แถวต้องย้ายไป 🗂️ ก่อนนำเข้า) · false/ประวัติปิด = เส้นทางเดิม · เทสสลับได้
+const PROMAXX_IMPORT_MAX_ROWS=20;            // ตรงกับ IMPORT_MAX_ROWS ของตัวช่วย (= หน้าละ 20 ของใบ 📦)
+let _adjPromaxxCtx=null;                     // งานนำเข้าที่เตรียมแล้วรอพนักงานยืนยัน {ticket,type,branch,docNo,autoConfirm,expiresAt}
 let _adjPromaxxBusy=false;                   // กำลังสั่งตัวช่วย — กันกดซ้ำ
 const ADJ_HIST_MAX_KB=800;
 let _adjHist=null;           // doc ดิบของ {branch}_adjhist: {branch,countResetAt,entries:[{no,dir,at,by,rows:[[sku,qty,base,price,lot,exp]]}],updatedBy,updatedAt} · กรองรอบด้วย _adjHistCurrent ตอนใช้
@@ -11214,15 +11222,19 @@ function _applyStatAuditCardMode(){
 // ท้าย toast ตอน Export เมื่อใช้ตัวกรอง ERP
 function _adjErpFilterNote(vr){return vr&&vr.filter!=='all'?` · เฉพาะ ${ADJ_ERP_FILTER_LABEL[vr.filter]}`:'';}
 // ไฟล์ที่กำลังส่งออกมีแถวที่ ERP มีใบแล้ว → เตือนก่อนนำเข้า (ระบบไม่มีตัวกันส่งซ้ำ)
-function _warnAdjErpDuplicate(rows,vr){
-  if(!vr||!vr.covered)return;
+function _adjErpDuplicateText(rows,vr){
+  if(!vr||!vr.covered)return '';
   const n={done:0,partial:0,over:0,opposite:0};
   for(const r of rows){const e=vr.ev.get(r.sku);if(e&&e.state in n)n[e.state]++;}
-  const tot=n.done+n.partial+n.over+n.opposite;if(!tot)return;
+  const tot=n.done+n.partial+n.over+n.opposite;if(!tot)return '';
   const why=[];
   if(n.done)why.push(`เข้าแล้ว ${n.done}`);if(n.partial)why.push(`บางส่วน ${n.partial}`);
   if(n.over)why.push(`เกิน ${n.over}`);if(n.opposite)why.push(`ทิศตรงข้าม ${n.opposite}`);
-  toast(`⚠️ ${tot} รายการในไฟล์มีเอกสารปรับปรุงสินค้าแล้ว (${why.join(' · ')}) — ระวังส่งซ้ำ`,'warn',9000);
+  return `⚠️ ${tot} รายการในไฟล์มีเอกสารปรับปรุงสินค้าแล้ว (${why.join(' · ')}) — ระวังส่งซ้ำ`;
+}
+function _warnAdjErpDuplicate(rows,vr){
+  const t=_adjErpDuplicateText(rows,vr);
+  if(t)toast(t,'warn',9000);
 }
 // ── กติกาใบปรับปรุง (ก.ย. 2026) ───────────────────────────────────────────────
 // เป้าหมายของใบคือ "ทำให้ระบบเหลือเท่ากับยอดที่เภสัชนับได้" (ระบบ 2 · นับ 1 → ORDS ลด 1 → ระบบเหลือ 1)
@@ -11474,7 +11486,7 @@ function closeAdjustDocPopup(){
   // ประวัติ/ช่องเลขที่เอกสารซ้อนอยู่เหนือ 📦 — ปิด 📦 ต้องปิดไปด้วย (ไม่ให้ค้างลอย) · กำลังบันทึกอยู่ = คง modal ไว้จนเสร็จ
   const h=document.getElementById('adjHistPopupOverlay');if(h)h.style.display='none';
   const xo=document.getElementById('adjErpOutsideOverlay');if(xo)xo.style.display='none';
-  if(!_adjHistBusy){for(const id of ['adjDocNoModal','adjHistImportModal']){const m=document.getElementById(id);if(m)m.style.display='none';}_adjHistImportCur=null;}
+  if(!_adjHistBusy){closeAdjDocNoModal();const hm=document.getElementById('adjHistImportModal');if(hm)hm.style.display='none';_adjHistImportCur=null;}      // closeAdjDocNoModal: ถ้ากำลังรอยืนยันนำเข้า ProMaxx ยกเลิกตั๋วด้วย
   _closeModal('adjustDocPopupOverlay','adjustDocPopupCard',()=>document.getElementById('scanInput').focus());
 }
 function handleAdjustDocOverlayClick(e){if(e.target===document.getElementById('adjustDocPopupOverlay'))closeAdjustDocPopup();}
@@ -11504,8 +11516,9 @@ function _adjTextRow(r){
   const exp=_toBeDMY((selEntry&&selEntry.exp)||'');
   return {price,lot,exp,line:`${r.sku}\t${r.qty}\t${price}\t\t\t\t\t\t${lot}\t${exp}`}; // 1 TAB, 1 TAB, 6 TAB, 1 TAB
 }
+function _adjTextBody(lines){return lines.join('\r\n')+'\r\n';}      // CRLF + ปิดท้ายด้วย newline — ไฟล์ที่ดาวน์โหลดกับเนื้อไฟล์ที่ส่งตัวช่วย (นำเข้าอัตโนมัติ) ต้องเป็นไบต์ชุดเดียวกัน
 function _adjDownloadText(lines,fileName){
-  const text=lines.join('\r\n')+'\r\n'; // CRLF + ปิดท้ายด้วย newline สำหรับ import ฝั่ง Windows/ERP
+  const text=_adjTextBody(lines); // CRLF + ปิดท้ายด้วย newline สำหรับ import ฝั่ง Windows/ERP
   const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -11526,7 +11539,9 @@ function exportAdjustDocText(){
 // ── 🖥️ บันทึกลง PROMAXX (3 พ.ย. 2026 · ผู้ใช้สั่ง) — เรียกตัวช่วยบนเครื่อง (สวิตช์ ADJUST_DOC_PROMAXX · ดูคำอธิบายที่ประกาศ) ────────────
 // กด → POST http://127.0.0.1:47831/v1/open-import {proto:1,type} → ตัวช่วยขับ ssmaxx.exe ไปถึงปุ่ม "นำเข้าไฟล์เอกสาร" แล้วหยุด · ผลกลับมาเป็นรหัส (code) ที่ map เป็นข้อความสั้นด้านล่าง
 // toast ต้องสั้น (Desktop ไม่ตัดบรรทัด · §🔤) · รายละเอียดทุกขั้น (ms ต่อขั้น) อยู่ใน console.info('[promaxx]') ให้ IT ดู
-const _PROMAXX_STEP_TH={preflight:'ตรวจความพร้อม',launch:'เปิดโปรแกรม',login:'ล็อกอิน',menu:'เข้าเมนู','doc-button':'กดปุ่ม I/O','import-button':'กดปุ่มนำเข้าไฟล์เอกสาร'};
+const _PROMAXX_STEP_TH={preflight:'ตรวจความพร้อม',launch:'เปิดโปรแกรม',login:'ล็อกอิน',menu:'เข้าเมนู','doc-button':'กดปุ่ม I/O','import-button':'กดปุ่มนำเข้าไฟล์เอกสาร',
+  'doc-type-open':'เปิดรายการประเภทเอกสาร','doc-type-pick':'เลือกประเภทเอกสาร','doc-type-ok':'ยืนยันประเภทเอกสาร','warehouse-open':'เปิดรายการคลัง','warehouse-pick':'เลือกคลัง','warehouse-ok':'ยืนยันคลัง',
+  'form-ready':'ตรวจฟอร์มและอ่านเลขที่','import-click':'กดปุ่มนำเข้าไฟล์เอกสาร','select-file':'เลือกไฟล์','verify-table':'ตรวจตารางกับไฟล์',confirm:'กด ตกลง'};
 const _PROMAXX_DOC_TH={ORDS:'เอกสารจ่าย · O',IRPS:'เอกสารรับ · I'};
 const _PROMAXX_NOT_ALLOWED='ตัวช่วยไม่อนุญาตเว็บนี้ — ตรวจ HELPER_ALLOWED_ORIGINS';
 const _PROMAXX_OLD_HELPER='ตัวช่วยรุ่นไม่ตรง — อัปเดต PromaxxHelper';
@@ -11542,8 +11557,14 @@ const _PROMAXX_CODE_MSG={
   PROTO_MISMATCH:[_PROMAXX_OLD_HELPER,'warn'],BAD_REQUEST:[_PROMAXX_OLD_HELPER,'warn'],
   LOGIN_FAILED:['ล็อกอิน ProMaxx ไม่สำเร็จ — ตรวจรหัสในไฟล์ .env (ไม่ลองซ้ำ)','error'],
   INTERFERENCE:['คลิกไม่ได้ — อย่าแตะเมาส์ระหว่างทำงาน แล้วลองใหม่','error'],
+  TICKET_INVALID:['ตั๋วนำเข้าใช้ไม่ได้แล้ว — กดบันทึกลง PROMAXX ใหม่','warn'],
+  TICKET_EXPIRED:['ตั๋วหมดอายุ (เกิน 10 นาที) — กดบันทึกลง PROMAXX ใหม่','warn'],
+  STATE_CHANGED:['ProMaxx เปลี่ยนไปหลังอ่านเลขที่ — ปิดฟอร์มแล้วกดใหม่','warn'],
+  BRANCH_NOT_SUPPORTED:['สาขานี้ไม่รองรับการนำเข้า ProMaxx อัตโนมัติ','warn'],
+  TABLE_MISMATCH:['ตารางใน ProMaxx ไม่ตรงไฟล์ — ไม่กด ตกลง · ปิดฟอร์มแล้วลองใหม่','error'],
+  CONFIRM_UNKNOWN:['กดตกลงแล้วแต่ยืนยันผลไม่ได้ — ตรวจใน ProMaxx ก่อนทำซ้ำ','error'],
 };
-function _adjPromaxxEnabled(){return ADJUST_DOC_PROMAXX&&!!currentBranch&&!_isPdaApp()&&(currentRole==='pharmacist'||currentRole==='supervisor');}
+function _adjPromaxxEnabled(){return ADJUST_DOC_PROMAXX&&!!currentBranch&&_isPharmacyBranch()&&!_isPdaApp()&&(currentRole==='pharmacist'||currentRole==='supervisor');}   // WH ไม่ใช้ปุ่มนี้ (ผู้ใช้สั่ง 4 พ.ย. 2026)
 function _adjPromaxxType(){return _adjDocFilter==='irps'?'IRPS':'ORDS';}
 function _refreshAdjPromaxxBtn(){
   const b=document.getElementById('adjPromaxxBtn');if(!b)return;
@@ -11551,7 +11572,9 @@ function _refreshAdjPromaxxBtn(){
   b.disabled=_adjPromaxxBusy;
   b.textContent=_adjPromaxxBusy?'⏳ กำลังทำงาน…':'🖥️ บันทึกลง PROMAXX';
   const t=_adjPromaxxType();
-  b.title=`ชนิดตามแท็บที่เปิด: ${t} (${_PROMAXX_DOC_TH[t]})\nเปิด ProMaxx (ssmaxx.exe) ที่เครื่องนี้ → ล็อกอิน → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" แล้วหยุด\nขั้นทดสอบ: ยังไม่เลือกไฟล์ ไม่นำเข้า ไม่บันทึกข้อมูล · ต้องเปิด PromaxxHelper ไว้ และอย่าแตะเมาส์ระหว่างทำงาน (ประมาณ 1 นาที)`;
+  b.title=(ADJUST_DOC_PROMAXX_AUTO&&_adjHistEnabled())
+    ?`ชนิดตามแท็บที่เปิด: ${t} (${_PROMAXX_DOC_TH[t]})\nเปิด ProMaxx ที่เครื่องนี้ → ตั้งประเภท/คลัง Front Store → อ่านเลขที่เอกสารมาใส่ให้ → คุณกดยืนยันครั้งเดียว → ตัวช่วยเลือกไฟล์ Text ของหน้านี้ (ไม่เกิน ${PROMAXX_IMPORT_MAX_ROWS} รายการ) ตรวจตาราง แล้วบันทึกตามที่ตั้งค่าตัวช่วยไว้\nรายการชุดนี้ย้ายไป 🗂️ ประวัติปรับปรุงเหมือน Export Text · ต้องเปิด PromaxxHelper ไว้ และอย่าแตะเมาส์ระหว่างทำงาน (ประมาณ 1–2 นาที)`
+    :`ชนิดตามแท็บที่เปิด: ${t} (${_PROMAXX_DOC_TH[t]})\nเปิด ProMaxx (ssmaxx.exe) ที่เครื่องนี้ → ล็อกอิน → เมนูเอกสารรับ/เอกสารจ่าย → ปุ่ม I/O → ปุ่ม "นำเข้าไฟล์เอกสาร" แล้วหยุด\nขั้นทดสอบ: ยังไม่เลือกไฟล์ ไม่นำเข้า ไม่บันทึกข้อมูล · ต้องเปิด PromaxxHelper ไว้ และอย่าแตะเมาส์ระหว่างทำงาน (ประมาณ 1 นาที)`;
 }
 // สถานะสิทธิ์ Local Network Access ('granted'|'denied'|'prompt'|'' = ไม่ทราบ) — ใช้แยก "ตัวช่วยไม่ได้เปิด" ออกจาก "เบราว์เซอร์บล็อก" ตอน fetch ล้ม
 async function _adjPromaxxPermission(){
@@ -11562,12 +11585,12 @@ async function _adjPromaxxPermission(){
   }catch(e){return '';}      // ชื่อสิทธิ์ไม่รู้จัก (เบราว์เซอร์รุ่นเก่า) = ไม่ทราบ
 }
 // คืน {status,data} เมื่อตัวช่วยตอบ · {err:'denied'|'unreachable'|'timeout'|'bad'} เมื่อไม่ได้คำตอบที่ใช้ได้ — ไม่โยน error
-async function _adjPromaxxCall(type){
-  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),PROMAXX_HELPER_TIMEOUT_MS);
+async function _adjPromaxxPost(path,body,timeoutMs){
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),timeoutMs||PROMAXX_HELPER_TIMEOUT_MS);
   try{
-    const res=await fetch(PROMAXX_HELPER_URL+'/v1/open-import',{method:'POST',
+    const res=await fetch(PROMAXX_HELPER_URL+path,{method:'POST',
       headers:{'Content-Type':'application/json','X-Anin-Helper':'1'},         // Content-Type JSON + header เอง = บังคับ preflight (ตัวช่วยตรวจ Origin)
-      body:JSON.stringify({proto:PROMAXX_HELPER_PROTO,type}),
+      body:JSON.stringify(body),
       targetAddressSpace:'loopback',cache:'no-store',signal:ac.signal});
     let data=null;try{data=await res.json();}catch(e){}
     if(!data||typeof data!=='object'||data.proto!==PROMAXX_HELPER_PROTO)return {err:'bad',status:res.status,data};
@@ -11576,6 +11599,16 @@ async function _adjPromaxxCall(type){
     if(e&&e.name==='AbortError')return {err:'timeout'};
     return {err:(await _adjPromaxxPermission())==='denied'?'denied':'unreachable'};
   }finally{clearTimeout(tm);}
+}
+async function _adjPromaxxCall(type){return _adjPromaxxPost('/v1/open-import',{proto:PROMAXX_HELPER_PROTO,type});}      // เส้นทางเดิม (เปิดหน้านำเข้าแล้วหยุด)
+// ตัวช่วยรุ่นเก่า (ก่อน .6) ไม่มีเส้นทาง prepare-import: preflight ถูก 404 → เบราว์เซอร์รายงานเหมือนติดต่อไม่ได้ — ถาม /v1/health (GET ธรรมดา ไม่ต้อง preflight) เพื่อแยก "รุ่นเก่า" ออกจาก "ไม่ได้เปิด"
+async function _adjPromaxxHealth(){
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),5000);
+  try{
+    const res=await fetch(PROMAXX_HELPER_URL+'/v1/health',{method:'GET',targetAddressSpace:'loopback',cache:'no-store',signal:ac.signal});
+    const data=await res.json();
+    return data&&typeof data==='object'&&data.proto===PROMAXX_HELPER_PROTO?data:null;
+  }catch(e){return null;}finally{clearTimeout(tm);}
 }
 function _adjPromaxxMessage(r,type){
   if(r.err==='denied')return {text:'เบราว์เซอร์บล็อกตัวช่วย — เปิดสิทธิ์ Local network ใน Site settings',level:'warn',ms:8000};
@@ -11586,12 +11619,14 @@ function _adjPromaxxMessage(r,type){
   if(d.ok)return {text:`เปิดหน้า "นำเข้าไฟล์เอกสาร" แล้ว (${type} · ${_PROMAXX_DOC_TH[type]}) — ยังไม่ได้นำเข้าข้อมูล`,level:'success',ms:7000};
   const fixed=_PROMAXX_CODE_MSG[d.code];
   if(fixed)return {text:fixed[0],level:fixed[1],ms:7000};
+  if(d.code==='FILE_INVALID')return {text:'ไฟล์นำเข้าไม่ผ่านตัวช่วย — '+_shortErr(d.message,45),level:'error',ms:9000};
   if(d.code==='UNEXPECTED_DIALOG'||d.code==='LAUNCH_FAILED')return {text:_shortErr(d.message,70),level:'error',ms:9000};   // ข้อความจากตัวช่วยบอกสาเหตุแล้ว (กล่องข้อความ/ต่อ SQL Server ไม่ได้)
   return {text:`ไม่สำเร็จที่ขั้น "${_PROMAXX_STEP_TH[d.step]||d.step||'?'}" — ${_shortErr(d.message,45)}`,level:'error',ms:9000};
 }
 async function onAdjPromaxxClick(){
   if(_adjPromaxxBusy||!_adjPromaxxEnabled())return;
   const type=_adjPromaxxType();     // จับตอนกด — สลับแท็บระหว่างทำงานไม่เปลี่ยนชนิดที่สั่งไปแล้ว
+  if(ADJUST_DOC_PROMAXX_AUTO&&_adjHistEnabled()){await _adjPromaxxAutoStart(type);return;}   // นำเข้าอัตโนมัติ (ต้องมี 🗂️ ประวัติ: แถวต้องย้ายก่อนนำเข้า) — ปิดสวิตช์/ปิดประวัติ = เส้นทางเดิมด้านล่าง
   _adjPromaxxBusy=true;_refreshAdjPromaxxBtn();
   try{
     const r=await _adjPromaxxCall(type);
@@ -11599,6 +11634,202 @@ async function onAdjPromaxxClick(){
     console.info('[promaxx]',type,r.err||r.data);
     toast(m.text,m.level,m.ms);
   }finally{_adjPromaxxBusy=false;_refreshAdjPromaxxBtn();}
+}
+
+// ── นำเข้าอัตโนมัติ (4 พ.ย. 2026 · ผู้ใช้สั่ง · ตัวช่วยรุ่น .6 · เฉพาะสาขายา) ───────────────────────────────────────────
+// 2 จังหวะ: (1) กดปุ่ม → /v1/prepare-import → ได้เลขที่เอกสารจาก ProMaxx + ตั๋วใช้ครั้งเดียว → popup "ระบุเลขที่เอกสาร" ใส่เลขให้ (แก้ไม่ได้)
+//           (2) พนักงานกดยืนยันปุ่มเดียว → เขียน 🗂️ ประวัติก่อน (atomic · เหมือน Export Text) → /v1/run-import ส่งเนื้อไฟล์ Text + sha256 → ตัวช่วยเขียนไฟล์/เลือกไฟล์/เทียบตาราง/(กด ตกลง)
+// "ประวัติก่อนนำเข้า" โดยเจตนา: ประวัติย้อนได้ (↩) แต่เอกสารใน ERP ย้อนไม่ได้ — ถ้าทำกลับกัน ประวัติเขียนไม่ผ่านหลัง ERP บันทึกแล้ว = แถวยังอยู่บนตาราง เสี่ยงส่งซ้ำ
+// ล้มแบบยืนยันได้ว่ายังไม่ได้กด "ตกลง" (_adjPromaxxNotSaved) = คืนแถวกลับตารางเอง · ไม่แน่ชัด (หมดเวลา/ตัวช่วยหยุดตอบ/ขั้น "ตกลง") = คงไว้ใน 🗂️ + ปุ่มดาวน์โหลดไฟล์ (นำเข้าเองได้)
+const _PROMAXX_NUM_RE=/^\d{1,9}(\.\d{1,4})?$/;      // ตรงกับ _NUM_RE ของตัวช่วย (promaxx_helper.py)
+const _PROMAXX_NO_SAVE_STEPS=['preflight','import-click','select-file','verify-table'];      // ขั้นที่อยู่ก่อน "ตกลง" เสมอ
+const _PROMAXX_NO_SAVE_CODES=['BAD_REQUEST','PROTO_MISMATCH','FORBIDDEN_ORIGIN','FORBIDDEN_HOST','FORBIDDEN_HEADER','UNSUPPORTED_MEDIA','PAYLOAD_TOO_LARGE','TICKET_INVALID','TICKET_EXPIRED','FILE_INVALID','BRANCH_NOT_SUPPORTED','BUSY'];      // ตัวช่วยปฏิเสธก่อนแตะ ProMaxx
+const _ADJ_DOCNO_NOTE_FILE='ต้องกรอกก่อนจึงดาวน์โหลดได้ · หลังดาวน์โหลด รายการชุดนี้จะย้ายไป 🗂️ ประวัติปรับปรุงและหายจากตาราง';
+const _ADJ_PROMAXX_NOTE_AUTO='ตัวช่วยจะเลือกไฟล์นี้ใน ProMaxx ให้เอง ตรวจตารางให้ตรงไฟล์ แล้วกด "ตกลง" ให้ (บันทึกเข้าระบบ) · อย่าแตะเมาส์ระหว่างทำงาน · หลังกด รายการชุดนี้ย้ายไป 🗂️ ประวัติปรับปรุง · ใช้ได้ภายใน 10 นาที';
+const _ADJ_PROMAXX_NOTE_MANUAL='ตัวช่วยจะเลือกไฟล์นี้ใน ProMaxx ให้เอง แล้วหยุดก่อน "ตกลง" — ตรวจตารางแล้วกด ตกลง เอง · อย่าแตะเมาส์ระหว่างทำงาน · หลังกด รายการชุดนี้ย้ายไป 🗂️ ประวัติปรับปรุง · ใช้ได้ภายใน 10 นาที';
+const _ADJ_PROMAXX_SUMMARY_TAIL='\nเลขที่เอกสารอ่านจากหน้า "นำเข้าไฟล์เอกสาร" ของ ProMaxx (แก้ไม่ได้)';
+async function _adjSha256Hex(text){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf),b=>b.toString(16).padStart(2,'0')).join('');
+}
+// ตรวจเนื้อไฟล์ Text "ก่อนส่ง" ด้วยกติกาเดียวกับตัวช่วย (parse_import_text) — ไม่ผ่านก็ไม่เขียนประวัติ/ไม่แตะ ProMaxx · คืนข้อความปัญหา หรือ '' เมื่อผ่าน
+//   ⚠️ ต้องตรงกับ promaxx_helper.py parse_import_text (เทส parity เทียบทั้งสองฝั่ง) — แก้ที่ใดต้องแก้อีกที่
+function _adjPromaxxCheckText(text){
+  if(typeof text!=='string'||!text)return 'ไฟล์ว่าง';
+  if(new TextEncoder().encode(text).length>131072)return 'ไฟล์ใหญ่เกินกำหนด';
+  if(text.indexOf('\u0000')>=0)return 'ไฟล์มีอักขระต้องห้าม';
+  const lines=text.replace(/\r\n/g,'\n').split('\n');
+  if(lines.length&&lines[lines.length-1]==='')lines.pop();
+  if(!lines.length||lines.length>PROMAXX_IMPORT_MAX_ROWS)return `จำนวนรายการต้องอยู่ระหว่าง 1–${PROMAXX_IMPORT_MAX_ROWS} (ได้ ${lines.length})`;
+  const seen=new Set();
+  for(let i=0;i<lines.length;i++){
+    const f=lines[i].split('\t');
+    if(f.length!==10||[3,4,5,6,7].some(k=>f[k]!==''))return `แถว ${i+1}: รูปแบบคอลัมน์ไม่ตรง`;
+    const sku=f[0],qty=f[1],price=f[2],lot=f[8],exp=f[9];
+    if(!/^[A-Za-z0-9][A-Za-z0-9._\-]{0,29}$/.test(sku))return `แถว ${i+1}: รหัสสินค้าไม่ถูกต้อง`;
+    if(!_PROMAXX_NUM_RE.test(qty)||!(Number(qty)>0))return `แถว ${i+1}: จำนวนไม่ถูกต้อง`;
+    if(price!==''&&!_PROMAXX_NUM_RE.test(price))return `แถว ${i+1}: ราคาไม่ถูกต้อง`;
+    // LOT นับเป็นตัวอักษร (flag u = code point) เหมือน _LOT_RE ของตัวช่วย — ไม่ใส่ u อีโมจิ 1 ตัวนับเป็น 2 หน่วย UTF-16 แล้วปฏิเสธ LOT ยาว 21–40 ตัวที่ตัวช่วยรับ (เทส parity ข้อ 15)
+    if(!/^[^\u0000-\u001f\u007f]{0,40}$/u.test(lot)||(exp!==''&&!/^\d{2}\/\d{2}\/\d{4}$/.test(exp)))return `แถว ${i+1}: LOT/EXP ไม่ถูกต้อง`;
+    if(seen.has(sku))return `แถว ${i+1}: รหัสสินค้าซ้ำ (${sku})`;
+    seen.add(sku);
+  }
+  return '';
+}
+// แถว → บรรทัดไฟล์ + เนื้อไฟล์ (ชุดเดียวกับที่ Export Text ดาวน์โหลด — _adjTextRow/_adjTextBody ห้ามคำนวณแยก)
+function _adjPromaxxBuild(plan){
+  const items=plan.rows.map(r=>({r,t:_adjTextRow(r)}));
+  return {items,text:_adjTextBody(items.map(x=>x.t.line))};
+}
+function _adjPromaxxPlanProblem(plan){
+  if(plan.rows.length>PROMAXX_IMPORT_MAX_ROWS)return `นำเข้า ProMaxx ได้ครั้งละไม่เกิน ${PROMAXX_IMPORT_MAX_ROWS} รายการ — เปลี่ยนหน้าแล้วกดใหม่`;
+  const bad=_adjPromaxxCheckText(_adjPromaxxBuild(plan).text);
+  return bad?'ไฟล์ไม่ผ่านการตรวจก่อนส่ง — '+bad:'';
+}
+function _adjPromaxxDocNoOk(no,type){return typeof no==='string'&&/^(ORDS|IRPS)[A-Z0-9]{6,30}$/.test(no)&&no.startsWith(type);}
+function _adjPromaxxLogData(d){return d&&typeof d==='object'?{...d,ticket:d.ticket?'(มี)':undefined}:d;}      // ตั๋วเป็นความลับชั่วคราว — ไม่พิมพ์ลง console
+function _adjPromaxxCancelTicket(ticket){
+  if(typeof ticket!=='string'||!ticket)return;
+  _adjPromaxxPost('/v1/cancel-import',{proto:PROMAXX_HELPER_PROTO,ticket},15000).then(r=>console.info('[promaxx] cancel',r.err||(r.data&&r.data.cleared)));
+}
+// จบงานนำเข้า/ยกเลิก: ล้างตั๋วในหน้า + คืนปุ่ม · sendCancel = แจ้งตัวช่วยให้ทิ้งตั๋ว (best effort — ProMaxx ยังเปิดฟอร์มค้าง พนักงานปิดเอง)
+function _adjPromaxxRelease(sendCancel,quiet){
+  const ctx=_adjPromaxxCtx;_adjPromaxxCtx=null;
+  _adjPromaxxBusy=false;_refreshAdjPromaxxBtn();
+  if(!ctx||!sendCancel)return;
+  _adjPromaxxCancelTicket(ctx.ticket);
+  if(!quiet)toast('ยกเลิกแล้ว — ProMaxx ยังเปิดฟอร์มค้างอยู่ (ปิดเอง ไม่ต้องบันทึก)','info',7000);
+}
+// true = ตัวช่วยยืนยันเองว่าเอกสารยังไม่ถูกบันทึกใน ProMaxx (ปฏิเสธก่อนแตะ หรือพังก่อนขั้น "ตกลง") · ไม่แน่ชัด (หมดเวลา/ตอบผิดรูปแบบ/ขั้น ตกลง/INTERNAL) = false → คงรายการไว้ใน 🗂️
+function _adjPromaxxNotSaved(r){
+  const d=r&&!r.err?r.data:null;
+  if(!d||d.ok!==false)return false;
+  return _PROMAXX_NO_SAVE_CODES.includes(d.code)||_PROMAXX_NO_SAVE_STEPS.includes(d.step);
+}
+function _adjPromaxxOkLabel(ctx){return ctx?(ctx.autoConfirm?'🖥️ นำเข้า + บันทึก ProMaxx':'🖥️ นำเข้า ProMaxx'):'⬇️ ดาวน์โหลด';}
+function _adjPromaxxDupMsg(no,dup){return `เลขที่ ${no} มีในประวัติแล้ว (${_adjHistFmtAt(dup.at)}${dup.by?' · '+dup.by:''}) — ถ้าไม่ได้บันทึกใน ProMaxx ให้ ↩ คืนรายการใน 🗂️ ก่อน`;}
+// จังหวะ 1: เตรียมใน ProMaxx → เปิดป็อปอัพรอพนักงานยืนยัน (ปุ่มค้าง busy ไว้จนจบ/ยกเลิก เพื่อไม่ให้เตรียมซ้อน — ตั๋วใหม่แทนตั๋วเก่า)
+async function _adjPromaxxAutoStart(type){
+  if(_adjHistBusy||_adjExportBusy())return;
+  const m0=document.getElementById('adjDocNoModal');if(m0&&m0.style.display==='flex')return;
+  const plan0=_adjTextExportPlan();
+  if(!plan0.rows.length){toast('ไม่มีรายการให้นำเข้าตามแท็บที่เลือก'+plan0.pageTag+_adjErpFilterNote(plan0.vr)+_adjEditNote(plan0.all),'warn');return;}
+  const bad0=_adjPromaxxPlanProblem(plan0);       // ตรวจก่อนเปิด ProMaxx — ไม่เสีย ~1 นาทีกับงานที่ไฟล์ไม่ผ่านอยู่แล้ว
+  if(bad0){toast(bad0,'warn',9000);return;}
+  const branch=currentBranch;
+  _adjPromaxxBusy=true;_refreshAdjPromaxxBtn();
+  let keep=false;
+  try{
+    const r=await _adjPromaxxPost('/v1/prepare-import',{proto:PROMAXX_HELPER_PROTO,type,branch});
+    const d=r.data;
+    console.info('[promaxx] prepare',type,branch,r.err||_adjPromaxxLogData(d));
+    if(r.err||!d||d.ok!==true){
+      let m=_adjPromaxxMessage(r,type);
+      const nf=!r.err&&d&&d.code==='NOT_FOUND';
+      if(nf||r.err==='unreachable'){const h=nf?null:await _adjPromaxxHealth();if(nf||(h&&h.ok&&!h.autoImport))m={text:_PROMAXX_OLD_HELPER,level:'warn',ms:7000};}
+      toast(m.text,m.level,m.ms);return;
+    }
+    if(d.stage!=='prepared'||d.type!==type||d.branch!==branch||typeof d.ticket!=='string'||!d.ticket||!_adjPromaxxDocNoOk(d.docNo,type)){
+      _adjPromaxxCancelTicket(d.ticket);
+      toast(_PROMAXX_OLD_HELPER,'warn',7000);return;
+    }
+    const po=document.getElementById('adjustDocPopupOverlay');
+    if(po&&po.style.display==='none'){_adjPromaxxCancelTicket(d.ticket);toast('ปิดหน้าปรับปรุงสินค้าระหว่างรอ ProMaxx — กดใหม่','warn',8000);return;}      // พนักงานปิด 📦 ระหว่างรอ — ไม่เปิด modal ลอยโดยไม่มีหน้าให้เห็นรายการ
+    const plan=_adjTextExportPlan();       // รออยู่ราวนาที — หน้า/แท็บ/รายการอาจเปลี่ยนไปแล้ว: คิดใหม่จากที่เห็นตอนนี้
+    const bad=!plan.rows.length?'รายการในหน้านี้เปลี่ยนไประหว่างรอ ProMaxx — กดใหม่'
+      :plan.dir.toUpperCase()!==type?'สลับแท็บระหว่างรอ ProMaxx — กดใหม่':_adjPromaxxPlanProblem(plan);
+    if(bad){_adjPromaxxCancelTicket(d.ticket);toast(bad,'warn',9000);return;}
+    _adjPromaxxCtx={ticket:d.ticket,type,branch,docNo:d.docNo,autoConfirm:d.autoConfirm===true,expiresAt:Date.now()+Math.max(60,Number(d.expiresInSec)||600)*1000};
+    openAdjDocNoModal(plan,_adjPromaxxCtx);
+    keep=true;
+  }finally{if(!keep){_adjPromaxxBusy=false;_refreshAdjPromaxxBtn();}}
+}
+function _adjPromaxxRunMessage(r,type){
+  if(r.err==='timeout')return {text:'ตัวช่วยไม่ตอบใน 3 นาที — ตรวจใน ProMaxx ก่อนทำซ้ำ',level:'error',ms:12000};
+  if(r.err==='bad')return {text:'ตัวช่วยตอบผิดรูปแบบ — ตรวจใน ProMaxx ก่อนทำซ้ำ',level:'error',ms:12000};
+  if(r.err)return {text:'ตัวช่วยหยุดตอบระหว่างนำเข้า — ตรวจใน ProMaxx ก่อนทำซ้ำ',level:'error',ms:12000};
+  return _adjPromaxxMessage(r,type);
+}
+// จังหวะ 2: พนักงานกดยืนยัน — ตรวจซ้ำทุกอย่าง → ประวัติก่อน → ส่งตัวช่วย → สรุปผล
+async function _adjPromaxxAutoConfirm(){
+  if(_adjHistBusy)return;
+  const ctx=_adjPromaxxCtx;
+  if(!ctx){closeAdjDocNoModal();return;}
+  if(!_adjHistEnabled()||!_adjPromaxxEnabled()||currentBranch!==ctx.branch){closeAdjDocNoModal(true);toast('สิทธิ์หรือสาขาเปลี่ยนระหว่างรอ — กดบันทึกลง PROMAXX ใหม่','warn',8000);return;}
+  if(_adjExportBusy())return;
+  if(Date.now()>ctx.expiresAt){closeAdjDocNoModal(true);toast('ตั๋วหมดอายุ (เกิน 10 นาที) — กดบันทึกลง PROMAXX ใหม่','warn',8000);return;}
+  const branch=ctx.branch,epoch=_countResetAt||'';
+  const plan=_adjTextExportPlan();
+  if(!plan.rows.length||plan.dir.toUpperCase()!==ctx.type){closeAdjDocNoModal(true);toast('รายการในหน้านี้เปลี่ยนไประหว่างรอ — กดบันทึกลง PROMAXX ใหม่','warn',8000);return;}
+  if(_adjPlanSig(plan)!==_adjDocNoSig){
+    _adjDocNoSig=_adjPlanSig(plan);
+    const s=document.getElementById('adjDocNoSummary');if(s)s.textContent=_adjDocNoSummaryText(plan)+_ADJ_PROMAXX_SUMMARY_TAIL;
+    _adjDocNoMsg('รายการในหน้านี้เปลี่ยนไประหว่างรอ — ตรวจสรุปด้านบนอีกครั้ง แล้วกดนำเข้าอีกครั้ง','err');
+    return;
+  }
+  const dup=_adjHistEntries().find(e=>e.no===ctx.docNo);
+  if(dup){_adjDocNoMsg(_adjPromaxxDupMsg(ctx.docNo,dup),'err');return;}
+  const {items,text}=_adjPromaxxBuild(plan);
+  const bad=_adjPromaxxCheckText(text);
+  if(bad){_adjDocNoMsg('ไฟล์ไม่ผ่านการตรวจก่อนส่ง — '+bad,'err');return;}
+  const lines=items.map(x=>x.t.line);
+  const entry={no:ctx.docNo,dir:plan.dir,at:new Date().toISOString(),by:currentUser||'',
+    rows:items.map(({r,t})=>[r.sku,r.qty,r.baseQty,t.price===''?null:t.price,t.lot,t.exp])};
+  const fileName=`stockadj_${plan.dir}_${ctx.docNo.replace(/[^A-Z0-9_.\-]/g,'_')}_${_fileDateDMY()}.txt`;
+  _adjHistBusy=true;       // ตั้งก่อน await ตัวแรก — กันกดซ้ำ · คงไว้จนจบการนำเข้า (ปิด modal ไม่ได้ระหว่างนี้)
+  const okBtn=document.getElementById('adjDocNoOk');
+  const setBtn=t=>{if(okBtn){okBtn.disabled=true;okBtn.textContent=t;}};
+  setBtn('กำลังบันทึกประวัติ…');
+  let res=null,r2=null;
+  try{
+    const sha=await _adjSha256Hex(text);          // ล้ม = ยังไม่ได้เขียนอะไร
+    res=await _adjHistAppend(entry,branch,epoch);
+    if(res.ok){
+      setBtn('⏳ กำลังนำเข้า ProMaxx…');
+      _adjDocNoMsg('ตัวช่วยกำลังทำงานใน ProMaxx (ราว 1 นาที) — อย่าแตะเมาส์/คีย์บอร์ด','warn');
+      r2=await _adjPromaxxPost('/v1/run-import',{proto:PROMAXX_HELPER_PROTO,ticket:ctx.ticket,type:ctx.type,branch,docNo:ctx.docNo,rows:items.length,sha256:sha,text});
+    }
+  }catch(e){console.warn('[promaxx confirm]',e&&e.message);}
+  finally{_adjHistBusy=false;if(okBtn){okBtn.disabled=false;okBtn.textContent=_adjPromaxxOkLabel(ctx);}}
+  if(!res){_adjDocNoMsg('คำนวณ hash ของไฟล์ในเบราว์เซอร์นี้ไม่ได้ — ยังไม่ได้นำเข้า','err');return;}
+  if(!res.ok){
+    if(res.kind==='dup'){_adjDocNoMsg(_adjPromaxxDupMsg(ctx.docNo,res.conflict.entry),'err');_adjHistRefreshUi();return;}
+    if(res.kind==='overlap'){
+      closeAdjDocNoModal(true);_adjHistRefreshUi(true);
+      const docs=[...new Set(res.conflict.hits.map(x=>x.no))];
+      toast(`⚠️ ${res.conflict.hits.length} รายการถูกส่งออกไปแล้วในเอกสาร ${docs.join(', ')} — ไม่ได้นำเข้า ตรวจแล้วกดใหม่`,'warn',9000);
+      return;
+    }
+    if(res.kind==='stale'){closeAdjDocNoModal(true);toast('สาขา/รอบนับเปลี่ยนระหว่างบันทึก — ไม่ได้นำเข้า ตรวจ 🗂️ ประวัติปรับปรุง','warn',9000);return;}
+    _adjDocNoMsg(`บันทึกประวัติขึ้น Cloud ไม่สำเร็จ (${res.error}) — ยังไม่ได้นำเข้าและไม่ได้ล้างตาราง ลองใหม่`,'err');
+    return;
+  }
+  // ประวัติถูกบันทึกแล้ว → งานนี้จบรอบ (ตั๋วถูกใช้/ทิ้ง · ไม่ส่งยกเลิก) · ผลสรุปด้านล่างบอกพนักงานว่าต้องทำอะไรต่อ
+  _adjPromaxxRelease(false,true);
+  closeAdjDocNoModal();
+  await _adjPromaxxAfterRun(r2,ctx,entry,lines,fileName,epoch);
+}
+async function _adjPromaxxAfterRun(r2,ctx,entry,lines,fileName,epoch){
+  const d=r2&&!r2.err?r2.data:null;
+  console.info('[promaxx] import',ctx.type,ctx.docNo,r2.err||(d&&{ok:d.ok,stage:d.stage,code:d.code,step:d.step,confirmed:d.confirmed,elapsedMs:d.elapsedMs}));
+  if(d&&d.ok===true&&d.stage==='imported'){
+    _adjHistRefreshUi(true);
+    toast(d.confirmed===true?`✅ บันทึกเข้า ProMaxx แล้ว · ${ctx.docNo} · ${entry.rows.length} รายการ`
+      :`นำเข้าไฟล์แล้ว · ${ctx.docNo} · ${entry.rows.length} รายการ — ตรวจตารางแล้วกด ตกลง เอง`,'success',10000);
+    return;
+  }
+  const m=_adjPromaxxRunMessage(r2,ctx.type);
+  if(_adjPromaxxNotSaved(r2)){            // ยืนยันได้ว่ายังไม่ได้บันทึกใน ProMaxx → คืนแถวกลับตาราง (ไม่ปล่อยให้หายเงียบ)
+    const rem=await _adjHistRemove(ctx.docNo,ctx.branch,epoch);
+    _adjHistRefreshUi(true);
+    toast(m.text,m.level,m.ms);
+    if(rem.ok)toast('รายการกลับมาที่ตารางแล้ว — ProMaxx ยังไม่ได้บันทึก · ปิดฟอร์มใน ProMaxx ก่อนลองใหม่','warn',12000);
+    else toast('คืนรายการอัตโนมัติไม่สำเร็จ — กด ↩ คืนรายการใน 🗂️ ก่อนลองใหม่','error',12000);
+    return;
+  }
+  _adjHistRefreshUi(true);                // ไม่แน่ชัด: คงไว้ใน 🗂️ (อาจบันทึกไปแล้ว) + ปุ่มดาวน์โหลดไฟล์ให้นำเข้าเองได้
+  toast(m.text,m.level,m.ms);
+  toastAction('รายการอยู่ใน 🗂️ · ตรวจใน ProMaxx ก่อนทำซ้ำ','⬇️ ไฟล์ Text',()=>_adjDownloadText(lines,fileName),'error',20000);
 }
 
 // ── 🗂️ ประวัติปรับปรุง (7 ต.ค. 2026 · ผู้ใช้สั่ง) ─────────────────────────────────────────
@@ -11765,18 +11996,24 @@ function onAdjExportTextClick(){
   if(!plan.rows.length){toast('ไม่มีรายการให้ Export ตามแท็บที่เลือก'+plan.pageTag+_adjErpFilterNote(plan.vr)+_adjEditNote(plan.all),'warn');return;}
   openAdjDocNoModal(plan);
 }
-function openAdjDocNoModal(plan){
+// pm = งานนำเข้าอัตโนมัติ (_adjPromaxxCtx) → ช่องเลขที่เอกสารใส่เลขจาก ProMaxx แก้ไม่ได้ · ไม่ส่ง pm = Export Text เดิมทุกอย่าง (ทุกครั้งที่เปิดตั้งค่าครบทั้งสองโหมด)
+function openAdjDocNoModal(plan,pm){
   _adjDocNoSig=_adjPlanSig(plan);
-  const s=document.getElementById('adjDocNoSummary');if(s)s.textContent=_adjDocNoSummaryText(plan);
-  const i=document.getElementById('adjDocNoInput');if(i)i.value='';
-  _adjDocNoMsg('','');
-  const ok=document.getElementById('adjDocNoOk');if(ok){ok.disabled=false;ok.textContent='⬇️ ดาวน์โหลด';}
+  const s=document.getElementById('adjDocNoSummary');if(s)s.textContent=_adjDocNoSummaryText(plan)+(pm?_ADJ_PROMAXX_SUMMARY_TAIL:'');
+  const i=document.getElementById('adjDocNoInput');if(i){i.value=pm?pm.docNo:'';i.readOnly=!!pm;i.style.background=pm?'var(--surface2)':'var(--surface)';}
+  const n=document.getElementById('adjDocNoNote');if(n)n.textContent=pm?(pm.autoConfirm?_ADJ_PROMAXX_NOTE_AUTO:_ADJ_PROMAXX_NOTE_MANUAL):_ADJ_DOCNO_NOTE_FILE;
+  if(pm){
+    const dup=_adjHistEntries().find(e=>e.no===pm.docNo);
+    if(dup)_adjDocNoMsg(_adjPromaxxDupMsg(pm.docNo,dup),'err');else _adjDocNoMsg(_adjErpDuplicateText(plan.rows,plan.vr),'warn');
+  }else _adjDocNoMsg('','');
+  const ok=document.getElementById('adjDocNoOk');if(ok){ok.disabled=false;ok.textContent=_adjPromaxxOkLabel(pm);}
   const m=document.getElementById('adjDocNoModal');if(m)m.style.display='flex';
   setTimeout(()=>{const x=document.getElementById('adjDocNoInput');if(x)x.focus();},50);
 }
-function closeAdjDocNoModal(){
+function closeAdjDocNoModal(quiet){
   if(_adjHistBusy)return;   // กำลังบันทึก — ปิดไม่ได้ (ไม่งั้นไฟล์ดาวน์โหลดแต่ผู้ใช้ไม่เห็นผล)
   const m=document.getElementById('adjDocNoModal');if(m)m.style.display='none';
+  if(_adjPromaxxCtx)_adjPromaxxRelease(true,quiet===true);      // ปิด/ยกเลิกระหว่างรอยืนยัน = ยกเลิกตั๋ว (ProMaxx ยังเปิดฟอร์มค้าง — พนักงานปิดเอง)
 }
 function onAdjDocNoInput(){
   const i=document.getElementById('adjDocNoInput');if(!i)return;
@@ -11786,10 +12023,11 @@ function onAdjDocNoInput(){
   _adjDocNoMsg(no.startsWith(t)?'':`ℹ️ ไม่ได้ขึ้นต้นด้วย ${t} — ตรวจเลขที่เอกสารอีกครั้ง (ยังดาวน์โหลดได้)`,'warn');
 }
 function onAdjDocNoKey(e){
-  if(e.key==='Enter'){e.preventDefault();confirmAdjDocNo();}
+  if(e.key==='Enter'){e.preventDefault();if(!_adjPromaxxCtx)confirmAdjDocNo();}      // นำเข้า ProMaxx ต้องกดปุ่มเอง — Enter เผลอ = บันทึกเข้า ERP ได้
   else if(e.key==='Escape'){e.preventDefault();closeAdjDocNoModal();}
 }
 async function confirmAdjDocNo(){
+  if(_adjPromaxxCtx)return _adjPromaxxAutoConfirm();      // โหมดนำเข้าอัตโนมัติ (เลขที่เอกสารมาจาก ProMaxx)
   if(_adjHistBusy)return;
   if(!_adjHistEnabled()){closeAdjDocNoModal();return;}   // สวิตช์/สิทธิ์เปลี่ยนระหว่างเปิด modal
   if(_adjExportBusy())return;                              // LOT/ราคากำลังโหลด — รอ (toast มาจาก _adjExportBusy)

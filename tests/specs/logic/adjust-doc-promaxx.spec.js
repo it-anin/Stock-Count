@@ -1,5 +1,7 @@
 // ใบ 📦 ปรับปรุงสินค้า: ปุ่ม 🖥️ "บันทึกลง PROMAXX" (3 พ.ย. 2026 · ผู้ใช้สั่ง) — ขั้นที่ 1: สั่งตัวช่วย PromaxxHelper (127.0.0.1) ให้เปิด ssmaxx.exe ไปถึงปุ่ม "นำเข้าไฟล์เอกสาร" แล้วหยุด
 //   สวิตช์ ADJUST_DOC_PROMAXX (false = ไม่มีปุ่ม = ทางถอย) · ตัวช่วยอยู่ promaxx-helper/ (แกนเทสแยกใน promaxx-helper-core.spec.js)
+//   ★ ไฟล์นี้ตรึง "เส้นทางเดิม" /v1/open-import = ADJUST_DOC_PROMAXX_AUTO=false (ทางถอยของนำเข้าอัตโนมัติ 4 พ.ย. 2026) — seed() ปิดสวิตช์ AUTO ให้เป็นค่าเริ่มต้น
+//     นำเข้าอัตโนมัติ (prepare → ยืนยัน → ประวัติ → run-import) ตรึงที่ adjust-doc-promaxx-auto.spec.js · ที่นี่ตรึงเพิ่ม: WH ไม่เห็นปุ่ม (ผู้ใช้สั่ง "ทำแค่สาขายา")
 //
 // เทสนี้ตรึง 9 ด้าน — ข้อ 3 · 4 · 9 สำคัญที่สุด: "ส่งแค่ {proto,type} ชนิดถูกตามแท็บ" · "กดซ้ำไม่ยิงซ้ำ" · "หน้าเว็บ ↔ ตัวช่วยจริงผ่าน CORS/preflight ใช้ได้"
 //   1. ค่าที่ส่งมอบ + ตำแหน่งปุ่มในฟุตเตอร์ (ระหว่าง Export Text กับ ปิด) 2. ใครเห็นปุ่ม: pharmacist/supervisor Desktop เท่านั้น (ไม่ใช่ PDA/ไม่ล็อกอิน/สวิตช์ปิด)
@@ -56,11 +58,11 @@ async function stub(onPost, { origin = BASE } = {}) {
 }
 
 // เตรียมหน้า: ล็อกอินจำลอง (ไม่มี Cloud) + จับ toast + ชี้ PROMAXX_HELPER_URL · เปิดป็อปอัพ 📦 ผ่านฟังก์ชันจริง
-async function seed(page, { url, role = 'pharmacist', branch = 'SRC', open = true, timeout } = {}) {
-  await page.evaluate(({ url, role, branch, timeout }) => {
+async function seed(page, { url, role = 'pharmacist', branch = 'SRC', open = true, timeout, auto = false } = {}) {
+  await page.evaluate(({ url, role, branch, timeout, auto }) => {
     _db = null; currentBranch = branch; currentRole = role; currentUser = 'Pharm';
     _branchScanPaused = false; _adjDocFilter = 'ords'; _adjDocPage = 1; _adjLoading = false;
-    ADJUST_DOC_PROMAXX = true; _adjPromaxxBusy = false;
+    ADJUST_DOC_PROMAXX = true; ADJUST_DOC_PROMAXX_AUTO = auto; _adjPromaxxCtx = null; _adjPromaxxBusy = false;
     if (url) PROMAXX_HELPER_URL = url;
     if (timeout) PROMAXX_HELPER_TIMEOUT_MS = timeout;
     _lotMap.clear(); _lotSelected.clear(); _priceMap.clear();
@@ -75,7 +77,7 @@ async function seed(page, { url, role = 'pharmacist', branch = 'SRC', open = tru
       window.fetch = (u, init) => { window.__fetches.push({ u: String(u), method: init && init.method, tas: init && init.targetAddressSpace, cache: init && init.cache,
         sig: !!(init && init.signal), headers: init && init.headers, body: init && init.body }); return rf(u, init); };
     }
-  }, { url, role, branch, timeout });
+  }, { url, role, branch, timeout, auto });
   if (open) await page.evaluate(() => openAdjustDocPopup());
 }
 const btn = (page) => page.evaluate(() => {
@@ -92,18 +94,19 @@ test('1. ค่าที่ส่งมอบ + ตำแหน่งปุ่�
   const app = await boot(browser);
   const r = await app.page.evaluate(() => {
     const b = document.getElementById('adjPromaxxBtn'), foot = b.closest('.stock-popup-footer');
-    return { sw: ADJUST_DOC_PROMAXX, url: PROMAXX_HELPER_URL, proto: PROMAXX_HELPER_PROTO, to: PROMAXX_HELPER_TIMEOUT_MS, busy: _adjPromaxxBusy,
+    return { sw: ADJUST_DOC_PROMAXX, auto: ADJUST_DOC_PROMAXX_AUTO, maxRows: PROMAXX_IMPORT_MAX_ROWS, ctx: _adjPromaxxCtx, url: PROMAXX_HELPER_URL, proto: PROMAXX_HELPER_PROTO, to: PROMAXX_HELPER_TIMEOUT_MS, busy: _adjPromaxxBusy,
       inCard: !!b.closest('#adjustDocPopupCard'), inFooter: !!foot, prev: b.previousElementSibling && b.previousElementSibling.id,
       next: b.nextElementSibling && b.nextElementSibling.textContent.trim(), text: b.textContent, initialHidden: b.style.display === 'none' };
   });
-  expect(r).toMatchObject({ sw: true, url: 'http://127.0.0.1:47831', proto: 1, to: 180000, busy: false, inCard: true, inFooter: true,
+  expect(r).toMatchObject({ sw: true, auto: true, maxRows: 20, ctx: null, url: 'http://127.0.0.1:47831', proto: 1, to: 180000, busy: false, inCard: true, inFooter: true,
     prev: 'adjExportTextBtn', next: 'ปิด', text: '🖥️ บันทึกลง PROMAXX', initialHidden: true });
   await closeApp(app);
 });
 
-test('2. ใครเห็นปุ่ม — pharmacist/supervisor Desktop เท่านั้น · PDA/assistant/ไม่ล็อกอิน/สวิตช์ปิด = ไม่เห็น', async ({ browser }) => {
+test('2. ใครเห็นปุ่ม — pharmacist/supervisor Desktop ของสาขายาเท่านั้น · WH/PDA/assistant/ไม่ล็อกอิน/สวิตช์ปิด = ไม่เห็น', async ({ browser }) => {
   const app = await boot(browser);
-  for (const [role, branch, want] of [['pharmacist', 'SRC', true], ['pharmacist', 'KKL', true], ['pharmacist', 'SSS', true], ['supervisor', 'WH', true],
+  // WH ไม่เห็นปุ่ม (ผู้ใช้สั่ง 4 พ.ย. 2026 "WH ไม่ใช้ บันทึกลง ProMaxx ทำแค่สาขายา") — เดิม supervisor/WH เห็น (3 พ.ย.)
+  for (const [role, branch, want] of [['pharmacist', 'SRC', true], ['pharmacist', 'KKL', true], ['pharmacist', 'SSS', true], ['supervisor', 'SRC', true], ['supervisor', 'WH', false], ['pharmacist', 'WH', false],
     ['assistant', 'SRC', false], ['warehouse', 'WH', false], ['pharmacist', '', false]]) {
     await seed(app.page, { role, branch });
     expect((await btn(app.page)).shown, `${role}/${branch || '(ไม่มีสาขา)'}`).toBe(want);
@@ -371,7 +374,7 @@ function extractFn(src, name) {
 
 test('9. ★ Chromium เปล่า (ไม่มี interception) + โค้ด _adjPromaxxCall จาก index.html จริง + ตัวช่วยจริง — preflight/CORS/PNA ทำงานจริง · origin ไม่อยู่ใน list = POST ไม่ถูกส่งเลย', async ({ browser }) => {
   const src = fs.readFileSync(path.resolve(__dirname, '..', '..', '..', 'index.html'), 'utf8');
-  const fnSrc = ['_adjPromaxxPermission', '_adjPromaxxCall'].map((n) => extractFn(src, n)).join('\n');
+  const fnSrc = ['_adjPromaxxPermission', '_adjPromaxxPost', '_adjPromaxxCall'].map((n) => extractFn(src, n)).join('\n');
   const pageSrv = http.createServer((q, r) => {
     r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     r.end(`<!doctype html><html><body><script>

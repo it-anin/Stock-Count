@@ -81,7 +81,7 @@ print(json.dumps(dict(
   skip_if=[sp[n]['skip_if'] == sp[n.rsplit('-', 1)[0] + '-open']['skip_if'] for n in order if n.endswith(('-pick', '-ok'))],
 ), ensure_ascii=False))`);
   expect(r.order).toEqual(['launch', 'login', 'menu', 'doc-button', 'doc-type-open', 'doc-type-pick', 'doc-type-ok', 'warehouse-open', 'warehouse-pick', 'warehouse-ok', 'import-button']);
-  expect(r.keys, 'STEP_SPECS ครบทุกขั้นตามลำดับ').toEqual(r.order);
+  expect(r.keys, 'STEP_SPECS ครบทุกขั้นตามลำดับ (+ ขั้นนำเข้าอัตโนมัติรุ่น .6 ต่อท้าย)').toEqual([...r.order, 'form-ready', 'import-click', 'select-file', 'verify-table', 'confirm']);
   expect(r.wh, 'คลังที่ยอมให้นำเข้า = Front Store เท่านั้น (ผู้ใช้สั่ง)').toBe('Front Store');
   for (const [n, keys] of Object.entries(r.steps)) {
     expect(keys, `${n}: ต้องมี skip_if/pre/actions/post (ข้ามได้เมื่อค่าตรงอยู่แล้ว · ตรวจก่อน-หลังทุกคลิก)`).toEqual(expect.arrayContaining(['actions', 'post', 'post_timeout', 'pre', 'skip_if']));
