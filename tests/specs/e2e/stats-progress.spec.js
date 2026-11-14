@@ -35,8 +35,10 @@ test.describe('stats cards + progress', () => {
     expect(s.countable).toBe(F.COUNTABLE_COUNT);
     expect(s.cachedTotal).toBe(F.COUNTABLE_COUNT);
     expect(s.total).toBe(String(F.COUNTABLE_COUNT));
-    expect(s.progress).toBe(`0 / ${F.COUNTABLE_COUNT}`); // ไม่มี prefix 'Stock100 · ' อีกแล้ว
-    expect(s.pct).toBe('0%');
+    // ยังไม่มีใครสแกน แต่ตัวเศษ = 1: S-DELCATNEG (R01 −2 · นอก PBM) เข้า "ค้างส่งอัตโนมัติ" (AUTO_BACKORDER_DEL · พ.ย. 2026) — ตัวหารไม่เปลี่ยน
+    expect(await app.page.evaluate(() => [..._autoBackorderSkus].sort())).toEqual(['S-DELCATNEG']);
+    expect(s.progress).toBe(`1 / ${F.COUNTABLE_COUNT}`); // ไม่มี prefix 'Stock100 · ' อีกแล้ว
+    expect(s.pct).toBe(`${Math.round(1 / F.COUNTABLE_COUNT * 100)}%`);
 
     // membership ที่สำคัญ (ยืนยันซ้ำผ่าน UI path จริง ไม่ใช่แค่ logic spec)
     const has = await app.page.evaluate(() => ({
@@ -65,7 +67,7 @@ test.describe('stats cards + progress', () => {
 
     expect(s.cachedTotal).toBe(F.LEGACY_COUNTABLE_COUNT);
     expect(s.total).toBe(String(F.LEGACY_COUNTABLE_COUNT));
-    expect(s.progress).toBe(`0 / ${F.LEGACY_COUNTABLE_COUNT}`);
+    expect(s.progress).toBe(`1 / ${F.LEGACY_COUNTABLE_COUNT}`);   // ตัวเศษ 1 = S-DELCATNEG ค้างส่งอัตโนมัติ (นอก PBM ติดลบ) — ตัวหารเท่ากติกาเดิม
     expect(F.LEGACY_COUNTABLE_COUNT).toBeLessThan(F.COUNTABLE_COUNT);   // ไฟล์ใหม่มีแต่เพิ่ม ไม่มีตัด
 
     const has = await app.page.evaluate(() => ({

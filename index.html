@@ -5335,6 +5335,9 @@ let _countableSkus=new Set();
 let REVIEW_ZERO_NOT_COUNTED=true;
 // SKU → G ดิบจาก R01 (ไม่ผ่าน clamp) — ใช้โดย _rawSystemQty()/_canEnterZeroOnly() · สร้างพร้อมกันใน _rebuildCountableSkus()
 let _r01RawQty=new Map();
+// SKU "ค้างส่งอัตโนมัติ" (AUTO_BACKORDER_DEL · พ.ย. 2026) = ชุดนับ ∩ นอก PBM ∩ R01 < 0 — สร้างพร้อมชุดนับใน _rebuildCountableSkus()
+// ⊆ _countableSkus เสมอ (ตัวเศษของ Progress จึงไม่เกินตัวหาร) · เป็นชุด "ตามข้อมูล" ไม่ดูสถานะสแกน/สาขา/สวิตช์ — ผู้ใช้ชุดนี้ต้องผ่าน _isAutoBackorder()/_autoBackorderOn()
+let _autoBackorderSkus=new Set();
 // PBM มีผลกับตัวหาร Progress แล้ว → ทุกจุดที่ PBM/R01 เปลี่ยนต้องเรียกอันนี้ แม้ R05 ยังมาไม่ถึง
 // (rebuildMaps() ทั้งก้อนเรียกไม่ได้ตอน R05 ยังไม่มา เพราะมันเคลียร์ skuMap/barcodeMap แล้ว early-return)
 function _rebuildCountableSkus(){
@@ -5358,6 +5361,15 @@ function _rebuildCountableSkus(){
     if(q!==0||(flag!==2&&abcSkus.has(sku)))_countableSkus.add(sku);
   });
   _cachedTotalSku=_countableSkus.size;
+  // ค้างส่งอัตโนมัติ: สินค้า "นอก PBM" (ยกเลิกขาย/Col D=D,P/สินค้าใหม่ที่ยังไม่เข้า PBM) ที่ R01 ติดลบ = ขายก่อนรับของ ไม่ต้องไปนับ
+  // ⚠️ ต้องมี PBM โหลดแล้ว — PBM ว่าง = ทุก SKU จะดู "นอก PBM" (อัปผิด/ยังไม่โหลด) จึงไม่สร้างชุดนี้เลย
+  // ชุดนับตัด nc:1 (คูปอง/ค่าส่ง/ของจัดโปร) ให้แล้ว · ไม่ผูกกับสาขา/สวิตช์ที่นี่ (ตัดสินที่ _autoBackorderOn) จึงสลับสาขาโดยไม่ต้อง rebuild
+  const autoSet=new Set();
+  if(state.productMasterData.length){
+    const pmSkus=new Set();state.productMasterData.forEach(r=>pmSkus.add(r.sku));
+    _countableSkus.forEach(sku=>{if(!pmSkus.has(sku)&&qtyMap.get(sku)<0)autoSet.add(sku);});
+  }
+  _autoBackorderSkus=autoSet;
 }
 function rebuildMaps() {
   _cachedActiveSkus=[];
@@ -5465,14 +5477,28 @@ let WH_ITEM_LOAD_GUARD=true;
 // rollback = ตั้ง false แล้ว deploy (การ์ด/Progress/ตัวกรองกลับเท่าเดิมทุกจุด) · let เพื่อให้เทสสลับเทียบได้
 let PROGRESS_BY_SCAN=true;
 function _progressByScanOn(){return PROGRESS_BY_SCAN&&_isPharmacyBranch();}
+// AUTO_BACKORDER_DEL = สินค้า "นอก PBM" ที่ R01 ติดลบ และ "ยังไม่ได้สแกน" (pending) ของสาขายา → ค้างส่งอัตโนมัติ (พ.ย. 2026 · ผู้ใช้สั่ง)
+//   เหตุผล: สาขามีของจริงแต่เปิดบิลขายก่อนคีย์ใบรับของ → ยอดติดลบชั่วคราว พอคีย์ใบรับของยอดกลับถูกเอง · ไปนับ/ออกใบ IRPS ตอนติดลบ = ปรับซ้ำ
+//   ผล: (1) แท็บ 📦 ค้างส่งมีแถวชนิด 'auto' (ไม่มีปุ่ม) (2) นับเป็นตัวเศษ Progress (ไม่นับเป็น Pass) (3) ไม่อยู่ใน 📋 "ยังไม่ได้นับ"
+//   คำนวณสดจาก R01 ทุกครั้ง — ไม่เขียน Firestore · เช้าที่บอทอัป R01 ใหม่แล้ว R01 ≥ 0 → ออกจากกลุ่มเองและกลับเป็นงานนับปกติ
+//   ถูกสแกนแล้ว (สถานะไม่ใช่ pending) = ออกจากกลุ่ม เดิน flow เดิมทั้งหมด (Stock Adj/Pass ตามสูตร Confirm) · ✕ แล้วกลับเป็น pending = เข้ากลุ่มอีก
+//   ผูกกับ PROGRESS_BY_SCAN โดยเจตนา (ตัวเศษนับตามสแกน): ปิด PROGRESS_BY_SCAN ตัวเดียวก็ปิดทั้งชุดนี้ด้วย ไม่งั้น 📋 กับ Progress จะไม่ตรงกัน
+//   ⛔ ห้ามแก้ให้นับเป็น Pass · ห้ามเพิ่มทางเขียนสถานะ/marker ลง item (ไม่ใช่การมาร์คค้างส่งแบบมือ — ไม่มี backorder flag) · WH ไม่แตะ
+// rollback = ตั้ง false แล้ว deploy (ตัวเศษ/📋/แท็บ กลับเท่าเดิมทุกจุด) · let เพื่อให้เทสสลับเทียบได้
+let AUTO_BACKORDER_DEL=true;
+function _autoBackorderOn(){return AUTO_BACKORDER_DEL&&_progressByScanOn();}
+// ใช้ตัดสิน "แถวนี้อยู่ในกลุ่มค้างส่งอัตโนมัติตอนนี้ไหม" — sd ว่าง/pending เท่านั้น (สแกนแล้ว = ไม่ใช่)
+function _isAutoBackorder(sku,sd){return _autoBackorderOn()&&(!sd||sd.status==='pending')&&_autoBackorderSkus.has(sku);}
 function _scanProgressCounts(){
   // แหล่งเดียวกับ updateStats(): แคตตาล็อกของเครื่อง · ยังไม่มีแคตตาล็อก (R05 ยังไม่มา) ใช้ key ของ scanData
   const active=_cachedActiveSkus.length?_cachedActiveSkus:getActiveSkus();
   const src=active.length?active:[...state.scanData.keys()];
+  const auto=_autoBackorderOn();   // _autoBackorderSkus ⊆ _countableSkus → ไม่ต้องเช็คชุดนับซ้ำ · ไม่นับเป็น pass
   let scanned=0,pass=0;
   for(const sku of src){
     const sd=state.scanData.get(sku);
-    if(!sd||sd.status==='pending'||!_countableSkus.has(sku))continue;
+    if(!sd||sd.status==='pending'){if(auto&&_autoBackorderSkus.has(sku))scanned++;continue;}
+    if(!_countableSkus.has(sku))continue;
     scanned++;
     if(sd.status==='pass')pass++;
   }
@@ -7723,8 +7749,9 @@ function getFilteredPopupRows(){
   //     ไม่งั้นของที่สแกนแล้วค้างในลิสต์ "ยังไม่ได้นับ" ทั้งที่ Progress นับไปแล้ว
   //   - อย่างอื่น (WH / ปิดสวิตช์): ตัวเศษ = Confirm แล้ว → ต้องคง 'scanning' ไว้ ถ้าตัดออกจะเกิดอาการ
   //     "รายการว่างแล้วแต่ Progress ไม่ถึง 100%" ที่หน้างานสับสน
+  //   - ค้างส่งอัตโนมัติ (AUTO_BACKORDER_DEL · พ.ย. 2026): pending ที่อยู่ใน _autoBackorderSkus นับเป็นตัวเศษแล้ว (_scanProgressCounts) → ต้องไม่อยู่ในลิสต์นี้ (_isAutoBackorder)
   const _byScan=_progressByScanOn();
-  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel&&_countableSkus.has(r.sku);if(popupFilterState==='pending')return _countableSkus.has(r.sku)&&(r.sd.status==='pending'||(r.sd.status==='scanning'&&!_byScan));if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
+  if(popupFilterState!=='all')rows=rows.filter(r=>{if(popupFilterState==='unknown')return r.isUnknown;if(popupFilterState==='del')return r.isDel&&_countableSkus.has(r.sku);if(popupFilterState==='pending')return _countableSkus.has(r.sku)&&(r.sd.status==='pending'||(r.sd.status==='scanning'&&!_byScan))&&!_isAutoBackorder(r.sku,r.sd);if(popupFilterState==='audit')return r.sd.status==='audit'||r.sd.status==='stock_adjustment';return r.sd.status===popupFilterState;});
   if(popupStaffFilter!=='all')rows=rows.filter(r=>(r.sd.scannedBy||'')===popupStaffFilter);
   if(search){const s=search.trim(),isNum=/^[0-9]+$/.test(s);if(isNum){const getBc=(csv,q)=>csv.split(',').map(x=>x.trim()).some(b=>b.startsWith(q));const tf=q=>rows.filter(r=>r.sku.toLowerCase().startsWith(q)||getBc(r.barcodes.toLowerCase(),q));let q=s,fl=tf(q);while(!fl.length&&q.length>3){q=q.slice(0,-1);fl=tf(q);}rows=fl;}else rows=rows.filter(r=>r.info.productName.toLowerCase().includes(s)||r.sku.toLowerCase().includes(s)||r.barcodes.toLowerCase().includes(s)||(r.sd.location||'').toLowerCase().includes(s));}
   return rows;
@@ -9345,6 +9372,7 @@ function confirmAuditVerifyItem(sku,silent=false,deferSync=false){
 // แถว = สินค้าที่ R01 "ติดลบ" และนับแล้วไม่ตรง: Stock Adj (adj) · รอรีเช็คเก่า (audit) · + ที่มาร์คค้างส่งแล้วรอยืนยัน (marked)
 //   อ่าน G ดิบผ่าน _rawSystemQty เท่านั้น (ห้ามใช้ skuMap.systemQty) · marked แสดงเสมอแม้ R01 ขยับเป็น ≥ 0 (กัน draft ที่รอยืนยันหายจากตา)
 //   ไม่รวม: ยังไม่ได้นับ/รอ Confirm (pending/scanning) · Pass · SKU ที่ไม่มีแถวใน R01 (ไม่รู้ G) · G = 0 (ไม่ใช่หนี้ลูกค้า)
+//   + kind 'auto' (AUTO_BACKORDER_DEL · พ.ย. 2026): นอก PBM + R01 < 0 + ยังไม่ได้สแกน (pending) — ไม่มีปุ่ม · ออกเองเมื่อ R01 ≥ 0 หรือสแกนแล้ว
 function _backorderTabRows(){
   const rows=[];
   for(const[sku,sd] of state.scanData.entries()){
@@ -9359,11 +9387,23 @@ function _backorderTabRows(){
     const si=state.skuMap.get(sku);if(!si)continue;
     rows.push({sku,sd,si,g,kind:marked?'marked':(st==='audit'?'audit':'adj')});
   }
-  const rank={adj:0,audit:0,marked:1};   // ยังไม่ตัดสินก่อน · มาร์คแล้ว (รอยืนยัน) ตามหลัง
+  // ค้างส่งอัตโนมัติ (AUTO_BACKORDER_DEL): นอก PBM + R01 < 0 + ยังไม่ได้สแกน — ไม่มี sd ที่ไม่ใช่ pending จึงไม่ซ้ำกับแถวด้านบน (นั่นคือรายการที่สแกนแล้ว)
+  if(_autoBackorderOn()){
+    for(const sku of _autoBackorderSkus){
+      const sd=state.scanData.get(sku);
+      if(sd&&sd.status!=='pending')continue;
+      const g=_rawSystemQty(sku);if(g===null||g>=0)continue;
+      const si=state.skuMap.get(sku);if(!si)continue;
+      rows.push({sku,sd:sd||{},si,g,kind:'auto'});
+    }
+  }
+  const rank={adj:0,audit:0,marked:1,auto:2};   // ยังไม่ตัดสินก่อน · มาร์คแล้ว (รอยืนยัน) · อัตโนมัติ (ไม่ต้องทำอะไร) ตามหลัง
   rows.sort((a,b)=>(rank[a.kind]-rank[b.kind])||a.sku.localeCompare(b.sku,'en',{numeric:true}));
   return rows;
 }
 const AV_BACKORDER_HINT='สินค้าที่ R01 ติดลบ (ขายให้ลูกค้าไปก่อนของเข้า) และนับแล้วไม่ตรง · กด 📦 ค้างส่ง = ปิดงานโดยไม่ออกใบปรับสต็อก (ยอดติดลบคงไว้) แล้วกด ✓ ยืนยันทั้งหมด';
+// ต่อท้ายเมื่อ AUTO_BACKORDER_DEL เปิด — อธิบายแถว "อัตโนมัติ" (ไม่มีปุ่ม)
+const AV_BACKORDER_HINT_AUTO=' · แถว 📦 อัตโนมัติ = สินค้านอก PBM ที่ R01 ติดลบและยังไม่ได้สแกน ไม่ต้องนับ (ออกจากรายการเองเมื่อ R01 ไม่ติดลบ หรือเมื่อมีการสแกน)';
 // ป้าย/ไอคอน/สี badge/hint ของปุ่มแท็บแรก — idempotent · ปิดสวิตช์/WH = ค่าเดิมเป๊ะ (⚠️ + _auditTerm()) · เรียกจาก applyAuditTerminology และต้น renderAuditVerifyTable
 function _syncAvBackorderTabUi(){
   const on=_backorderTabOn();
@@ -9376,7 +9416,7 @@ function _syncAvBackorderTabUi(){
   if(hint){
     const show=on&&_avFilter==='audit'&&window.innerWidth>600;
     hint.style.display=show?'':'none';
-    hint.textContent=show?AV_BACKORDER_HINT:'';
+    hint.textContent=show?AV_BACKORDER_HINT+(_autoBackorderOn()?AV_BACKORDER_HINT_AUTO:''):'';
   }
 }
 function _renderBackorderTab(rows,thead,tbody,rc){
@@ -9396,6 +9436,7 @@ function _renderBackorderTab(rows,thead,tbody,rc){
     adj:'<span style="color:var(--red);font-weight:700;">⚠️ Stock Adj</span>',
     audit:'<span style="color:var(--yellow);font-weight:700;">⚠️ รอรีเช็ค</span>',
     marked:'<span style="color:var(--purple);font-weight:700;">📦 ค้างส่ง · รอยืนยัน</span>',
+    auto:'<span style="color:var(--purple);font-weight:700;" title="นอก PBM · R01 ติดลบ · ยังไม่ได้สแกน — ปิดงานเป็นค้างส่งอัตโนมัติ (นับเป็นเสร็จใน Progress)">📦 ค้างส่ง · อัตโนมัติ</span>',
   };
   tbody.innerHTML=rows.map((r,i)=>{
     const{sku,sd,si,g,kind}=r;
@@ -9410,7 +9451,7 @@ function _renderBackorderTab(rows,thead,tbody,rc){
       act=`<td style="text-align:center;">${inner}</td>`;
     }
     const sysCell=g===null?'<span style="color:var(--text3);">—</span>':`<span style="color:${g<0?'var(--red)':'var(--text2)'};font-weight:700;">${g}</span>`;
-    const trStyle=kind==='marked'?'background:rgba(107,63,160,0.06);':'';
+    const trStyle=kind==='marked'||kind==='auto'?'background:rgba(107,63,160,0.06);':'';
     // รอรีเช็คเก่าที่เภสัชสแกนรีเช็คไว้แล้ว (ยังไม่ยืนยัน) — โชว์ยอดที่สแกน (แท็บรอรีเช็คเดิมมีคอลัมน์ Recheck นี้) ไม่งั้นมองไม่เห็นว่ามี draft ค้างรอ ✓ ยืนยันทั้งหมด
     // marked = draft 0 โดยดีไซน์ (ป้ายสถานะบอกอยู่แล้ว) · adj = ยังไม่มี draft
     const draftNote=kind==='audit'&&sd.recheckQty!=null?`<div style="font-size:0.66rem;color:var(--accent);font-weight:700;">สแกนรีเช็ค ${Number(sd.recheckQty)}</div>`:'';
@@ -9420,7 +9461,8 @@ function _renderBackorderTab(rows,thead,tbody,rc){
     }
     const cnt=Number(sd.countedQty||0);
     // นับเจอของบนชั้น (> 0) ทั้งที่ระบบติดลบ = ผิดปกติ ไม่ใช่ค้างส่งแน่นอนเสมอไป → ไฮไลต์ให้เภสัชดูก่อนกด
-    const cntCell=cnt>0?`<span style="color:var(--yellow);font-weight:700;" title="นับเจอของบนชั้น — ตรวจก่อนมาร์คค้างส่ง">${cnt}</span>`:`<span style="color:var(--text2);font-weight:700;">${cnt}</span>`;
+    // แถวอัตโนมัติยังไม่ได้สแกน = ไม่มียอดนับให้โชว์
+    const cntCell=kind==='auto'?'<span style="color:var(--text3);">—</span>':cnt>0?`<span style="color:var(--yellow);font-weight:700;" title="นับเจอของบนชั้น — ตรวจก่อนมาร์คค้างส่ง">${cnt}</span>`:`<span style="color:var(--text2);font-weight:700;">${cnt}</span>`;
     return`<tr style="${trStyle}">`
       +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
       +`<td class="ptd-sku">${_adjErpEsc(sku)}</td>`

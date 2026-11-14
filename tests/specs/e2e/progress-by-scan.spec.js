@@ -10,6 +10,9 @@ const { seedItems } = require('../../lib/seed');
 const F = require('../../lib/fixtures');
 
 const N = F.COUNTABLE_COUNT;                       // ตัวหาร Progress ของ fixture
+// ค้างส่งอัตโนมัติ (AUTO_BACKORDER_DEL · พ.ย. 2026): fixture มี S-DELCATNEG (R01 −2 · นอก PBM · ไม่ติดธง) = 1 ตัวที่นับเป็นตัวเศษเสมอ ตั้งแต่ยังไม่มีใครสแกน
+// want(counted, pass) รับ "จำนวนที่สแกนจริง" แล้วบวก AUTO ให้ — ตัวเลขบนการ์ดจึงเท่า สแกนจริง + กลุ่มอัตโนมัติ (Pass ไม่เพิ่ม)
+const AUTO = 1;
 const pctOf = (k) => `${Math.round(k / N * 100)}%`;
 
 async function scanTimes(page, barcode, times) {
@@ -24,7 +27,7 @@ const waitCards = (page, want, timeout = 20000) => page.waitForFunction(
   (w) => ['statCounted', 'statPass', 'progressCount', 'statPct'].every((id, i) => document.getElementById(id).textContent === [w.counted, w.pass, w.progress, w.pct][i]),
   want, { timeout, polling: 100 },
 );
-const want = (counted, pass) => ({ counted: String(counted), pass: String(pass), progress: `${counted} / ${N}`, pct: pctOf(counted) });
+const want = (counted, pass) => ({ counted: String(counted + AUTO), pass: String(pass), progress: `${counted + AUTO} / ${N}`, pct: pctOf(counted + AUTO) });
 
 test.describe('Counted/Pass/Progress ตามสแกน (emulator)', () => {
   test.beforeEach(() => requireEmulator());
