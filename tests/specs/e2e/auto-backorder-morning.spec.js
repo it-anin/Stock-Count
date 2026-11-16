@@ -51,7 +51,7 @@ test.describe('ค้างส่งอัตโนมัติ — เส้น
 
   test('บอทอัป R01 เช้า → เครื่องที่เปิดค้างอัปเดตเอง → R01 วันถัดไปออกจากกลุ่มเอง → รีโหลดแล้วเท่าเดิม · ไม่มีการเขียนลง Cloud', async ({ browser }) => {
     const app = await bootFreshCount(browser, { role: 'pharmacist', user: 'Pharm', mode: 'desktop' });
-    await app.page.evaluate(() => { PHARMACIST_STOCKADJ_ONLY = false; });
+    await app.page.evaluate(() => { PHARMACIST_STOCKADJ_ONLY = false; BACKORDER_MANUAL_MARK = false; });   // สเปกนี้ตรึงโหมดอัตโนมัติเดิม (ทางถอย) · โหมดกดเองอยู่ที่ backorder-manual-mark-sync.spec.js
     const itemsBefore = (await listItems()).length;
 
     // ── เช้าวันที่ 1 ──
@@ -82,6 +82,7 @@ test.describe('ค้างส่งอัตโนมัติ — เส้น
     // ── รีโหลด (login ใหม่ผ่าน stash) ต้องได้ผลเท่ากัน ──
     await app.page.reload();
     await app.page.waitForFunction(() => typeof state !== 'undefined' && state.r01Data.length === 5 && document.getElementById('progressCount')?.textContent.includes('/ 4'), null, { timeout: 30000, polling: 100 });
+    await app.page.evaluate(() => { BACKORDER_MANUAL_MARK = false; updateStats(); invalidatePopupRowsCache(); });   // reload = ค่าเริ่มต้นกลับมา (กดเอง) → ตั้งโหมดอัตโนมัติเดิมอีกครั้ง
     const after = await view(app.page);
     expect(after.auto).toEqual(v.auto); expect(after.num).toBe(v.num); expect(after.denom).toBe(v.denom);
     expect(after.pending).toEqual(v.pending); expect(after.tab).toEqual(v.tab);
