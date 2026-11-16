@@ -3651,7 +3651,7 @@ function selectEmployee(name,role){
     else{
       startWhMasterListeners();startScanSessionListener();startBranchConfirmLockListener();startPharmacyAuditMarkerListener();
       startWhCountConfirmationListener();startWhCountInboxListener();startWhRecheckConfirmationListener();startWhRecheckInboxListener();startWhConfirmOpsListener();
-      startScanItemReconcile();startAdjErpListener();
+      startScanItemReconcile();startAdjErpListener();startBoMarksListener();
     }
     _employeeCallback=null;
   });
@@ -3777,6 +3777,7 @@ async function initAfterLogin(){
     startBranchConfirmLockListener();
     startPharmacyAuditMarkerListener();
     startAdjErpListener();   // สาขายา: ผล R02.102 ของการ์ด "Stock Adj เข้าระบบ" (PHARMACY_ADJ_ERP_CARD · ไม่ใช่ scan data)
+    startBoMarksListener();  // สาขายา: รายการที่เภสัชกด 📦 ค้างส่ง เอง ({branch}_bomarks · BACKORDER_MANUAL_MARK · ไม่ใช่ scan data)
     // เภสัช: force rebuild เพื่อ clear scanListMap ที่ restore มา (มี pass ปน) แล้วกรอง audit-only ใหม่
     rebuildScanListMap(currentRole==='pharmacist');
     renderScanList();updateStats();renderTable();
@@ -3850,6 +3851,7 @@ async function selectBranch(branch){
   stopLocationListener();
   stopR05Listener();
   stopAdjErpListener();
+  stopBoMarksListener();
   if(_pinVerified){
     // สลับสาขาระหว่างใช้งาน — save สาขาเดิมก่อน
     clearTimeout(_firestoreSyncTimer);
@@ -5338,6 +5340,14 @@ let _r01RawQty=new Map();
 // SKU "ค้างส่งอัตโนมัติ" (AUTO_BACKORDER_DEL · พ.ย. 2026) = ชุดนับ ∩ นอก PBM ∩ R01 < 0 — สร้างพร้อมชุดนับใน _rebuildCountableSkus()
 // ⊆ _countableSkus เสมอ (ตัวเศษของ Progress จึงไม่เกินตัวหาร) · เป็นชุด "ตามข้อมูล" ไม่ดูสถานะสแกน/สาขา/สวิตช์ — ผู้ใช้ชุดนี้ต้องผ่าน _isAutoBackorder()/_autoBackorderOn()
 let _autoBackorderSkus=new Set();
+// ค้างส่ง "กดเอง" (BACKORDER_MANUAL_MARK · 16 พ.ย. 2026) — ผู้สมัครที่เภสัชกด 📦 ค้างส่ง ได้ = ชุดนับ ∩ R01 < 0 (ไม่ดู PBM · คนเป็นผู้ตัดสิน) · ⊆ _countableSkus เสมอ
+// _boMarks = รายการที่เภสัชกดไว้ (อ่านจาก {branch}_bomarks ผูก countResetAt) · ใช้งานจริงผ่าน _boActiveMarks() เท่านั้น (เช็คสาขา+รอบนับให้)
+let _negBackorderSkus=new Set();
+let _boMarks=new Map();      // sku → {by,at,g}
+let _boMarksEpoch='';        // countResetAt ที่ doc นี้ผูกอยู่
+let _boMarksBranch='';
+let _boMarksSig='';          // ลายเซ็นของชุดมาร์ค — snapshot ที่ไม่เปลี่ยนอะไรไม่ต้องวาดจอใหม่
+const _BO_NONE=new Map();
 // PBM มีผลกับตัวหาร Progress แล้ว → ทุกจุดที่ PBM/R01 เปลี่ยนต้องเรียกอันนี้ แม้ R05 ยังมาไม่ถึง
 // (rebuildMaps() ทั้งก้อนเรียกไม่ได้ตอน R05 ยังไม่มา เพราะมันเคลียร์ skuMap/barcodeMap แล้ว early-return)
 function _rebuildCountableSkus(){
@@ -5370,6 +5380,10 @@ function _rebuildCountableSkus(){
     _countableSkus.forEach(sku=>{if(!pmSkus.has(sku)&&qtyMap.get(sku)<0)autoSet.add(sku);});
   }
   _autoBackorderSkus=autoSet;
+  // ผู้สมัครค้างส่งแบบกดเอง: ชุดนับที่ R01 ติดลบ ไม่ว่าอยู่ใน PBM หรือไม่ (ผู้ใช้เลือก 16 พ.ย. 2026) — ไม่เข้ากลุ่มเองจนกว่าเภสัชจะกด
+  const negSet=new Set();
+  _countableSkus.forEach(sku=>{if(qtyMap.get(sku)<0)negSet.add(sku);});
+  _negBackorderSkus=negSet;
 }
 function rebuildMaps() {
   _cachedActiveSkus=[];
@@ -5487,17 +5501,32 @@ function _progressByScanOn(){return PROGRESS_BY_SCAN&&_isPharmacyBranch();}
 // rollback = ตั้ง false แล้ว deploy (ตัวเศษ/📋/แท็บ กลับเท่าเดิมทุกจุด) · let เพื่อให้เทสสลับเทียบได้
 let AUTO_BACKORDER_DEL=true;
 function _autoBackorderOn(){return AUTO_BACKORDER_DEL&&_progressByScanOn();}
-// ใช้ตัดสิน "แถวนี้อยู่ในกลุ่มค้างส่งอัตโนมัติตอนนี้ไหม" — sd ว่าง/pending เท่านั้น (สแกนแล้ว = ไม่ใช่)
-function _isAutoBackorder(sku,sd){return _autoBackorderOn()&&(!sd||sd.status==='pending')&&_autoBackorderSkus.has(sku);}
+// ★ 16 พ.ย. 2026 (ผู้ใช้สั่ง "ต้องกดค้างส่งเอง เมื่อ R01 ติดลบ ไม่จำเป็นต้องมีผลนับก่อน") — ยกเลิกการเข้ากลุ่มอัตโนมัติ:
+//   สินค้าชุดนับที่ R01 ติดลบและยังไม่สแกน (ทุกตัว ไม่ดู PBM) ขึ้นแท็บ 📦 ค้างส่ง เป็นแถว "⏳ รอตัดสิน" + ปุ่ม 📦 ค้างส่ง (เภสัช Desktop)
+//   กดแล้วบันทึกลง {branch}_bomarks (เอกสารเล็กใบเดียว ผูก countResetAt) → นับเป็นตัวเศษ Progress (ไม่นับ Pass) · ไม่อยู่ใน 📋 "ยังไม่ได้นับ" · ✕ ถอนได้
+//   ไม่กด = ยังเป็นงานนับปกติ (อยู่ใน 📋 · ไม่เข้าตัวเศษ) · มาร์คมีผลเฉพาะตอน R01 ยังติดลบและยัง pending — R01 ≥ 0 หรือสแกนแล้ว = ไม่มีผล (ไม่เขียนอะไรตอนออก)
+//   ⛔ ห้ามเขียน item/marker/ธง backorder ลง items (เดินคนละรางกับมาร์คที่ผ่านการสแกน) · ไม่แตะ Confirm/สแกน
+// rollback = ตั้ง false → กลับเป็นแบบอัตโนมัติ (นอก PBM ที่ R01 ติดลบ) เท่าที่ merge ไปแล้วทุกตัวอักษร · AUTO_BACKORDER_DEL=false = ปิดทั้งชุด
+let BACKORDER_MANUAL_MARK=true;
+function _boManualOn(){return BACKORDER_MANUAL_MARK&&_autoBackorderOn();}
+// ชุดมาร์คที่ใช้งานได้ตอนนี้ — doc ต้องเป็นของสาขา+รอบนับนี้ (รอบใหม่ = ว่างเอง ไม่ต้องแก้ startNewCount/rules)
+function _boActiveMarks(){return _boMarksBranch===currentBranch&&_boMarksEpoch===(_countResetAt||'')?_boMarks:_BO_NONE;}
+// ใช้ตัดสิน "แถวนี้ปิดงานเป็นค้างส่งอยู่ตอนนี้ไหม" — sd ว่าง/pending เท่านั้น (สแกนแล้ว = ไม่ใช่) · โหมดกดเอง = มาร์คไว้ + ยังติดลบ · โหมดอัตโนมัติ = ชุดนอก PBM
+function _isAutoBackorder(sku,sd){
+  if(!_autoBackorderOn()||(sd&&sd.status!=='pending'))return false;
+  return BACKORDER_MANUAL_MARK?(_boActiveMarks().has(sku)&&_negBackorderSkus.has(sku)):_autoBackorderSkus.has(sku);
+}
 function _scanProgressCounts(){
   // แหล่งเดียวกับ updateStats(): แคตตาล็อกของเครื่อง · ยังไม่มีแคตตาล็อก (R05 ยังไม่มา) ใช้ key ของ scanData
   const active=_cachedActiveSkus.length?_cachedActiveSkus:getActiveSkus();
   const src=active.length?active:[...state.scanData.keys()];
-  const auto=_autoBackorderOn();   // _autoBackorderSkus ⊆ _countableSkus → ไม่ต้องเช็คชุดนับซ้ำ · ไม่นับเป็น pass
+  const auto=_autoBackorderOn();   // ชุดค้างส่ง ⊆ _countableSkus (ทั้งสองโหมด) → ไม่ต้องเช็คชุดนับซ้ำ · ไม่นับเป็น pass
+  const manual=auto&&BACKORDER_MANUAL_MARK;
+  const marks=manual?_boActiveMarks():null;
   let scanned=0,pass=0;
   for(const sku of src){
     const sd=state.scanData.get(sku);
-    if(!sd||sd.status==='pending'){if(auto&&_autoBackorderSkus.has(sku))scanned++;continue;}
+    if(!sd||sd.status==='pending'){if(auto&&(manual?(marks.size>0&&marks.has(sku)&&_negBackorderSkus.has(sku)):_autoBackorderSkus.has(sku)))scanned++;continue;}
     if(!_countableSkus.has(sku))continue;
     scanned++;
     if(sd.status==='pass')pass++;
@@ -6640,6 +6669,107 @@ async function markBackorderFromAdj(sku){
     if(!await reopenPharmacyAudit(sku,{skipConfirm:true,silent:true}))return;
     if(markBackorderItem(sku,{skipConfirm:true}))beepSuccess();
   }finally{_boFromAdjBusy.delete(sku);}
+}
+
+// ── ค้างส่ง "กดเอง" โดยไม่ต้องมีผลนับ (BACKORDER_MANUAL_MARK · 16 พ.ย. 2026) ──
+// เก็บ stock_sessions/{branch}_bomarks = {countResetAt, marks_json:{sku:{by,at,g}}} (แนวเดียวกับ {branch}_adjerpack · ไม่แตะ items/Confirm/marker · ไม่ต้องแก้ rules)
+// atomic: transaction อ่าน-รวม-เขียนสำเร็จก่อนจึงเปลี่ยนในเครื่อง · ล้ม/ออฟไลน์ = ไม่เปลี่ยน + toast · ทุกเครื่องสาขายาฟัง doc นี้ (startBoMarksListener) เพื่อให้ตัวเศษ Progress/📋 ตรงกัน
+// มีผลเฉพาะ "ตอนนี้ยัง pending + R01 ยังติดลบ" (_isAutoBackorder) · สแกนแล้ว/R01 ≥ 0 = ไม่มีผลโดยไม่ต้องเขียนอะไร · ⚠️ ติดลบอีกครั้งในรอบเดียวกัน = มาร์คเดิมกลับมามีผลเอง (ยอมรับ v1)
+function _boMarksRef(branch=currentBranch){return _db.collection('stock_sessions').doc(branch+'_bomarks');}
+function _boParseMarks(d){
+  try{const o=JSON.parse((d&&d.marks_json)||'{}');return o&&typeof o==='object'&&!Array.isArray(o)?o:{};}
+  catch(e){console.warn('[bomarks parse]',e.message);return {};}
+}
+function _boMarksFromDoc(d,epoch){return d&&(d.countResetAt||'')===(epoch||'')?_boParseMarks(d):{};}   // รอบนับอื่น = ไม่ใช่ของรอบนี้
+// ตั้งชุดมาร์คในเครื่อง — คืน true เมื่อมีอะไรเปลี่ยน (ไม่เปลี่ยน = ไม่ต้องวาดจอใหม่)
+function _boSetMarks(branch,epoch,obj){
+  // ชุดว่างมีลายเซ็นเดียว ('') ไม่ว่าสาขา/รอบ — snapshot แรกตอนล็อกอินที่ยังไม่มี doc ต้องไม่ถือว่าเปลี่ยน (ไม่งั้นทุกเครื่องเรียก updateStats ทุกครั้งที่ล็อกอินโดยไม่จำเป็น)
+  const keys=Object.keys(obj).sort();
+  const sig=keys.length?JSON.stringify([branch,epoch,keys.map(k=>[k,(obj[k]&&obj[k].at)||''])]):'';
+  _boMarks=new Map(Object.entries(obj));_boMarksEpoch=epoch;_boMarksBranch=branch;
+  if(sig===_boMarksSig)return false;
+  _boMarksSig=sig;return true;
+}
+function _boMarksChanged(){
+  invalidatePopupRowsCache();
+  updateStats();         // ตัวเศษ Progress/การ์ด/badge — เรียกตรง (ไม่ debounce): มาร์คเกิดไม่บ่อยและต้องให้จอตรงทันที · ไม่อยู่ในเส้นทางสแกน
+  renderTable();         // 📋 (เฉพาะตอนเปิดอยู่)
+  renderAuditVerifyTable();
+}
+function _canBoMark(sku){
+  if(!_boManualOn()||!_isPharmacyBranch()||currentRole!=='pharmacist'||_isPdaApp())return false;
+  const sd=state.scanData.get(sku);
+  if(sd&&sd.status!=='pending')return false;
+  const g=_rawSystemQty(sku);
+  return g!==null&&g<0&&_negBackorderSkus.has(sku);
+}
+// บันทึก (val) / ถอน (null) — transaction อ่าน-รวม-เขียน (สองเครื่องกดคนละ SKU ไม่ทับกัน) · คืน {ok,error}
+async function _boMarksSave(sku,val){
+  const branch=currentBranch,epoch=_countResetAt||'';
+  if(!_db)return{ok:false,error:'ไม่ได้เชื่อมต่อ Cloud'};
+  if(!epoch)return{ok:false,error:'ยังไม่มีรอบนับ'};
+  let merged=null;
+  try{
+    await _adjErpWithTimeout(_db.runTransaction(async tx=>{
+      const ref=_boMarksRef(branch);
+      const snap=await tx.get(ref);
+      const marks=_boMarksFromDoc(snap.exists?snap.data():null,epoch);
+      if(val)marks[sku]=val;else delete marks[sku];
+      const json=JSON.stringify(marks);
+      if(_sessionBlobBytes(json)>=ADJ_ERP_MAX_KB*1024)throw new Error('ข้อมูลมาร์คใหญ่เกินเพดาน');
+      tx.set(ref,{countResetAt:epoch,marks_json:json,updatedBy:currentUser||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+      merged=marks;
+    }),20000);
+  }catch(e){return{ok:false,error:String(e&&e.message||e)};}
+  if(!merged)return{ok:false,error:'บันทึกไม่สำเร็จ'};
+  if(currentBranch!==branch||(_countResetAt||'')!==epoch||!_boManualOn())return{ok:false,error:'สาขา/รอบนับเปลี่ยนระหว่างบันทึก'};
+  _boSetMarks(branch,epoch,merged);
+  return{ok:true};
+}
+const _boBusy=new Set();
+async function markBackorderManual(sku){
+  sku=String(sku);
+  if(_boBusy.has(sku))return;
+  if(!_canBoMark(sku)){beepWarn();toast('รายการนี้มาร์คค้างส่งไม่ได้','warn');return;}
+  if(_boActiveMarks().has(sku))return;   // มาร์คไว้แล้ว
+  if(!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อมาร์คค้างส่ง','error');return;}
+  const si=state.skuMap.get(sku);const g=_rawSystemQty(sku);
+  if(!confirm(`${sku}\n${si?.productName||''}\n\nยอดระบบ ${g} · ยังไม่ได้สแกน\n\nยืนยันว่าเป็นของค้างส่งลูกค้า?\n\nรายการนี้จะนับเป็นเสร็จใน Progress โดยไม่ต้องนับจริง และไม่ออกใบปรับสต็อก\n(ออกจากรายการเองเมื่อ R01 ไม่ติดลบ หรือเมื่อมีการสแกน · ถอนได้ด้วย ✕ ถอน)`))return;
+  _boBusy.add(sku);
+  try{
+    const r=await _boMarksSave(sku,{by:currentUser||'',at:new Date().toISOString(),g});
+    if(!r.ok){beepWarn();toast(`มาร์คค้างส่งไม่สำเร็จ: ${_shortErr(r.error)}`,'error',9000);renderAuditVerifyTable();return;}
+    _boMarksChanged();
+    beepSuccess();toast(`${sku}: มาร์คค้างส่งแล้ว`,'success');
+  }finally{_boBusy.delete(sku);}
+}
+async function unmarkBackorderManual(sku){
+  sku=String(sku);
+  if(_boBusy.has(sku))return;
+  if(!_boManualOn()||!_isPharmacyBranch()||currentRole!=='pharmacist'||_isPdaApp()){beepWarn();toast('ถอนค้างส่งไม่ได้','warn');return;}
+  if(!_boActiveMarks().has(sku))return;
+  if(!navigator.onLine){beepWarn();toast('ต้องออนไลน์เพื่อถอนค้างส่ง','error');return;}
+  _boBusy.add(sku);
+  try{
+    const r=await _boMarksSave(sku,null);
+    if(!r.ok){beepWarn();toast(`ถอนค้างส่งไม่สำเร็จ: ${_shortErr(r.error)}`,'error',9000);renderAuditVerifyTable();return;}
+    _boMarksChanged();
+    toast(`${sku}: ถอนค้างส่งแล้ว`,'info');
+  }finally{_boBusy.delete(sku);}
+}
+// realtime — ทุก role สาขายา (ผู้ช่วย PDA/คอม + เภสัช): เครื่องอื่นกด/ถอนแล้วตัวเศษ Progress/📋 ขยับเอง · อ่านอย่างเดียว ไม่หยุดใน Admin Mode
+// start ใน initAfterLogin/selectEmployee · stop ใน selectBranch · สวิตช์ปิด/WH = ไม่ฟัง
+let _boMarksUnsub=null;
+function stopBoMarksListener(){if(_boMarksUnsub){_boMarksUnsub();_boMarksUnsub=null;}}
+function startBoMarksListener(){
+  stopBoMarksListener();
+  if(!_db||!_boManualOn())return;
+  const branch=currentBranch;
+  _boMarksUnsub=_boMarksRef(branch).onSnapshot(snap=>{
+    if(currentBranch!==branch||!_boManualOn())return;
+    const d=snap.exists?snap.data():null;
+    if(_boSetMarks(branch,d?(d.countResetAt||''):'',_boParseMarks(d)))_boMarksChanged();
+  },e=>console.warn('[bomarks listener]',e&&e.message));
 }
 
 function processPharmacistAuditScan(){
@@ -9387,7 +9517,20 @@ function _backorderTabRows(){
     const si=state.skuMap.get(sku);if(!si)continue;
     rows.push({sku,sd,si,g,kind:marked?'marked':(st==='audit'?'audit':'adj')});
   }
-  // ค้างส่งอัตโนมัติ (AUTO_BACKORDER_DEL): นอก PBM + R01 < 0 + ยังไม่ได้สแกน — ไม่มี sd ที่ไม่ใช่ pending จึงไม่ซ้ำกับแถวด้านบน (นั่นคือรายการที่สแกนแล้ว)
+  // ค้างส่งกดเอง (BACKORDER_MANUAL_MARK · 16 พ.ย. 2026): ชุดนับที่ R01 ติดลบ + ยังไม่ได้สแกน (ทุกตัว ไม่ดู PBM) — todo = รอตัดสิน (มีปุ่มกด) · bomark = กดแล้ว (มี ✕ ถอน)
+  //   ไม่มี sd ที่ไม่ใช่ pending จึงไม่ซ้ำกับแถวด้านบน (นั่นคือรายการที่สแกนแล้ว)
+  if(_boManualOn()){
+    const marks=_boActiveMarks();
+    for(const sku of _negBackorderSkus){
+      const sd=state.scanData.get(sku);
+      if(sd&&sd.status!=='pending')continue;
+      const g=_rawSystemQty(sku);if(g===null||g>=0)continue;
+      const si=state.skuMap.get(sku);if(!si)continue;
+      const mark=marks.get(sku)||null;
+      rows.push({sku,sd:sd||{},si,g,kind:mark?'bomark':'todo',mark});
+    }
+  }else
+  // ค้างส่งอัตโนมัติ (AUTO_BACKORDER_DEL · โหมดเดิมเมื่อ BACKORDER_MANUAL_MARK=false): นอก PBM + R01 < 0 + ยังไม่ได้สแกน
   if(_autoBackorderOn()){
     for(const sku of _autoBackorderSkus){
       const sd=state.scanData.get(sku);
@@ -9397,13 +9540,16 @@ function _backorderTabRows(){
       rows.push({sku,sd:sd||{},si,g,kind:'auto'});
     }
   }
-  const rank={adj:0,audit:0,marked:1,auto:2};   // ยังไม่ตัดสินก่อน · มาร์คแล้ว (รอยืนยัน) · อัตโนมัติ (ไม่ต้องทำอะไร) ตามหลัง
+  // ยังไม่ตัดสิน (นับแล้วไม่ตรง) ก่อน · ⏳ รอตัดสิน (ยังไม่สแกน) · มาร์คแล้วรอยืนยัน · กดค้างส่งเองแล้ว · อัตโนมัติ (โหมดเดิม — ไม่ต้องทำอะไร) ตามหลัง
+  const rank={adj:0,audit:0,todo:1,marked:2,bomark:3,auto:4};
   rows.sort((a,b)=>(rank[a.kind]-rank[b.kind])||a.sku.localeCompare(b.sku,'en',{numeric:true}));
   return rows;
 }
 const AV_BACKORDER_HINT='สินค้าที่ R01 ติดลบ (ขายให้ลูกค้าไปก่อนของเข้า) และนับแล้วไม่ตรง · กด 📦 ค้างส่ง = ปิดงานโดยไม่ออกใบปรับสต็อก (ยอดติดลบคงไว้) แล้วกด ✓ ยืนยันทั้งหมด';
 // ต่อท้ายเมื่อ AUTO_BACKORDER_DEL เปิด — อธิบายแถว "อัตโนมัติ" (ไม่มีปุ่ม)
 const AV_BACKORDER_HINT_AUTO=' · แถว 📦 อัตโนมัติ = สินค้านอก PBM ที่ R01 ติดลบและยังไม่ได้สแกน ไม่ต้องนับ (ออกจากรายการเองเมื่อ R01 ไม่ติดลบ หรือเมื่อมีการสแกน)';
+// ต่อท้ายเมื่อ BACKORDER_MANUAL_MARK เปิด (แทนข้อความอัตโนมัติ) — อธิบายแถว ⏳ รอตัดสิน / 📦 มาร์คแล้ว
+const AV_BACKORDER_HINT_MANUAL=' · ⏳ รอตัดสิน = R01 ติดลบและยังไม่ได้สแกน: กด 📦 ค้างส่ง ถ้าเป็นของค้างส่งลูกค้า (นับเป็นเสร็จใน Progress ไม่ต้องนับจริง · ไม่ออกใบ) · ไม่กด = ยังเป็นงานนับปกติ';
 // ป้าย/ไอคอน/สี badge/hint ของปุ่มแท็บแรก — idempotent · ปิดสวิตช์/WH = ค่าเดิมเป๊ะ (⚠️ + _auditTerm()) · เรียกจาก applyAuditTerminology และต้น renderAuditVerifyTable
 function _syncAvBackorderTabUi(){
   const on=_backorderTabOn();
@@ -9416,7 +9562,7 @@ function _syncAvBackorderTabUi(){
   if(hint){
     const show=on&&_avFilter==='audit'&&window.innerWidth>600;
     hint.style.display=show?'':'none';
-    hint.textContent=show?AV_BACKORDER_HINT+(_autoBackorderOn()?AV_BACKORDER_HINT_AUTO:''):'';
+    hint.textContent=show?AV_BACKORDER_HINT+(_boManualOn()?AV_BACKORDER_HINT_MANUAL:_autoBackorderOn()?AV_BACKORDER_HINT_AUTO:''):'';
   }
 }
 function _renderBackorderTab(rows,thead,tbody,rc){
@@ -9425,7 +9571,8 @@ function _renderBackorderTab(rows,thead,tbody,rc){
   if(thead)thead.innerHTML=isPda
     ?'<tr><th>SKU</th><th>Name</th><th style="text-align:center;">ระบบ</th>'+(canAct?'<th style="text-align:center;">ค้างส่ง</th>':'')+'</tr>'
     :'<tr><th>#</th><th>SKU</th><th>Barcode</th><th>Product Name</th><th style="text-align:center;">ระบบ (R01)</th><th style="text-align:center;">นับได้</th><th style="text-align:center;">สถานะ</th><th>เวลานับ</th>'+(canAct?'<th style="text-align:center;">ค้างส่ง</th>':'')+'</tr>';
-  if(rc)rc.textContent=rows.length+' รายการ ค้างส่ง';
+  const nTodo=rows.filter(r=>r.kind==='todo').length;
+  if(rc)rc.textContent=rows.length+' รายการ ค้างส่ง'+(nTodo?` · รอตัดสิน ${nTodo}`:'');
   // ✓ ยืนยันทั้งหมด = ยืนยันรีเช็คทุกรายการที่มี draft (รวมที่มาร์คค้างส่งไว้) — เงื่อนไขเดียวกับแท็บรอรีเช็คเดิม · สาขายา + PDA ซ่อน (ยืนยันได้เฉพาะ Desktop)
   const confirmAllBtn=document.getElementById('avConfirmAllBtn');
   if(confirmAllBtn)confirmAllBtn.style.display=(getPharmacistAuditPendingMap().size>0&&!(_isPdaApp()&&_isPharmacyBranch()))?'':'none';
@@ -9437,6 +9584,8 @@ function _renderBackorderTab(rows,thead,tbody,rc){
     audit:'<span style="color:var(--yellow);font-weight:700;">⚠️ รอรีเช็ค</span>',
     marked:'<span style="color:var(--purple);font-weight:700;">📦 ค้างส่ง · รอยืนยัน</span>',
     auto:'<span style="color:var(--purple);font-weight:700;" title="นอก PBM · R01 ติดลบ · ยังไม่ได้สแกน — ปิดงานเป็นค้างส่งอัตโนมัติ (นับเป็นเสร็จใน Progress)">📦 ค้างส่ง · อัตโนมัติ</span>',
+    todo:'<span style="color:var(--text2);font-weight:700;" title="R01 ติดลบ · ยังไม่ได้สแกน — เภสัชตัดสิน: กด 📦 ค้างส่ง ถ้าเป็นของค้างส่งลูกค้า (ไม่ต้องนับ) · ไม่กด = ยังเป็นงานนับปกติ">⏳ รอตัดสิน</span>',
+    bomark:'<span style="color:var(--purple);font-weight:700;" title="เภสัชกด ค้างส่ง แล้ว — นับเป็นเสร็จใน Progress · ออกเองเมื่อ R01 ไม่ติดลบ หรือเมื่อมีการสแกน">📦 ค้างส่ง · มาร์คแล้ว</span>',
   };
   tbody.innerHTML=rows.map((r,i)=>{
     const{sku,sd,si,g,kind}=r;
@@ -9446,12 +9595,14 @@ function _renderBackorderTab(rows,thead,tbody,rc){
     if(canAct){
       let inner='<span style="color:var(--text3);">—</span>';
       if(kind==='marked')inner=`<button onclick="resetRecheckItem('${sku}')" title="ถอนการมาร์คค้างส่ง" style="${btnStyle}">✕ ถอน</button>`;
+      else if(kind==='todo'&&_canBoMark(sku))inner=`<button onclick="markBackorderManual('${sku}')" title="ของค้างส่งลูกค้า — ปิดงานโดยไม่ต้องนับ (นับเป็นเสร็จใน Progress · ไม่ออกใบปรับสต็อก)" style="${btnStyle}">📦 ค้างส่ง</button>`;
+      else if(kind==='bomark'&&_boManualOn()&&!_isPdaApp())inner=`<button onclick="unmarkBackorderManual('${sku}')" title="ถอนการมาร์คค้างส่ง — กลับเป็นงานนับปกติ" style="${btnStyle}">✕ ถอน</button>`;
       else if(kind==='audit'&&_canMarkBackorder(sku,sd))inner=`<button onclick="markBackorderItem('${sku}')" title="ของค้างส่งลูกค้า — ผ่านโดยไม่ออกใบปรับสต็อก" style="${btnStyle}">📦 ค้างส่ง</button>`;
       else if(kind==='adj'&&_canBackorderFromAdj(sku,sd))inner=`<button onclick="markBackorderFromAdj('${sku}')" title="ของค้างส่งลูกค้า — มาร์คแล้วกด ✓ ยืนยันทั้งหมด เพื่อปิดเป็น Pass โดยไม่ออกใบปรับสต็อก" style="${btnStyle}">📦 ค้างส่ง</button>`;
       act=`<td style="text-align:center;">${inner}</td>`;
     }
     const sysCell=g===null?'<span style="color:var(--text3);">—</span>':`<span style="color:${g<0?'var(--red)':'var(--text2)'};font-weight:700;">${g}</span>`;
-    const trStyle=kind==='marked'||kind==='auto'?'background:rgba(107,63,160,0.06);':'';
+    const trStyle=kind==='marked'||kind==='auto'||kind==='bomark'?'background:rgba(107,63,160,0.06);':'';
     // รอรีเช็คเก่าที่เภสัชสแกนรีเช็คไว้แล้ว (ยังไม่ยืนยัน) — โชว์ยอดที่สแกน (แท็บรอรีเช็คเดิมมีคอลัมน์ Recheck นี้) ไม่งั้นมองไม่เห็นว่ามี draft ค้างรอ ✓ ยืนยันทั้งหมด
     // marked = draft 0 โดยดีไซน์ (ป้ายสถานะบอกอยู่แล้ว) · adj = ยังไม่มี draft
     const draftNote=kind==='audit'&&sd.recheckQty!=null?`<div style="font-size:0.66rem;color:var(--accent);font-weight:700;">สแกนรีเช็ค ${Number(sd.recheckQty)}</div>`:'';
@@ -9462,7 +9613,7 @@ function _renderBackorderTab(rows,thead,tbody,rc){
     const cnt=Number(sd.countedQty||0);
     // นับเจอของบนชั้น (> 0) ทั้งที่ระบบติดลบ = ผิดปกติ ไม่ใช่ค้างส่งแน่นอนเสมอไป → ไฮไลต์ให้เภสัชดูก่อนกด
     // แถวอัตโนมัติยังไม่ได้สแกน = ไม่มียอดนับให้โชว์
-    const cntCell=kind==='auto'?'<span style="color:var(--text3);">—</span>':cnt>0?`<span style="color:var(--yellow);font-weight:700;" title="นับเจอของบนชั้น — ตรวจก่อนมาร์คค้างส่ง">${cnt}</span>`:`<span style="color:var(--text2);font-weight:700;">${cnt}</span>`;
+    const cntCell=kind==='auto'||kind==='todo'||kind==='bomark'?'<span style="color:var(--text3);">—</span>':cnt>0?`<span style="color:var(--yellow);font-weight:700;" title="นับเจอของบนชั้น — ตรวจก่อนมาร์คค้างส่ง">${cnt}</span>`:`<span style="color:var(--text2);font-weight:700;">${cnt}</span>`;
     return`<tr style="${trStyle}">`
       +`<td style="color:var(--text3);font-size:0.75rem;">${i+1}</td>`
       +`<td class="ptd-sku">${_adjErpEsc(sku)}</td>`
@@ -9471,10 +9622,16 @@ function _renderBackorderTab(rows,thead,tbody,rc){
       +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${sysCell}</td>`
       +`<td style="font-family:'Inter',sans-serif;font-size:0.82rem;text-align:center;">${cntCell}</td>`
       +`<td style="font-size:0.74rem;text-align:center;white-space:nowrap;">${STATUS_UI[kind]}${draftNote}</td>`
-      +`<td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);">${_adjErpEsc(sd.firstScanAt||sd.timestamp||'—')}</td>`
+      +`<td style="font-family:'Inter',sans-serif;font-size:0.7rem;color:var(--text3);"${kind==='bomark'&&r.mark?` title="${_adjErpEsc('กดโดย '+(r.mark.by||'—'))}"`:''}>${_adjErpEsc(kind==='bomark'&&r.mark?_boFmtAt(r.mark.at):(sd.firstScanAt||sd.timestamp||'—'))}</td>`
       +act
       +`</tr>`;
   }).join('');
+}
+// เวลาที่กดค้างส่ง (ISO → ท้องถิ่น DD/MM HH:mm) — อ่านไม่ได้ = "—"
+function _boFmtAt(iso){
+  const d=new Date(iso);if(!iso||isNaN(d))return '—';
+  const p=n=>String(n).padStart(2,'0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function renderAuditVerifyTable(){

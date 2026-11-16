@@ -19,6 +19,7 @@ async function setup(page, { branch = 'SRC', role = 'pharmacist', items = {}, on
     currentBranch = branch; currentRole = role; currentUser = 'Pharm'; _countResetAt = E;
     _db = null;   // ตัด Cloud: _writePharmacyAuditMarkers คืนทันที (logic harness ชี้ Firestore ไปพอร์ตตาย) — เส้นทางที่ต้องผ่าน Cloud จริงตรึงที่ e2e
     PHARMACY_BACKORDER_TAB = on; PHARMACIST_STOCKADJ_ONLY = false;
+    BACKORDER_MANUAL_MARK = false;   // สเปกนี้ตรึงแถวของรายการที่ "สแกนแล้ว" · โหมดกดเอง (⏳ รอตัดสิน) อยู่ที่ backorder-manual-mark.spec.js
     state.r16InboundRawMap.clear(); state.r16InboundMap.clear(); state.r16RawMap.clear(); state.r16SalesMap.clear();
     state.r16_103Map.clear(); state.r16_103RawMap.clear();
     state.skuMap.clear(); state.scanData.clear(); scanListMap.clear();

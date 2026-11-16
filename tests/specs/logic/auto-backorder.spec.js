@@ -1,4 +1,5 @@
 // ค้างส่งอัตโนมัติ (สาขายา · พ.ย. 2026 · สวิตช์ AUTO_BACKORDER_DEL · ผู้ใช้สั่ง)
+// ⚠️ 16 พ.ย. 2026: ค่าเริ่มต้นเปลี่ยนเป็น "กดเอง" (BACKORDER_MANUAL_MARK=true) — สเปกนี้ตั้ง BACKORDER_MANUAL_MARK=false ไว้ใน setup() เพื่อตรึงโหมดอัตโนมัติเดิมซึ่งเป็นทางถอย
 //
 // กติกา: SKU "นอก PBM" ที่อยู่ในชุดนับ (_countableSkus) และ R01 < 0 และ "ยังไม่ได้สแกน" (pending) ของสาขายา
 //   → (1) แท็บ 📦 ค้างส่งมีแถว kind 'auto' (ไม่มีปุ่ม) (2) นับเป็นตัวเศษ Progress (ไม่นับเป็น Pass) (3) ไม่อยู่ใน 📋 "ยังไม่ได้นับ"
@@ -38,6 +39,7 @@ async function setup(page, { branch = 'SRC', role = 'pharmacist', on = true, byS
   await page.evaluate(({ branch, role, on, byScan, r01, pm, status }) => {
     currentBranch = branch; currentRole = role; currentUser = 'Pharm'; _db = null;
     AUTO_BACKORDER_DEL = on; PROGRESS_BY_SCAN = byScan;
+    BACKORDER_MANUAL_MARK = false;   // สเปกนี้ตรึงโหมดอัตโนมัติเดิม (ทางถอยของโหมดกดเอง) · โหมดกดเองอยู่ที่ backorder-manual-mark.spec.js
     PHARMACY_BACKORDER_TAB = true; PHARMACIST_STOCKADJ_ONLY = false; PHARMACY_ADJ_ERP_CARD = false;
     state.r01Data = JSON.parse(JSON.stringify(r01));
     state.productMasterData = pm.map((sku) => ({ sku, productName: 'PBM ' + sku, unitPrice: 10 }));
