@@ -15,6 +15,7 @@ const MTIME = '2026-10-21T21:05:00+07:00';   // BOTR16104 export เสร็จ
 const DAY = '2026-10-21';
 const TODAY = '21/10/2026';                  // d/m/yyyy แบบ ProMaxx
 const R01_VERSION = (b) => `2026-10-21T00:31:00.000Z-${b}`;
+const R01_ISO = () => '2026-10-21T00:31:00.000Z';   // = 07:31 เวลาไทย (ใบรับที่ลงก่อน/ตรงเวลานี้ "อยู่ใน R01 แล้ว")
 
 // item หนึ่งรายการตามรูปที่ PDA/Desktop เขียนจริง (_scanItemPayload): ไม่มี retries/scans/manualEditAt (field local)
 function item(sku, count, time, extra = {}) {
@@ -35,9 +36,10 @@ function r16Row(b, [barcode, qty, time, kind = 'sale'], n) {
 }
 
 // โลกจำลองทั้งหมด: docs (rel path → plain) + csv
-// opts: {branches, items:{b:[item…]}, sales:{b:[[barcode,qty,time,kind]…]}, sys:{sku:qty}, epoch, schema, r01Day, extraDocs}
+// opts: {branches, items:{b:[item…]}, sales:{b:[[barcode,qty,time,kind]…]}, sys:{sku:qty}, epoch, schema, r01Day, extraDocs, r01Version(b)}
+//   r01Version: ตัวสร้างค่า r01Version ต่อสาขา (ค่าเริ่มต้น R01_VERSION = มีป้ายสาขาต่อท้าย ไม่ใช่ ISO ล้วน — เทสใบรับ R16.103 ต้องใช้ ISO ล้วน ดู R01_ISO)
 function world(opts = {}) {
-  const { branches = ['SSS'], items = {}, sales = {}, sys = {}, epoch = EPOCH, schema = 2, r01Day = TODAY, extraDocs = {} } = opts;
+  const { branches = ['SSS'], items = {}, sales = {}, sys = {}, epoch = EPOCH, schema = 2, r01Day = TODAY, extraDocs = {}, r01Version = R01_VERSION } = opts;
   const cat = F.catalog();
   const r01 = cat.r01.map((r) => (r.colE in sys ? { ...r, systemQty: sys[r.colE] } : r));
   const r05 = cat.r05.filter((r) => r.barcode && r.colE).map((r) => [r.barcode, r.colE, r.unitName, r.unitMultiplier, r.unitPrice]);
@@ -46,7 +48,7 @@ function world(opts = {}) {
   let n = 1;
   for (const b of branches) {
     docs[`stock_sessions/${b}_r01`] = {
-      data_json: JSON.stringify(r01), r01Version: R01_VERSION(b), r01UploadedAt: `07:31 น. ${r01Day}`, r16Loaded: false, r16DetailVersion: '',
+      data_json: JSON.stringify(r01), r01Version: r01Version(b), r01UploadedAt: `07:31 น. ${r01Day}`, r16Loaded: false, r16DetailVersion: '',
     };
     docs[`stock_sessions/${b}_pm`] = { data_json: JSON.stringify(cat.pm) };
     docs[`stock_sessions/${b}`] = { schemaVersion: schema, session_data_json: JSON.stringify({ countResetAt: epoch, scanData: {} }) };
@@ -120,6 +122,14 @@ def set_mtime(iso):
     t = datetime.fromisoformat(iso).timestamp(); os.utime(csv_path, (t, t))
 set_mtime(p['mtime'])
 
+# ใบรับ R16.103 (ไม่บังคับ) — ไฟล์แยก R16103.CSV ในโฟลเดอร์เดียวกัน · เวลาแก้ไขตั้งได้แยก (mtime103)
+csv103_path = os.path.join(folder, 'R16103.CSV')
+def write_csv103(text, iso):
+    open(csv103_path, 'wb').write(('\ufeff' + text).encode('utf-8'))
+    t = datetime.fromisoformat(iso).timestamp(); os.utime(csv103_path, (t, t))
+if p.get('csv103') is not None:
+    write_csv103(p['csv103'], p.get('mtime103') or p['mtime'])
+
 def journal_files():
     d = os.path.join(state_dir, 'confirm_journal')
     return sorted(os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))) if os.path.isdir(d) else []
@@ -134,6 +144,9 @@ def apply_ops(ops):
         elif o['op'] == 'script': ff.script = o['script']
         elif o['op'] == 'const': setattr(m, o['name'], o['value'])
         elif o['op'] == 'unlink_csv': os.remove(csv_path)
+        elif o['op'] == 'csv103': write_csv103(o['csv'], o.get('mtime') or p['mtime'])
+        elif o['op'] == 'unlink_csv103':
+            if os.path.exists(csv103_path): os.remove(csv103_path)
         elif o['op'] == 'env':   # ตั้ง/ลบตัวแปรระบบ (ใช้กับเทสแจ้งเตือน: AUTO_R16_NOTIFY · TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID)
             for k, v in (o.get('set') or {}).items(): os.environ[k] = v
             for k in o.get('unset') or []: os.environ.pop(k, None)
@@ -177,6 +190,8 @@ sp = os.path.join(state_dir, 'auto_r16_confirm_shadow.jsonl')
 if os.path.exists(sp): files['shadow'] = [json.loads(l) for l in open(sp, encoding='utf-8') if l.strip()]
 if os.path.exists(sp + '.1'): files['shadowOld'] = [json.loads(l) for l in open(sp + '.1', encoding='utf-8') if l.strip()]
 files['journals'] = {os.path.basename(f): json.load(open(f, encoding='utf-8')) for f in journal_files()}
+rp = os.path.join(state_dir, 'auto_r16_r103_shadow.jsonl')
+if os.path.exists(rp): files['r103Shadow'] = [json.loads(l) for l in open(rp, encoding='utf-8') if l.strip()]
 jd = os.path.join(state_dir, 'confirm_journal')
 files['journalEntries'] = sorted(os.listdir(jd)) if os.path.isdir(jd) else []
 files['stateDirEntries'] = sorted(os.listdir(state_dir))
@@ -198,4 +213,4 @@ const docOf = (res, rel) => (res.store[rel] || {}).fields;
 const untouched = (res, rel) => !!res.initial[rel] && !!res.store[rel] && res.initial[rel].update === res.store[rel].update;
 const confirmWrites = (r) => r.writes.filter((w) => /\/items\/|_confirm_lock|^stock_audit_log\//.test(w.path));
 
-module.exports = { BRANCHES, EPOCH, NOW, MTIME, DAY, TODAY, R01_VERSION, item, world, run, itemOf, docOf, untouched, confirmWrites, FAKE };
+module.exports = { BRANCHES, EPOCH, NOW, MTIME, DAY, TODAY, R01_VERSION, R01_ISO, item, world, run, itemOf, docOf, untouched, confirmWrites, FAKE };

@@ -1,0 +1,16 @@
+// fixture สังเคราะห์ของ R16103.CSV (ใบรับสินค้าเข้าระหว่างวันของ 3 สาขาในไฟล์เดียว) — ห้ามนำข้อมูลจริงเข้า repo
+// ⏳ สมมติว่าหัวคอลัมน์/ตำแหน่งเหมือน R16104.CSV (40 คอลัมน์ · SYSBRANCHID 12 · SCANCODE 14 · BASEQUANTITY 17 · ITEMID 23 · FSTOCKMAIN 27 · NAME 31)
+//    ยังไม่ได้ยืนยันกับไฟล์จริงของสาขายา (ขั้น 0 ของแผน) — บอทตรวจหัวคอลัมน์ทุกรอบ ไฟล์จริงต่างจากนี้ = ตกด่าน ไม่หักผิดเงียบ
+const F = require('./r16-104-fixture');
+
+// SYSWAREHOUSEID ของคลังที่ R01 ของสาขาใช้ (ต้องตรง RECEIPT_WAREHOUSE ในบอท) — SRC หน้าร้าน = 1 · KKL/SSS main = 0
+const WAREHOUSE = { SRC: '1', KKL: '0', SSS: '0' };
+
+let seq = 1;
+// แถวใบรับ 1 แถวของสาขา b (ค่าเริ่มต้น = IRVC รับจากผู้ขาย · FSTOCKMAIN +1 · คลังของ R01 สาขานั้น)
+function receipt(b, o = {}) {
+  const n = String(seq++).padStart(6, '0');
+  return F.branchRow(b, { tranNo: `IRVCBY0012611${n}`, colA: WAREHOUSE[b], stockMain: '1', ...o });
+}
+
+module.exports = { WAREHOUSE, receipt, csvText: F.csvText, HEAD: F.HEAD };

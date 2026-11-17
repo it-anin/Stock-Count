@@ -54,6 +54,9 @@ folder = tempfile.mkdtemp(prefix='r16e2e')
 csv_path = os.path.join(folder, 'R16104.CSV')
 open(csv_path, 'wb').write(('\\ufeff' + p['csv']).encode('utf-8'))
 t = datetime.fromisoformat(p['mtime']).timestamp(); os.utime(csv_path, (t, t))
+if p.get('csv103') is not None:   # ใบรับ R16.103 (ไม่บังคับ) — เวลาแก้ไขเท่า R16104.CSV
+    p103 = os.path.join(folder, 'R16103.CSV')
+    open(p103, 'wb').write(('\ufeff' + p['csv103']).encode('utf-8')); os.utime(p103, (t, t))
 buf = io.StringIO(); code = 0
 with contextlib.redirect_stdout(buf):
     try: m.main(['--folder', folder] + p['args'])
@@ -67,7 +70,7 @@ function payload(opts) {
   const clock = botClock();
   return {
     module: AUTO_R16, base: `http://${HOST}`, project: PROJECT, stateDir: opts.stateDir, now: opts.now || clock.now, mtime: opts.mtime || clock.mtime,
-    csv: opts.csv, args: opts.args || [], consts: opts.consts || {},
+    csv: opts.csv, csv103: opts.csv103 ?? null, args: opts.args || [], consts: opts.consts || {},
   };
 }
 

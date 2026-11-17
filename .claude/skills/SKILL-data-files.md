@@ -24,6 +24,10 @@ DEL/P items, Export Excel, Firestore persistence layers, หรือ Location m
 4. Upload R16.103 (WH only) → loadR16_103()
    → r16_103Map + r16_103RawMap (รับเข้ายังไม่ขึ้นชั้น)
 
+4b. สาขายา (พ.ย. 2026 · บอท auto-r16 · ไม่บังคับ flag --r103*): ใบรับ R16.103 ที่ลงหลังเวลา R01
+   → ต่อท้ายช่อง "รับเข้า" ของ timeline R16.104 บน Cloud → r16InboundRawMap → หักผ่าน getInboundQtyBefore
+   (ทิศ "หักออก" — ตรงข้ามกับ WH ที่ "บวกกลับ" · ไม่มีการ์ด/ไม่แตะ loadR16_103 · ดู §R16.103 ด้านล่าง)
+
 5. Confirm → evaluatePendingScans()
    effectiveCnt = countedQty
                + getSoldQtyBefore(sku, timestamp)      [สาขา]
@@ -216,6 +220,12 @@ logic: `isOutbound = (!isWhBranch && (match(OUTBOUND) && colA==='1' || isSrcOtfb
 **R16.104 timeline ของสาขายาบน Cloud (บอท `auto-r16` · 13 ต.ค. 2026):** `R16104.CSV` ของ BOTR16104 = เอกสารจ่าย "วันนี้วันเดียว" ของ 3 สาขาในไฟล์เดียว (`SYSBRANCHID` 0=ชากค้อ SRC+WH ปน Col A · 4=เก้ากิโล KKL · 5=ศรีราชา SSS · ชื่อสาขาใน `NAME` idx 31) — **`loadR16` ไม่กรองสาขาเอง** บอทจึงแยกแถวตาม `SYSBRANCHID` แล้วพอร์ต `loadR16` (กติกา non-WH) เป็น `build_timeline()` ใน `auto-r16/auto_r16_import.py` → เขียน `{branch}_r16_104_meta` + chunks `{branch}_r16_104_{gen}_{idx}` (รูปแบบเดียวกับ `WH_r16_104_*` · `_whR16Rows`/`_chunkWhR16Rows`) + ประกาศ 3 field ที่ master · Desktop สาขายา (ไม่ PDA) โหลดผ่าน `_loadPharmacyR16Timeline()` (สวิตช์ `PHARMACY_R16_CLOUD_TIMELINE`) · กติกา/ข้อห้าม/ทางถอยอยู่ CLAUDE.md §R16.104 timeline ของสาขายาบน Cloud · ด่านของบอท/ติดตั้ง/Task อยู่ `auto-r16/README.md` · parity เทียบ `loadR16` ทุกไบต์: `tests/specs/logic/auto-r16-parity.spec.js` · ⚠️ **รูปแบบ `TRANDATE` ต่างกันตามเครื่อง export** (เครื่องพัฒนา `13/10/2026 13:06:32` · BIGYAMAINPC `14-Oct-26 09:17:17`) — `parseTranDate()` ของแอปอ่านแบบหลังไม่ได้ (→ `null` → ยอดขายไม่ถูกนับ) บอทจึงแปลงด้วย `normalize_tran_date()` ก่อนเก็บ timeline (ข้อยกเว้นเดียวของ parity "สตริงดิบ") · อย่าให้ `parse_tran_date()` อ่านชื่อเดือนเอง
 
 ### R16.103 (WH only) — Document Types
+
+> **สาขายา (SRC/KKL/SSS · พ.ย. 2026) ใช้ R16.103 คนละทาง — "หักออก" ไม่ใช่ "บวกกลับ":** บอท `auto-r16` (flag `--r103*` · ค่าเริ่มต้นปิด) อ่าน `R16103.CSV`
+> แล้วต่อใบรับ (`FSTOCKMAIN` +1 พอดี · ประเภท IRNC/IRVC/IRNM/ICSM/ITFB/ITFW/IRCN · ไม่มี IRPS · Col A = คลังของ R01: SRC 1 · KKL/SSS 0 · ลงหลังเวลา R01)
+> เข้าช่อง "รับเข้า" ของ timeline R16.104 → สูตร Confirm เดิมหักเฉพาะใบที่ลง ≤ เวลาสแกน (ของที่รับก่อนนับอยู่บนชั้นแล้วแต่ R01 ไม่รู้)
+> ⛔ ห้ามเอากติกาตารางด้านล่าง (ของ WH) ไปใช้กับสาขายา และห้ามเอาสาขายาเข้า `loadR16_103` · ⏳ ยังไม่ได้ยืนยันกับไฟล์จริงของสาขายา
+> รายละเอียด/ข้อห้าม/ทางถอย: CLAUDE.md §📥 ใบรับ R16.103 ของสาขายา · `auto-r16/README.md`
 
 | Col C prefix | ประเภท | ผลต่อ effectiveCnt |
 |---|---|---|
