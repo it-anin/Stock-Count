@@ -6,6 +6,7 @@
 const path = require('path');
 const { runPython } = require('./python');
 const F = require('./r16-104-fixture');
+const R3 = require('./r16-103-fixture');
 
 const FAKE = path.resolve(__dirname, 'fake_firestore.py');
 const BRANCHES = ['SRC', 'KKL', 'SSS'];
@@ -130,6 +131,19 @@ def write_csv103(text, iso):
 if p.get('csv103') is not None:
     write_csv103(p['csv103'], p.get('mtime103') or p['mtime'])
 
+# เอกสารรออนุมัติ R4166.CSV (17 พ.ย. 2026 · บอทบังคับคู่กับ R16103 เมื่อเปิด --r103*)
+#   ค่าเริ่มต้น: เขียน R16103 เมื่อไร เขียน R4166 "มีแต่หัวตาราง" เวลาเดียวกันด้วย (BOTR16103 ส่งออกคู่กันในรอบเดียว · ไม่มีเอกสารรออนุมัติ
+#   = ผลเท่าก่อนมี R4166 ทุกค่า) · ส่ง csv4166: null = ไม่เขียน (เทสไฟล์หาย) · สตริง = เขียนตามนั้น · mtime4166 ตั้งเวลาแยกได้
+csv4166_path = os.path.join(folder, 'R4166.CSV')
+def write_csv4166(text, iso):
+    open(csv4166_path, 'wb').write(('\ufeff' + text).encode('utf-8'))
+    t = datetime.fromisoformat(iso).timestamp(); os.utime(csv4166_path, (t, t))
+if 'csv4166' in p:
+    if p['csv4166'] is not None:
+        write_csv4166(p['csv4166'], p.get('mtime4166') or p.get('mtime103') or p['mtime'])
+elif p.get('csv103') is not None:
+    write_csv4166(p['csv4166Default'], p.get('mtime4166') or p.get('mtime103') or p['mtime'])
+
 def journal_files():
     d = os.path.join(state_dir, 'confirm_journal')
     return sorted(os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))) if os.path.isdir(d) else []
@@ -147,6 +161,9 @@ def apply_ops(ops):
         elif o['op'] == 'csv103': write_csv103(o['csv'], o.get('mtime') or p['mtime'])
         elif o['op'] == 'unlink_csv103':
             if os.path.exists(csv103_path): os.remove(csv103_path)
+        elif o['op'] == 'csv4166': write_csv4166(o['csv'], o.get('mtime') or p['mtime'])
+        elif o['op'] == 'unlink_csv4166':
+            if os.path.exists(csv4166_path): os.remove(csv4166_path)
         elif o['op'] == 'env':   # ตั้ง/ลบตัวแปรระบบ (ใช้กับเทสแจ้งเตือน: AUTO_R16_NOTIFY · TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID)
             for k, v in (o.get('set') or {}).items(): os.environ[k] = v
             for k in o.get('unset') or []: os.environ.pop(k, None)
@@ -198,11 +215,11 @@ files['stateDirEntries'] = sorted(os.listdir(state_dir))
 print(json.dumps({'runs': runs, 'store': ff.snapshot(), 'initial': initial, 'files': files}, ensure_ascii=False))
 `;
 
-// opts: {docs, csv, runs:[{args, ops}], script, consts, now, mtime, breakJournal}
+// opts: {docs, csv, runs:[{args, ops}], script, consts, now, mtime, breakJournal, csv103, mtime103, csv4166 (null = ไม่เขียน), mtime4166}
 function run(opts = {}) {
   const docs = opts.docs || {};
   const branches = BRANCHES.filter((b) => `stock_sessions/${b}_r01` in docs);
-  return runPython(HARNESS, { fake: FAKE, now: NOW, mtime: MTIME, runs: [{ args: [] }], branches, ...opts });
+  return runPython(HARNESS, { fake: FAKE, now: NOW, mtime: MTIME, runs: [{ args: [] }], branches, csv4166Default: R3.csv4166([]), ...opts });
 }
 
 // ผลย่อ: item ของสาขา b หลังรันจบ (plain) · res = ผลทั้งชุด (สถานะหลังรอบสุดท้าย) หรือ res.runs[i] (สถานะหลังรอบที่ i)

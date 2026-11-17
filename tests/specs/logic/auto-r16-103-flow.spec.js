@@ -37,7 +37,7 @@ const W = (over = {}) => world({ branches: ['SSS'], items: { SSS: ITEMS }, sales
 const ON = ['--r103', '--r103-branch', 'SSS'];
 const SHADOW = ['--r103-shadow'];
 const CONFIRM = ['--confirm', '--confirm-branch', 'SSS'];
-const R103_FIELDS = ['r103Mode', 'r103Rows', 'r103Skus', 'r103Qty', 'r103SourceFile', 'r103SourceMtime'];
+const R103_FIELDS = ['r103Mode', 'r103Rows', 'r103Skus', 'r103Qty', 'r103SourceFile', 'r103SourceMtime', 'r103Pending'];
 const SKUS = ITEMS.map((i) => i.sku);
 
 // timeline ที่เผยแพร่อยู่ของสาขา (อ่านจาก meta → chunk ตามลำดับ) · res = ผลทั้งชุด หรือ res.runs[i] (สถานะหลังรอบที่ i)
@@ -52,16 +52,16 @@ const rowOf = (pub, sku) => pub.rows.find((r) => r[0] === sku);
 const patches = (r) => r.requests.filter((x) => x.startsWith('PATCH '));
 
 // ── (1) ไม่มี flag = พฤติกรรมเดิมทุกไบต์ ──────────────────────────────────
-test('ไม่มี flag --r103* — ไม่แตะไฟล์ R16103.CSV เลย (แม้ไฟล์เสียวางอยู่) · chunk/meta เท่ากับตอนไม่มีไฟล์ทุกไบต์ · ไม่มี field r103* · ไม่ query items', () => {
+test('ไม่มี flag --r103* — ไม่แตะไฟล์ R16103.CSV / R4166.CSV เลย (แม้ไฟล์เสียวางอยู่) · chunk/meta เท่ากับตอนไม่มีไฟล์ทุกไบต์ · ไม่มี field r103* · ไม่ query items', () => {
   const a = run({ ...W(), runs: [{ args: [] }] });
-  const b = run({ ...W(), csv103: 'ขยะ,ไม่ใช่,CSV\n"เปิดแล้วพัง', runs: [{ args: [] }] });
+  const b = run({ ...W(), csv103: 'ขยะ,ไม่ใช่,CSV\n"เปิดแล้วพัง', csv4166: 'ขยะ\n"', runs: [{ args: [] }] });
   for (const res of [a, b]) expect(res.runs[0].code, res.runs[0].log).toBe(0);
   const pa = published(a), pb = published(b);
   expect(pb.chunks).toEqual(pa.chunks);
   expect(pb.meta.contentHash).toBe(pa.meta.contentHash);
   for (const k of R103_FIELDS) expect(pb.meta[k], k).toBeUndefined();
   expect(rowOf(pb, 'S-21'), 'ไม่มีใบรับใน timeline').toBeUndefined();
-  expect(b.runs[0].log).not.toMatch(/R16\.103|R16103/);
+  expect(b.runs[0].log).not.toMatch(/R16\.103|R16103|R4166|รออนุมัติ/);
   expect(b.runs[0].requests.some((x) => x.includes('runQuery')), 'ไม่ query items').toBe(false);
   expect(b.files.r103Shadow).toBeUndefined();
   for (const sku of SKUS) expect(untouched(b, `stock_sessions/SSS/items/${sku}`), sku).toBe(true);
@@ -377,4 +377,169 @@ test('Telegram — บรรทัดไฟล์ใบรับ + ผลต่�
   expect(t3).not.toContain('ใบรับ');
   expect(t3).not.toContain('R16103');
   for (let i = 0; i < 4; i++) expect(res.runs[i].log).not.toContain(TOKEN);
+});
+
+// ── (7) เอกสารรออนุมัติ R4166.CSV (17 พ.ย. 2026) ─────────────────────────────
+// ใบรับที่รออนุมัติอยู่ใน R16103.CSV แต่ FSTOCKMAIN 0 (ระบบยังไม่บวกสต็อก) — ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
+//   เลขที่อยู่ใน R4166 = หัก (ไม่ตัดด้วยเวลา R01) · R4166 ใช้ไม่ได้ = ปัญหาระดับไฟล์ของใบรับ (เปิดใช้: ไม่เผยแพร่ + ❌ · เงา: ⚠️)
+// ระบบ (R01) S-26..S-28 = 5 (catalog)
+const ITEMS_P = [...ITEMS,
+  item('S-26', 6, '15:00:00'),    // ITFS รออนุมัติ +1 คีย์ 11:02:19 (แบบไฟล์จริง SSS) → 6 − 1 = 5 Pass (ไม่มี R4166 = Stock Adj ปลอม)
+  item('S-27', 7, '10:00:00'),    // ITFB รออนุมัติ +2 คีย์ 07:00 ก่อนเวลา R01 → ยังไม่อยู่ใน R01 → 7 − 2 = 5 Pass
+  item('S-28', 6, '15:00:00'),    // ใบ FSTOCKMAIN 0 ที่ R4166 บอกว่ายกเลิก → ไม่ใช่รออนุมัติ → ไม่หัก → Stock Adj (ไม่หักเกิน)
+];
+const SKUS_P = ITEMS_P.map((i) => i.sku);
+const PEND_ROWS = (b = 'SSS') => [
+  R.receipt(b, { tranNo: 'ITFSBY001261100001', stockMain: '0', qty: '1.0000', barcode: 'B-26', sku: 'S-26', at: T('11:02:19') }),
+  R.receipt(b, { tranNo: 'ITFBBY001261100002', stockMain: '0', qty: '2.0000', barcode: 'B-27', sku: 'S-27', at: T('07:00:00') }),
+  R.receipt(b, { tranNo: 'ITFSBY001261100003', stockMain: '0', qty: '1.0000', barcode: 'B-28', sku: 'S-28', at: T('11:30:00') }),
+];
+// R16103 ชุดเต็ม + R4166 ที่ตรงกัน — ปนของที่ต้องไม่ถูกหัก: ใบ +1 ก่อน R01 ของ S-25 (ระบบบวกสต็อกแล้ว · ห้ามหักซ้ำ)
+//   · ใบ IPOS ของ S-25 (รออนุมัติแต่ไม่ใช่ใบรับ) · ใบโอนออกที่ไม่มีใน R16103 · ใบยกเลิกของ S-28
+function pendWorld() {
+  const rows = [...RECEIPTS(), ...PEND_ROWS()];
+  const s25 = rows.find((r) => r[23] === 'S-25' && r[27] === '1')[2];
+  const ipos = rows.find((r) => r[2].startsWith('IPOS'))[2];
+  const r4166 = R.csvText([R.pendingRow('ITFSBY001261100001'), R.pendingRow('ITFBBY001261100002'),
+    R.pendingRow('ITFSBY001261100003', 'SSS', { cancel: '1' }), R.pendingRow(s25), R.pendingRow(ipos), R.pendingRow('OTFBBY001261100122')], { head: R.HEAD_4166 });
+  return { csv103: CSV103(rows), csv4166: r4166, s25 };
+}
+const WP = (over = {}) => W({ items: { SSS: ITEMS_P }, ...over });
+
+test('★ R4166 — ใบรออนุมัติ (FSTOCKMAIN 0) ถูกหักทั้งที่ไม่ใช่ +1 และคีย์ก่อน R01 · R4166 ยกเลิก = ไม่หัก · ใบ +1 ใน R4166 = กติกาปกติ · Confirm ได้ Pass · meta/log/รายงานบอกจำนวน', () => {
+  const pw = pendWorld();
+  const res = run({ ...WP(), csv103: pw.csv103, csv4166: pw.csv4166, runs: [{ args: [...ON, ...CONFIRM] }] });
+  const r = res.runs[0];
+  expect(r.code, r.log).toBe(0);
+  const pub = published(res);
+  expect(rowOf(pub, 'S-26')).toEqual(['S-26', 0, 1, [], [{ qty: 1, tranDate: T('11:02:19') }]]);
+  expect(rowOf(pub, 'S-27')).toEqual(['S-27', 0, 2, [], [{ qty: 2, tranDate: T('07:00:00') }]]);
+  expect(rowOf(pub, 'S-28'), 'R4166 บอกว่ายกเลิก = ไม่ใช่รออนุมัติ').toBeUndefined();
+  expect(rowOf(pub, 'S-25'), 'ใบ +1 ก่อน R01 ใน R4166 = ยังอยู่ใน R01 ห้ามหักซ้ำ').toBeUndefined();
+  expect(pub.meta).toMatchObject({ r103Mode: 'on', r103Rows: 6, r103Skus: 6, r103Qty: 24, r103Pending: 2, r103SourceFile: 'R16103.CSV' });
+  expect(r.log).toContain('ไฟล์เอกสารรออนุมัติ: R4166.CSV');
+  expect(r.log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 5 ใบ (5 แถว) — IPOSBY');
+  expect(r.log).toContain(' · ข้ามใบยกเลิก 1 แถว');
+  expect(r.log).toContain('ใบรับ R16.103 [เปิดใช้]: 6 บรรทัด · 6 ใบ · 6 SKU · 24 ชิ้น');
+  expect(r.log).toContain(' · รออนุมัติ (หักเพราะของขึ้นชั้นแล้ว) 2 บรรทัด · ข้าม: ไม่ตัดสต็อก 1 · ก่อนเวลา R01 1');
+  expect(r.log).toContain('⚠️ ใบรับ R16.103: เอกสารรออนุมัติประเภทที่ไม่อยู่ในรายการใบรับ IPOS×1 — ไม่หัก');
+  expect(r.log).toContain('⚠️ ใบรับ R16.103: เลขที่เอกสารอยู่ใน R4166 แต่ FSTOCKMAIN +1 (ระบบบวกสต็อกแล้ว) 1 บรรทัด');
+  expect(r.log).toContain('⚠️ ใบรับ R16.103: เอกสารรออนุมัติ 2 ใบ หักคืนนี้แล้ว (ITFBBY001261100002, ITFSBY001261100001)');
+  expect(r.log).toContain('ผลพลิก Stock Adj→Pass 4 · Pass→Stock Adj 1');
+  const pick = (sku) => {
+    const it = itemOf(res, 'SSS', sku);
+    return Object.fromEntries(['status', 'directAdj', 'effectiveQty', 'systemQty', 'inboundQty'].filter((k) => it[k] !== undefined).map((k) => [k, it[k]]));
+  };
+  expect(pick('S-26')).toEqual({ status: 'pass', inboundQty: 1 });
+  expect(pick('S-27')).toEqual({ status: 'pass', inboundQty: 2 });
+  expect(pick('S-28')).toEqual({ status: 'stock_adjustment', directAdj: true, effectiveQty: 6, systemQty: 5 });
+  expect(pick('S-25'), 'ไม่หักซ้ำ').toEqual({ status: 'pass' });
+  const rec = res.files.r103Shadow[0];
+  expect(rec.receipts).toMatchObject({ kept: 6, no_stock: 1, pending_rows: 4, pending_kept: 2, pending_added: 1, pending_docs: ['ITFBBY001261100002', 'ITFSBY001261100001'] });
+  expect([...rec.flips.to_pass].sort()).toEqual(['S-21', 'S-23', 'S-26', 'S-27']);
+  expect(rec.flips.to_adj).toEqual(['S-24']);
+
+  // canary: R4166 มีแต่หัว (คืนที่ไม่มีเอกสารรออนุมัติ) — ใบ FSTOCKMAIN 0 ทั้งหมดไม่ถูกหัก (พฤติกรรมก่อนมี R4166)
+  const none = run({ ...WP(), csv103: pw.csv103, runs: [{ args: [...ON, ...CONFIRM] }] });
+  expect(none.runs[0].code, none.runs[0].log).toBe(0);
+  expect(published(none).meta).toMatchObject({ r103Rows: 4, r103Qty: 21, r103Pending: 0 });
+  expect(none.runs[0].log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 0 ใบ (0 แถว)');
+  expect(none.runs[0].log).not.toContain('รออนุมัติ (หักเพราะของขึ้นชั้นแล้ว)');
+  expect(itemOf(none, 'SSS', 'S-26')).toMatchObject({ status: 'stock_adjustment', effectiveQty: 6, systemQty: 5 });
+  expect(itemOf(none, 'SSS', 'S-27')).toMatchObject({ status: 'stock_adjustment', effectiveQty: 7, systemQty: 5 });
+});
+
+test('R4166 + โหมดเงา — timeline เดิม (ไม่หัก) · รายงานบอกว่าใบรออนุมัติจะพลิกอะไร · meta r103Pending บอกจำนวน', () => {
+  const pw = pendWorld();
+  const base = run({ ...WP(), runs: [{ args: [] }] });
+  const res = run({ ...WP(), csv103: pw.csv103, csv4166: pw.csv4166, runs: [{ args: SHADOW }] });
+  expect(res.runs[0].code, res.runs[0].log).toBe(0);
+  expect(published(res).chunks, 'เงา = timeline เดิมทุกไบต์').toEqual(published(base).chunks);
+  expect(published(res).meta).toMatchObject({ r103Mode: 'shadow', r103Rows: 6, r103Pending: 2 });
+  expect([...res.files.r103Shadow[0].flips.to_pass].sort()).toEqual(['S-21', 'S-23', 'S-26', 'S-27']);
+  for (const sku of SKUS_P) expect(untouched(res, `stock_sessions/SSS/items/${sku}`), sku).toBe(true);
+});
+
+// ไฟล์ R4166 มีปัญหา (R16103 ปกติ) — กติกาเดียวกับไฟล์ R16103 มีปัญหา (ผู้ใช้เลือก)
+const P4166 = [
+  { name: 'ไม่มีไฟล์ R4166.CSV', w: { csv4166: null }, msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'", force: false },
+  { name: 'R4166 ไม่ใช่ของวันนี้', w: { mtime4166: '2026-10-20T21:05:00+07:00' }, msg: 'ไฟล์ R4166 ไม่ได้ถูกแก้ไขวันนี้', force: true },
+  { name: 'R4166 ยังไม่นิ่ง', w: { mtime4166: '2026-10-21T21:09:30+07:00' }, msg: 'ไฟล์ R4166 เพิ่งถูกแก้เมื่อ 30 วินาทีก่อน', force: true },
+  { name: 'R4166 ส่งออกห่าง R16103 เกิน 30 นาที', w: { mtime4166: '2026-10-21T20:30:00+07:00' },
+    msg: 'ไฟล์ R4166 (20:30) กับ R16103 (21:05) ส่งออกห่างกันเกิน 30 นาที', force: true },
+  { name: 'R4166 เป็นรายงานรายบรรทัด (หยิบ R16103 มาแทน)', w: { csv4166: R.csvText([R.receipt('SSS')]) }, msg: 'หัวคอลัมน์ R4166 ไม่ตรงที่คาด: มีคอลัมน์รายบรรทัด', force: false },
+];
+
+for (const p of P4166) {
+  test(`R4166 มีปัญหา (${p.name}) — เปิดใช้: ไม่เผยแพร่ + ❌ exit 4 · Confirm ไม่ทำ · เงา: เผยแพร่แบบเดิม + ⚠️ exit 0 · --force ${p.force ? 'ข้ามได้' : 'ข้ามไม่ได้'}`, () => {
+    const pw = pendWorld();
+    const wo = { ...WP(), csv103: pw.csv103, csv4166: pw.csv4166, ...p.w };
+    const res = run({ ...wo, runs: [{ args: [...ON, ...CONFIRM] }] });
+    const r = res.runs[0];
+    expect(r.code, r.log).toBe(4);
+    expect(r.log).toContain(`❌ ใบรับ R16.103: ${p.msg}`);
+    expect(r.log).toContain('ไม่เผยแพร่ R16 ของสาขานี้');
+    expect(published(res), 'ไม่มีรุ่นที่เผยแพร่').toBeNull();
+    expect(docOf(res, 'stock_sessions/SSS_r01').r16Loaded).toBe(false);
+    expect(confirmWrites(r), 'Confirm ไม่ทำ (ไม่มี Stock Adj ปลอม)').toEqual([]);
+    for (const sku of SKUS_P) expect(itemOf(res, 'SSS', sku).status, sku).toBe('scanning');
+
+    const sh = run({ ...wo, runs: [{ args: SHADOW }] });
+    expect(sh.runs[0].code, sh.runs[0].log).toBe(0);
+    expect(sh.runs[0].log).toContain(`⚠️ ใบรับ R16.103: ${p.msg}`);
+    expect(published(sh).meta).toMatchObject({ r103Mode: 'shadow-unusable', r103Rows: 0, r103Pending: 0 });
+    expect(sh.files.r103Shadow, 'ใช้ไม่ได้ = ไม่มีรายงานพลิก').toBeUndefined();
+
+    const fo = run({ ...wo, runs: [{ args: [...ON, '--force'] }] });
+    if (p.force) {
+      expect(fo.runs[0].code, fo.runs[0].log).toBe(0);
+      expect(fo.runs[0].log).toContain(`⚠️ ${p.msg}`);
+      expect(fo.runs[0].log).toContain('แต่มี --force ดำเนินการต่อ');
+      expect(published(fo).meta).toMatchObject({ r103Mode: 'on', r103Pending: 2 });
+      expect(rowOf(published(fo), 'S-26')).toEqual(['S-26', 0, 1, [], [{ qty: 1, tranDate: T('11:02:19') }]]);
+    } else {
+      expect(fo.runs[0].code, fo.runs[0].log).toBe(4);
+      expect(published(fo)).toBeNull();
+    }
+  });
+}
+
+test('R4166 หาย — สาขาที่เปิดใช้ตกด่าน แต่สาขาโหมดเงายังเผยแพร่ (KKL) · R16103 หายด้วย = ปัญหาทั้งสองไฟล์ถูกรายงาน', () => {
+  const pw = pendWorld();
+  const both = world({ branches: ['KKL', 'SSS'], items: { SSS: ITEMS_P, KKL: [item('S-21', 15, '15:00:00')] }, sales: { SSS: SALES }, sys: SYS, r01Version: H.R01_ISO });
+  const res = run({ ...both, csv103: pw.csv103, csv4166: null, runs: [{ args: [...ON, ...SHADOW] }] });
+  const r = res.runs[0];
+  expect(r.code, r.log).toBe(4);
+  expect(published(res, 'SSS')).toBeNull();
+  expect(published(res, 'KKL').meta.r103Mode).toBe('shadow-unusable');
+  expect(docOf(res, 'stock_sessions/KKL_r01').r16Loaded).toBe(true);
+  const gone = run({ ...both, runs: [{ args: [...ON, ...SHADOW] }] });
+  expect(gone.runs[0].code, gone.runs[0].log).toBe(4);
+  expect(gone.runs[0].log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์ 'R16103*.CSV'");
+  expect(gone.runs[0].log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'");
+});
+
+test('Telegram + R4166 — บรรทัดไฟล์บอกเวลา export ของทั้งสองไฟล์ · ต่อสาขาบอกจำนวนรออนุมัติ · R4166 หาย = ❌ + ชี้ทั้งสองไฟล์ · ไม่มี flag = ไม่มีคำว่า R4166', () => {
+  const pw = pendWorld();
+  const res = run({ ...WP(), csv103: pw.csv103, csv4166: pw.csv4166, runs: [
+    { args: [...ON, ...CONFIRM], ops: NOTIFY },
+    { args: [...ON, ...CONFIRM], ops: [...NOTIFY, { op: 'unlink_csv4166' }] },
+    { args: [], ops: NOTIFY },
+  ] });
+  const text = (i) => {
+    expect(res.runs[i].telegram, `รอบ ${i}: ส่ง 1 ข้อความ\n${res.runs[i].log}`).toHaveLength(1);
+    return res.runs[i].telegram[0].body.text;
+  };
+  const t0 = text(0);
+  expect(t0).toContain('ไฟล์ใบรับ R16103.CSV (export 21:05 21/10) · รออนุมัติ R4166.CSV (export 21:05 21/10)');
+  expect(t0).toMatch(/SSS: R16 เผยแพร่แล้ว · ใบรับ R16\.103 \(เปิดใช้\) 6 บรรทัด\/6 SKU \(รออนุมัติ 2\) · ทำให้ Stock Adj→Pass 4 · Pass→Stock Adj 1 · /);
+  const t1 = text(1);
+  expect(res.runs[1].code).toBe(4);
+  expect(t1).toContain('ไฟล์ใบรับ R16103.CSV (export 21:05 21/10) · รออนุมัติ (ไม่พบ R4166.CSV)');
+  expect(t1).toContain("SSS: R16 ตกด่าน ไม่ได้เขียน · ❌ ใบรับ R16.103 (เปิดใช้): ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'");
+  expect(t1).toContain('ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV / R4166.CSV แล้วรันซ้ำ');
+  const t2 = text(2);
+  expect(t2).not.toContain('R4166');
+  expect(t2).not.toContain('รออนุมัติ');
+  for (let i = 0; i < 3; i++) expect(res.runs[i].log).not.toContain(TOKEN);
 });

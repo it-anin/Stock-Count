@@ -99,7 +99,7 @@ test.describe('ใบรับ R16.103 ของสาขายา (บอท au
     const desk = await prepare(browser);
     const bot = B.runBotSync({ stateDir: B.newStateDir(), csv: CSV104, csv103: CSV103, args: ['--branch', 'SSS'] });
     expect(bot.code, bot.log).toBe(0);
-    expect(bot.log).not.toMatch(/R16\.103|R16103/);
+    expect(bot.log).not.toMatch(/R16\.103|R16103|R4166|รออนุมัติ/);
     const meta = await getDoc(PROJECT_ID, 'stock_sessions/SSS_r16_104_meta');
     expect(meta.r103Mode).toBeUndefined();
     const got = await desktopConfirm(desk);
@@ -131,5 +131,64 @@ test.describe('ใบรับ R16.103 ของสาขายา (บอท au
     for (const sku of SKUS) expect(got[sku].updatedBy, sku).toBe('auto-r16');
     expect(await getDoc(PROJECT_ID, 'stock_sessions/SSS_confirm_lock'), 'lock ถูกปล่อย').toBeNull();
     await closeApp(desk);
+  });
+  // ใบรับที่รออนุมัติ (R4166) — แบบไฟล์จริง 17 พ.ย. 2026 (SSS ITFS FSTOCKMAIN 0) · S-F09 ระบบ 9 · S-F03 ระบบ 3
+  test('★ เอกสารรออนุมัติ (R4166) — ใบ ITFS ที่ FSTOCKMAIN 0 ถูกหัก (คีย์ก่อน R01 ก็หัก) → ปุ่ม Confirm จริง: Pass · canary R4166 มีแต่หัว: Stock Adj ปลอม', async ({ browser }) => {
+    const PEND_ITEMS = [['S-F09', 'B-F09', 10, '15:00:00'], ['S-F03', 'B-F03', 5, '10:00:00']];
+    const csv103 = R3.csvText([
+      R3.receipt('SSS', { tranNo: 'ITFSBY001261100001', stockMain: '0', qty: '1.0000', barcode: 'B-F09', sku: 'S-F09', at: at('11:02:19') }),
+      R3.receipt('SSS', { tranNo: 'ITFBBY001261100002', stockMain: '0', qty: '2.0000', barcode: 'B-F03', sku: 'S-F03', at: at('07:00:00') }),
+    ]);
+    const csv4166 = R3.csv4166(['ITFSBY001261100001', 'ITFBBY001261100002']);
+    const seed = async (desk) => {
+      const db = adminDb(PROJECT_ID);
+      const batch = db.batch();
+      for (const [sku, barcode, count, time] of PEND_ITEMS) {
+        const ts = `${DAY.iso} ${time}`;
+        batch.set(db.doc(itemPath(sku)), {
+          sku, countResetAt: desk.epoch, status: 'scanning', countedQty: count, timestamp: ts, firstScanAt: ts, scannedBy: 'พนักงานทดสอบ',
+          auditor: '', auditStatus: 'pending', barcode, location: '', rev: 1, updatedBy: 'พนักงานทดสอบ', updatedAt: new Date(Date.now() - 3600_000),
+        });
+      }
+      await batch.commit();
+      await desk.page.waitForFunction((skus) => skus.every((x) => state.scanData.get(x)?.status === 'scanning'), PEND_ITEMS.map((i) => i[0]), { timeout: 20_000, polling: 100 });
+    };
+    const confirmPend = async (desk) => {
+      const version = (await getDoc(PROJECT_ID, 'stock_sessions/SSS_r01')).r16DetailVersion;
+      await desk.page.waitForFunction((v) => state.r16Loaded === true && state.r16DetailVersion === v, version, { timeout: 30_000, polling: 100 });
+      await desk.page.evaluate(() => validateAndProcess());
+      const out = {};
+      for (const [sku] of PEND_ITEMS) out[sku] = await waitForDoc(PROJECT_ID, itemPath(sku), (d) => d && d.status !== 'scanning', { timeout: 40_000 });
+      return out;
+    };
+
+    const desk = await prepare(browser);
+    await seed(desk);
+    const bot = B.runBotSync({ stateDir: B.newStateDir(), csv: CSV104, csv103, csv4166, args: ON });
+    expect(bot.code, bot.log).toBe(0);
+    expect(bot.log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 2 ใบ (2 แถว)');
+    expect(bot.log).toContain('รออนุมัติ (หักเพราะของขึ้นชั้นแล้ว) 2 บรรทัด');
+    expect(await getDoc(PROJECT_ID, 'stock_sessions/SSS_r16_104_meta')).toMatchObject({ r103Mode: 'on', r103Rows: 2, r103Pending: 2 });
+    const got = await confirmPend(desk);
+    expect(pick(got['S-F09']), 'นับ 10 − รออนุมัติ 1 = ระบบ 9').toEqual({ status: 'pass', inboundQty: 1 });
+    expect(pick(got['S-F03']), 'คีย์ก่อน R01 แต่ยังรออนุมัติ: 5 − 2 = ระบบ 3').toEqual({ status: 'pass', inboundQty: 2 });
+    await closeApp(desk);
+
+    // canary: R4166 มีแต่หัว (ไม่มีเอกสารรออนุมัติ) — ใบ FSTOCKMAIN 0 ไม่ถูกหัก = Stock Adj ปลอม (พฤติกรรมก่อนมี R4166)
+    const desk2 = await prepare(browser);
+    await seed(desk2);
+    const bot2 = B.runBotSync({ stateDir: B.newStateDir(), csv: CSV104, csv103, args: ON });
+    expect(bot2.code, bot2.log).toBe(0);
+    expect(bot2.log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 0 ใบ (0 แถว)');
+    expect(await getDoc(PROJECT_ID, 'stock_sessions/SSS_r16_104_meta')).toMatchObject({ r103Mode: 'on', r103Rows: 0, r103Pending: 0 });
+    const got2 = await confirmPend(desk2);
+    expect(pick(got2['S-F09'])).toEqual({ status: 'stock_adjustment', directAdj: true, effectiveQty: 10, systemQty: 9 });
+    expect(pick(got2['S-F03'])).toEqual({ status: 'stock_adjustment', directAdj: true, effectiveQty: 5, systemQty: 3 });
+
+    // R4166 หาย = สาขาที่เปิดใช้ไม่เผยแพร่ (ผู้ใช้เลือก) — ผ่าน REST/rules จริง
+    const miss = B.runBotSync({ stateDir: B.newStateDir(), csv: CSV104, csv103, csv4166: null, args: ON });
+    expect(miss.code, miss.log).toBe(4);
+    expect(miss.log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'");
+    await closeApp(desk2);
   });
 });

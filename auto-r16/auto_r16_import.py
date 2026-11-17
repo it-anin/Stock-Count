@@ -39,7 +39,9 @@ Confirm โดยบอท (ต.ค. 2026 · ไม่บังคับ · ไ�
     python auto_r16_import.py --r103-shadow                       # โหมดเงา: อ่านใบรับ + รายงานว่ารายการไหนจะพลิก แต่เผยแพร่ timeline แบบไม่หักใบรับ
     python auto_r16_import.py --r103 --r103-branch SSS --r103-shadow   # SSS หักใบรับจริง · สาขาอื่นเป็นโหมดเงา
   ใบรับ (FSTOCKMAIN +1 · ลงหลังเวลา R01) ถูกต่อท้ายช่อง "รับเข้า" ของ timeline เดิม → สูตร Confirm เดิมหักเฉพาะใบที่ลง ≤ เวลาสแกน
-  ไฟล์มีปัญหา = สาขาที่เปิดใช้ไม่ถูกเผยแพร่ (exit 4) — ดู build_receipts_103 / merge_receipts และ CLAUDE.md §ใบรับ R16.103 ของสาขายา
+  + เอกสารรออนุมัติ R4166.CSV (บังคับคู่กัน · 17 พ.ย. 2026): ใบที่เลขที่อยู่ใน R4166 หักแม้ FSTOCKMAIN 0 และไม่ตัดด้วยเวลา R01 (ของขึ้นชั้นแล้ว)
+  ไฟล์มีปัญหา (R16103 หรือ R4166) = สาขาที่เปิดใช้ไม่ถูกเผยแพร่ (exit 4) — ดู build_receipts_103 / load_pending_file / merge_receipts
+  และ CLAUDE.md §ใบรับ R16.103 ของสาขายา
 
 ตั้งเวลารันทุกวัน 21:00 ด้วย Windows Task Scheduler (ดู README.md) — ตัวสคริปต์ไม่สนใจว่าถูกเรียกกี่โมง
 ดูอย่างเดียวว่าไฟล์เป็นของวันนี้หรือยัง และนิ่งแล้วหรือยัง (Confirm จริงต้องหลัง 21:00 และไฟล์ต้อง export หลัง 21:00 ด้วย)
@@ -133,15 +135,31 @@ R16_OUTBOUND_PREFIXES = ("OTFI",)
 # ---- ใบรับสินค้าเข้าระหว่างวัน R16.103 (พ.ย. 2026 · ผู้ใช้สั่ง · ค่าเริ่มต้นปิด) ----
 # ไม่มี flag --r103 / --r103-shadow = ไม่เปิดไฟล์นี้เลย · BOTR16103 เขียน "R16103.part.CSV" ก่อนแล้วค่อยเปลี่ยนชื่อ (PART_MARKER กรองให้)
 FILE_GLOB_103 = "R16103*.CSV"
-# ประเภทเอกสารที่นับเป็น "ใบรับ" (ต้องมี FSTOCKMAIN = +1 ด้วย) — ตั้งต้นจาก R16_103_PREFIXES ของการ์ด R16.103 (WH) ใน index.html โดยตัด IPOS (FSTOCKMAIN 0)
-# ⏳ ยังไม่ได้ยืนยันกับไฟล์จริงของสาขายา (ขั้น 0 ของแผน) — ห้ามเปิดโหมดจริง (--r103) ก่อนยืนยัน
-# ⛔ ไม่มี IRPS โดยเจตนา (ใบปรับปรุงจากผลนับ ไม่ใช่ใบรับของ · ผู้ใช้ยืนยันว่าไฟล์ที่ส่งออกไม่มี) · ประเภทอื่นที่ FSTOCKMAIN = +1 ถูกข้ามและเตือนใน log (ตรวจก่อนเพิ่ม — ไม่เดา)
-R16_103_RECEIPT_PREFIXES = ("IRNC", "IRVC", "IRNM", "ICSM", "ITFB", "ITFW", "IRCN")
+# ประเภทเอกสารที่นับเป็น "ใบรับ" (ต้องมี FSTOCKMAIN = +1 ด้วย — ยกเว้นใบที่อยู่ใน R4166 รออนุมัติ ดูด้านล่าง)
+#   ตั้งต้นจาก R16_103_PREFIXES ของการ์ด R16.103 (WH) ใน index.html โดยตัด IPOS (FSTOCKMAIN 0)
+#   + ITFS (17 พ.ย. 2026 · ผู้ใช้ยืนยันว่าเป็นใบรับจริง — ใบ ITFS ที่รออนุมัติมี FSTOCKMAIN 0 ใน R16.103 · ไฟล์จริง SSS ITFSBY001261100001)
+# ⏳ ตรวจกับไฟล์จริงแล้วบางส่วน (17 พ.ย. 2026: SRC ITFW · SSS ITFB/ITFS · ยังไม่เห็นของ KKL) — ห้ามเปิดโหมดจริง (--r103) ก่อนผ่านขั้น 0
+# ⛔ ไม่มี IRPS โดยเจตนา (ใบปรับปรุงจากผลนับ ไม่ใช่ใบรับของ — ไฟล์จริงมี IRPS ของคลังชากค้อได้) · ประเภทอื่นที่ผ่านด่าน FSTOCKMAIN ถูกข้ามและเตือนใน log (ตรวจก่อนเพิ่ม — ไม่เดา)
+R16_103_RECEIPT_PREFIXES = ("IRNC", "IRVC", "IRNM", "ICSM", "ITFB", "ITFW", "IRCN", "ITFS")
 # SYSWAREHOUSEID (Col A) ของคลังที่ R01 ของสาขาใช้ (BRANCH_MAP ของ auto-r01: front store / main kkl / main sss)
 #   SRC อยู่ SYSBRANCHID 0 เดียวกับคลังชากค้อ (Col A 0) — ใบรับของคลังไม่ใช่ของหน้าร้าน ข้าม (ไม่เตือน: เป็นเรื่องปกติของไฟล์)
 RECEIPT_WAREHOUSE = {"SRC": "1", "KKL": "0", "SSS": "0"}
 # field วินิจฉัยบน {branch}_r16_104_meta (r103_meta_fields) — publish_branch ใส่ชื่อที่ "ค้าง" ใน updateMask (ไม่มีค่า = Firestore ลบ field)
-R103_META_FIELDS = ("r103Mode", "r103Rows", "r103Skus", "r103Qty", "r103SourceFile", "r103SourceMtime")
+R103_META_FIELDS = ("r103Mode", "r103Rows", "r103Skus", "r103Qty", "r103SourceFile", "r103SourceMtime", "r103Pending")
+
+# ---- เอกสารรออนุมัติ R41.66 (R4166.CSV · 17 พ.ย. 2026 · ผู้ใช้สั่ง) — อ่านคู่กับ R16103.CSV เฉพาะเมื่อเปิด --r103* ----
+# ใบรับที่ยังรออนุมัติมี FSTOCKMAIN 0 ใน R16.103 (ระบบยังไม่บวกสต็อก · ไม่อยู่ใน R01) แต่ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
+#   → แถว R16.103 ที่ TRANNO (คอลัมน์ C) อยู่ใน R4166 (คอลัมน์ C) = ใบรับจริง: หักแม้ FSTOCKMAIN 0 และไม่ตัดด้วยเวลา R01
+# ไฟล์ R4166 ใช้ไม่ได้ = ปัญหาระดับไฟล์ของใบรับ (สาขาเปิดใช้: ไม่เผยแพร่ + ❌ · เงา: ⚠️) — ผู้ใช้เลือก
+FILE_GLOB_4166 = "R4166*.CSV"
+PENDING_COL_TRANNO = 2                                        # คอลัมน์ C (ตำแหน่งเดียวกับ R16.103)
+PENDING_REQUIRED_HEADERS = ("SYSBRANCHID", "TRANDATE", "FCANCEL")   # ต้องมี (หาตามชื่อ) — กันหยิบไฟล์ผิดรายงาน
+# คอลัมน์รายบรรทัดของ R16.10x — R41.66 เป็นรายงาน "รายเอกสาร" ต้องไม่มี (กันหยิบ R16103.CSV มาใช้แทน: ทุกใบจะกลายเป็น "รออนุมัติ")
+PENDING_ITEM_HEADERS = ("SCANCODE", "BASEQUANTITY", "FSTOCKMAIN")
+# R4166 ต้อง export ใกล้เวลาเดียวกับ R16103 (BOTR16103 ส่งออกต่อกันในรอบเดียว) — ไฟล์ค้างที่ยังมีใบซึ่งอนุมัติไปแล้ว
+# (ระบบอาจออกใบใหม่ตอนอนุมัติ) จะทำให้หักซ้ำ
+PENDING_MAX_GAP_MINUTES = 30
+PENDING_LIST_MAX = 5   # จำนวนเลขที่เอกสารรออนุมัติที่พิมพ์ใน log ต่อสาขา
 
 # ต้องตรงกับ WH_R16_CHUNK_TARGET_BYTES ใน index.html
 CHUNK_TARGET_BYTES = 650 * 1024
@@ -645,14 +663,20 @@ def r01_cutoff_local(r01_version):
     return dt.astimezone(BKK).replace(tzinfo=None)
 
 
-def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff):
+def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff, pending=frozenset()):
     """ใบรับสินค้าเข้าระหว่างวันของ "สาขานี้" จาก R16103.CSV → ({sku: [{qty, tranDate}, ...]}, stats)
 
     rows       : [หัวตาราง, แถวของสาขานี้ ...] (ผ่าน split_by_branch มาแล้ว)
     r01_cutoff : เวลา R01 (naive เวลาไทย จาก r01_cutoff_local) — ใบที่ลงก่อน/ตรงเวลานี้ "อยู่ใน R01 แล้ว" ไม่นับ · None = ไม่ตัด (ผู้เรียกต้องกันเอง)
-    นับเป็นใบรับเมื่อครบทุกข้อ: ไม่ยกเลิก · FSTOCKMAIN = +1 · ประเภทอยู่ใน R16_103_RECEIPT_PREFIXES · Col A = คลังของ R01 สาขานี้
+    pending    : ชุด TRANNO (ตัวพิมพ์ใหญ่) ของเอกสารรออนุมัติจาก R4166.CSV · ว่าง (ค่าเริ่มต้น) = ผลเดิมทุกค่า
+    นับเป็นใบรับเมื่อครบทุกข้อ: ไม่ยกเลิก · FSTOCKMAIN = +1 · Col A = คลังของ R01 สาขานี้ · ประเภทอยู่ใน R16_103_RECEIPT_PREFIXES
       · TRANDATE อ่านได้ (หลัง normalize_tran_date) และลงหลังเวลา R01 · จำนวน > 0 · จับคู่ SKU แบบ build_timeline (บาร์โค้ด → ITEMID ใน skuMap)
+    เอกสารรออนุมัติ = TRANNO อยู่ใน pending **และ** FSTOCKMAIN 0 (ระบบยังไม่บวกสต็อก · ไม่อยู่ใน R01) แต่ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
+      → นับเป็นใบรับ · ไม่ตัดด้วยเวลา R01 · ด่านอื่นเหมือนเดิมทุกข้อ (−1/อ่านไม่ได้/คลังอื่น/ประเภทนอกรายการ = ข้าม)
+      · เลขที่อยู่ใน pending แต่ FSTOCKMAIN +1 = ระบบบวกสต็อกแล้ว (ไม่ได้รออนุมัติจริง) → กติกาใบรับปกติ (ตัดด้วยเวลา R01) + นับไว้ให้ log เตือน
+        (กัน R4166 ที่หยิบเอกสารอนุมัติแล้วมาปน ทำให้ใบที่อยู่ใน R01 แล้วถูกหักซ้ำ)
     ⛔ FSTOCKMAIN ว่าง/อ่านไม่ได้ = ข้าม (ห้ามตีความเป็น 0 แบบ Number('') ของ JS) · ประเภทนอกรายการ = ข้าม (ไม่เดา) แต่นับไว้ให้ log เตือน
+    ตรวจ Col A ก่อนประเภท: ใบของคลังอื่น (เช่น IRPS ของคลังชากค้อที่ SRC) ไม่ถูกเตือนว่า "ประเภทนอกรายการ" — แถวที่ถูกนับไม่ต่างกัน
     """
     if branch not in BRANCHES:
         raise ValueError(f"สาขาไม่รู้จัก: {branch}")
@@ -660,11 +684,14 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff):
     td_idx = tran_date_col(head)
     sm_idx = stock_main_col(head)
     want_wh = RECEIPT_WAREHOUSE[branch]
+    pend = frozenset(pending or ())
     stats = {"file_rows": max(0, len(rows) - 1), "cancelled": 0, "no_stock": 0, "stock_out": 0, "bad_stock_main": 0,
              "other_type": Counter(), "warehouse": 0, "other_warehouse": Counter(), "skipped_blank": 0, "zero_qty": 0,
              "bad_date": 0, "before_r01": 0, "missing": 0, "mismatch": 0, "kept": 0, "qty_total": 0.0,
-             "min_td": None, "max_td": None}
+             "min_td": None, "max_td": None,
+             "pending_rows": 0, "pending_kept": 0, "pending_added": 0, "pending_other_type": Counter()}
     docs = set()
+    pend_docs = set()
     out = {}
     for r in rows[1:]:
         if not r:
@@ -672,30 +699,36 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff):
         if js_trim(col(r, COL_CANCEL)) == "1":
             stats["cancelled"] += 1
             continue
+        col_c = js_trim(col(r, COL_TRANNO)).upper()
+        is_pending = col_c in pend
+        if is_pending:
+            stats["pending_rows"] += 1
         raw_sm = _RE_QTY_JUNK.sub("", str(col(r, sm_idx))).strip(_JS_WS) if sm_idx >= 0 else ""
         sm = _js_number(raw_sm) if raw_sm != "" else None
         if not _finite(sm):
             stats["bad_stock_main"] += 1
             continue
-        if sm == 0:                      # ไม่ตัดสต็อกหลัก (เช่น IPOS · ใบรอรับ ITSW) — ไม่อยู่ในยอดระบบ ไม่ใช่ของที่รับเข้าจริง
+        via_pending = is_pending and sm == 0   # รออนุมัติจริง: อยู่ใน R4166 และระบบยังไม่บวกสต็อก
+        if sm == 0 and not via_pending:  # ไม่ตัดสต็อกหลัก (เช่น IPOS · ใบรอรับ ITSW) — ไม่อยู่ในยอดระบบ ไม่ใช่ของที่รับเข้าจริง
             stats["no_stock"] += 1
             continue
         if sm < 0:                       # ตัดสต็อกออก — ไม่ใช่ใบรับ (ไม่ควรมีในรายงานเอกสารขาเข้า)
             stats["stock_out"] += 1
             continue
-        if sm != 1:
+        if sm not in (0, 1):             # 0 ผ่านมาถึงตรงนี้ได้เฉพาะเอกสารรออนุมัติ
             stats["bad_stock_main"] += 1
             continue
-        col_c = js_trim(col(r, COL_TRANNO)).upper()
-        if not match_prefix(col_c, R16_103_RECEIPT_PREFIXES):
-            stats["other_type"][col_c[:4] or "(ว่าง)"] += 1
-            continue
+        if is_pending and sm == 1:       # อยู่ใน R4166 แต่ระบบบวกสต็อกแล้ว — ไม่ใช่รออนุมัติจริง: กติกาใบรับปกติ (ตัดด้วยเวลา R01)
+            stats["pending_added"] += 1
         col_a = js_trim(col(r, COL_WAREHOUSE))
         if col_a != want_wh:
             if branch == "SRC" and col_a == "0":   # ใบรับของคลังชากค้อ (WH) ปนอยู่ SYSBRANCHID เดียวกัน — ปกติ
                 stats["warehouse"] += 1
             else:
                 stats["other_warehouse"][col_a or "(ว่าง)"] += 1
+            continue
+        if not match_prefix(col_c, R16_103_RECEIPT_PREFIXES):
+            stats["pending_other_type" if via_pending else "other_type"][col_c[:4] or "(ว่าง)"] += 1
             continue
         barcode = js_trim(col(r, COL_BARCODE))
         raw_qty = _RE_QTY_JUNK.sub("", str(col(r, COL_QTY))).strip(_JS_WS)
@@ -713,7 +746,7 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff):
         if d is None:
             stats["bad_date"] += 1
             continue
-        if r01_cutoff is not None and d <= r01_cutoff:
+        if r01_cutoff is not None and d <= r01_cutoff and not via_pending:   # รออนุมัติ = ยังไม่อยู่ใน R01 แม้คีย์ก่อนเวลา R01
             stats["before_r01"] += 1
             continue
         bc = normalize_barcode(barcode)
@@ -729,12 +762,16 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff):
         stats["kept"] += 1
         stats["qty_total"] += qty
         docs.add(col_c)
+        if via_pending:
+            stats["pending_kept"] += 1
+            pend_docs.add(col_c)
         if stats["min_td"] is None or d < stats["min_td"]:
             stats["min_td"] = d
         if stats["max_td"] is None or d > stats["max_td"]:
             stats["max_td"] = d
     stats["skus"] = len(out)
     stats["docs"] = len(docs)
+    stats["pending_docs"] = sorted(pend_docs)
     return out, stats
 
 
@@ -2279,6 +2316,85 @@ def load_receipt_file(folder, now_bkk, force):
     return info
 
 
+def pending_header_problems(rows):
+    """หัวคอลัมน์ของ R4166.CSV (เอกสารรออนุมัติ) — คอลัมน์ C ต้องเป็น TRANNO + ต้องมี PENDING_REQUIRED_HEADERS
+    + ต้องไม่มีคอลัมน์รายบรรทัด (PENDING_ITEM_HEADERS) · ว่าง = ผ่าน"""
+    if not rows:
+        return ["ไฟล์ว่าง ไม่มีแม้แต่แถวหัวตาราง"]
+    head = [js_trim(h).upper() for h in rows[0]]
+    bad = []
+    got = head[PENDING_COL_TRANNO] if len(head) > PENDING_COL_TRANNO else ""
+    if got != "TRANNO":
+        bad.append(f"คอลัมน์ C ควรเป็น TRANNO แต่เจอ {got or '(ว่าง)'}")
+    for name in PENDING_REQUIRED_HEADERS:
+        if name not in head:
+            bad.append(f"ไม่พบคอลัมน์ {name}")
+    item_cols = [name for name in PENDING_ITEM_HEADERS if name in head]
+    if item_cols:
+        bad.append(f"มีคอลัมน์รายบรรทัด {', '.join(item_cols)} — ดูเป็นรายงานใบรับรายบรรทัด (R16.103?) ไม่ใช่รายงานเอกสารรออนุมัติ R41.66")
+    return bad
+
+
+def load_pending_file(folder, now_bkk, force, ref_mtime=None):
+    """หา + ตรวจ R4166.CSV (เอกสารรออนุมัติ) — คืน dict {file, mtime, pending (set ของ TRANNO ตัวพิมพ์ใหญ่), rows, cancelled, problems}
+
+    problems ว่าง = ใช้ได้ · มีปัญหา = ผู้เรียกรวมเข้ากับปัญหาระดับไฟล์ของใบรับ (สาขาเปิดใช้ตกด่าน · เงาแค่เตือน) · ไม่ sys.exit เอง
+    ด่าน: ชื่อไม่มี .part. · แก้ไขวันนี้ · นิ่ง ≥ STABLE_SECONDS · ห่างจากเวลาไฟล์ R16103 (ref_mtime) ไม่เกิน PENDING_MAX_GAP_MINUTES
+      (--force ข้ามสามข้อนี้ได้) · หัวคอลัมน์ (pending_header_problems — ข้ามไม่ได้)
+    ไฟล์มีแต่หัวตาราง = ไม่มีเอกสารรออนุมัติ (ปกติ) · ไม่ตรวจวันที่ของแถว (รายงานอาจมีใบค้างจากวันก่อน — ใช้แค่เลขที่เอกสาร)
+    แถวที่ FCANCEL = 1 (ยกเลิก) ไม่นับเป็นรออนุมัติ
+    """
+    info = {"file": None, "mtime": None, "pending": set(), "rows": 0, "cancelled": 0, "problems": []}
+    path = find_latest_file(folder, FILE_GLOB_4166)
+    if not path:
+        info["problems"].append(f"ไม่พบไฟล์เอกสารรออนุมัติ '{FILE_GLOB_4166}' ในโฟลเดอร์ (ตรวจ Task BOT16103 ตัว export)")
+        return info
+    mtime_bkk = datetime.fromtimestamp(os.path.getmtime(path), BKK)
+    info["file"], info["mtime"] = os.path.basename(path), mtime_bkk
+    log(f"ไฟล์เอกสารรออนุมัติ: {info['file']}  (แก้ไขล่าสุด {mtime_bkk:%Y-%m-%d %H:%M:%S} เวลาไทย · {os.path.getsize(path):,} ไบต์)")
+    soft = []
+    if mtime_bkk.date() != now_bkk.date():
+        soft.append("ไฟล์ R4166 ไม่ได้ถูกแก้ไขวันนี้ (BOT16103 ไม่ได้ส่งออกรายงานเอกสารรออนุมัติ?)")
+    age = (now_bkk - mtime_bkk).total_seconds()
+    if age < STABLE_SECONDS:
+        soft.append(f"ไฟล์ R4166 เพิ่งถูกแก้เมื่อ {age:.0f} วินาทีก่อน (< {STABLE_SECONDS}) — อาจกำลังเขียน")
+    if ref_mtime is not None and abs((mtime_bkk - ref_mtime).total_seconds()) > PENDING_MAX_GAP_MINUTES * 60:
+        soft.append(f"ไฟล์ R4166 ({mtime_bkk:%H:%M}) กับ R16103 ({ref_mtime:%H:%M}) ส่งออกห่างกันเกิน {PENDING_MAX_GAP_MINUTES} นาที"
+                    " — สถานะรออนุมัติอาจไม่ตรงกับไฟล์ใบรับ")
+    try:
+        rows = read_rows(path)
+    except Exception as e:
+        info["problems"].append(f"อ่านไฟล์ R4166 ไม่สำเร็จ: {e}")
+        return info
+    hard = pending_header_problems(rows)
+    if hard:
+        info["problems"].append("หัวคอลัมน์ R4166 ไม่ตรงที่คาด: " + " · ".join(hard))
+        return info
+    if soft:
+        if not force:
+            info["problems"].extend(soft)
+            return info
+        for p in soft:
+            log(f"⚠️ {p} — แต่มี --force ดำเนินการต่อ")
+    ci = [js_trim(h).upper() for h in rows[0]].index("FCANCEL")
+    n = cancelled = 0
+    for r in rows[1:]:
+        tn = js_trim(col(r, PENDING_COL_TRANNO)).upper() if r else ""
+        if not tn:
+            continue
+        if js_trim(col(r, ci)) == "1":   # ใบยกเลิก — ไม่ใช่ใบที่รออนุมัติ
+            cancelled += 1
+            continue
+        info["pending"].add(tn)
+        n += 1
+    info["rows"], info["cancelled"] = n, cancelled
+    shown = sorted(info["pending"])[:PENDING_LIST_MAX]
+    log(f"เอกสารรออนุมัติในไฟล์ R4166: {len(info['pending'])} ใบ ({n} แถว)"
+        + (f" — {', '.join(shown)}{' …' if len(info['pending']) > len(shown) else ''}" if shown else "")
+        + (f" · ข้ามใบยกเลิก {cancelled} แถว" if cancelled else ""))
+    return info
+
+
 def _counter_text(c):
     return ", ".join(f"{k}×{v}" for k, v in sorted(c.items()))
 
@@ -2310,21 +2426,34 @@ def receipts_for_branch(branch, mode, r103, cat, barcode_map, base_timeline):
         info["problems"] = problems
         return info
     own = (r103.get("by_branch") or {}).get(branch) or []
-    receipts, st = build_receipts_103([r103["rows"][0]] + own, branch, cat["sku_set"], barcode_map, cutoff)
+    receipts, st = build_receipts_103([r103["rows"][0]] + own, branch, cat["sku_set"], barcode_map, cutoff,
+                                      pending=r103.get("pending") or frozenset())
     info.update(ok=True, receipts=receipts, stats=st, merged=merge_receipts(base_timeline, receipts))
     skip = [(n, st[k]) for n, k in (("ยกเลิก", "cancelled"), ("ไม่ตัดสต็อก", "no_stock"), ("คลังชากค้อ", "warehouse"),
                                      ("ก่อนเวลา R01", "before_r01"), ("ไม่พบ SKU", "missing"), ("ว่าง", "skipped_blank"),
                                      ("จำนวน 0", "zero_qty"), ("วันที่อ่านไม่ได้", "bad_date")) if st[k]]
     cover = f" · ข้อมูล {_fmt_td(st['min_td'])}–{_fmt_td(st['max_td'])}" if st["min_td"] else ""
     log(f"  ใบรับ R16.103 [{tag}]: {st['kept']} บรรทัด · {st['docs']} ใบ · {st['skus']} SKU · {st['qty_total']:g} ชิ้น{cover}"
+        + (f" · รออนุมัติ (หักเพราะของขึ้นชั้นแล้ว) {st['pending_kept']} บรรทัด" if st["pending_kept"] else "")
         + (" · ข้าม: " + " · ".join(f"{n} {v}" for n, v in skip) if skip else "")
         + ("" if own else " (ไม่มีแถวของสาขานี้ในไฟล์ = วันนี้ไม่มีใบรับ)"))
     if st["other_type"]:
-        log(f"  ⚠️ ใบรับ R16.103: พบเอกสาร FSTOCKMAIN +1 ที่ไม่อยู่ในรายการใบรับ {_counter_text(st['other_type'])} — ไม่หัก (ตรวจก่อนเพิ่มใน R16_103_RECEIPT_PREFIXES)")
+        log(f"  ⚠️ ใบรับ R16.103: พบเอกสาร FSTOCKMAIN +1 ที่ไม่อยู่ในรายการใบรับ {_counter_text(st['other_type'])} — ไม่หัก "
+            "(ตรวจก่อนเพิ่มใน R16_103_RECEIPT_PREFIXES · ห้ามเพิ่ม IRPS = ใบปรับปรุงจากผลนับ)")
+    if st["pending_other_type"]:
+        log(f"  ⚠️ ใบรับ R16.103: เอกสารรออนุมัติประเภทที่ไม่อยู่ในรายการใบรับ {_counter_text(st['pending_other_type'])} — ไม่หัก")
+    if st["pending_added"]:
+        log(f"  ⚠️ ใบรับ R16.103: เลขที่เอกสารอยู่ใน R4166 แต่ FSTOCKMAIN +1 (ระบบบวกสต็อกแล้ว) {st['pending_added']} บรรทัด — "
+            "ใช้กติกาใบรับปกติ (ตัดด้วยเวลา R01) · ตรวจว่า R4166 ส่งออกเฉพาะเอกสารรออนุมัติ")
     if st["other_warehouse"]:
         log(f"  ⚠️ ใบรับ R16.103: Col A ไม่ใช่คลังของ R01 ({RECEIPT_WAREHOUSE[branch]}) {_counter_text(st['other_warehouse'])} — ไม่หัก")
     if st["stock_out"] or st["bad_stock_main"]:
         log(f"  ⚠️ ใบรับ R16.103: FSTOCKMAIN −1 {st['stock_out']} แถว · อ่านไม่ได้ {st['bad_stock_main']} แถว — ไม่หัก")
+    if st["pending_docs"]:
+        shown = st["pending_docs"][:PENDING_LIST_MAX]
+        log(f"  ⚠️ ใบรับ R16.103: เอกสารรออนุมัติ {len(st['pending_docs'])} ใบ หักคืนนี้แล้ว "
+            f"({', '.join(shown)}{' …' if len(st['pending_docs']) > len(shown) else ''}) — ถ้าอนุมัติหลังอัป R01 พรุ่งนี้เช้า "
+            "สินค้าในใบอาจขึ้น Stock Adj ปลอมพรุ่งนี้ (ไฟล์ R16.103 ของพรุ่งนี้ไม่มีใบนี้)")
     return info
 
 
@@ -2333,7 +2462,8 @@ def r103_meta_fields(rinfo):
     st = rinfo.get("stats") or {}
     f = {"r103Mode": S(rinfo["mode"] if rinfo.get("ok") else rinfo["mode"] + "-unusable"),
          "r103Rows": I(st.get("kept", 0)), "r103Skus": I(st.get("skus", 0)),
-         "r103Qty": {"doubleValue": float(st.get("qty_total", 0.0))}, "r103SourceFile": S(rinfo.get("file") or "")}
+         "r103Qty": {"doubleValue": float(st.get("qty_total", 0.0))}, "r103SourceFile": S(rinfo.get("file") or ""),
+         "r103Pending": I(st.get("pending_kept", 0))}
     if rinfo.get("mtime"):
         f["r103SourceMtime"] = T(rinfo["mtime"])
     return f
@@ -2397,7 +2527,8 @@ def r103_flip_report(branch, rinfo, opts, now_bkk, mtime_bkk):
         if not opts.get("dry_run"):
             _append_r103_shadow({"ts": now_bkk.isoformat(), "date": now_bkk.strftime("%Y-%m-%d"), "branch": branch, "mode": rinfo["mode"],
                                  "epoch": cat["epoch"], "r01Version": cat["r01_version"], "file": rinfo.get("file"),
-                                 "receipts": {k: v for k, v in (rinfo["stats"] or {}).items() if k not in ("min_td", "max_td", "other_type", "other_warehouse")},
+                                 "receipts": {k: v for k, v in (rinfo["stats"] or {}).items()
+                                              if k not in ("min_td", "max_td", "other_type", "other_warehouse", "pending_other_type")},
                                  "flips": out["flips"], "rows": rows})
     except Exception as e:
         log(f"  ⚠️ รายงานผลใบรับ R16.103 ของ {branch} ไม่สำเร็จ ({type(e).__name__}: {e}) — ไม่กระทบงานหลัก")
@@ -2746,6 +2877,8 @@ def _r103_part(r):
         return f"{'❌' if r.get('mode') == 'on' else '⚠️'} ใบรับ R16.103 ({tag}): {first}"
     st = r.get("stats") or {}
     txt = f"ใบรับ R16.103 ({tag}) {st.get('kept', 0)} บรรทัด/{st.get('skus', 0)} SKU"
+    if st.get("pending_kept"):
+        txt += f" (รออนุมัติ {st['pending_kept']})"
     fl = r.get("flips")
     if fl:
         verb = "ทำให้" if r.get("mode") == "on" else "ถ้าเปิดใช้:"
@@ -2785,8 +2918,9 @@ def build_notice(rc, run, alerts, now_bkk):
         mt = run.get("mtime_bkk")
         lines.append(f"ไฟล์ {run['file']}" + (f" (export {mt:%H:%M %d/%m})" if mt else ""))
     if opts.get("r103") or opts.get("r103_shadow"):
-        mt3 = run.get("r103_mtime")
-        lines.append(f"ไฟล์ใบรับ {run.get('r103_file') or '(ไม่พบ R16103.CSV)'}" + (f" (export {mt3:%H:%M %d/%m})" if mt3 else ""))
+        mt3, mt4 = run.get("r103_mtime"), run.get("r4166_mtime")
+        lines.append(f"ไฟล์ใบรับ {run.get('r103_file') or '(ไม่พบ R16103.CSV)'}" + (f" (export {mt3:%H:%M %d/%m})" if mt3 else "")
+                     + f" · รออนุมัติ {run.get('r4166_file') or '(ไม่พบ R4166.CSV)'}" + (f" (export {mt4:%H:%M %d/%m})" if mt4 else ""))
     r103r = run.get("r103_results") or {}
     for b in (opts.get("branches") or list(BRANCHES)):
         parts = []
@@ -2813,7 +2947,7 @@ def build_notice(rc, run, alerts, now_bkk):
     if rc != 0:
         lines.append(f"แก้เร็ว: ดู log บน {host}:  Get-Content .\\auto_r16.log -Tail 60 -Encoding UTF8")
         if any(not r.get("ok") and r.get("mode") == "on" for r in r103r.values()):
-            lines.append("ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV แล้วรันซ้ำ · ตั้งใจเผยแพร่คืนนี้โดยไม่หักใบรับ = รันซ้ำโดยเอาสาขานั้นออกจาก --r103-branch")
+            lines.append("ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV / R4166.CSV แล้วรันซ้ำ · ตั้งใจเผยแพร่คืนนี้โดยไม่หักใบรับ = รันซ้ำโดยเอาสาขานั้นออกจาก --r103-branch")
         if opts.get("confirm") and opts.get("confirm_branches"):
             rerun = "--confirm --confirm-branch " + ",".join(opts["confirm_branches"])
             if opts.get("r103"):
@@ -2928,7 +3062,7 @@ def _run(argv=None):
     want_r103 = opts["r103"] or opts["r103_shadow"]
     if want_r103:
         log(f"ใบรับ R16.103: หักจริง={','.join(opts['r103_branches']) or '-'} · โหมดเงา(สาขาที่เหลือ)={'ใช่' if opts['r103_shadow'] else 'ไม่'} · "
-            f"ไฟล์ '{FILE_GLOB_103}' · ใบรับต่อท้ายช่องรับเข้าของ timeline เดิม (ไม่มี doc ใหม่)")
+            f"ไฟล์ '{FILE_GLOB_103}' + เอกสารรออนุมัติ '{FILE_GLOB_4166}' · ใบรับต่อท้ายช่องรับเข้าของ timeline เดิม (ไม่มี doc ใหม่)")
 
     if not os.path.isdir(folder):
         log("❌ ไม่มีโฟลเดอร์นี้ในเครื่อง — ยกเลิก")
@@ -3002,10 +3136,15 @@ def _run(argv=None):
         + (f" · ข้ามสาขาอื่น {sum(unknown.values())} แถว (SYSBRANCHID {', '.join(sorted(unknown))})" if unknown else ""))
 
     # ใบรับ R16.103 (เฉพาะเมื่อเปิด --r103*) — ตรวจระดับไฟล์ครั้งเดียว · ปัญหาของไฟล์นี้ไม่หยุดงานหลัก: สาขาที่ "เปิดใช้" ตกด่านทีละสาขาใน process_branch
+    # + เอกสารรออนุมัติ R4166.CSV (บังคับคู่กัน) — ปัญหาของไฟล์นี้นับเป็นปัญหาระดับไฟล์ของใบรับ (ผู้ใช้เลือก: สาขาเปิดใช้ไม่เผยแพร่ + ❌)
     r103 = load_receipt_file(folder, now_bkk, force) if want_r103 else None
     r103_ctx = {} if want_r103 else None
     if r103 is not None:
+        r4166 = load_pending_file(folder, now_bkk, force, r103["mtime"])
+        r103["pending"] = frozenset(r4166["pending"])
+        r103["problems"].extend(r4166["problems"])
         _RUN["r103_file"], _RUN["r103_mtime"] = r103["file"], r103["mtime"]
+        _RUN["r4166_file"], _RUN["r4166_mtime"] = r4166["file"], r4166["mtime"]
         for p_ in r103["problems"]:
             log(f"{'❌' if opts['r103'] else '⚠️'} ใบรับ R16.103: {p_}")
 

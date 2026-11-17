@@ -9,6 +9,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { findPython, runPython, AUTO_R16 } = require('./python');
 const { HOST } = require('./emulator');
+const R3 = require('./r16-103-fixture');
 
 const PROJECT = 'demo-stock-count';
 
@@ -57,6 +58,12 @@ t = datetime.fromisoformat(p['mtime']).timestamp(); os.utime(csv_path, (t, t))
 if p.get('csv103') is not None:   # ใบรับ R16.103 (ไม่บังคับ) — เวลาแก้ไขเท่า R16104.CSV
     p103 = os.path.join(folder, 'R16103.CSV')
     open(p103, 'wb').write(('\ufeff' + p['csv103']).encode('utf-8')); os.utime(p103, (t, t))
+# เอกสารรออนุมัติ R4166.CSV — บอทบังคับคู่กับ R16103 เมื่อเปิด --r103* · ค่าเริ่มต้น: มี R16103 = มี R4166 "มีแต่หัวตาราง" เวลาเดียวกัน
+#   (BOTR16103 ส่งออกคู่กัน) · csv4166 สตริง = เขียนตามนั้น · csv4166 null = ไม่เขียน (ไฟล์หาย)
+c4166 = p['csv4166'] if 'csv4166' in p else (p['csv4166Default'] if p.get('csv103') is not None else None)
+if c4166 is not None:
+    p4166 = os.path.join(folder, 'R4166.CSV')
+    open(p4166, 'wb').write(('\ufeff' + c4166).encode('utf-8')); os.utime(p4166, (t, t))
 buf = io.StringIO(); code = 0
 with contextlib.redirect_stdout(buf):
     try: m.main(['--folder', folder] + p['args'])
@@ -68,10 +75,12 @@ function newStateDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'r16e2e-st
 
 function payload(opts) {
   const clock = botClock();
-  return {
+  const out = {
     module: AUTO_R16, base: `http://${HOST}`, project: PROJECT, stateDir: opts.stateDir, now: opts.now || clock.now, mtime: opts.mtime || clock.mtime,
-    csv: opts.csv, csv103: opts.csv103 ?? null, args: opts.args || [], consts: opts.consts || {},
+    csv: opts.csv, csv103: opts.csv103 ?? null, args: opts.args || [], consts: opts.consts || {}, csv4166Default: R3.csv4166([]),
   };
+  if (opts.csv4166 !== undefined) out.csv4166 = opts.csv4166;   // null = ไม่เขียนไฟล์ R4166 (ไม่ส่ง = ค่าเริ่มต้นด้านบน)
+  return out;
 }
 
 // รันแบบบล็อก (ใช้เมื่อไม่ต้องทำอะไรพร้อมกัน)
