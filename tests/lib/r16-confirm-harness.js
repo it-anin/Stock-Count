@@ -131,10 +131,10 @@ def write_csv103(text, iso):
 if p.get('csv103') is not None:
     write_csv103(p['csv103'], p.get('mtime103') or p['mtime'])
 
-# เอกสารรออนุมัติ R4166.CSV (17 พ.ย. 2026 · บอทบังคับคู่กับ R16103 เมื่อเปิด --r103*)
+# เอกสารรออนุมัติ R04.166.CSV (17 พ.ย. 2026 · บอทบังคับคู่กับ R16103 เมื่อเปิด --r103*)
 #   ค่าเริ่มต้น: เขียน R16103 เมื่อไร เขียน R4166 "มีแต่หัวตาราง" เวลาเดียวกันด้วย (BOTR16103 ส่งออกคู่กันในรอบเดียว · ไม่มีเอกสารรออนุมัติ
 #   = ผลเท่าก่อนมี R4166 ทุกค่า) · ส่ง csv4166: null = ไม่เขียน (เทสไฟล์หาย) · สตริง = เขียนตามนั้น · mtime4166 ตั้งเวลาแยกได้
-csv4166_path = os.path.join(folder, 'R4166.CSV')
+csv4166_path = os.path.join(folder, 'R04.166.CSV')
 def write_csv4166(text, iso):
     open(csv4166_path, 'wb').write(('\ufeff' + text).encode('utf-8'))
     t = datetime.fromisoformat(iso).timestamp(); os.utime(csv4166_path, (t, t))

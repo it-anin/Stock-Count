@@ -1,4 +1,4 @@
-// เอกสารรออนุมัติ R4166.CSV ของสาขายา — บอท auto-r16 หักใบรับที่ "รออนุมัติ" ตอน Confirm (17 พ.ย. 2026 · ผู้ใช้สั่ง)
+// เอกสารรออนุมัติ R04.166.CSV ของสาขายา — บอท auto-r16 หักใบรับที่ "รออนุมัติ" ตอน Confirm (17 พ.ย. 2026 · ผู้ใช้สั่ง)
 //
 // ทำไมต้องมี: ใบรับที่ยังรออนุมัติ (เช่น ITFS รับโอน) อยู่ใน R16103.CSV แต่ FSTOCKMAIN = 0 (ระบบยังไม่บวกสต็อก · ไม่อยู่ใน R01)
 //   ขณะที่ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน) → บอทเดิมข้ามแถว FSTOCKMAIN 0 (แบบ IPOS) → นับหลังรับของ = Stock Adj ปลอม
@@ -162,35 +162,38 @@ const GOOD = R.csvText([R.pendingRow('ITFSBY001261100001'), R.pendingRow(' itfbb
   R.pendingRow('ITFSBY001261100001')], { head: R.HEAD_4166 });
 
 test('load_pending_file — อ่านเลขที่เอกสาร (trim + ตัวใหญ่ · ข้ามใบยกเลิก/แถวว่าง · ซ้ำนับครั้งเดียว) · มีแต่หัว = ไม่มีใบรออนุมัติ (ปกติ)', () => {
-  const ok = pyLoad({ files: [{ name: 'R4166.CSV', text: GOOD, mtime: T21 }] });
+  const ok = pyLoad({ files: [{ name: 'R04.166.CSV', text: GOOD, mtime: T21 }] });
   expect(ok.problems).toEqual([]);
-  expect(ok.file).toBe('R4166.CSV');
+  expect(ok.file).toBe('R04.166.CSV');
   expect(ok.pending).toEqual(['IRVCBY000261100004', 'ITFBBY001261100002', 'ITFSBY001261100001']);
   expect(ok).toMatchObject({ rows: 4, cancelled: 1 });
   expect(ok.log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 3 ใบ (4 แถว) — IRVCBY000261100004, ITFBBY001261100002, ITFSBY001261100001 · ข้ามใบยกเลิก 1 แถว');
-  const head = pyLoad({ files: [{ name: 'R4166.CSV', text: R.csv4166([]), mtime: T21 }] });
+  const head = pyLoad({ files: [{ name: 'R04.166.CSV', text: R.csv4166([]), mtime: T21 }] });
   expect(head).toMatchObject({ problems: [], pending: [], rows: 0, cancelled: 0 });
   expect(head.log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 0 ใบ (0 แถว)');
   // หลายไฟล์ = ใช้ไฟล์ใหม่สุด · ไฟล์ .part. (BOTR16103 กำลังเขียน) ไม่ถูกหยิบ
-  const two = pyLoad({ files: [{ name: 'R4166.CSV', text: 'ขยะ', mtime: `${ISO}T08:00:00+07:00` }, { name: 'R4166_2.CSV', text: GOOD, mtime: T21 },
-    { name: 'R4166.part.CSV', text: 'ขยะ', mtime: `${ISO}T21:08:00+07:00` }] });
-  expect(two).toMatchObject({ file: 'R4166_2.CSV', problems: [] });
+  const two = pyLoad({ files: [{ name: 'R04.166.CSV', text: 'ขยะ', mtime: `${ISO}T08:00:00+07:00` }, { name: 'R04.166_2.CSV', text: GOOD, mtime: T21 },
+    { name: 'R04.166.part.CSV', text: 'ขยะ', mtime: `${ISO}T21:08:00+07:00` }] });
+  expect(two).toMatchObject({ file: 'R04.166_2.CSV', problems: [] });
 });
 
 test('load_pending_file — ด่าน: ไม่มีไฟล์ · ไม่ใช่วันนี้ · ยังไม่นิ่ง · ห่างจาก R16103 เกิน 30 นาที (--force ข้ามได้) · หัวผิด/อ่านไม่ได้ (--force ข้ามไม่ได้)', () => {
   const cases = [
-    { name: 'ไม่มีไฟล์', files: [], msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV' ในโฟลเดอร์", force: false },
-    { name: 'มีแต่ .part.', files: [{ name: 'R4166.part.CSV', text: GOOD, mtime: T21 }], msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'", force: false },
-    { name: 'ไม่ใช่วันนี้', files: [{ name: 'R4166.CSV', text: GOOD, mtime: '2026-10-20T21:05:00+07:00' }], ref: '2026-10-20T21:05:00+07:00',
+    { name: 'ไม่มีไฟล์', files: [], msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV' ในโฟลเดอร์", force: false },
+    { name: 'มีแต่ .part.', files: [{ name: 'R04.166.part.CSV', text: GOOD, mtime: T21 }], msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'", force: false },
+    // ชื่อไฟล์ = ชื่อเดียวกับรายงาน R04.166 (BOTR16103 เปลี่ยนจาก R4166.CSV ใน 18 พ.ย. 2026) — ชื่อเก่า/สะกดไม่มีจุดต้องไม่ถูกหยิบ ไม่งั้นบอทรุ่นเก่าที่ยังส่งออกชื่อเดิมจะผ่านเงียบๆ ทั้งที่ไม่ใช่ชื่อที่ตกลงกัน
+    { name: 'ชื่อเก่า R4166.CSV ไม่ถูกหยิบแล้ว', files: [{ name: 'R4166.CSV', text: GOOD, mtime: T21 }], msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'", force: false },
+    { name: 'สะกดไม่มีจุด R04166.CSV ไม่ถูกหยิบ', files: [{ name: 'R04166.CSV', text: GOOD, mtime: T21 }], msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'", force: false },
+    { name: 'ไม่ใช่วันนี้', files: [{ name: 'R04.166.CSV', text: GOOD, mtime: '2026-10-20T21:05:00+07:00' }], ref: '2026-10-20T21:05:00+07:00',
       msg: 'ไฟล์ R4166 ไม่ได้ถูกแก้ไขวันนี้', force: true },
-    { name: 'ยังไม่นิ่ง', files: [{ name: 'R4166.CSV', text: GOOD, mtime: `${ISO}T21:09:30+07:00` }], msg: 'ไฟล์ R4166 เพิ่งถูกแก้เมื่อ 30 วินาทีก่อน', force: true },
-    { name: 'ห่างเกิน 30 นาที (ก่อน)', files: [{ name: 'R4166.CSV', text: GOOD, mtime: `${ISO}T20:34:59+07:00` }],
+    { name: 'ยังไม่นิ่ง', files: [{ name: 'R04.166.CSV', text: GOOD, mtime: `${ISO}T21:09:30+07:00` }], msg: 'ไฟล์ R4166 เพิ่งถูกแก้เมื่อ 30 วินาทีก่อน', force: true },
+    { name: 'ห่างเกิน 30 นาที (ก่อน)', files: [{ name: 'R04.166.CSV', text: GOOD, mtime: `${ISO}T20:34:59+07:00` }],
       msg: 'ไฟล์ R4166 (20:34) กับ R16103 (21:05) ส่งออกห่างกันเกิน 30 นาที', force: true },
-    { name: 'ห่างเกิน 30 นาที (หลัง)', files: [{ name: 'R4166.CSV', text: GOOD, mtime: `${ISO}T21:05:00+07:00` }], ref: `${ISO}T20:34:00+07:00`,
+    { name: 'ห่างเกิน 30 นาที (หลัง)', files: [{ name: 'R04.166.CSV', text: GOOD, mtime: `${ISO}T21:05:00+07:00` }], ref: `${ISO}T20:34:00+07:00`,
       msg: 'ไฟล์ R4166 (21:05) กับ R16103 (20:34) ส่งออกห่างกันเกิน 30 นาที', force: true },
-    { name: 'หัว = R16.103', files: [{ name: 'R4166.CSV', text: R.csvText([R.receipt('SSS')]), mtime: T21 }], msg: 'หัวคอลัมน์ R4166 ไม่ตรงที่คาด: มีคอลัมน์รายบรรทัด', force: false },
-    { name: 'ไฟล์ว่าง', files: [{ name: 'R4166.CSV', text: '', mtime: T21 }], msg: 'หัวคอลัมน์ R4166 ไม่ตรงที่คาด: ไฟล์ว่าง', force: false },
-    { name: 'อ่านไม่ได้', files: [{ name: 'R4166.CSV', dir: true, mtime: T21 }], msg: 'อ่านไฟล์ R4166 ไม่สำเร็จ', force: false },
+    { name: 'หัว = R16.103', files: [{ name: 'R04.166.CSV', text: R.csvText([R.receipt('SSS')]), mtime: T21 }], msg: 'หัวคอลัมน์ R4166 ไม่ตรงที่คาด: มีคอลัมน์รายบรรทัด', force: false },
+    { name: 'ไฟล์ว่าง', files: [{ name: 'R04.166.CSV', text: '', mtime: T21 }], msg: 'หัวคอลัมน์ R4166 ไม่ตรงที่คาด: ไฟล์ว่าง', force: false },
+    { name: 'อ่านไม่ได้', files: [{ name: 'R04.166.CSV', dir: true, mtime: T21 }], msg: 'อ่านไฟล์ R4166 ไม่สำเร็จ', force: false },
   ];
   for (const c of cases) {
     const got = pyLoad({ files: c.files, ref: c.ref });
@@ -206,8 +209,8 @@ test('load_pending_file — ด่าน: ไม่มีไฟล์ · ไม�
     }
   }
   // ขอบเขตพอดี: ห่าง 30 นาทีพอดี = ผ่าน · ไม่ส่งเวลา R16103 (ไฟล์ R16103 หาย) = ไม่ตรวจข้อนี้
-  expect(pyLoad({ files: [{ name: 'R4166.CSV', text: GOOD, mtime: `${ISO}T20:35:00+07:00` }] }).problems).toEqual([]);
-  expect(pyLoad({ files: [{ name: 'R4166.CSV', text: GOOD, mtime: `${ISO}T18:00:00+07:00` }], ref: null }).problems).toEqual([]);
+  expect(pyLoad({ files: [{ name: 'R04.166.CSV', text: GOOD, mtime: `${ISO}T20:35:00+07:00` }] }).problems).toEqual([]);
+  expect(pyLoad({ files: [{ name: 'R04.166.CSV', text: GOOD, mtime: `${ISO}T18:00:00+07:00` }], ref: null }).problems).toEqual([]);
 });
 
 // ── ★ กรณีตามไฟล์จริงของ SSS (สังเคราะห์) — บอท = หน้าเว็บจริง ─────────────
@@ -301,14 +304,14 @@ test('★ กรณีตามไฟล์จริงของ SSS — ใบ�
 });
 
 // ── ไฟล์จริง (opt-in · ไม่เข้า repo) ────────────────────────────────────────
-// R16103_PHARM_REAL_FILE = R16103.CSV ของ BOTR16103 (3 สาขาในไฟล์เดียว) · R4166_REAL_FILE = R4166.CSV ของวันเดียวกัน
+// R16103_PHARM_REAL_FILE = R16103.CSV ของ BOTR16103 (3 สาขาในไฟล์เดียว) · R4166_REAL_FILE = R04.166.CSV ของวันเดียวกัน
 // ตรวจคุณสมบัติที่ต้องจริงเสมอ (ไม่ผูกกับตัวเลขของวันใดวันหนึ่ง): ใบรับที่ R4166 เพิ่มให้ = เฉพาะใบรออนุมัติ · ไม่ลบใบรับเดิม · หัวคอลัมน์ผ่าน
 const REAL103 = process.env.R16103_PHARM_REAL_FILE;
 const REAL4166 = process.env.R4166_REAL_FILE;
 test('ไฟล์จริง (opt-in: R16103_PHARM_REAL_FILE + R4166_REAL_FILE) — R4166 เพิ่มได้เฉพาะใบรออนุมัติ (FSTOCKMAIN 0) · ใบรับเดิมอยู่ครบ', () => {
   test.skip(!REAL103 || !REAL4166, 'ตั้ง R16103_PHARM_REAL_FILE และ R4166_REAL_FILE เพื่อรันกับไฟล์จริง');
   const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'r4166real-'));
-  fs.copyFileSync(REAL4166, path.join(dir, 'R4166.CSV'));
+  fs.copyFileSync(REAL4166, path.join(dir, 'R04.166.CSV'));
   const got = runPython(`
 import os, io, contextlib
 from collections import Counter

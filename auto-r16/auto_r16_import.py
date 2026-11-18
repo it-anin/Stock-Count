@@ -39,7 +39,7 @@ Confirm โดยบอท (ต.ค. 2026 · ไม่บังคับ · ไ�
     python auto_r16_import.py --r103-shadow                       # โหมดเงา: อ่านใบรับ + รายงานว่ารายการไหนจะพลิก แต่เผยแพร่ timeline แบบไม่หักใบรับ
     python auto_r16_import.py --r103 --r103-branch SSS --r103-shadow   # SSS หักใบรับจริง · สาขาอื่นเป็นโหมดเงา
   ใบรับ (FSTOCKMAIN +1 · ลงหลังเวลา R01) ถูกต่อท้ายช่อง "รับเข้า" ของ timeline เดิม → สูตร Confirm เดิมหักเฉพาะใบที่ลง ≤ เวลาสแกน
-  + เอกสารรออนุมัติ R4166.CSV (บังคับคู่กัน · 17 พ.ย. 2026): ใบที่เลขที่อยู่ใน R4166 หักแม้ FSTOCKMAIN 0 และไม่ตัดด้วยเวลา R01 (ของขึ้นชั้นแล้ว)
+  + เอกสารรออนุมัติ R04.166.CSV (บังคับคู่กัน · 17 พ.ย. 2026): ใบที่เลขที่อยู่ใน R4166 หักแม้ FSTOCKMAIN 0 และไม่ตัดด้วยเวลา R01 (ของขึ้นชั้นแล้ว)
   ไฟล์มีปัญหา (R16103 หรือ R4166) = สาขาที่เปิดใช้ไม่ถูกเผยแพร่ (exit 4) — ดู build_receipts_103 / load_pending_file / merge_receipts
   และ CLAUDE.md §ใบรับ R16.103 ของสาขายา
 
@@ -147,11 +147,11 @@ RECEIPT_WAREHOUSE = {"SRC": "1", "KKL": "0", "SSS": "0"}
 # field วินิจฉัยบน {branch}_r16_104_meta (r103_meta_fields) — publish_branch ใส่ชื่อที่ "ค้าง" ใน updateMask (ไม่มีค่า = Firestore ลบ field)
 R103_META_FIELDS = ("r103Mode", "r103Rows", "r103Skus", "r103Qty", "r103SourceFile", "r103SourceMtime", "r103Pending")
 
-# ---- เอกสารรออนุมัติ R41.66 (R4166.CSV · 17 พ.ย. 2026 · ผู้ใช้สั่ง) — อ่านคู่กับ R16103.CSV เฉพาะเมื่อเปิด --r103* ----
+# ---- เอกสารรออนุมัติ R41.66 (R04.166.CSV · 17 พ.ย. 2026 · ผู้ใช้สั่ง) — อ่านคู่กับ R16103.CSV เฉพาะเมื่อเปิด --r103* ----
 # ใบรับที่ยังรออนุมัติมี FSTOCKMAIN 0 ใน R16.103 (ระบบยังไม่บวกสต็อก · ไม่อยู่ใน R01) แต่ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
 #   → แถว R16.103 ที่ TRANNO (คอลัมน์ C) อยู่ใน R4166 (คอลัมน์ C) = ใบรับจริง: หักแม้ FSTOCKMAIN 0 และไม่ตัดด้วยเวลา R01
 # ไฟล์ R4166 ใช้ไม่ได้ = ปัญหาระดับไฟล์ของใบรับ (สาขาเปิดใช้: ไม่เผยแพร่ + ❌ · เงา: ⚠️) — ผู้ใช้เลือก
-FILE_GLOB_4166 = "R4166*.CSV"
+FILE_GLOB_4166 = "R04.166*.CSV"
 PENDING_COL_TRANNO = 2                                        # คอลัมน์ C (ตำแหน่งเดียวกับ R16.103)
 PENDING_REQUIRED_HEADERS = ("SYSBRANCHID", "TRANDATE", "FCANCEL")   # ต้องมี (หาตามชื่อ) — กันหยิบไฟล์ผิดรายงาน
 # คอลัมน์รายบรรทัดของ R16.10x — R41.66 เป็นรายงาน "รายเอกสาร" ต้องไม่มี (กันหยิบ R16103.CSV มาใช้แทน: ทุกใบจะกลายเป็น "รออนุมัติ")
@@ -668,7 +668,7 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff, pending=f
 
     rows       : [หัวตาราง, แถวของสาขานี้ ...] (ผ่าน split_by_branch มาแล้ว)
     r01_cutoff : เวลา R01 (naive เวลาไทย จาก r01_cutoff_local) — ใบที่ลงก่อน/ตรงเวลานี้ "อยู่ใน R01 แล้ว" ไม่นับ · None = ไม่ตัด (ผู้เรียกต้องกันเอง)
-    pending    : ชุด TRANNO (ตัวพิมพ์ใหญ่) ของเอกสารรออนุมัติจาก R4166.CSV · ว่าง (ค่าเริ่มต้น) = ผลเดิมทุกค่า
+    pending    : ชุด TRANNO (ตัวพิมพ์ใหญ่) ของเอกสารรออนุมัติจาก R04.166.CSV · ว่าง (ค่าเริ่มต้น) = ผลเดิมทุกค่า
     นับเป็นใบรับเมื่อครบทุกข้อ: ไม่ยกเลิก · FSTOCKMAIN = +1 · Col A = คลังของ R01 สาขานี้ · ประเภทอยู่ใน R16_103_RECEIPT_PREFIXES
       · TRANDATE อ่านได้ (หลัง normalize_tran_date) และลงหลังเวลา R01 · จำนวน > 0 · จับคู่ SKU แบบ build_timeline (บาร์โค้ด → ITEMID ใน skuMap)
     เอกสารรออนุมัติ = TRANNO อยู่ใน pending **และ** FSTOCKMAIN 0 (ระบบยังไม่บวกสต็อก · ไม่อยู่ใน R01) แต่ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
@@ -2317,7 +2317,7 @@ def load_receipt_file(folder, now_bkk, force):
 
 
 def pending_header_problems(rows):
-    """หัวคอลัมน์ของ R4166.CSV (เอกสารรออนุมัติ) — คอลัมน์ C ต้องเป็น TRANNO + ต้องมี PENDING_REQUIRED_HEADERS
+    """หัวคอลัมน์ของ R04.166.CSV (เอกสารรออนุมัติ) — คอลัมน์ C ต้องเป็น TRANNO + ต้องมี PENDING_REQUIRED_HEADERS
     + ต้องไม่มีคอลัมน์รายบรรทัด (PENDING_ITEM_HEADERS) · ว่าง = ผ่าน"""
     if not rows:
         return ["ไฟล์ว่าง ไม่มีแม้แต่แถวหัวตาราง"]
@@ -2336,7 +2336,7 @@ def pending_header_problems(rows):
 
 
 def load_pending_file(folder, now_bkk, force, ref_mtime=None):
-    """หา + ตรวจ R4166.CSV (เอกสารรออนุมัติ) — คืน dict {file, mtime, pending (set ของ TRANNO ตัวพิมพ์ใหญ่), rows, cancelled, problems}
+    """หา + ตรวจ R04.166.CSV (เอกสารรออนุมัติ) — คืน dict {file, mtime, pending (set ของ TRANNO ตัวพิมพ์ใหญ่), rows, cancelled, problems}
 
     problems ว่าง = ใช้ได้ · มีปัญหา = ผู้เรียกรวมเข้ากับปัญหาระดับไฟล์ของใบรับ (สาขาเปิดใช้ตกด่าน · เงาแค่เตือน) · ไม่ sys.exit เอง
     ด่าน: ชื่อไม่มี .part. · แก้ไขวันนี้ · นิ่ง ≥ STABLE_SECONDS · ห่างจากเวลาไฟล์ R16103 (ref_mtime) ไม่เกิน PENDING_MAX_GAP_MINUTES
@@ -2920,7 +2920,7 @@ def build_notice(rc, run, alerts, now_bkk):
     if opts.get("r103") or opts.get("r103_shadow"):
         mt3, mt4 = run.get("r103_mtime"), run.get("r4166_mtime")
         lines.append(f"ไฟล์ใบรับ {run.get('r103_file') or '(ไม่พบ R16103.CSV)'}" + (f" (export {mt3:%H:%M %d/%m})" if mt3 else "")
-                     + f" · รออนุมัติ {run.get('r4166_file') or '(ไม่พบ R4166.CSV)'}" + (f" (export {mt4:%H:%M %d/%m})" if mt4 else ""))
+                     + f" · รออนุมัติ {run.get('r4166_file') or '(ไม่พบ R04.166.CSV)'}" + (f" (export {mt4:%H:%M %d/%m})" if mt4 else ""))
     r103r = run.get("r103_results") or {}
     for b in (opts.get("branches") or list(BRANCHES)):
         parts = []
@@ -2947,7 +2947,7 @@ def build_notice(rc, run, alerts, now_bkk):
     if rc != 0:
         lines.append(f"แก้เร็ว: ดู log บน {host}:  Get-Content .\\auto_r16.log -Tail 60 -Encoding UTF8")
         if any(not r.get("ok") and r.get("mode") == "on" for r in r103r.values()):
-            lines.append("ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV / R4166.CSV แล้วรันซ้ำ · ตั้งใจเผยแพร่คืนนี้โดยไม่หักใบรับ = รันซ้ำโดยเอาสาขานั้นออกจาก --r103-branch")
+            lines.append("ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV / R04.166.CSV แล้วรันซ้ำ · ตั้งใจเผยแพร่คืนนี้โดยไม่หักใบรับ = รันซ้ำโดยเอาสาขานั้นออกจาก --r103-branch")
         if opts.get("confirm") and opts.get("confirm_branches"):
             rerun = "--confirm --confirm-branch " + ",".join(opts["confirm_branches"])
             if opts.get("r103"):
@@ -3136,7 +3136,7 @@ def _run(argv=None):
         + (f" · ข้ามสาขาอื่น {sum(unknown.values())} แถว (SYSBRANCHID {', '.join(sorted(unknown))})" if unknown else ""))
 
     # ใบรับ R16.103 (เฉพาะเมื่อเปิด --r103*) — ตรวจระดับไฟล์ครั้งเดียว · ปัญหาของไฟล์นี้ไม่หยุดงานหลัก: สาขาที่ "เปิดใช้" ตกด่านทีละสาขาใน process_branch
-    # + เอกสารรออนุมัติ R4166.CSV (บังคับคู่กัน) — ปัญหาของไฟล์นี้นับเป็นปัญหาระดับไฟล์ของใบรับ (ผู้ใช้เลือก: สาขาเปิดใช้ไม่เผยแพร่ + ❌)
+    # + เอกสารรออนุมัติ R04.166.CSV (บังคับคู่กัน) — ปัญหาของไฟล์นี้นับเป็นปัญหาระดับไฟล์ของใบรับ (ผู้ใช้เลือก: สาขาเปิดใช้ไม่เผยแพร่ + ❌)
     r103 = load_receipt_file(folder, now_bkk, force) if want_r103 else None
     r103_ctx = {} if want_r103 else None
     if r103 is not None:

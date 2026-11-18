@@ -14,7 +14,7 @@ function receipt(b, o = {}) {
   return F.branchRow(b, { tranNo: `IRVCBY0012611${n}`, colA: WAREHOUSE[b], stockMain: '1', ...o });
 }
 
-// ---- R4166.CSV (เอกสารรออนุมัติ · 17 พ.ย. 2026) ----
+// ---- R04.166.CSV (เอกสารรออนุมัติ · 17 พ.ย. 2026) ----
 // หัว 19 คอลัมน์ตามไฟล์จริงที่ผู้ใช้ส่งมา 17 พ.ย. 2026 (ข้อมูลจริงไม่เข้า repo) · บอทใช้แค่คอลัมน์ C (TRANNO) + ตรวจว่ามี SYSBRANCHID/TRANDATE/FCANCEL
 const HEAD_4166 = ['CF_TRANDATE', 'SYSBRANCHID', 'TRANNO', 'SYSSALEID', 'SYSPERSONID', 'SYSWAREHOUSEID', 'TRANDATE', 'TOTAL', 'TOTALVAT',
   'GRANDTOTAL', 'FCANCEL', 'COMMENTS', 'NAME', 'PERSONID', 'FNAME', 'LNAME', 'EMPID', 'CF_COMPANY_NAME', 'CF_PRENAME'];

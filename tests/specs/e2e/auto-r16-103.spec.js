@@ -188,7 +188,7 @@ test.describe('ใบรับ R16.103 ของสาขายา (บอท au
     // R4166 หาย = สาขาที่เปิดใช้ไม่เผยแพร่ (ผู้ใช้เลือก) — ผ่าน REST/rules จริง
     const miss = B.runBotSync({ stateDir: B.newStateDir(), csv: CSV104, csv103, csv4166: null, args: ON });
     expect(miss.code, miss.log).toBe(4);
-    expect(miss.log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'");
+    expect(miss.log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'");
     await closeApp(desk2);
   });
 });

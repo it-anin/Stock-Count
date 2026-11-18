@@ -52,7 +52,7 @@ const rowOf = (pub, sku) => pub.rows.find((r) => r[0] === sku);
 const patches = (r) => r.requests.filter((x) => x.startsWith('PATCH '));
 
 // ── (1) ไม่มี flag = พฤติกรรมเดิมทุกไบต์ ──────────────────────────────────
-test('ไม่มี flag --r103* — ไม่แตะไฟล์ R16103.CSV / R4166.CSV เลย (แม้ไฟล์เสียวางอยู่) · chunk/meta เท่ากับตอนไม่มีไฟล์ทุกไบต์ · ไม่มี field r103* · ไม่ query items', () => {
+test('ไม่มี flag --r103* — ไม่แตะไฟล์ R16103.CSV / R04.166.CSV เลย (แม้ไฟล์เสียวางอยู่) · chunk/meta เท่ากับตอนไม่มีไฟล์ทุกไบต์ · ไม่มี field r103* · ไม่ query items', () => {
   const a = run({ ...W(), runs: [{ args: [] }] });
   const b = run({ ...W(), csv103: 'ขยะ,ไม่ใช่,CSV\n"เปิดแล้วพัง', csv4166: 'ขยะ\n"', runs: [{ args: [] }] });
   for (const res of [a, b]) expect(res.runs[0].code, res.runs[0].log).toBe(0);
@@ -379,7 +379,7 @@ test('Telegram — บรรทัดไฟล์ใบรับ + ผลต่�
   for (let i = 0; i < 4; i++) expect(res.runs[i].log).not.toContain(TOKEN);
 });
 
-// ── (7) เอกสารรออนุมัติ R4166.CSV (17 พ.ย. 2026) ─────────────────────────────
+// ── (7) เอกสารรออนุมัติ R04.166.CSV (17 พ.ย. 2026) ─────────────────────────────
 // ใบรับที่รออนุมัติอยู่ใน R16103.CSV แต่ FSTOCKMAIN 0 (ระบบยังไม่บวกสต็อก) — ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
 //   เลขที่อยู่ใน R4166 = หัก (ไม่ตัดด้วยเวลา R01) · R4166 ใช้ไม่ได้ = ปัญหาระดับไฟล์ของใบรับ (เปิดใช้: ไม่เผยแพร่ + ❌ · เงา: ⚠️)
 // ระบบ (R01) S-26..S-28 = 5 (catalog)
@@ -417,7 +417,7 @@ test('★ R4166 — ใบรออนุมัติ (FSTOCKMAIN 0) ถูก�
   expect(rowOf(pub, 'S-28'), 'R4166 บอกว่ายกเลิก = ไม่ใช่รออนุมัติ').toBeUndefined();
   expect(rowOf(pub, 'S-25'), 'ใบ +1 ก่อน R01 ใน R4166 = ยังอยู่ใน R01 ห้ามหักซ้ำ').toBeUndefined();
   expect(pub.meta).toMatchObject({ r103Mode: 'on', r103Rows: 6, r103Skus: 6, r103Qty: 24, r103Pending: 2, r103SourceFile: 'R16103.CSV' });
-  expect(r.log).toContain('ไฟล์เอกสารรออนุมัติ: R4166.CSV');
+  expect(r.log).toContain('ไฟล์เอกสารรออนุมัติ: R04.166.CSV');
   expect(r.log).toContain('เอกสารรออนุมัติในไฟล์ R4166: 5 ใบ (5 แถว) — IPOSBY');
   expect(r.log).toContain(' · ข้ามใบยกเลิก 1 แถว');
   expect(r.log).toContain('ใบรับ R16.103 [เปิดใช้]: 6 บรรทัด · 6 ใบ · 6 SKU · 24 ชิ้น');
@@ -462,7 +462,7 @@ test('R4166 + โหมดเงา — timeline เดิม (ไม่หั�
 
 // ไฟล์ R4166 มีปัญหา (R16103 ปกติ) — กติกาเดียวกับไฟล์ R16103 มีปัญหา (ผู้ใช้เลือก)
 const P4166 = [
-  { name: 'ไม่มีไฟล์ R4166.CSV', w: { csv4166: null }, msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'", force: false },
+  { name: 'ไม่มีไฟล์ R04.166.CSV', w: { csv4166: null }, msg: "ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'", force: false },
   { name: 'R4166 ไม่ใช่ของวันนี้', w: { mtime4166: '2026-10-20T21:05:00+07:00' }, msg: 'ไฟล์ R4166 ไม่ได้ถูกแก้ไขวันนี้', force: true },
   { name: 'R4166 ยังไม่นิ่ง', w: { mtime4166: '2026-10-21T21:09:30+07:00' }, msg: 'ไฟล์ R4166 เพิ่งถูกแก้เมื่อ 30 วินาทีก่อน', force: true },
   { name: 'R4166 ส่งออกห่าง R16103 เกิน 30 นาที', w: { mtime4166: '2026-10-21T20:30:00+07:00' },
@@ -516,7 +516,7 @@ test('R4166 หาย — สาขาที่เปิดใช้ตกด่
   const gone = run({ ...both, runs: [{ args: [...ON, ...SHADOW] }] });
   expect(gone.runs[0].code, gone.runs[0].log).toBe(4);
   expect(gone.runs[0].log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์ 'R16103*.CSV'");
-  expect(gone.runs[0].log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'");
+  expect(gone.runs[0].log).toContain("❌ ใบรับ R16.103: ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'");
 });
 
 test('Telegram + R4166 — บรรทัดไฟล์บอกเวลา export ของทั้งสองไฟล์ · ต่อสาขาบอกจำนวนรออนุมัติ · R4166 หาย = ❌ + ชี้ทั้งสองไฟล์ · ไม่มี flag = ไม่มีคำว่า R4166', () => {
@@ -531,13 +531,13 @@ test('Telegram + R4166 — บรรทัดไฟล์บอกเวลา e
     return res.runs[i].telegram[0].body.text;
   };
   const t0 = text(0);
-  expect(t0).toContain('ไฟล์ใบรับ R16103.CSV (export 21:05 21/10) · รออนุมัติ R4166.CSV (export 21:05 21/10)');
+  expect(t0).toContain('ไฟล์ใบรับ R16103.CSV (export 21:05 21/10) · รออนุมัติ R04.166.CSV (export 21:05 21/10)');
   expect(t0).toMatch(/SSS: R16 เผยแพร่แล้ว · ใบรับ R16\.103 \(เปิดใช้\) 6 บรรทัด\/6 SKU \(รออนุมัติ 2\) · ทำให้ Stock Adj→Pass 4 · Pass→Stock Adj 1 · /);
   const t1 = text(1);
   expect(res.runs[1].code).toBe(4);
-  expect(t1).toContain('ไฟล์ใบรับ R16103.CSV (export 21:05 21/10) · รออนุมัติ (ไม่พบ R4166.CSV)');
-  expect(t1).toContain("SSS: R16 ตกด่าน ไม่ได้เขียน · ❌ ใบรับ R16.103 (เปิดใช้): ไม่พบไฟล์เอกสารรออนุมัติ 'R4166*.CSV'");
-  expect(t1).toContain('ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV / R4166.CSV แล้วรันซ้ำ');
+  expect(t1).toContain('ไฟล์ใบรับ R16103.CSV (export 21:05 21/10) · รออนุมัติ (ไม่พบ R04.166.CSV)');
+  expect(t1).toContain("SSS: R16 ตกด่าน ไม่ได้เขียน · ❌ ใบรับ R16.103 (เปิดใช้): ไม่พบไฟล์เอกสารรออนุมัติ 'R04.166*.CSV'");
+  expect(t1).toContain('ใบรับ R16.103 ใช้ไม่ได้: ตรวจ Task BOT16103 + ไฟล์ R16103.CSV / R04.166.CSV แล้วรันซ้ำ');
   const t2 = text(2);
   expect(t2).not.toContain('R4166');
   expect(t2).not.toContain('รออนุมัติ');
