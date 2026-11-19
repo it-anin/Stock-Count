@@ -141,6 +141,12 @@ FILE_GLOB_103 = "R16103*.CSV"
 # ⏳ ตรวจกับไฟล์จริงแล้วบางส่วน (17 พ.ย. 2026: SRC ITFW · SSS ITFB/ITFS · ยังไม่เห็นของ KKL) — ห้ามเปิดโหมดจริง (--r103) ก่อนผ่านขั้น 0
 # ⛔ ไม่มี IRPS โดยเจตนา (ใบปรับปรุงจากผลนับ ไม่ใช่ใบรับของ — ไฟล์จริงมี IRPS ของคลังชากค้อได้) · ประเภทอื่นที่ผ่านด่าน FSTOCKMAIN ถูกข้ามและเตือนใน log (ตรวจก่อนเพิ่ม — ไม่เดา)
 R16_103_RECEIPT_PREFIXES = ("IRNC", "IRVC", "IRNM", "ICSM", "ITFB", "ITFW", "IRCN", "ITFS")
+# ประเภทที่นับเป็นใบรับ "เฉพาะตอนรออนุมัติ" (อยู่ใน R4166 + FSTOCKMAIN 0) — 18 พ.ย. 2026 · ผู้ใช้สั่ง · ไฟล์จริงโอนระหว่างคลังของ SRC
+#   ITSW = ใบรับโอนระหว่างคลัง (คลังชากค้อ 0 → หน้าร้าน 1) ที่ปลายทางยังไม่กดอนุมัติ: FSTOCKMAIN 0 + อยู่ใน R4166 (ของขึ้นชั้นแล้ว)
+#   หลังอนุมัติ ProMaxx ลบ ITSW แล้วออกใบใหม่ ITFW (FSTOCKMAIN +1 · TRANDATE เดิม · REFERENCENO1 เดิม · ใบเดิมหายจาก R16103/R4166) → ITFW อยู่ในรายการข้างบนแล้ว · ไม่หักซ้ำ
+#   (โอนระหว่างสาขาเป็นแบบเดียวกัน: ITFS รออนุมัติ → ITFB เวลาเดิม — สองประเภทนี้อยู่ในรายการข้างบนอยู่แล้ว)
+#   ⛔ ไม่ใส่ใน R16_103_RECEIPT_PREFIXES: ITSW ที่ไม่ใช่รออนุมัติจริง (FSTOCKMAIN +1 · ไม่เคยเห็น) ต้องยังถูกข้ามและเตือนใน log (ไม่เดา)
+R16_103_PENDING_ONLY_PREFIXES = ("ITSW",)
 # SYSWAREHOUSEID (Col A) ของคลังที่ R01 ของสาขาใช้ (BRANCH_MAP ของ auto-r01: front store / main kkl / main sss)
 #   SRC อยู่ SYSBRANCHID 0 เดียวกับคลังชากค้อ (Col A 0) — ใบรับของคลังไม่ใช่ของหน้าร้าน ข้าม (ไม่เตือน: เป็นเรื่องปกติของไฟล์)
 RECEIPT_WAREHOUSE = {"SRC": "1", "KKL": "0", "SSS": "0"}
@@ -668,9 +674,10 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff, pending=f
 
     rows       : [หัวตาราง, แถวของสาขานี้ ...] (ผ่าน split_by_branch มาแล้ว)
     r01_cutoff : เวลา R01 (naive เวลาไทย จาก r01_cutoff_local) — ใบที่ลงก่อน/ตรงเวลานี้ "อยู่ใน R01 แล้ว" ไม่นับ · None = ไม่ตัด (ผู้เรียกต้องกันเอง)
-    pending    : ชุด TRANNO (ตัวพิมพ์ใหญ่) ของเอกสารรออนุมัติจาก R04.166.CSV · ว่าง (ค่าเริ่มต้น) = ผลเดิมทุกค่า
+    pending    : ชุด TRANNO (ตัวพิมพ์ใหญ่) ของเอกสารรออนุมัติจาก R04.166.CSV "ของสาขานี้" (ผู้เรียกกรองด้วย (SYSBRANCHID, TRANNO) ผ่าน pending_for_branch) · ว่าง (ค่าเริ่มต้น) = ผลเดิมทุกค่า
     นับเป็นใบรับเมื่อครบทุกข้อ: ไม่ยกเลิก · FSTOCKMAIN = +1 · Col A = คลังของ R01 สาขานี้ · ประเภทอยู่ใน R16_103_RECEIPT_PREFIXES
       · TRANDATE อ่านได้ (หลัง normalize_tran_date) และลงหลังเวลา R01 · จำนวน > 0 · จับคู่ SKU แบบ build_timeline (บาร์โค้ด → ITEMID ใน skuMap)
+      · ประเภทในรายการ R16_103_RECEIPT_PREFIXES — หรือ R16_103_PENDING_ONLY_PREFIXES (ITSW) เฉพาะเมื่อเป็นเอกสารรออนุมัติจริง (ด้านล่าง)
     เอกสารรออนุมัติ = TRANNO อยู่ใน pending **และ** FSTOCKMAIN 0 (ระบบยังไม่บวกสต็อก · ไม่อยู่ใน R01) แต่ของขึ้นชั้นแล้ว (ผู้ใช้ยืนยัน)
       → นับเป็นใบรับ · ไม่ตัดด้วยเวลา R01 · ด่านอื่นเหมือนเดิมทุกข้อ (−1/อ่านไม่ได้/คลังอื่น/ประเภทนอกรายการ = ข้าม)
       · เลขที่อยู่ใน pending แต่ FSTOCKMAIN +1 = ระบบบวกสต็อกแล้ว (ไม่ได้รออนุมัติจริง) → กติกาใบรับปกติ (ตัดด้วยเวลา R01) + นับไว้ให้ log เตือน
@@ -709,7 +716,7 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff, pending=f
             stats["bad_stock_main"] += 1
             continue
         via_pending = is_pending and sm == 0   # รออนุมัติจริง: อยู่ใน R4166 และระบบยังไม่บวกสต็อก
-        if sm == 0 and not via_pending:  # ไม่ตัดสต็อกหลัก (เช่น IPOS · ใบรอรับ ITSW) — ไม่อยู่ในยอดระบบ ไม่ใช่ของที่รับเข้าจริง
+        if sm == 0 and not via_pending:  # ไม่ตัดสต็อกหลัก (เช่น IPOS · ITSW ที่ไม่อยู่ใน R4166) — ไม่อยู่ในยอดระบบ ไม่ใช่ของที่รับเข้าจริง
             stats["no_stock"] += 1
             continue
         if sm < 0:                       # ตัดสต็อกออก — ไม่ใช่ใบรับ (ไม่ควรมีในรายงานเอกสารขาเข้า)
@@ -727,7 +734,7 @@ def build_receipts_103(rows, branch, sku_set, barcode_map, r01_cutoff, pending=f
             else:
                 stats["other_warehouse"][col_a or "(ว่าง)"] += 1
             continue
-        if not match_prefix(col_c, R16_103_RECEIPT_PREFIXES):
+        if not (match_prefix(col_c, R16_103_RECEIPT_PREFIXES) or (via_pending and match_prefix(col_c, R16_103_PENDING_ONLY_PREFIXES))):
             stats["pending_other_type" if via_pending else "other_type"][col_c[:4] or "(ว่าง)"] += 1
             continue
         barcode = js_trim(col(r, COL_BARCODE))
@@ -2336,7 +2343,8 @@ def pending_header_problems(rows):
 
 
 def load_pending_file(folder, now_bkk, force, ref_mtime=None):
-    """หา + ตรวจ R04.166.CSV (เอกสารรออนุมัติ) — คืน dict {file, mtime, pending (set ของ TRANNO ตัวพิมพ์ใหญ่), rows, cancelled, problems}
+    """หา + ตรวจ R04.166.CSV (เอกสารรออนุมัติ) — คืน dict {file, mtime, pending (set ของ TRANNO ตัวพิมพ์ใหญ่ ทุกสาขารวมกัน),
+    pending_by_branch ({SYSBRANCHID: set ของ TRANNO}), pending_unscoped (TRANNO ของแถวที่ SYSBRANCHID ว่าง), rows, cancelled, problems}
 
     problems ว่าง = ใช้ได้ · มีปัญหา = ผู้เรียกรวมเข้ากับปัญหาระดับไฟล์ของใบรับ (สาขาเปิดใช้ตกด่าน · เงาแค่เตือน) · ไม่ sys.exit เอง
     ด่าน: ชื่อไม่มี .part. · แก้ไขวันนี้ · นิ่ง ≥ STABLE_SECONDS · ห่างจากเวลาไฟล์ R16103 (ref_mtime) ไม่เกิน PENDING_MAX_GAP_MINUTES
@@ -2344,7 +2352,8 @@ def load_pending_file(folder, now_bkk, force, ref_mtime=None):
     ไฟล์มีแต่หัวตาราง = ไม่มีเอกสารรออนุมัติ (ปกติ) · ไม่ตรวจวันที่ของแถว (รายงานอาจมีใบค้างจากวันก่อน — ใช้แค่เลขที่เอกสาร)
     แถวที่ FCANCEL = 1 (ยกเลิก) ไม่นับเป็นรออนุมัติ
     """
-    info = {"file": None, "mtime": None, "pending": set(), "rows": 0, "cancelled": 0, "problems": []}
+    info = {"file": None, "mtime": None, "pending": set(), "pending_by_branch": {}, "pending_unscoped": set(),
+            "rows": 0, "cancelled": 0, "problems": []}
     path = find_latest_file(folder, FILE_GLOB_4166)
     if not path:
         info["problems"].append(f"ไม่พบไฟล์เอกสารรออนุมัติ '{FILE_GLOB_4166}' ในโฟลเดอร์ (ตรวจ Task BOT16103 ตัว export)")
@@ -2376,7 +2385,9 @@ def load_pending_file(folder, now_bkk, force, ref_mtime=None):
             return info
         for p in soft:
             log(f"⚠️ {p} — แต่มี --force ดำเนินการต่อ")
-    ci = [js_trim(h).upper() for h in rows[0]].index("FCANCEL")
+    head_up = [js_trim(h).upper() for h in rows[0]]
+    ci = head_up.index("FCANCEL")
+    bi = head_up.index("SYSBRANCHID") if "SYSBRANCHID" in head_up else -1   # ผ่าน pending_header_problems แล้ว = มีแน่ (กันไว้เฉยๆ)
     n = cancelled = 0
     for r in rows[1:]:
         tn = js_trim(col(r, PENDING_COL_TRANNO)).upper() if r else ""
@@ -2386,17 +2397,40 @@ def load_pending_file(folder, now_bkk, force, ref_mtime=None):
             cancelled += 1
             continue
         info["pending"].add(tn)
+        bid = js_trim(col(r, bi))
+        if bid:   # รู้สาขา → จับคู่ด้วย (SYSBRANCHID, TRANNO) · ว่าง = ไม่รู้สาขา → ใช้กับทุกสาขา (รูปเดิม)
+            info["pending_by_branch"].setdefault(bid, set()).add(tn)
+        else:
+            info["pending_unscoped"].add(tn)
         n += 1
     info["rows"], info["cancelled"] = n, cancelled
     shown = sorted(info["pending"])[:PENDING_LIST_MAX]
     log(f"เอกสารรออนุมัติในไฟล์ R4166: {len(info['pending'])} ใบ ({n} แถว)"
         + (f" — {', '.join(shown)}{' …' if len(info['pending']) > len(shown) else ''}" if shown else "")
         + (f" · ข้ามใบยกเลิก {cancelled} แถว" if cancelled else ""))
+    if info["pending"]:
+        ids = {c["sysbranchid"] for c in BRANCHES.values()}
+        log("  แยกตามสาขา (SYSBRANCHID): " + " · ".join(f"{b} {len(info['pending_by_branch'].get(c['sysbranchid'], ()))}" for b, c in BRANCHES.items())
+            + f" · สาขาอื่น {sum(len(v) for k, v in info['pending_by_branch'].items() if k not in ids)}"
+            + (f" · ไม่ระบุสาขา {len(info['pending_unscoped'])}" if info["pending_unscoped"] else ""))
     return info
 
 
 def _counter_text(c):
     return ", ".join(f"{k}×{v}" for k, v in sorted(c.items()))
+
+
+def pending_for_branch(r103, branch):
+    """ชุดเลขที่เอกสารรออนุมัติของ "สาขานี้" ที่ส่งให้ build_receipts_103(pending=) — จับคู่ด้วย (SYSBRANCHID, TRANNO) (18 พ.ย. 2026)
+
+    R04.166 export ครบทุกสาขา (รวมสาขาที่บอทไม่ดูแล) — ใบที่ R04.166 บอกว่าเป็นของสาขาอื่นต้องไม่ทำให้ใบเลขที่เดียวกันของสาขานี้กลายเป็น "รออนุมัติ"
+    (ไฟล์จริง 18 พ.ย.: SYSBRANCHID ของ R04.166 = SYSBRANCHID + คลัง + เวลาของใบเดียวกันใน R16.103 ทุกใบที่เทียบได้)
+    แถวที่ SYSBRANCHID ว่าง = ไม่รู้สาขา → ใช้กับทุกสาขา (รูปเดิม) · r103 ที่ไม่มี pending_by_branch (ผู้เรียกรูปเดิม) = ใช้ pending ทั้งชุดเหมือนเดิม
+    """
+    by_b = r103.get("pending_by_branch")
+    if by_b is None:
+        return frozenset(r103.get("pending") or ())
+    return frozenset(by_b.get(BRANCHES[branch]["sysbranchid"], ())) | frozenset(r103.get("pending_unscoped") or ())
 
 
 def receipts_for_branch(branch, mode, r103, cat, barcode_map, base_timeline):
@@ -2426,8 +2460,9 @@ def receipts_for_branch(branch, mode, r103, cat, barcode_map, base_timeline):
         info["problems"] = problems
         return info
     own = (r103.get("by_branch") or {}).get(branch) or []
+    pend_here = pending_for_branch(r103, branch)
     receipts, st = build_receipts_103([r103["rows"][0]] + own, branch, cat["sku_set"], barcode_map, cutoff,
-                                      pending=r103.get("pending") or frozenset())
+                                      pending=pend_here)
     info.update(ok=True, receipts=receipts, stats=st, merged=merge_receipts(base_timeline, receipts))
     skip = [(n, st[k]) for n, k in (("ยกเลิก", "cancelled"), ("ไม่ตัดสต็อก", "no_stock"), ("คลังชากค้อ", "warehouse"),
                                      ("ก่อนเวลา R01", "before_r01"), ("ไม่พบ SKU", "missing"), ("ว่าง", "skipped_blank"),
@@ -2454,6 +2489,12 @@ def receipts_for_branch(branch, mode, r103, cat, barcode_map, base_timeline):
         log(f"  ⚠️ ใบรับ R16.103: เอกสารรออนุมัติ {len(st['pending_docs'])} ใบ หักคืนนี้แล้ว "
             f"({', '.join(shown)}{' …' if len(st['pending_docs']) > len(shown) else ''}) — ถ้าอนุมัติหลังอัป R01 พรุ่งนี้เช้า "
             "สินค้าในใบอาจขึ้น Stock Adj ปลอมพรุ่งนี้ (ไฟล์ R16.103 ของพรุ่งนี้ไม่มีใบนี้)")
+    # R04.166 บอกว่าเป็นของ "สาขาอื่น" แต่เลขที่เดียวกันอยู่ในแถวของสาขานี้ — ไม่นับเป็นรออนุมัติ (จับคู่ตามสาขา) · ให้เห็นไว้ ไม่ให้หายเงียบ
+    elsewhere = sorted({js_trim(col(r, COL_TRANNO)).upper() for r in own if r} & (frozenset(r103.get("pending") or ()) - pend_here))
+    if elsewhere:
+        log(f"  ⚠️ ใบรับ R16.103: เลขที่เอกสาร {len(elsewhere)} ใบของสาขานี้ ({', '.join(elsewhere[:PENDING_LIST_MAX])}"
+            f"{' …' if len(elsewhere) > PENDING_LIST_MAX else ''}) ตรงกับใบรออนุมัติใน R04.166 แต่ R04.166 ระบุเป็นของสาขาอื่น (SYSBRANCHID) — "
+            "ไม่นับเป็นรออนุมัติของสาขานี้ · ถ้ารูปแบบ SYSBRANCHID ใน R04.166 เปลี่ยน ใบรออนุมัติจะไม่ถูกหัก")
     return info
 
 
@@ -3142,6 +3183,8 @@ def _run(argv=None):
     if r103 is not None:
         r4166 = load_pending_file(folder, now_bkk, force, r103["mtime"])
         r103["pending"] = frozenset(r4166["pending"])
+        r103["pending_by_branch"] = {k: frozenset(v) for k, v in r4166["pending_by_branch"].items()}
+        r103["pending_unscoped"] = frozenset(r4166["pending_unscoped"])
         r103["problems"].extend(r4166["problems"])
         _RUN["r103_file"], _RUN["r103_mtime"] = r103["file"], r103["mtime"]
         _RUN["r4166_file"], _RUN["r4166_mtime"] = r4166["file"], r4166["mtime"]
